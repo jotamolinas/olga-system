@@ -1,0 +1,126 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O.L.G.A. | Software Legal-Tech para Pagarés y Cobros</title>
+    <meta name="description" content="Automatiza, emite y controla pagarés con Inteligencia Artificial. La plataforma legal-tech definitiva para playas de vehículos, inmobiliarias y profesionales en Paraguay." />
+    <meta name="keywords" content="software pagarés, legal-tech paraguay, gestión de cobros, automatización legal, escribanía digital" />
+    <meta property="og:title" content="O.L.G.A | Software Integral de Pagarés y Gestión Administrativa">
+    <meta property="og:description" content="Automatiza la gestión de tus pagarés, directorio de clientes y documentos legales con IA. La solución definitiva para profesionales y negocios.">
+    <meta name="robots" content="index, follow">
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#f8fafc">
+    <link rel="apple-touch-icon" href="/logo-olga.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#FF3131',
+              slate: {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                800: '#1e293b',
+                900: '#0f172a',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700;800&family=Courier+Prime:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        h1, h2, h3, .brand {
+            font-family: 'Playfair Display', serif;
+        }
+        
+        /* Modern Background Pattern */
+        .bg-pattern {
+            background-color: #f8fafc;
+            background-image: radial-gradient(#e2e8f0 0.5px, transparent 0.5px);
+            background-size: 24px 24px;
+        }
+
+        @keyframes messageIn {
+            from { 
+                opacity: 0; 
+                transform: translateY(20px) scale(0.95); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0) scale(1); 
+            }
+        }
+
+        .animate-message {
+            animation: messageIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .user-gradient {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        }
+
+        .red-gradient {
+            background: linear-gradient(135deg, #FF3131 0%, #D82828 100%);
+        }
+
+        /* Smooth hover transition for cards */
+        .hover-lift {
+            transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.2s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Input area glow */
+        .input-focus-glow:focus-within {
+            box-shadow: 0 0 0 4px rgba(255, 49, 49, 0.1);
+            border-color: #FF3131;
+        }
+    </style>
+
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-pattern text-slate-900">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
+</body>
+</html>

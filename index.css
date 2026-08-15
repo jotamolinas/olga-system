@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@media print {
+    #main-content-viewport {
+        /* Make sure viewport and its contents can expand for printing */
+        overflow: visible !important;
+        height: auto !important;
+        display: block !important;
+    }
+
+    #main-content-viewport h1,
+    #main-content-viewport h2,
+    #main-content-viewport h3,
+    #main-content-viewport h4,
+    #main-content-viewport h5,
+    #main-content-viewport h6 {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    #main-content-viewport p,
+    #main-content-viewport blockquote,
+    #main-content-viewport li,
+    #main-content-viewport .prose p,
+    #main-content-viewport .prose blockquote,
+    #main-content-viewport .prose li {
+        orphans: 3 !important;
+        widows: 3 !important;
+    }
+
+    #main-content-viewport table,
+    #main-content-viewport figure,
+    #main-content-viewport img,
+    #main-content-viewport .prose p,
+    #main-content-viewport .prose blockquote,
+    #main-content-viewport .prose ul,
+    #main-content-viewport .prose ol {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    .no-print { display: none !important; }
+    /* Support manual page breaks */
+    .page-break {
+        page-break-before: always;
+        break-before: page;
+    }
+}

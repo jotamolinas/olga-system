@@ -1,0 +1,157 @@
+{
+  "project_id": "nipponguay",
+  "collections": [
+    {
+      "name": "users",
+      "description": "Fichas de perfiles de usuarios de la Escribanía.",
+      "security_rules": {
+        "read": "request.auth != null && request.auth.uid == resource.id",
+        "write": "request.auth != null && request.auth.uid == resource.id"
+      },
+      "schema": {
+        "role": {
+          "type": "string",
+          "description": "admin or user"
+        },
+        "created_at": {
+          "type": "timestamp"
+        }
+      }
+    },
+    {
+      "name": "personas",
+      "description": "Personas involucradas en Pagarés (clientes, acreedores, deudores).",
+      "security_rules": {
+        "read": "request.auth != null && request.auth.uid == resource.data.user_id",
+        "write": "request.auth != null && request.auth.uid == request.resource.data.user_id"
+      },
+      "schema": {
+        "user_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "tipo_persona": {
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string"
+        },
+        "apellido": {
+          "type": "string",
+          "optional": true
+        },
+        "tipo_documento": {
+          "type": "string"
+        },
+        "nro_documento": {
+          "type": "string"
+        },
+        "telefono": {
+          "type": "string",
+          "optional": true
+        },
+        "email": {
+          "type": "string",
+          "optional": true
+        },
+        "domicilio": {
+          "type": "string",
+          "optional": true
+        },
+        "representante_id": {
+          "type": "string",
+          "optional": true
+        }
+      }
+    },
+    {
+      "name": "pagares",
+      "description": "Pagarés registrados por los usuarios.",
+      "security_rules": {
+        "read": "request.auth != null && request.auth.uid == resource.data.user_id",
+        "write": "request.auth != null && request.auth.uid == request.resource.data.user_id"
+      },
+      "schema": {
+        "user_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "correlativo": {
+          "type": "number"
+        },
+        "certificado_firmas_nro": {
+          "type": "string"
+        },
+        "tipo_negociacion": {
+          "type": "string"
+        },
+        "moneda": {
+          "type": "string"
+        },
+        "valor_total": {
+          "type": "number"
+        },
+        "frecuencia_id": {
+          "type": "string"
+        },
+        "fecha_primer_pago": {
+          "type": "string"
+        },
+        "entrega_inicial": {
+          "type": "number",
+          "optional": true
+        },
+        "acreedor_id": {
+          "type": "string"
+        },
+        "deudor_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "creator_role": {
+          "type": "string"
+        },
+        "cronograma": {
+          "type": "array"
+        }
+      }
+    },
+    {
+      "name": "knowledge_docs",
+      "description": "Documentos subidos por los usuarios para entrenamiento.",
+      "security_rules": {
+        "read": "request.auth != null && request.auth.uid == resource.data.user_id",
+        "write": "request.auth != null && request.auth.uid == request.resource.data.user_id"
+      },
+      "schema": {
+        "user_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "timestamp": {
+          "type": "number"
+        }
+      }
+    }
+  ]
+}

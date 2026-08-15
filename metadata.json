@@ -1,0 +1,11 @@
+{
+  "name": "O.L.G.A",
+  "description": "O.L.G.A - Software integral para gestión de pagarés, carteras de cobro y automatización legal. Ideal para escribanías, abogados, contadores, empresas y automotores. Optimiza tu administración con IA.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
