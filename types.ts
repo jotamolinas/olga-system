@@ -15,6 +15,8 @@ export interface Persona {
   domicilio: string;
   representante_id?: string; // ID de otra persona (física) que actúa como representante legal
   userId?: string;
+  origen?: 'MANUAL' | 'DNIT';
+  notas_notariales?: string;
 }
 
 export interface PaymentScheduleItem {
@@ -51,14 +53,25 @@ export interface Pagare {
   acreedor_nombre_raw?: string;
   acreedor_documento_raw?: string;
   acreedor_domicilio_raw?: string;
+  acreedor_origen?: 'MANUAL' | 'DNIT';
   
   deudor_id?: string;
   deudor_nombre_raw?: string;
   deudor_documento_raw?: string;
   deudor_domicilio_raw?: string;
+  deudor_origen?: 'MANUAL' | 'DNIT';
 
   codeudor1_id?: string;
+  codeudor1_nombre_raw?: string;
+  codeudor1_documento_raw?: string;
+  codeudor1_domicilio_raw?: string;
+  codeudor1_origen?: 'MANUAL' | 'DNIT';
+
   codeudor2_id?: string;
+  codeudor2_nombre_raw?: string;
+  codeudor2_documento_raw?: string;
+  codeudor2_domicilio_raw?: string;
+  codeudor2_origen?: 'MANUAL' | 'DNIT';
 
   // Cronograma de pagos
   cronograma: PaymentScheduleItem[];

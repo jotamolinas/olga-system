@@ -3,9 +3,16 @@ import { doc, updateDoc } from 'firebase/firestore';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
+import { consultarRUC } from '../services/dnitService';
+import { 
+  sincronizarFirmantesDePagare, 
+  sincronizarFirmantesDeFormulario, 
+  sincronizarRetroactivoTodosLosPagares, 
+  savePagaresToStorage 
+} from '../services/personaSync';
 
 interface PagaresTabProps {
   pagares: Pagare[];
@@ -43,6 +50,35 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [pagareToAnular, setPagareToAnular] = useState<any>(null); // We use any because Pagare type is somewhat complex or missing in scope
 
+  // Sincronización Automática con Fichero de Personas
+  const [syncAlertBanner, setSyncAlertBanner] = useState<{ tipo: 'success' | 'info'; texto: string } | null>(null);
+  const [isSyncingRetroactivo, setIsSyncingRetroactivo] = useState(false);
+
+  // Auto-cierre de banner de confirmación
+  useEffect(() => {
+    if (syncAlertBanner) {
+      const timer = setTimeout(() => {
+        setSyncAlertBanner(null);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncAlertBanner]);
+
+  // Detección Retroactiva al cargar el componente (regla: deps [] para evitar fugas de memoria)
+  useEffect(() => {
+    if (pagares && pagares.length > 0 && personas && personas.length > 0) {
+      const res = sincronizarRetroactivoTodosLosPagares(pagares, personas, (nueva) => {
+        onAddPersona(nueva);
+      });
+      if (res.agregadas.length > 0) {
+        setSyncAlertBanner({
+          tipo: 'success',
+          texto: res.mensaje
+        });
+      }
+    }
+  }, []);
+
   // Form main states
   const [tipoNegociacion, setTipoNegociacion] = useState<TipoNegociacion>('cuotas_corridas');
   const [moneda, setMoneda] = useState(config.monedas.find(m => m.activa)?.codigo || 'PYG');
@@ -78,17 +114,208 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   const [duracionMeses, setDuracionMeses] = useState<number | string>('');
 
-  // Selected Personas
+  // Selected Personas (100% de edición libre)
+  const [acreedorId, setAcreedorId] = useState('');
   const [acreedorNombreRaw, setAcreedorNombreRaw] = useState('');
   const [acreedorDocumentoRaw, setAcreedorDocumentoRaw] = useState('');
   const [acreedorDomicilioRaw, setAcreedorDomicilioRaw] = useState('');
+  const [acreedorOrigen, setAcreedorOrigen] = useState<'MANUAL' | 'DNIT'>('MANUAL');
+  const [loadingAcreedorDnit, setLoadingAcreedorDnit] = useState(false);
+  const [feedbackAcreedorDnit, setFeedbackAcreedorDnit] = useState<string | null>(null);
+
   const [deudorNombreRaw, setDeudorNombreRaw] = useState('');
   const [deudorDocumentoRaw, setDeudorDocumentoRaw] = useState('');
   const [deudorDomicilioRaw, setDeudorDomicilioRaw] = useState('');
+  const [deudorOrigen, setDeudorOrigen] = useState<'MANUAL' | 'DNIT'>('MANUAL');
+  const [loadingDeudorDnit, setLoadingDeudorDnit] = useState(false);
+  const [feedbackDeudorDnit, setFeedbackDeudorDnit] = useState<string | null>(null);
 
   const [deudorId, setDeudorId] = useState('');
+
+  // Co-Deudor 1
   const [codeudor1Id, setCodeudor1Id] = useState('');
+  const [codeudor1NombreRaw, setCodeudor1NombreRaw] = useState('');
+  const [codeudor1DocumentoRaw, setCodeudor1DocumentoRaw] = useState('');
+  const [codeudor1DomicilioRaw, setCodeudor1DomicilioRaw] = useState('');
+  const [codeudor1Origen, setCodeudor1Origen] = useState<'MANUAL' | 'DNIT'>('MANUAL');
+  const [loadingCodeudor1Dnit, setLoadingCodeudor1Dnit] = useState(false);
+  const [feedbackCodeudor1Dnit, setFeedbackCodeudor1Dnit] = useState<string | null>(null);
+
+  // Co-Deudor 2
   const [codeudor2Id, setCodeudor2Id] = useState('');
+  const [codeudor2NombreRaw, setCodeudor2NombreRaw] = useState('');
+  const [codeudor2DocumentoRaw, setCodeudor2DocumentoRaw] = useState('');
+  const [codeudor2DomicilioRaw, setCodeudor2DomicilioRaw] = useState('');
+  const [codeudor2Origen, setCodeudor2Origen] = useState<'MANUAL' | 'DNIT'>('MANUAL');
+  const [loadingCodeudor2Dnit, setLoadingCodeudor2Dnit] = useState(false);
+  const [feedbackCodeudor2Dnit, setFeedbackCodeudor2Dnit] = useState<string | null>(null);
+
+  // Consultas DNIT voluntarias (solo disparadas por clic explícito del usuario)
+  const handleConsultarAcreedorDnit = async (rucInput?: string) => {
+    const ruc = (rucInput !== undefined ? rucInput : acreedorDocumentoRaw).trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackAcreedorDnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackAcreedorDnit(null), 3000);
+      return;
+    }
+    setLoadingAcreedorDnit(true);
+    setFeedbackAcreedorDnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        setAcreedorNombreRaw(res.nombre_o_razon_social);
+        if (res.direccion) setAcreedorDomicilioRaw(res.direccion);
+        setAcreedorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
+        setFeedbackAcreedorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackAcreedorDnit(null), 4000);
+      } else {
+        setFeedbackAcreedorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
+      }
+    } catch (err) {
+      console.error('Error consultando DNIT Acreedor:', err);
+      setFeedbackAcreedorDnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
+    } finally {
+      setLoadingAcreedorDnit(false);
+    }
+  };
+
+  const handleConsultarDeudorDnit = async (rucInput?: string) => {
+    const ruc = (rucInput !== undefined ? rucInput : deudorDocumentoRaw).trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackDeudorDnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackDeudorDnit(null), 3000);
+      return;
+    }
+    setLoadingDeudorDnit(true);
+    setFeedbackDeudorDnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        setDeudorNombreRaw(res.nombre_o_razon_social);
+        if (res.direccion) setDeudorDomicilioRaw(res.direccion);
+        setDeudorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
+        setFeedbackDeudorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackDeudorDnit(null), 4000);
+      } else {
+        setFeedbackDeudorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        setTimeout(() => setFeedbackDeudorDnit(null), 3500);
+      }
+    } catch (err) {
+      console.error('Error consultando DNIT Deudor:', err);
+      setFeedbackDeudorDnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      setTimeout(() => setFeedbackDeudorDnit(null), 3500);
+    } finally {
+      setLoadingDeudorDnit(false);
+    }
+  };
+
+  const handleConsultarCodeudor1Dnit = async () => {
+    const ruc = codeudor1DocumentoRaw.trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackCodeudor1Dnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackCodeudor1Dnit(null), 3000);
+      return;
+    }
+    setLoadingCodeudor1Dnit(true);
+    setFeedbackCodeudor1Dnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        setCodeudor1NombreRaw(res.nombre_o_razon_social);
+        if (res.direccion) setCodeudor1DomicilioRaw(res.direccion);
+        setCodeudor1Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
+        setFeedbackCodeudor1Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackCodeudor1Dnit(null), 4000);
+      } else {
+        setFeedbackCodeudor1Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
+      }
+    } catch (err) {
+      console.error('Error consultando DNIT Codeudor 1:', err);
+      setFeedbackCodeudor1Dnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
+    } finally {
+      setLoadingCodeudor1Dnit(false);
+    }
+  };
+
+  const handleConsultarCodeudor2Dnit = async () => {
+    const ruc = codeudor2DocumentoRaw.trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackCodeudor2Dnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackCodeudor2Dnit(null), 3000);
+      return;
+    }
+    setLoadingCodeudor2Dnit(true);
+    setFeedbackCodeudor2Dnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        setCodeudor2NombreRaw(res.nombre_o_razon_social);
+        if (res.direccion) setCodeudor2DomicilioRaw(res.direccion);
+        setCodeudor2Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
+        setFeedbackCodeudor2Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackCodeudor2Dnit(null), 4000);
+      } else {
+        setFeedbackCodeudor2Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
+      }
+    } catch (err) {
+      console.error('Error consultando DNIT Codeudor 2:', err);
+      setFeedbackCodeudor2Dnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
+    } finally {
+      setLoadingCodeudor2Dnit(false);
+    }
+  };
+
+  const handleSelectAcreedor = (pId: string) => {
+    setAcreedorId(pId);
+    if (!pId) return;
+    const persona = personas.find(p => p.id === pId);
+    if (persona) {
+      setAcreedorNombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
+      setAcreedorDocumentoRaw(persona.nro_documento || '');
+      setAcreedorDomicilioRaw(persona.domicilio || '');
+      setAcreedorOrigen('MANUAL');
+    }
+  };
+
+  const handleSelectDeudor = (pId: string) => {
+    setDeudorId(pId);
+    if (!pId) return;
+    const persona = personas.find(p => p.id === pId);
+    if (persona) {
+      setDeudorNombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
+      setDeudorDocumentoRaw(persona.nro_documento || '');
+      setDeudorDomicilioRaw(persona.domicilio || '');
+      setDeudorOrigen('MANUAL');
+    }
+  };
+
+  const handleSelectCodeudor1 = (pId: string) => {
+    setCodeudor1Id(pId);
+    if (!pId) return;
+    const persona = personas.find(p => p.id === pId);
+    if (persona) {
+      setCodeudor1NombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
+      setCodeudor1DocumentoRaw(persona.nro_documento || '');
+      setCodeudor1DomicilioRaw(persona.domicilio || '');
+    }
+  };
+
+  const handleSelectCodeudor2 = (pId: string) => {
+    setCodeudor2Id(pId);
+    if (!pId) return;
+    const persona = personas.find(p => p.id === pId);
+    if (persona) {
+      setCodeudor2NombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
+      setCodeudor2DocumentoRaw(persona.nro_documento || '');
+      setCodeudor2DomicilioRaw(persona.domicilio || '');
+    }
+  };
 
   // Refuerzos states: raw arrays used before generating schedule unificado
   // Reinforcement items: { monto: number, fecha: string }
@@ -101,7 +328,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   // quick add persona logic
   const [showQuickAddPersonaModal, setShowQuickAddPersonaModal] = useState(false);
-  const [quickPersonaTargetField, setQuickPersonaTargetField] = useState<'deudor' | 'codeudor1' | 'codeudor2' | null>(null);
+  const [quickPersonaTargetField, setQuickPersonaTargetField] = useState<'acreedor' | 'deudor' | 'codeudor1' | 'codeudor2' | null>(null);
   const [quickTipoPersona, setQuickTipoPersona] = useState<'física' | 'jurídica'>('física');
   const [quickNombre, setQuickNombre] = useState('');
   const [quickApellido, setQuickApellido] = useState('');
@@ -141,6 +368,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         if (parsed.fechaEntregaInicial) setFechaEntregaInicial(parsed.fechaEntregaInicial);
         if (parsed.conceptoEntregaInicial) setConceptoEntregaInicial(parsed.conceptoEntregaInicial);
         if (parsed.duracionMeses) setDuracionMeses(parsed.duracionMeses);
+        if (parsed.acreedorId) setAcreedorId(parsed.acreedorId);
         if (parsed.acreedorNombreRaw) setAcreedorNombreRaw(parsed.acreedorNombreRaw);
         if (parsed.acreedorDocumentoRaw) setAcreedorDocumentoRaw(parsed.acreedorDocumentoRaw);
         if (parsed.acreedorDomicilioRaw) setAcreedorDomicilioRaw(parsed.acreedorDomicilioRaw);
@@ -149,7 +377,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         if (parsed.deudorDomicilioRaw) setDeudorDomicilioRaw(parsed.deudorDomicilioRaw);
         if (parsed.deudorId) setDeudorId(parsed.deudorId);
         if (parsed.codeudor1Id) setCodeudor1Id(parsed.codeudor1Id);
+        if (parsed.codeudor1NombreRaw) setCodeudor1NombreRaw(parsed.codeudor1NombreRaw);
+        if (parsed.codeudor1DocumentoRaw) setCodeudor1DocumentoRaw(parsed.codeudor1DocumentoRaw);
+        if (parsed.codeudor1DomicilioRaw) setCodeudor1DomicilioRaw(parsed.codeudor1DomicilioRaw);
         if (parsed.codeudor2Id) setCodeudor2Id(parsed.codeudor2Id);
+        if (parsed.codeudor2NombreRaw) setCodeudor2NombreRaw(parsed.codeudor2NombreRaw);
+        if (parsed.codeudor2DocumentoRaw) setCodeudor2DocumentoRaw(parsed.codeudor2DocumentoRaw);
+        if (parsed.codeudor2DomicilioRaw) setCodeudor2DomicilioRaw(parsed.codeudor2DomicilioRaw);
         if (parsed.refuerzosRaw) setRefuerzosRaw(parsed.refuerzosRaw);
         if (parsed.cronograma && parsed.cronograma.length > 0) {
           setCronograma(parsed.cronograma);
@@ -174,6 +408,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       fechaEntregaInicial,
       conceptoEntregaInicial,
       duracionMeses,
+      acreedorId,
       acreedorNombreRaw,
       acreedorDocumentoRaw,
       acreedorDomicilioRaw,
@@ -182,7 +417,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       deudorDomicilioRaw,
       deudorId,
       codeudor1Id,
+      codeudor1NombreRaw,
+      codeudor1DocumentoRaw,
+      codeudor1DomicilioRaw,
       codeudor2Id,
+      codeudor2NombreRaw,
+      codeudor2DocumentoRaw,
+      codeudor2DomicilioRaw,
       refuerzosRaw,
       cronograma
     };
@@ -191,9 +432,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     hasLoadedDraft, panelView,
     tipoNegociacion, moneda, certificadoFirmasNro, valorTotalStr,
     frecuenciaId, fechaPrimerPago, entregaInicialStr, fechaEntregaInicial,
-    conceptoEntregaInicial, duracionMeses, acreedorNombreRaw, acreedorDocumentoRaw,
+    conceptoEntregaInicial, duracionMeses, acreedorId, acreedorNombreRaw, acreedorDocumentoRaw,
     acreedorDomicilioRaw, deudorNombreRaw, deudorDocumentoRaw, deudorDomicilioRaw,
-    deudorId, codeudor1Id, codeudor2Id, refuerzosRaw, cronograma
+    deudorId, codeudor1Id, codeudor1NombreRaw, codeudor1DocumentoRaw, codeudor1DomicilioRaw,
+    codeudor2Id, codeudor2NombreRaw, codeudor2DocumentoRaw, codeudor2DomicilioRaw,
+    refuerzosRaw, cronograma
   ]);
 
   // Active items based on config rules
@@ -282,85 +525,118 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const remainingAmount = totalVal - downPayment;
 
     const freqObj = activeFrecuencias.find(f => f.id === frecuenciaId) || activeFrecuencias[0];
-    const daysInterval = freqObj ? freqObj.intervalo_dias : 30;
 
     let baseCronograma: PaymentScheduleItem[] = [];
 
-    // Let's deduce schedule based on negotiation type:
-    // A. "entrega_refuerzo_cuota"
-    // B. "cuotas_corridas"
-    // C. "cuotas_refuerzos"
-    // D. "entrega_cuotas"
+    // Cantidad Exacta de Cuotas: El bucle que genera las filas de la tabla debe iterar exactamente tantas veces como indique el campo 'Cantidad de Cuotas'
+    const parsedCuotas = typeof duracionMeses === 'number'
+      ? duracionMeses
+      : parseInt(String(duracionMeses || '').trim(), 10);
+    const defaultInstallmentCount = (!isNaN(parsedCuotas) && parsedCuotas > 0) ? parsedCuotas : 12;
 
-    let firstPaymentDate = new Date(fechaPrimerPago + "T12:00:00");
-    if (isNaN(firstPaymentDate.getTime())) {
-      firstPaymentDate = new Date(); // fallback to today if invalid
+    // Desglose de fecha base de primer pago
+    let baseYear: number;
+    let baseMonth: number; // 0-indexed
+    let baseDay: number;
+
+    if (fechaPrimerPago && /^\d{4}-\d{2}-\d{2}$/.test(fechaPrimerPago)) {
+      const parts = fechaPrimerPago.split('-').map(Number);
+      baseYear = parts[0];
+      baseMonth = parts[1] - 1;
+      baseDay = parts[2];
+    } else {
+      const fallback = new Date();
+      baseYear = fallback.getFullYear();
+      baseMonth = fallback.getMonth();
+      baseDay = fallback.getDate();
     }
 
-    const parsedDuracion = Number(duracionMeses) || 12;
-    let defaultInstallmentCount = parsedDuracion;
-    if (freqObj) {
-      if (freqObj.intervalo_dias === 30) {
-        defaultInstallmentCount = parsedDuracion;
-      } else if (freqObj.intervalo_dias === 15) {
-        defaultInstallmentCount = parsedDuracion * 2;
-      } else if (freqObj.intervalo_dias === 7) {
-        defaultInstallmentCount = Math.round((parsedDuracion * 30.4166) / 7);
-      } else if (freqObj.intervalo_dias === 180) {
-        defaultInstallmentCount = Math.max(1, Math.round(parsedDuracion / 6));
-      } else if (freqObj.intervalo_dias === 365) {
-        defaultInstallmentCount = Math.max(1, Math.round(parsedDuracion / 12));
-      } else {
-        defaultInstallmentCount = Math.max(1, Math.round((parsedDuracion * 30.4166) / freqObj.intervalo_dias));
-      }
-    }
-
-    const calculateItemDate = (baseDate, index) => {
-      const d = new Date(baseDate);
-      if (freqObj?.intervalo_dias === 30) {
-        d.setMonth(baseDate.getMonth() + index);
-      } else if (freqObj?.intervalo_dias === 180) {
-        d.setMonth(baseDate.getMonth() + (index * 6));
-      } else if (freqObj?.intervalo_dias === 365) {
-        d.setFullYear(baseDate.getFullYear() + index);
-      } else {
-        d.setDate(baseDate.getDate() + (index * daysInterval));
-      }
-      return d;
+    const formatParts = (y: number, m: number, d: number) => {
+      return `${String(y).padStart(4, '0')}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     };
 
+    const addMonthsToDate = (year: number, month: number, day: number, monthsToAdd: number): string => {
+      const totalMonths = month + monthsToAdd;
+      const targetYear = year + Math.floor(totalMonths / 12);
+      const targetMonth = ((totalMonths % 12) + 12) % 12;
+      const maxDaysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+      const clampedDay = Math.min(day, maxDaysInTargetMonth);
+      return formatParts(targetYear, targetMonth, clampedDay);
+    };
+
+    const addDaysToDate = (year: number, month: number, day: number, daysToAdd: number): string => {
+      const d = new Date(year, month, day + daysToAdd, 12, 0, 0);
+      return formatParts(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    // Cálculo de Intervalos por Frecuencia:
+    // - Si es Mensual: sumar 1 mes a cada cuota subsiguiente
+    // - Si es Semestral (Pagos cada 180 días / 6 meses): la primera cuota usa la fecha de inicio del primer pago, y cada cuota siguiente debe sumar exactamente 6 meses (o 180 días) a la fecha de la cuota anterior
+    // - Si es Anual: sumar 12 meses (1 año) a cada cuota siguiente
+    const calculateItemDateStr = (index: number): string => {
+      if (index === 0) {
+        return formatParts(baseYear, baseMonth, baseDay);
+      }
+
+      const isMensual = frecuenciaId === 'mensual' || freqObj?.intervalo_dias === 30;
+      const isSemestral = frecuenciaId === 'semestral' || freqObj?.intervalo_dias === 180;
+      const isAnual = frecuenciaId === 'anual' || freqObj?.intervalo_dias === 365;
+      const isQuincenal = frecuenciaId === 'quincenal' || freqObj?.intervalo_dias === 15;
+      const isSemanal = frecuenciaId === 'semanal' || freqObj?.intervalo_dias === 7;
+
+      if (isMensual) {
+        return addMonthsToDate(baseYear, baseMonth, baseDay, index);
+      } else if (isSemestral) {
+        return addMonthsToDate(baseYear, baseMonth, baseDay, index * 6);
+      } else if (isAnual) {
+        return addMonthsToDate(baseYear, baseMonth, baseDay, index * 12);
+      } else if (isQuincenal) {
+        return addDaysToDate(baseYear, baseMonth, baseDay, index * 15);
+      } else if (isSemanal) {
+        return addDaysToDate(baseYear, baseMonth, baseDay, index * 7);
+      } else {
+        const days = freqObj?.intervalo_dias || 30;
+        return addDaysToDate(baseYear, baseMonth, baseDay, index * days);
+      }
+    };
+
+    // Distribución del Monto:
+    // El valor total declarado debe dividirse equitativamente entre la cantidad de cuotas generadas,
+    // asegurando que la validación crítica de montos cuadre perfectamente sin diferencias de redondeo.
+    const useDecimals = moneda !== 'PYG';
+    const decScale = useDecimals ? 2 : 0;
+    const factor = Math.pow(10, decScale);
+
     if (tipoNegociacion === 'cuotas_corridas' || tipoNegociacion === 'entrega_cuotas') {
-      // STRAIGHT INSTALLMENTS ONLY
-      const installmentVal = Number((remainingAmount / defaultInstallmentCount).toFixed(2));
+      const baseInstallment = Math.round((remainingAmount / defaultInstallmentCount) * factor) / factor;
+      let sumAssigned = 0;
 
       for (let i = 0; i < defaultInstallmentCount; i++) {
-        const itemDate = calculateItemDate(firstPaymentDate, i);
+        const itemDateStr = calculateItemDateStr(i);
         
-        let actualMonto = installmentVal;
-        // Make sure last installment covers rounding differences
+        let actualMonto = baseInstallment;
         if (i === defaultInstallmentCount - 1) {
-          actualMonto = remainingAmount - (installmentVal * (defaultInstallmentCount - 1));
+          actualMonto = Math.round((remainingAmount - sumAssigned) * factor) / factor;
+        } else {
+          sumAssigned += baseInstallment;
         }
 
-        // Fix float precision issues (e.g. 165.000000000002)
-        actualMonto = Number(parseFloat(actualMonto.toString()).toFixed(2));
+        actualMonto = Math.round(actualMonto * factor) / factor;
 
         baseCronograma.push({
           id: `sch-draft-${Date.now()}-${i}`,
           pagare_id: 'draft',
           tipo: 'cuota',
-          fecha_pag: itemDate.toISOString().split('T')[0],
+          fecha_pag: itemDateStr,
           monto: Math.max(0, actualMonto),
-          numero_cuota: '' // will be determined by sorting/numbering helper
+          numero_cuota: ''
         });
       }
     } else {
-      // WITH REINFORCEMENTS
-      // R1 is mandatory. Let's merge reinforcements and calculate remainder for installments
+      // Con Refuerzos Especiales (R1 es obligatorio)
       const totalRefuerzosMonto = refuerzosRaw.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
       const remainingForCuotas = remainingAmount - totalRefuerzosMonto;
 
-      // Map reinforcements as draft items
       refuerzosRaw.forEach((ref, idx) => {
         baseCronograma.push({
           id: `sch-draft-ref-${idx}-${Date.now()}`,
@@ -372,31 +648,35 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         });
       });
 
-      const cuotaMonto = Math.max(0, Number((remainingForCuotas / defaultInstallmentCount).toFixed(2)));
+      const baseCuotaMonto = defaultInstallmentCount > 0
+        ? Math.round((remainingForCuotas / defaultInstallmentCount) * factor) / factor
+        : 0;
+      let sumCuotasAssigned = 0;
 
       for (let i = 0; i < defaultInstallmentCount; i++) {
-        const itemDate = calculateItemDate(firstPaymentDate, i);
+        const itemDateStr = calculateItemDateStr(i);
 
-        let actualMonto = cuotaMonto;
+        let actualMonto = baseCuotaMonto;
         if (i === defaultInstallmentCount - 1) {
-          actualMonto = Math.max(0, remainingForCuotas - (cuotaMonto * (defaultInstallmentCount - 1)));
+          actualMonto = Math.round((remainingForCuotas - sumCuotasAssigned) * factor) / factor;
+        } else {
+          sumCuotasAssigned += baseCuotaMonto;
         }
 
-        // Fix float precision issues
-        actualMonto = Number(parseFloat(actualMonto.toString()).toFixed(2));
+        actualMonto = Math.round(actualMonto * factor) / factor;
 
         baseCronograma.push({
           id: `sch-draft-cuota-${i}-${Date.now()}`,
           pagare_id: 'draft',
           tipo: 'cuota',
-          fecha_pag: itemDate.toISOString().split('T')[0],
-          monto: actualMonto,
-          numero_cuota: '' // Re-assigned afterwards
+          fecha_pag: itemDateStr,
+          monto: Math.max(0, actualMonto),
+          numero_cuota: ''
         });
       }
     }
 
-    // Always sort and assign correct numbering identifiers
+    // Ordenar cronológicamente y asignar numeración normalizada
     const normalized = resequenceSchedule(baseCronograma);
     setCronograma(normalized);
   };
@@ -452,7 +732,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     }
 
     const unroundedInstallment = remainingForCuotas / cuotasIdxs.length;
-    const useDecimals = moneda !== 'PYG' && moneda !== 'BRL';
+    const useDecimals = moneda !== 'PYG';
     const decScale = useDecimals ? 2 : 0;
     
     const factor = Math.pow(10, decScale);
@@ -554,6 +834,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setEntregaInicialStr('');
     setFechaEntregaInicial('');
     setConceptoEntregaInicial('');
+    setAcreedorId('');
     setAcreedorNombreRaw('');
     setAcreedorDocumentoRaw('');
     setAcreedorDomicilioRaw('');
@@ -584,22 +865,165 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setConceptoEntregaInicial(pag.concepto_entrega_inicial || '');
     
     setAcreedorNombreRaw(pag.acreedor_nombre_raw || '');
-    setAcreedorDocumentoRaw(formatCI(pag.acreedor_documento_raw || ''));
+    setAcreedorDocumentoRaw(pag.acreedor_documento_raw || '');
     setAcreedorDomicilioRaw(pag.acreedor_domicilio_raw || '');
+    setAcreedorOrigen(pag.acreedor_origen || 'MANUAL');
+    setAcreedorId(pag.acreedor_id || '');
+    if (pag.acreedor_id && !pag.acreedor_nombre_raw) {
+      const pAcr = personas.find(p => p.id === pag.acreedor_id);
+      if (pAcr) {
+        setAcreedorNombreRaw(`${pAcr.nombre} ${pAcr.apellido || ''}`.trim());
+        setAcreedorDocumentoRaw(pAcr.nro_documento || '');
+        setAcreedorDomicilioRaw(pAcr.domicilio || '');
+      }
+    }
     
     setDeudorNombreRaw(pag.deudor_nombre_raw || '');
-    setDeudorDocumentoRaw(formatCI(pag.deudor_documento_raw || ''));
+    setDeudorDocumentoRaw(pag.deudor_documento_raw || '');
     setDeudorDomicilioRaw(pag.deudor_domicilio_raw || '');
+    setDeudorOrigen(pag.deudor_origen || 'MANUAL');
     setDeudorId(pag.deudor_id || '');
+    if (pag.deudor_id && !pag.deudor_nombre_raw) {
+      const pDeu = personas.find(p => p.id === pag.deudor_id);
+      if (pDeu) {
+        setDeudorNombreRaw(`${pDeu.nombre} ${pDeu.apellido || ''}`.trim());
+        setDeudorDocumentoRaw(pDeu.nro_documento || '');
+        setDeudorDomicilioRaw(pDeu.domicilio || '');
+      }
+    }
     
     setCodeudor1Id(pag.codeudor1_id || '');
+    setCodeudor1NombreRaw(pag.codeudor1_nombre_raw || '');
+    setCodeudor1DocumentoRaw(pag.codeudor1_documento_raw || '');
+    setCodeudor1DomicilioRaw(pag.codeudor1_domicilio_raw || '');
+    setCodeudor1Origen(pag.codeudor1_origen || 'MANUAL');
+    if (pag.codeudor1_id && !pag.codeudor1_nombre_raw) {
+      const p1 = personas.find(p => p.id === pag.codeudor1_id);
+      if (p1) {
+        setCodeudor1NombreRaw(`${p1.nombre} ${p1.apellido || ''}`.trim());
+        setCodeudor1DocumentoRaw(p1.nro_documento || '');
+        setCodeudor1DomicilioRaw(p1.domicilio || '');
+      }
+    }
+    
     setCodeudor2Id(pag.codeudor2_id || '');
+    setCodeudor2NombreRaw(pag.codeudor2_nombre_raw || '');
+    setCodeudor2DocumentoRaw(pag.codeudor2_documento_raw || '');
+    setCodeudor2DomicilioRaw(pag.codeudor2_domicilio_raw || '');
+    setCodeudor2Origen(pag.codeudor2_origen || 'MANUAL');
+    if (pag.codeudor2_id && !pag.codeudor2_nombre_raw) {
+      const p2 = personas.find(p => p.id === pag.codeudor2_id);
+      if (p2) {
+        setCodeudor2NombreRaw(`${p2.nombre} ${p2.apellido || ''}`.trim());
+        setCodeudor2DocumentoRaw(p2.nro_documento || '');
+        setCodeudor2DomicilioRaw(p2.domicilio || '');
+      }
+    }
     
     setCronograma(pag.cronograma || []);
     setDuracionMeses(pag.cronograma.length);
     setPanelView('create');
   };
-const handleCreateNewPagare = () => {
+
+  // Sincronizar firmantes actuales del formulario con el Fichero de Clientes
+  const handleSincronizarFirmantesFormulario = () => {
+    const res = sincronizarFirmantesDeFormulario(
+      {
+        acreedorNombre: acreedorNombreRaw,
+        acreedorDoc: acreedorDocumentoRaw,
+        acreedorDomicilio: acreedorDomicilioRaw,
+        acreedorOrigen,
+        deudorNombre: deudorNombreRaw,
+        deudorDoc: deudorDocumentoRaw,
+        deudorDomicilio: deudorDomicilioRaw,
+        deudorOrigen,
+        codeudor1Id,
+        codeudor1Nombre: codeudor1NombreRaw,
+        codeudor1Doc: codeudor1DocumentoRaw,
+        codeudor1Domicilio: codeudor1DomicilioRaw,
+        codeudor1Origen,
+        codeudor2Id,
+        codeudor2Nombre: codeudor2NombreRaw,
+        codeudor2Doc: codeudor2DocumentoRaw,
+        codeudor2Domicilio: codeudor2DomicilioRaw,
+        codeudor2Origen
+      },
+      personas,
+      (nueva) => {
+        onAddPersona(nueva);
+      }
+    );
+
+    if (res.acreedorPersona) {
+      setAcreedorId(res.acreedorPersona.id);
+    }
+    if (res.deudorPersona) {
+      setDeudorId(res.deudorPersona.id);
+    }
+    if (res.codeudor1Persona) {
+      setCodeudor1Id(res.codeudor1Persona.id);
+    }
+    if (res.codeudor2Persona) {
+      setCodeudor2Id(res.codeudor2Persona.id);
+    }
+
+    setSyncAlertBanner({
+      tipo: 'success',
+      texto: res.mensaje
+    });
+  };
+
+  // Sincronizar firmantes de un pagaré existente en la lista
+  const handleSincronizarFirmantesDePagare = (pag: Pagare) => {
+    const res = sincronizarFirmantesDePagare(
+      pag,
+      personas,
+      (nueva) => {
+        onAddPersona(nueva);
+      }
+    );
+
+    if (res.pagareActualizado) {
+      if (onUpdatePagare) {
+        onUpdatePagare(res.pagareActualizado);
+      }
+      const pagaresActuales = [...pagares];
+      const idx = pagaresActuales.findIndex(p => p.id === res.pagareActualizado!.id);
+      if (idx >= 0) {
+        pagaresActuales[idx] = res.pagareActualizado;
+      } else {
+        pagaresActuales.push(res.pagareActualizado);
+      }
+      savePagaresToStorage(pagaresActuales);
+    }
+
+    setSyncAlertBanner({
+      tipo: 'success',
+      texto: res.mensaje
+    });
+  };
+
+  // Detección Retroactiva de todos los pagarés
+  const handleSincronizarTodosRetroactivo = () => {
+    setIsSyncingRetroactivo(true);
+    try {
+      const res = sincronizarRetroactivoTodosLosPagares(
+        pagares,
+        personas,
+        (nueva) => {
+          onAddPersona(nueva);
+        }
+      );
+      setSyncAlertBanner({
+        tipo: 'success',
+        texto: res.mensaje
+      });
+    } finally {
+      setTimeout(() => setIsSyncingRetroactivo(false), 500);
+    }
+  };
+
+  const handleCreateNewPagare = () => {
     setFormError(null);
     if (!acreedorNombreRaw.trim()) {
       setFormError('Por favor, ingresa el Nombre del Acreedor.');
@@ -630,7 +1054,39 @@ const handleCreateNewPagare = () => {
 
     const nroPaj = pagares.length > 0 ? Math.max(...pagares.map(p => p.correlativo)) + 1 : 101;
 
-    
+    // Sincronización y Auto-registro Inteligente de Firmantes con Fichero
+    const syncRes = sincronizarFirmantesDeFormulario(
+      {
+        acreedorNombre: acreedorNombreRaw,
+        acreedorDoc: acreedorDocumentoRaw,
+        acreedorDomicilio: acreedorDomicilioRaw,
+        acreedorOrigen,
+        deudorNombre: deudorNombreRaw,
+        deudorDoc: deudorDocumentoRaw,
+        deudorDomicilio: deudorDomicilioRaw,
+        deudorOrigen,
+        codeudor1Id,
+        codeudor1Nombre: codeudor1NombreRaw,
+        codeudor1Doc: codeudor1DocumentoRaw,
+        codeudor1Domicilio: codeudor1DomicilioRaw,
+        codeudor1Origen,
+        codeudor2Id,
+        codeudor2Nombre: codeudor2NombreRaw,
+        codeudor2Doc: codeudor2DocumentoRaw,
+        codeudor2Domicilio: codeudor2DomicilioRaw,
+        codeudor2Origen
+      },
+      personas,
+      (nueva) => {
+        onAddPersona(nueva);
+      }
+    );
+
+    const deudorIdFinal = syncRes.deudorPersona?.id || deudorId || undefined;
+    const acreedorIdFinal = syncRes.acreedorPersona?.id || acreedorId || undefined;
+    const codeudor1IdFinal = syncRes.codeudor1Persona?.id || codeudor1Id || undefined;
+    const codeudor2IdFinal = syncRes.codeudor2Persona?.id || codeudor2Id || undefined;
+
     const existingPagare = editingPagareId ? pagares.find(p => p.id === editingPagareId) : null;
     const finalPagare: Pagare = {
       ...(existingPagare || {}),
@@ -645,15 +1101,26 @@ const handleCreateNewPagare = () => {
       entrega_inicial: deliveryMonto,
       fecha_entrega_inicial: tipoNegociacion.includes('entrega') ? fechaEntregaInicial : '',
       concepto_entrega_inicial: tipoNegociacion.includes('entrega') ? conceptoEntregaInicial : '',
+      acreedor_id: acreedorIdFinal,
       acreedor_nombre_raw: acreedorNombreRaw.trim(),
       acreedor_documento_raw: acreedorDocumentoRaw.trim(),
       acreedor_domicilio_raw: acreedorDomicilioRaw.trim(),
-      deudor_id: deudorId || undefined,
+      acreedor_origen: acreedorOrigen,
+      deudor_id: deudorIdFinal,
       deudor_nombre_raw: deudorNombreRaw.trim(),
       deudor_documento_raw: deudorDocumentoRaw.trim(),
       deudor_domicilio_raw: deudorDomicilioRaw.trim(),
-      codeudor1_id: codeudor1Id || undefined,
-      codeudor2_id: codeudor2Id || undefined,
+      deudor_origen: deudorOrigen,
+      codeudor1_id: codeudor1IdFinal,
+      codeudor1_nombre_raw: codeudor1NombreRaw.trim(),
+      codeudor1_documento_raw: codeudor1DocumentoRaw.trim(),
+      codeudor1_domicilio_raw: codeudor1DomicilioRaw.trim(),
+      codeudor1_origen: codeudor1Origen,
+      codeudor2_id: codeudor2IdFinal,
+      codeudor2_nombre_raw: codeudor2NombreRaw.trim(),
+      codeudor2_documento_raw: codeudor2DocumentoRaw.trim(),
+      codeudor2_domicilio_raw: codeudor2DomicilioRaw.trim(),
+      codeudor2_origen: codeudor2Origen,
       cronograma: cronograma.map(item => ({ ...item, pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now() })),
       created_at: existingPagare?.created_at || new Date().toISOString(),
       creator_role: existingPagare?.creator_role || (isAdmin ? 'admin' : 'usuario')
@@ -664,12 +1131,29 @@ const handleCreateNewPagare = () => {
     } else {
       onAddPagare(finalPagare);
     }
+
+    // Persistir pagaré en localStorage para lectura inmediata del Expediente 360°
+    const pagaresActuales = [...pagares];
+    const idxExist = pagaresActuales.findIndex(p => p.id === finalPagare.id);
+    if (idxExist >= 0) {
+      pagaresActuales[idxExist] = finalPagare;
+    } else {
+      pagaresActuales.push(finalPagare);
+    }
+    savePagaresToStorage(pagaresActuales);
+
+    // Aviso de éxito de sincronización
+    setSyncAlertBanner({
+      tipo: 'success',
+      texto: syncRes.mensaje
+    });
     
     setEditingPagareId(null);
     
     // Clear the form
     setCertificadoFirmasNro('');
     setValorTotalStr('1500000');
+    setAcreedorId('');
     setAcreedorNombreRaw('');
     setAcreedorDocumentoRaw('');
     setAcreedorDomicilioRaw('');
@@ -678,7 +1162,21 @@ const handleCreateNewPagare = () => {
     setDeudorDomicilioRaw('');
     setDeudorId('');
     setCodeudor1Id('');
+    setCodeudor1NombreRaw('');
+    setCodeudor1DocumentoRaw('');
+    setCodeudor1DomicilioRaw('');
+    setCodeudor1Origen('MANUAL');
+    setFeedbackCodeudor1Dnit(null);
     setCodeudor2Id('');
+    setCodeudor2NombreRaw('');
+    setCodeudor2DocumentoRaw('');
+    setCodeudor2DomicilioRaw('');
+    setCodeudor2Origen('MANUAL');
+    setFeedbackCodeudor2Dnit(null);
+    setAcreedorOrigen('MANUAL');
+    setDeudorOrigen('MANUAL');
+    setFeedbackAcreedorDnit(null);
+    setFeedbackDeudorDnit(null);
 
     // Remove the autosave draft
     localStorage.removeItem(DRAFT_KEY);
@@ -693,7 +1191,7 @@ const handleCreateNewPagare = () => {
   };
 
   // Quick Persona Create popup handlers
-  const openQuickAddPersona = (roleTarget: 'deudor' | 'codeudor1' | 'codeudor2') => {
+  const openQuickAddPersona = (roleTarget: 'acreedor' | 'deudor' | 'codeudor1' | 'codeudor2') => {
     setQuickPersonaTargetField(roleTarget);
     setQuickNombre('');
     setQuickApellido('');
@@ -743,10 +1241,33 @@ const handleCreateNewPagare = () => {
       return;
     }
 
-    // Set value to target selector
-    if (quickPersonaTargetField === 'deudor') setDeudorId(newQuick.id);
-    else if (quickPersonaTargetField === 'codeudor1') setCodeudor1Id(newQuick.id);
-    else if (quickPersonaTargetField === 'codeudor2') setCodeudor2Id(newQuick.id);
+    // Set value to target selector and inputs
+    const nombreCompleto = `${newQuick.nombre} ${newQuick.apellido || ''}`.trim();
+    if (quickPersonaTargetField === 'acreedor') {
+      setAcreedorId(newQuick.id);
+      setAcreedorNombreRaw(nombreCompleto);
+      setAcreedorDocumentoRaw(newQuick.nro_documento);
+      setAcreedorDomicilioRaw(newQuick.domicilio || '');
+      setAcreedorOrigen('MANUAL');
+    } else if (quickPersonaTargetField === 'deudor') {
+      setDeudorId(newQuick.id);
+      setDeudorNombreRaw(nombreCompleto);
+      setDeudorDocumentoRaw(newQuick.nro_documento);
+      setDeudorDomicilioRaw(newQuick.domicilio || '');
+      setDeudorOrigen('MANUAL');
+    } else if (quickPersonaTargetField === 'codeudor1') {
+      setCodeudor1Id(newQuick.id);
+      setCodeudor1NombreRaw(nombreCompleto);
+      setCodeudor1DocumentoRaw(newQuick.nro_documento);
+      setCodeudor1DomicilioRaw(newQuick.domicilio || '');
+      setCodeudor1Origen('MANUAL');
+    } else if (quickPersonaTargetField === 'codeudor2') {
+      setCodeudor2Id(newQuick.id);
+      setCodeudor2NombreRaw(nombreCompleto);
+      setCodeudor2DocumentoRaw(newQuick.nro_documento);
+      setCodeudor2DomicilioRaw(newQuick.domicilio || '');
+      setCodeudor2Origen('MANUAL');
+    }
 
     setShowQuickAddPersonaModal(false);
   };
@@ -806,6 +1327,27 @@ const handleCreateNewPagare = () => {
         </div>
       </div>
 
+      {/* Sincronización Alerta Verde / Notificación Empresarial */}
+      {syncAlertBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 p-4 rounded-3xl flex items-start justify-between shadow-sm animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900">Sincronización con Fichero de Clientes</h4>
+              <p className="text-xs font-semibold text-emerald-800 mt-0.5">{syncAlertBanner.texto}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSyncAlertBanner(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs p-1 rounded-lg"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Tab selection inside Pagares panel */}
       <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-2 sm:p-3 rounded-3xl border border-slate-100 shadow-sm gap-2">
         <div className="flex flex-wrap justify-center gap-3 w-full box-border lg:w-auto bg-slate-50 p-1 rounded-2xl">
@@ -830,26 +1372,38 @@ const handleCreateNewPagare = () => {
             <Plus className="w-4 h-4" /> Redactar Nuevo
           </button>
         </div>
-        {isAdmin && (
-          <div className="flex w-full box-border lg:w-auto justify-end items-center px-1">
-            <input  autoComplete="nope" 
-              type="file" 
-              accept="image/*,application/pdf" 
-              className="hidden" 
-              ref={fileInputRef} 
-              onChange={handleScanImage} 
-            />
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isScanning}
-              className="flex w-full box-border lg:w-auto justify-center items-center gap-2 bg-[#FF3131] hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all disabled:opacity-50"
-              title="Sube una foto o PDF de un Pagaré físico para autocompletar este formulario"
-            >
-              {isScanning ? <Loader2 className="w-4 h-4 animate-spin"/> : <ScanLine className="w-4 h-4" />}
-              Escanear Autofill IA
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 w-full box-border lg:w-auto justify-end px-1">
+          <button
+            type="button"
+            onClick={handleSincronizarTodosRetroactivo}
+            disabled={isSyncingRetroactivo}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200/80 shadow-sm disabled:opacity-50"
+            title="Detección retroactiva: Revisa todos los pagarés y auto-registra a los firmantes no fichados en el Fichero de Clientes"
+          >
+            {isSyncingRetroactivo ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" /> : <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />}
+            <span>Sincronizar Firmantes con Fichero</span>
+          </button>
+          {isAdmin && (
+            <div className="flex items-center">
+              <input  autoComplete="nope" 
+                type="file" 
+                accept="image/*,application/pdf" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleScanImage} 
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isScanning}
+                className="flex items-center gap-2 bg-[#FF3131] hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all disabled:opacity-50"
+                title="Sube una foto o PDF de un Pagaré físico para autocompletar este formulario"
+              >
+                {isScanning ? <Loader2 className="w-4 h-4 animate-spin"/> : <ScanLine className="w-4 h-4" />}
+                Escanear Autofill IA
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {panelView === 'list' || panelView === 'list_anulados' ? (
@@ -1127,6 +1681,19 @@ const handleCreateNewPagare = () => {
                               className="text-blue-500 hover:text-blue-600 text-[10px] sm:text-xs text-center font-black uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-full"
                             >
                               Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSincronizarFirmantesDePagare(pag);
+                              }}
+                              className="text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 text-[10px] sm:text-xs text-center px-2 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-200 transition-colors"
+                              title="Sincronizar retroactivamente los firmantes de este pagaré con el Fichero de Clientes para habilitar su Expediente 360°"
+                            >
+                              <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />
+                              <span>Sincronizar Firmantes con Fichero</span>
                             </button>
                         <button 
                           type="button"
@@ -1425,11 +1992,12 @@ const handleCreateNewPagare = () => {
                               onChange={(e) => {
                                 const monthsFromStart = parseInt(e.target.value);
                                 if (!isNaN(monthsFromStart)) {
-                                  const d = new Date(fechaPrimerPago);
-                                  const freqObj = activeFrecuencias.find(f => f.id === frecuenciaId) || activeFrecuencias[0];
-                                  const daysInterval = freqObj ? freqObj.intervalo_dias : 30;
-                                  d.setDate(d.getDate() + (monthsFromStart * daysInterval));
-                                  handleRawRefuerzoChange(ref.id, 'fecha', d.toISOString().split('T')[0]);
+                                  const [y, m, d] = (fechaPrimerPago || '').split('-').map(Number);
+                                  const dt = (y && m && d) ? new Date(y, m - 1 + monthsFromStart, d, 12, 0, 0) : new Date();
+                                  const yStr = dt.getFullYear();
+                                  const mStr = String(dt.getMonth() + 1).padStart(2, '0');
+                                  const dStr = String(dt.getDate()).padStart(2, '0');
+                                  handleRawRefuerzoChange(ref.id, 'fecha', `${yStr}-${mStr}-${dStr}`);
                                 }
                               }}
                               value=""
@@ -1470,30 +2038,106 @@ const handleCreateNewPagare = () => {
 
             {/* 4. Personas Involucradas */}
             <section className="space-y-4">
-              <h3 className="text-xs font-black uppercase text-[#FF3131] tracking-[0.2em] mb-4">4. Identificación de Firmantes</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-xs font-black uppercase text-[#FF3131] tracking-[0.2em]">4. Identificación de Firmantes</h3>
+                  <p className="text-[10px] text-slate-400 font-medium">Acreedor, Deudor Principal y Garantes Solidarios vinculados al Fichero de Clientes.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSincronizarFirmantesFormulario}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm self-start sm:self-auto border border-slate-700"
+                  title="Comprueba y auto-registra a los firmantes en el Fichero de Personas para habilitar su Expediente 360°"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />
+                  <span>Sincronizar Firmantes con Fichero</span>
+                </button>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Acreedor */}
-                <div className="p-4 border border-slate-100 rounded-2xl relative space-y-3">
+                <div className="p-4 border border-slate-200 rounded-2xl relative space-y-3 bg-white shadow-sm">
                   <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Acreedor / Beneficiario *</label>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Acreedor / Beneficiario *</label>
+                    <div className="flex items-center gap-2">
+                      {acreedorOrigen === 'DNIT' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-800 border border-slate-300">
+                          Origen: DNIT
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openQuickAddPersona('acreedor')}
+                        className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
+                        title="Crear ficha rápida de persona"
+                      >
+                        [+] Rápido
+                      </button>
+                    </div>
                   </div>
-                  <input  autoComplete="nope"
+                  <select
+                    value={acreedorId}
+                    onChange={(e) => handleSelectAcreedor(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700"
+                  >
+                    <option value="">-- Cargar desde Fichero de Clientes (Opcional) --</option>
+                    {personas.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} {p.apellido || ''} ({p.tipo_documento}: {p.nro_documento})
+                      </option>
+                    ))}
+                  </select>
+                  <input autoComplete="nope"
                     type="text"
                     placeholder="Nombre Completo / Razón Social"
                     value={acreedorNombreRaw}
-                    onChange={(e) => setAcreedorNombreRaw(e.target.value)}
+                    onChange={(e) => {
+                      setAcreedorNombreRaw(e.target.value);
+                      setAcreedorOrigen('MANUAL');
+                      setAcreedorId('');
+                    }}
                     className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none ${formError && !acreedorNombreRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
                   />
-                  <input  autoComplete="nope"
-                    type="text"
-                    placeholder="Documento (CI / RUC)"
-                    value={acreedorDocumentoRaw}
-                    onChange={(e) => setAcreedorDocumentoRaw(formatCI(e.target.value))}
-                    className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none ${formError && !acreedorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
-                  />
-                  <input  autoComplete="nope"
+                  <div className="relative">
+                    <input autoComplete="nope"
+                      type="text"
+                      placeholder="Documento (CI / RUC)"
+                      value={acreedorDocumentoRaw}
+                      onChange={(e) => {
+                        setAcreedorDocumentoRaw(e.target.value);
+                        setAcreedorOrigen('MANUAL');
+                        setAcreedorId('');
+                      }}
+                      className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none ${formError && !acreedorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingAcreedorDnit}
+                      onClick={() => handleConsultarAcreedorDnit()}
+                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                    >
+                      {loadingAcreedorDnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingAcreedorDnit && (
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackAcreedorDnit && !loadingAcreedorDnit && (
+                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                      {feedbackAcreedorDnit}
+                    </p>
+                  )}
+                  <input autoComplete="nope"
                     type="text"
                     placeholder="Domicilio / Dirección (Opcional)"
                     value={acreedorDomicilioRaw}
@@ -1503,25 +2147,87 @@ const handleCreateNewPagare = () => {
                 </div>
 
                 {/* Deudor */}
-                <div className="p-4 border border-slate-100 rounded-2xl relative space-y-3">
+                <div className="p-4 border border-slate-200 rounded-2xl relative space-y-3 bg-white shadow-sm">
                   <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Deudor Principal *</label>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Deudor Principal *</label>
+                    <div className="flex items-center gap-2">
+                      {deudorOrigen === 'DNIT' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-800 border border-slate-300">
+                          Origen: DNIT
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openQuickAddPersona('deudor')}
+                        className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
+                        title="Crear ficha rápida de persona"
+                      >
+                        [+] Rápido
+                      </button>
+                    </div>
                   </div>
-                  <input  autoComplete="nope"
+                  <select
+                    value={deudorId}
+                    onChange={(e) => handleSelectDeudor(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700"
+                  >
+                    <option value="">-- Cargar desde Fichero de Clientes (Opcional) --</option>
+                    {personas.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} {p.apellido || ''} ({p.tipo_documento}: {p.nro_documento})
+                      </option>
+                    ))}
+                  </select>
+                  <input autoComplete="nope"
                     type="text"
                     placeholder="Nombre Completo / Razón Social"
                     value={deudorNombreRaw}
-                    onChange={(e) => setDeudorNombreRaw(e.target.value)}
+                    onChange={(e) => {
+                      setDeudorNombreRaw(e.target.value);
+                      setDeudorOrigen('MANUAL');
+                      setDeudorId('');
+                    }}
                     className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none ${formError && !deudorNombreRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
                   />
-                  <input  autoComplete="nope"
-                    type="text"
-                    placeholder="Documento (CI / RUC)"
-                    value={deudorDocumentoRaw}
-                    onChange={(e) => setDeudorDocumentoRaw(formatCI(e.target.value))}
-                    className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none ${formError && !deudorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
-                  />
-                  <input  autoComplete="nope"
+                  <div className="relative">
+                    <input autoComplete="nope"
+                      type="text"
+                      placeholder="Documento (CI / RUC)"
+                      value={deudorDocumentoRaw}
+                      onChange={(e) => {
+                        setDeudorDocumentoRaw(e.target.value);
+                        setDeudorOrigen('MANUAL');
+                        setDeudorId('');
+                      }}
+                      className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none ${formError && !deudorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingDeudorDnit}
+                      onClick={() => handleConsultarDeudorDnit()}
+                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                    >
+                      {loadingDeudorDnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingDeudorDnit && (
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackDeudorDnit && !loadingDeudorDnit && (
+                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                      {feedbackDeudorDnit}
+                    </p>
+                  )}
+                  <input autoComplete="nope"
                     type="text"
                     placeholder="Domicilio / Dirección (Opcional)"
                     value={deudorDomicilioRaw}
@@ -1531,55 +2237,183 @@ const handleCreateNewPagare = () => {
                 </div>
 
                 {/* Co-deudor 1 */}
-                <div className="p-4 border border-slate-100 rounded-2xl relative space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Co-Deudor Solidario 1 (Opcional)</label>
-                    <button
-                      type="button"
-                      onClick={() => openQuickAddPersona('codeudor1')}
-                      className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
-                    >
-                      [+] Rápido
-                    </button>
+                <div className="p-4 border border-slate-200 rounded-2xl relative space-y-3 bg-white shadow-sm">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Co-Deudor Solidario 1 (Opcional)</label>
+                    <div className="flex items-center gap-2">
+                      {codeudor1Origen === 'DNIT' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-800 border border-slate-300">
+                          Origen: DNIT
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openQuickAddPersona('codeudor1')}
+                        className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
+                        title="Crear ficha rápida de persona"
+                      >
+                        [+] Rápido
+                      </button>
+                    </div>
                   </div>
                   <select
                     value={codeudor1Id}
-                    onChange={(e) => setCodeudor1Id(e.target.value)}
-                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    onChange={(e) => handleSelectCodeudor1(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700"
                   >
-                    <option value="">-- Ninguno (Opcional) --</option>
+                    <option value="">-- Cargar desde Fichero de Clientes (Opcional) --</option>
                     {personas.map(p => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} {p.apellido || ''} ({p.tipo_documento}: {p.nro_documento})
                       </option>
                     ))}
                   </select>
+                  <input autoComplete="nope"
+                    type="text"
+                    placeholder="Nombre Completo / Razón Social"
+                    value={codeudor1NombreRaw}
+                    onChange={(e) => {
+                      setCodeudor1NombreRaw(e.target.value);
+                      setCodeudor1Origen('MANUAL');
+                      setCodeudor1Id('');
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  />
+                  <div className="relative">
+                    <input autoComplete="nope"
+                      type="text"
+                      placeholder="Documento (CI / RUC)"
+                      value={codeudor1DocumentoRaw}
+                      onChange={(e) => {
+                        setCodeudor1DocumentoRaw(e.target.value);
+                        setCodeudor1Origen('MANUAL');
+                        setCodeudor1Id('');
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingCodeudor1Dnit}
+                      onClick={() => handleConsultarCodeudor1Dnit()}
+                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                    >
+                      {loadingCodeudor1Dnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingCodeudor1Dnit && (
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackCodeudor1Dnit && !loadingCodeudor1Dnit && (
+                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                      {feedbackCodeudor1Dnit}
+                    </p>
+                  )}
+                  <input autoComplete="nope"
+                    type="text"
+                    placeholder="Domicilio / Dirección (Opcional)"
+                    value={codeudor1DomicilioRaw}
+                    onChange={(e) => setCodeudor1DomicilioRaw(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  />
                 </div>
 
                 {/* Co-deudor 2 */}
-                <div className="p-4 border border-slate-100 rounded-2xl relative space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Co-Deudor Solidario 2 (Opcional)</label>
-                    <button
-                      type="button"
-                      onClick={() => openQuickAddPersona('codeudor2')}
-                      className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
-                    >
-                      [+] Rápido
-                    </button>
+                <div className="p-4 border border-slate-200 rounded-2xl relative space-y-3 bg-white shadow-sm">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Co-Deudor Solidario 2 (Opcional)</label>
+                    <div className="flex items-center gap-2">
+                      {codeudor2Origen === 'DNIT' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-800 border border-slate-300">
+                          Origen: DNIT
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openQuickAddPersona('codeudor2')}
+                        className="text-[9px] font-black uppercase text-[#FF3131] hover:underline"
+                        title="Crear ficha rápida de persona"
+                      >
+                        [+] Rápido
+                      </button>
+                    </div>
                   </div>
                   <select
                     value={codeudor2Id}
-                    onChange={(e) => setCodeudor2Id(e.target.value)}
-                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    onChange={(e) => handleSelectCodeudor2(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-700"
                   >
-                    <option value="">-- Ninguno (Opcional) --</option>
+                    <option value="">-- Cargar desde Fichero de Clientes (Opcional) --</option>
                     {personas.map(p => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} {p.apellido || ''} ({p.tipo_documento}: {p.nro_documento})
                       </option>
                     ))}
                   </select>
+                  <input autoComplete="nope"
+                    type="text"
+                    placeholder="Nombre Completo / Razón Social"
+                    value={codeudor2NombreRaw}
+                    onChange={(e) => {
+                      setCodeudor2NombreRaw(e.target.value);
+                      setCodeudor2Origen('MANUAL');
+                      setCodeudor2Id('');
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  />
+                  <div className="relative">
+                    <input autoComplete="nope"
+                      type="text"
+                      placeholder="Documento (CI / RUC)"
+                      value={codeudor2DocumentoRaw}
+                      onChange={(e) => {
+                        setCodeudor2DocumentoRaw(e.target.value);
+                        setCodeudor2Origen('MANUAL');
+                        setCodeudor2Id('');
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingCodeudor2Dnit}
+                      onClick={() => handleConsultarCodeudor2Dnit()}
+                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                    >
+                      {loadingCodeudor2Dnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingCodeudor2Dnit && (
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackCodeudor2Dnit && !loadingCodeudor2Dnit && (
+                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                      {feedbackCodeudor2Dnit}
+                    </p>
+                  )}
+                  <input autoComplete="nope"
+                    type="text"
+                    placeholder="Domicilio / Dirección (Opcional)"
+                    value={codeudor2DomicilioRaw}
+                    onChange={(e) => setCodeudor2DomicilioRaw(e.target.value)}
+                    className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  />
                 </div>
 
               </div>
@@ -1667,7 +2501,7 @@ const handleCreateNewPagare = () => {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Control Financiero:</span>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">Suma de Cuotas Editadas</span>
-                    <span className={`text-sm font-black ${totalMontoCuotasYRefuerzos !== totalFinanciar ? 'text-red-500' : 'text-emerald-600'}`}>
+                    <span className={`text-sm font-black ${Math.abs(totalMontoCuotasYRefuerzos - totalFinanciar) > 0.01 ? 'text-red-500' : 'text-emerald-600'}`}>
                       {getMonedaSimbolo(moneda)} {formatCurrencyValue(totalMontoCuotasYRefuerzos, moneda)}
                     </span>
                   </div>
@@ -1679,7 +2513,7 @@ const handleCreateNewPagare = () => {
                     </span>
                   </div>
                 </div>
-                {totalMontoCuotasYRefuerzos !== totalFinanciar ? (
+                {Math.abs(totalMontoCuotasYRefuerzos - totalFinanciar) > 0.01 ? (
                   <div className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 flex items-center gap-2 mt-3 sm:mt-0">
                     ⚠️ Hay una diferencia de {getMonedaSimbolo(moneda)} {formatCurrencyValue(Math.abs(totalFinanciar - totalMontoCuotasYRefuerzos), moneda)}
                   </div>

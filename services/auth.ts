@@ -1,17 +1,20 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, User, signInAnonymously, RecaptchaVerifier, signInWithPhoneNumber, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-// @ts-ignore
-import firebaseConfigRaw from '../firebase-applet-config.json';
+import { initializeApp } from "firebase/app";
+import { getAuth, onAuthStateChanged, User, signInAnonymously, RecaptchaVerifier, signInWithPhoneNumber, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  ...firebaseConfigRaw
+  apiKey: "AIzaSyDGxd8nQTXTRpmwTKAw9xLl9uiTZuRT2UM",
+  authDomain: "nipponguay.firebaseapp.com",
+  projectId: "nipponguay",
+  storageBucket: "nipponguay.firebasestorage.app",
+  messagingSenderId: "933976114072",
+  appId: "1:933976114072:web:ee8106d228b40ad09961ed"
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = initializeFirestore(app, { experimentalForceLongPolling: true }, (firebaseConfig as any).firestoreDatabaseId);
+export const db = getFirestore(app);
 export const storage = getStorage(app);
 
 // Asegurar persistencia local

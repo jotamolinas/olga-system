@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Target, CheckCircle2, Users, Bot, ArrowRight } from 'lucide-react';
+import { Target, CheckCircle2, Users, Bot, ArrowRight, Building } from 'lucide-react';
 
 interface PlanesTabProps {
   onPlanSelect: (planName: string, planPrice: string) => void;

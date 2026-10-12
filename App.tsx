@@ -33,6 +33,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { AdminPagos } from './components/AdminPagos';
 import { FichaProfesional } from './components/FichaProfesional';
 import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
+import { ConfiguracionTab } from './components/ConfiguracionTab';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -361,13 +362,77 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   }, [showAdminLoginModal]);
 
   // Core collections
-  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>(() => {
+    try {
+      const stored = localStorage.getItem('olga_directorio_personas') || localStorage.getItem('ihara_personas');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error parsing personas from localStorage:', e);
+    }
+    return [];
+  });
   const [config, setConfig] = useState<GlobalConfig>(() => {
     const saved = localStorage.getItem('ihara_config');
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
   });
-  const [pagares, setPagares] = useState<Pagare[]>([]);
+  const [pagares, setPagares] = useState<Pagare[]>(() => {
+    try {
+      const stored = localStorage.getItem('olga_pagares') || localStorage.getItem('ihara_pagares');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error parsing pagares from localStorage:', e);
+    }
+    return [];
+  });
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
+
+  // Sincronización Institucional de ConfiguracionTab (localStorage + Real-time)
+  const [customBranding, setCustomBranding] = useState<{
+    nombreInstitucion: string;
+    ruc: string;
+    registroNotarial: string;
+    logoUrl: string | null;
+  }>(() => {
+    try {
+      const stored = localStorage.getItem('olga_configuracion_institucional');
+      if (stored) {
+        const p = JSON.parse(stored);
+        return {
+          nombreInstitucion: p.nombreInstitucion || '',
+          ruc: p.ruc || '',
+          registroNotarial: p.registroNotarial || '',
+          logoUrl: p.logoUrl || null
+        };
+      }
+    } catch {}
+    return {
+      nombreInstitucion: '',
+      ruc: '',
+      registroNotarial: '',
+      logoUrl: null
+    };
+  });
+
+  useEffect(() => {
+    const handleConfigEvent = (e: any) => {
+      if (e.detail) {
+        setCustomBranding({
+          nombreInstitucion: e.detail.nombreInstitucion || '',
+          ruc: e.detail.ruc || '',
+          registroNotarial: e.detail.registroNotarial || '',
+          logoUrl: e.detail.logoUrl || null
+        });
+      }
+    };
+    window.addEventListener('olga_config_updated', handleConfigEvent);
+    return () => window.removeEventListener('olga_config_updated', handleConfigEvent);
+  }, []);
 
   // Mock Tramites for Admin Monitor
   const [adminTramites, setAdminTramites] = useState<AdminTramiteRecord[]>([
@@ -513,7 +578,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       fetchPersonasFromFirestore(uid).catch(e => { console.warn('Fetch personas err', e); return []; }),
       fetchKnowledgeDocsFromFirestore(uid).catch(e => { console.warn('Fetch docs err', e); return []; })
     ]).then(([pers, docs]) => {
-      setPersonas(pers);
+      if (pers && pers.length > 0) {
+        setPersonas(pers);
+        try {
+          localStorage.setItem('olga_directorio_personas', JSON.stringify(pers));
+        } catch {}
+      }
       setKnowledgeDocs(docs);
     });
 
@@ -539,6 +609,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         
         console.log("RADAR FIREBASE - Pagarés filtrados:", pags);
         setPagares(pags);
+        try {
+          localStorage.setItem('olga_pagares', JSON.stringify(pags));
+        } catch {}
       } catch (e) {
         console.error("RADAR FIREBASE Error processing pagares snapshot:", e);
       }
@@ -640,18 +713,36 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     if (exists) {
       return false;
     }
-    setPersonas(prev => [...prev, newPersona]);
+    const updated = [...personas, newPersona];
+    setPersonas(updated);
+    try {
+      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving personas to localStorage:', e);
+    }
     if (currentUser) syncPersonaToFirestore(currentUser.uid, newPersona);
     return true;
   };
 
   const handleUpdatePersona = (updatedPersona: Persona) => {
-    setPersonas(prev => prev.map(p => p.id === updatedPersona.id ? updatedPersona : p));
+    const updated = personas.map(p => p.id === updatedPersona.id ? updatedPersona : p);
+    setPersonas(updated);
+    try {
+      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving personas to localStorage:', e);
+    }
     if (currentUser) syncPersonaToFirestore(currentUser.uid, updatedPersona);
   };
 
   const handleDeletePersona = (id: string) => {
-    setPersonas(prev => prev.filter(p => p.id !== id));
+    const updated = personas.filter(p => p.id !== id);
+    setPersonas(updated);
+    try {
+      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving personas to localStorage:', e);
+    }
     if (currentUser) deletePersonaFromFirestore(id);
   };
 
@@ -660,17 +751,29 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     const pag = {
       ...newPagare,
       userId: currentUser?.uid || '',
-      created_at: new Date().toISOString(),
-      status: 'activo'
+      created_at: newPagare.created_at || new Date().toISOString(),
+      status: newPagare.status || 'activo'
     };
-    setPagares(prev => [pag, ...prev]);
+    const updated = [pag, ...pagares];
+    setPagares(updated);
+    try {
+      localStorage.setItem('olga_pagares', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving pagares to localStorage:', e);
+    }
     if (currentUser) {
       syncPagareToFirestore(currentUser.uid, pag).catch(e => console.error("Error saving pagare:", e));
     }
   };
 
   const handleUpdatePagare = (updatedPagare: Pagare) => {
-    setPagares(prev => prev.map(p => p.id === updatedPagare.id ? updatedPagare : p));
+    const updated = pagares.map(p => p.id === updatedPagare.id ? updatedPagare : p);
+    setPagares(updated);
+    try {
+      localStorage.setItem('olga_pagares', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving pagares to localStorage:', e);
+    }
     if (currentUser) {
       updatePagareInFirestore(currentUser.uid, {
         ...updatedPagare,
@@ -680,7 +783,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   };
 
   const handleDeletePagare = (id: string) => {
-    setPagares(prev => prev.map(p => p.id === id ? { ...p, status: 'anulado', anuladoAt: new Date().toISOString() } : p));
+    const updated = pagares.map(p => p.id === id ? { ...p, status: 'anulado', anuladoAt: new Date().toISOString() } : p);
+    setPagares(updated);
+    try {
+      localStorage.setItem('olga_pagares', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving pagares to localStorage:', e);
+    }
     if (currentUser) {
       anularPagareFromFirestore(id).catch(e => console.error("Error anulating pagare:", e));
     }
@@ -938,15 +1047,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           </div>
           
           <div className="flex items-center gap-3 bg-slate-950/50 p-2.5 rounded-2xl border border-slate-800 relative group">
-            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-              <UserIcon className="w-5 h-5 text-slate-400" />
+            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-700">
+              {customBranding.logoUrl ? (
+                <img src={customBranding.logoUrl} alt="Logo Notaría" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="w-5 h-5 text-slate-400" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-white truncate">
-                {userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Usuario'}
+                {customBranding.nombreInstitucion || userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Usuario'}
               </p>
               <p className="text-[9px] text-slate-400 truncate uppercase tracking-wider mt-0.5 font-bold">
-                {role === 'admin' ? 'Administrador' : 'Profesional Titular'}
+                {customBranding.registroNotarial || (role === 'admin' ? 'Administrador' : 'Profesional Titular')}
               </p>
             </div>
             <button 
@@ -1217,15 +1330,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="p-2.5 bg-slate-900 rounded-2xl text-white hidden sm:block shrink-0">
-              <Building className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200">
+              {customBranding.logoUrl ? (
+                <img src={customBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <Building className="w-5 h-5 text-white" />
+              )}
             </div>
             <div className="min-w-0">
               <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
-                {userData?.razonSocial || config.escribania.nombre}
+                {customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
               </h1>
               <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
-                {userData?.tipoPerfil || 'Escribanía'} Titular {userData?.matricula || config.escribania.nro_registro}
+                {customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular {userData?.matricula || config.escribania.nro_registro}
               </p>
             </div>
           </div>
@@ -1371,11 +1488,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             {activeTab === 'personas' && (
               <PersonasTab
                 personas={personas}
+                pagares={pagares}
                 onAddPersona={handleAddPersona}
                 onUpdatePersona={handleUpdatePersona}
                 onDeletePersona={handleDeletePersona}
                 isAdmin={role === 'admin'}
-                
               />
             )}
 
@@ -1383,6 +1500,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <EscritosTab  
                 currentUser={currentUser} 
                 userProfile={userProfile}
+                personas={personas}
                 onOpenDocument={(text) => { 
                   setDocumentoInitialText(text); 
                   setDocumentoModalOpen(true); 
@@ -1391,14 +1509,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
             
             {activeTab === 'cuenta' && (
-              <ConfiguracionCuentaTab 
-                currentUser={currentUser}
-                userProfile={userProfile}
-                onProfileUpdate={() => {
-                  getDoc(doc(db, 'users', currentUser.uid)).then(docSnap => {
-                    if (docSnap.exists()) setUserProfile(docSnap.data());
-                  });
-                }}
+              <ConfiguracionTab 
+                onConfigUpdate={(data) => setCustomBranding(data)} 
+                pagares={pagares} 
               />
             )}
 

@@ -74,27 +74,35 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   };
 
   const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
-  const initialDeudorNombre = initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : pagare?.deudor_nombre_raw || '';
-  const initialDeudorDocumento = initialDeudor ? initialDeudor.nro_documento : pagare?.deudor_documento_raw || '';
-  const initialDeudorDomicilio = initialDeudor ? initialDeudor.domicilio : pagare?.deudor_domicilio_raw || 'No especificado';
+  const initialDeudorNombre = pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : '');
+  const initialDeudorDocumento = pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : '');
+  const initialDeudorDomicilio = pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : 'No especificado');
+
+  const initialCodeudor1 = personas.find(p => p.id === pagare?.codeudor1_id);
+  const initialCodeudor1Nombre = pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : '');
+  const initialCodeudor1Documento = pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : '');
+  const initialCodeudor1Domicilio = pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : '');
+
+  const initialCodeudor2 = personas.find(p => p.id === pagare?.codeudor2_id);
+  const initialCodeudor2Nombre = pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : '');
+  const initialCodeudor2Documento = pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : '');
+  const initialCodeudor2Domicilio = pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : '');
 
   const printAreaRef = useRef<HTMLDivElement>(null);
-
-  const formatCI = (val: string) => {
-    const clean = val.replace(/[^\d-]/g, '');
-    const parts = clean.split('-');
-    let formatted = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    if (parts.length > 1) {
-      formatted += '-' + parts.slice(1).join('');
-    }
-    return formatted;
-  };
 
   const [acreedorNombreEditable, setAcreedorNombreEditable] = useState(pagare?.acreedor_nombre_raw || '');
   const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(pagare?.acreedor_domicilio_raw || 'No especificado');
   const [deudorNombreEditable, setDeudorNombreEditable] = useState(initialDeudorNombre);
-  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(formatCI(initialDeudorDocumento));
+  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(initialDeudorDocumento);
   const [deudorDomicilioEditable, setDeudorDomicilioEditable] = useState(initialDeudorDomicilio);
+
+  const [codeudor1NombreEditable, setCodeudor1NombreEditable] = useState(initialCodeudor1Nombre);
+  const [codeudor1DocumentoEditable, setCodeudor1DocumentoEditable] = useState(initialCodeudor1Documento);
+  const [codeudor1DomicilioEditable, setCodeudor1DomicilioEditable] = useState(initialCodeudor1Domicilio);
+
+  const [codeudor2NombreEditable, setCodeudor2NombreEditable] = useState(initialCodeudor2Nombre);
+  const [codeudor2DocumentoEditable, setCodeudor2DocumentoEditable] = useState(initialCodeudor2Documento);
+  const [codeudor2DomicilioEditable, setCodeudor2DomicilioEditable] = useState(initialCodeudor2Domicilio);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -397,12 +405,34 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 </div>
 
                 {/* SIGNATURE BLOCK */}
-                <div className="pt-8 relative z-10 flex flex-col font-sans break-inside-avoid print:break-inside-avoid">
-                  <div className="w-[400px] border-t border-black pt-1">
+                <div className="pt-8 relative z-10 flex flex-wrap gap-8 font-sans break-inside-avoid print:break-inside-avoid">
+                  {/* Deudor Principal */}
+                  <div className="w-[360px] border-t border-black pt-1">
+                    <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Deudor Principal</p>
                     <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={setDeudorNombreEditable} /></p>
-                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDocumentoEditable} onChange={(v) => setDeudorDocumentoEditable(formatCI(v))} /></p>
+                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDocumentoEditable} onChange={setDeudorDocumentoEditable} /></p>
                     <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDomicilioEditable} onChange={setDeudorDomicilioEditable} /></p>
                   </div>
+
+                  {/* Co-deudor 1 (si existe) */}
+                  {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
+                    <div className="w-[360px] border-t border-black pt-1">
+                      <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
+                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={setCodeudor1NombreEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DocumentoEditable} onChange={setCodeudor1DocumentoEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DomicilioEditable} onChange={setCodeudor1DomicilioEditable} /></p>
+                    </div>
+                  )}
+
+                  {/* Co-deudor 2 (si existe) */}
+                  {(codeudor2NombreEditable || codeudor2DocumentoEditable) && (
+                    <div className="w-[360px] border-t border-black pt-1">
+                      <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 2</p>
+                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={setCodeudor2NombreEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DocumentoEditable} onChange={setCodeudor2DocumentoEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DomicilioEditable} onChange={setCodeudor2DomicilioEditable} /></p>
+                    </div>
+                  )}
                 </div>
 
                 {/* CERTIFICACION DE FIRMAS FOOTER */}
