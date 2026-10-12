@@ -5,7 +5,8 @@ import {
   FileText, Loader2, Calendar, Trash2, Settings, MoreVertical, 
   Copy, FolderInput, X, Check, Edit3, Plus, Printer, Save, 
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
-  Paperclip, Send, ChevronDown, ChevronUp, CheckCheck
+  Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
@@ -431,8 +432,22 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [selectedCategoryForSave, setSelectedCategoryForSave] = useState<string>('Contratos Privados');
   const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
   const [saveSuccessBanner, setSaveSuccessBanner] = useState<string | null>(null);
+  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [copiedFeedback, setCopiedFeedback] = useState<boolean>(false);
   const [previewMode, setPreviewMode] = useState<boolean>(false);
+
+  // Estados de formato activo en la barra de herramientas del editor (queryCommandState)
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    justifyLeft: false,
+    justifyCenter: false,
+    justifyRight: false,
+    justifyFull: false,
+    insertUnorderedList: false,
+    insertOrderedList: false,
+  });
 
   // Estados del Banner de Redacción con IA
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
@@ -443,7 +458,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBannerCollapsed, setAiBannerCollapsed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorContentRef = useRef<HTMLDivElement>(null);
+  const editorTextareaRef = editorContentRef;
 
   // Estado de la Lista de Escritos Guardados
   const [escritos, setEscritos] = useState<Escrito[]>([]);
@@ -509,6 +525,83 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
     };
   }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave]);
+
+  // Sincronización del contentEditable con el estado de React editorText
+  useEffect(() => {
+    if (editorContentRef.current) {
+      const currentHtml = editorContentRef.current.innerHTML;
+      const currentText = editorContentRef.current.innerText;
+      if (currentHtml !== editorText && currentText !== editorText) {
+        if (
+          editorText.includes('<p>') || 
+          editorText.includes('<div>') || 
+          editorText.includes('<br>') || 
+          editorText.includes('<b>') || 
+          editorText.includes('<i>') || 
+          editorText.includes('<u>')
+        ) {
+          editorContentRef.current.innerHTML = editorText;
+        } else {
+          editorContentRef.current.innerText = editorText;
+        }
+      }
+    }
+  }, [editorText]);
+
+  // Consulta de formato activo en la selección del editor (queryCommandState)
+  const checkFormatStates = () => {
+    try {
+      setActiveFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        justifyLeft: document.queryCommandState('justifyLeft'),
+        justifyCenter: document.queryCommandState('justifyCenter'),
+        justifyRight: document.queryCommandState('justifyRight'),
+        justifyFull: document.queryCommandState('justifyFull'),
+        insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+        insertOrderedList: document.queryCommandState('insertOrderedList'),
+      });
+    } catch {
+      // Ignorar si la selección se encuentra fuera del área editable
+    }
+  };
+
+  // Sincronizar estado de formato con el evento selectionchange
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      checkFormatStates();
+    };
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, []);
+
+  // Ejecutor de comandos de formato de texto enriquecido tipo Word (document.execCommand)
+  const executeCommand = (command: string, value: string | undefined = undefined) => {
+    try {
+      document.execCommand(command, false, value);
+      if (editorContentRef.current) {
+        setEditorText(editorContentRef.current.innerHTML);
+        editorContentRef.current.focus();
+      }
+      setTimeout(checkFormatStates, 15);
+    } catch (e) {
+      console.warn('Error ejecutando comando de formato:', command, e);
+    }
+  };
+
+  // Atajo de teclado ESC (Cerrar Editor Notarial)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mostrarEditor) {
+        setMostrarEditor(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mostrarEditor]);
 
   // Click outside listener para menú contextual
   useEffect(() => {
@@ -763,13 +856,155 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         console.warn('Error guardando copia local temporal:', err);
       }
 
-      setSaveSuccessBanner(`¡"${tipoDoc}" guardado exitosamente en la carpeta ${cat}!`);
-      setTimeout(() => setSaveSuccessBanner(null), 4000);
+      // 3. Cerrar Editor Post-Guardado: la hoja se oculta y la vista regresa al gestor documental
+      setMostrarEditor(false);
+
+      // 4. Mensaje Verde de Éxito con Toast
+      const mensajeFinal = `¡"${tipoDoc}" guardado exitosamente en la carpeta ${cat}!`;
+      setMensajeExito(mensajeFinal);
+      setSaveSuccessBanner(mensajeFinal);
+      setTimeout(() => {
+        setMensajeExito(null);
+        setSaveSuccessBanner(null);
+      }, 4500);
+
+      // Desplazar suavemente a la cuadrícula de documentos guardados
+      const seccionArchivo = document.getElementById('seccion-gestion-documental');
+      if (seccionArchivo) {
+        seccionArchivo.scrollIntoView({ behavior: 'smooth' });
+      }
     } catch (err) {
       console.error('Error al guardar documento:', err);
       alert('Ocurrió un error al guardar. Verifica tu conexión.');
     } finally {
       setIsSavingDraft(false);
+    }
+  };
+
+  // Imprimir / Descargar como PDF con los estilos de la hoja notarial (Legal/Oficio y márgenes paraguayos)
+  const handleImprimirPDF = () => {
+    const content = editorContentRef.current?.innerHTML || editorText;
+    if (!content || !content.trim()) {
+      alert('El documento está vacío. Escriba o seleccione una plantilla antes de imprimir.');
+      return;
+    }
+
+    const title = documentTitle.trim() || 'Escrito Notarial';
+    const htmlToPrint = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    @page {
+      size: legal portrait;
+      margin: 0;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #0f172a;
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .hoja-notarial-print {
+      width: 100%;
+      max-width: 850px;
+      margin: 0 auto;
+      padding-top: 180px;
+      padding-bottom: 100px;
+      padding-left: 140px;
+      padding-right: 60px;
+      min-height: 1100px;
+      box-sizing: border-box;
+      font-size: 18px;
+      line-height: 1.75;
+      text-align: justify;
+    }
+    ul {
+      list-style-type: disc !important;
+      padding-left: 2rem !important;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    ol {
+      list-style-type: decimal !important;
+      padding-left: 2rem !important;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    li {
+      display: list-item !important;
+      margin-bottom: 0.25rem;
+    }
+    p {
+      margin-bottom: 0.75rem;
+    }
+    @media print {
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .hoja-notarial-print {
+        padding-top: 180px;
+        padding-bottom: 100px;
+        padding-left: 140px;
+        padding-right: 60px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="hoja-notarial-print">
+    ${content}
+  </div>
+</body>
+</html>`;
+
+    try {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(htmlToPrint);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+          win.print();
+        }, 400);
+        return;
+      }
+    } catch (e) {
+      console.warn('window.open no disponible, usando fallback con iframe:', e);
+    }
+
+    // Fallback con iframe invisible en caso de que window.open sea bloqueado por el navegador/iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      doc.write(htmlToPrint);
+      doc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+          }
+        }, 1200);
+      }, 400);
     }
   };
 
@@ -927,14 +1162,26 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       console.warn('Error sincronizando borrador local:', e);
     }
 
+    // Foco Automático y scroll suave al Editor Notarial Activo
     setTimeout(() => {
-      if (editorTextareaRef.current) {
-        editorTextareaRef.current.focus();
-        editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      const editorBloque = document.getElementById('editor-notarial-activo-bloque');
+      if (editorBloque) {
+        editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 60);
+      if (editorContentRef.current) {
+        editorContentRef.current.focus();
+        try {
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(editorContentRef.current);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        } catch {
+          // Focus básico garantizado
+        }
+      }
+    }, 100);
 
     setSaveSuccessBanner(`"${escrito.tipo}" cargado en el Editor Notarial Activo.`);
     setTimeout(() => setSaveSuccessBanner(null), 3500);
@@ -1029,8 +1276,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return matchCategory && matchSearch;
   });
 
-  const wordCount = editorText.trim() ? editorText.trim().split(/\s+/).length : 0;
-  const charCount = editorText.length;
+  const cleanText = editorText.replace(/<[^>]+>/g, ' ').trim();
+  const wordCount = cleanText ? cleanText.split(/\s+/).filter(Boolean).length : 0;
+  const charCount = cleanText.length;
 
   return (
     <div className="space-y-8">
@@ -1069,8 +1317,31 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         </div>
       </div>
 
-      {/* Banner de confirmación al guardar */}
-      {saveSuccessBanner && (
+      {/* Toast Flotante de Éxito Post-Guardado (Diseño Verde Enterprise) */}
+      {mensajeExito && (
+        <div className="fixed top-6 right-6 z-50 max-w-md bg-green-50 border border-green-200 text-green-800 px-4 py-3.5 rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center shrink-0 text-green-700">
+              <Check className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-green-900 leading-tight">Documento guardado con éxito</p>
+              <p className="text-[11px] text-green-700 font-medium leading-tight mt-0.5">{mensajeExito}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMensajeExito(null)}
+            className="text-green-600 hover:text-green-900 p-1 rounded-lg hover:bg-green-100/60 transition-colors cursor-pointer"
+            title="Cerrar notificación"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Banner de confirmación secundario al guardar */}
+      {saveSuccessBanner && !mensajeExito && (
         <div className="bg-slate-900 text-white border-l-4 border-[#FF3131] p-4 rounded-2xl flex items-center justify-between text-xs font-bold animate-in fade-in shadow-md">
           <div className="flex items-center gap-2.5">
             <FileCheck className="w-4 h-4 text-[#FF3131]" />
@@ -1230,9 +1501,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {/* 2. CUERPO CENTRAL: EDITOR NOTARIAL ACTIVO (CONDICIONAL: mostrarEditor)    */}
       {/* ========================================================================= */}
       {mostrarEditor && (
-        <div id="editor-notarial-activo-bloque" className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
-          {/* Cabecera del Editor con Título, Carpeta y Acciones */}
-          <div className="space-y-4 pb-4 border-b border-slate-100">
+        <div id="editor-notarial-activo-bloque" className="relative bg-white rounded-3xl shadow-sm border border-slate-200 animate-in fade-in slide-in-from-top-4 duration-300">
+          {/* CABECERA FLOTANTE (STICKY TOOLBAR ESTILO WORD) */}
+          <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-md border-b border-slate-200 shadow-sm w-full pt-4 pb-3 px-4 md:px-8 mb-8 transition-all space-y-3.5 rounded-t-3xl">
+            {/* Fila superior: Título del editor y estadísticas */}
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
               <span className="uppercase tracking-widest text-slate-700 flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-[#FF3131]" />
@@ -1289,7 +1561,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             </div>
 
             {/* BOTONES DE ACCIÓN RÁPIDA */}
-            <div className="pt-2 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="pt-1 flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -1346,45 +1618,222 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleGuardarEscrito}
-                disabled={isSavingDraft || !editorText.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 cursor-pointer ml-auto"
-              >
-                {isSavingDraft ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                <span>{isSavingDraft ? 'Guardando...' : 'GUARDAR ESCRITO'}</span>
-              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={handleImprimirPDF}
+                  disabled={!editorText.trim()}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer shadow-xs active:scale-95"
+                  title="Imprimir o Descargar como PDF con márgenes de hoja notarial"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-600" />
+                  <span>🖨️ Imprimir / PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGuardarEscrito}
+                  disabled={isSavingDraft || !editorText.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 cursor-pointer"
+                >
+                  {isSavingDraft ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSavingDraft ? 'Guardando...' : 'GUARDAR ESCRITO'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* BARRA DE HERRAMIENTAS (TOOLBAR MINIMALISTA TIPO WORD) */}
+            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner">
+              {/* Formato de Texto: Negrita, Cursiva, Subrayado */}
+              <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('bold')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.bold
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Negrita"
+                >
+                  <Bold className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('italic')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.italic
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Cursiva"
+                >
+                  <Italic className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('underline')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.underline
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Subrayado"
+                >
+                  <Underline className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
+              <div className="flex items-center gap-1 px-2.5 border-r border-slate-200">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('justifyLeft')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.justifyLeft
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Alinear a la Izquierda"
+                >
+                  <AlignLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('justifyCenter')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.justifyCenter
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Centrar"
+                >
+                  <AlignCenter className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('justifyRight')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.justifyRight
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Alinear a la Derecha"
+                >
+                  <AlignRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('justifyFull')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.justifyFull
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Justificar"
+                >
+                  <AlignJustify className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Listas: Desordenada, Ordenada */}
+              <div className="flex items-center gap-1 pl-1">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('insertUnorderedList')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.insertUnorderedList
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Lista con viñetas"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeCommand('insertOrderedList')}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    activeFormats.insertOrderedList
+                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                  }`}
+                  title="Lista numerada"
+                >
+                  <ListOrdered className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Hoja de Protocolo Notarial (Oficio)</span>
+              </div>
             </div>
           </div>
 
-          {/* Área de Texto o Previsualización */}
-          {previewMode ? (
-            <div className="w-full box-border min-h-[460px] p-6 bg-slate-50 border border-slate-200 rounded-2xl whitespace-pre-wrap font-serif text-slate-800 leading-relaxed text-sm select-text">
-              {editorText || <span className="italic text-slate-400">El escrito está completamente vacío.</span>}
+          {/* SIMULACIÓN DE HOJA DE PROTOCOLO NOTARIAL (MESA DE TRABAJO / ESCRITORIO NOTARIAL) */}
+          <div className="relative z-10 px-4 md:px-8 pb-8">
+            <div className="bg-slate-200/50 py-10 sm:py-12 px-4 sm:px-8 rounded-3xl border border-slate-200/80 overflow-x-auto flex justify-center shadow-inner">
+              <style>{`
+                #editor-notarial-activo ul,
+                .editor-notarial-papel ul {
+                  list-style-type: disc !important;
+                  padding-left: 2rem !important;
+                  margin-top: 0.5rem !important;
+                  margin-bottom: 0.5rem !important;
+                }
+                #editor-notarial-activo ol,
+                .editor-notarial-papel ol {
+                  list-style-type: decimal !important;
+                  padding-left: 2rem !important;
+                  margin-top: 0.5rem !important;
+                  margin-bottom: 0.5rem !important;
+                }
+                #editor-notarial-activo li,
+                .editor-notarial-papel li {
+                  display: list-item !important;
+                  margin-bottom: 0.25rem !important;
+                }
+              `}</style>
+              <div
+                ref={editorContentRef}
+                id="editor-notarial-activo"
+                contentEditable={!previewMode}
+                suppressContentEditableWarning={true}
+                onInput={(e) => {
+                  setEditorText(e.currentTarget.innerHTML);
+                }}
+                onKeyUp={checkFormatStates}
+                onMouseUp={checkFormatStates}
+                onFocus={checkFormatStates}
+                className={`w-full max-w-[850px] min-h-[1100px] bg-white shadow-2xl mx-auto ring-1 ring-slate-200 outline-none overflow-y-auto pt-[180px] pb-[100px] pl-[140px] pr-[60px] font-serif text-lg leading-relaxed text-justify text-slate-900 selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                  previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
+                }`}
+              />
             </div>
-          ) : (
-            <textarea
-              ref={editorTextareaRef}
-              id="editor-notarial-activo"
-              value={editorText}
-              onChange={(e) => setEditorText(e.target.value)}
-              placeholder="Comience a redactar libremente, use una plantilla o pulse 'GENERAR BORRADOR CON IA' para asistencia jurídica..."
-              rows={19}
-              className="w-full box-border p-5 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-2xl text-slate-800 font-mono text-xs leading-relaxed outline-none transition-colors resize-y shadow-inner"
-            />
-          )}
+          </div>
 
           {/* Aviso Notarial Mandatorio */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5 text-[11px] text-slate-600 font-medium">
-            <AlertCircle className="w-4 h-4 text-[#FF3131] shrink-0" />
-            <span>
-              <strong>Aviso Legal Notarial:</strong> Todo documento generado en este sistema es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
-            </span>
+          <div className="px-4 md:px-8 pb-6">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5 text-[11px] text-slate-600 font-medium">
+              <AlertCircle className="w-4 h-4 text-[#FF3131] shrink-0" />
+              <span>
+                <strong>Aviso Legal Notarial:</strong> Todo documento generado en este sistema es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -1522,110 +1971,151 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               return (
                 <div 
                   key={escrito.id} 
-                  className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between p-6 relative group"
+                  onClick={() => handleEditarDocumento(escrito)}
+                  className={`bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all flex flex-col justify-between p-6 relative group cursor-pointer ${
+                    activeMenuId === escrito.id ? 'z-30' : 'z-0 hover:z-10'
+                  }`}
                 >
-                  <div className="flex flex-col gap-3.5 mb-4">
-                    {/* Cabecera de la Tarjeta */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-inner shrink-0">
+                  <div>
+                    {/* Cabecera de la Tarjeta con Kebab Menu */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                        <div className="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-inner shrink-0 group-hover:scale-105 transition-transform">
                           <FileText className="w-5 h-5 text-[#FF3131]" />
                         </div>
                         <div className="flex-1 overflow-hidden min-w-0">
                           <h4 className="font-bold text-slate-900 text-sm truncate" title={escrito.tipo || 'Escrito'}>
                             {escrito.tipo || 'Escrito'}
                           </h4>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-0.5 truncate">
-                            <Calendar className="w-3 h-3 shrink-0" /> <span className="truncate">{dateStr}</span>
+                          <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                            <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
+                            <span className="truncate">{dateStr}</span>
                           </p>
                         </div>
                       </div>
 
-                      <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[9px] font-bold uppercase tracking-wider rounded-lg border border-slate-200 shrink-0">
-                        {escrito.categoria || 'Sin Categoría'}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="px-2.5 py-1 bg-slate-50 text-slate-600 text-[9px] font-bold uppercase tracking-wider rounded-lg border border-slate-200/70 shrink-0">
+                          {escrito.categoria || 'Sin Categoría'}
+                        </span>
+
+                        {/* Menú Desplegable (Tres Puntos) */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === escrito.id ? null : escrito.id);
+                            }}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="Opciones del documento"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {/* Menú Flotante Dropdown de Opciones */}
+                          {activeMenuId === escrito.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40 cursor-default" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(null);
+                                }} 
+                              />
+                              <div 
+                                className="absolute right-0 top-10 z-50 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 duration-150 text-xs font-bold"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    handleEditarDocumento(escrito);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Abrir en Editor</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    handleDuplicarDocumento(escrito);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Duplicar</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    setMovingDoc(escrito);
+                                    setTargetCategory(escrito.categoria || 'Sin Categoría');
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <FolderInput className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Mover a Carpeta</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    onOpenDocument(escrito.texto);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
+                                >
+                                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Imprimir / Membrete</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    setDocToDelete(escrito);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-[#FF3131]" />
+                                  <span>Eliminar</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Previsualización del Contenido */}
-                    <div 
-                      onClick={() => handleEditarDocumento(escrito)}
-                      className="bg-slate-50 hover:bg-slate-100/70 p-3.5 rounded-xl border border-slate-200 cursor-pointer transition-colors"
-                      title="Haz clic para cargar en el Editor Notarial Activo"
-                    >
-                      <p className="text-xs text-slate-600 line-clamp-3 font-mono leading-relaxed select-none">
+                    {/* Fragmento de Texto en Gris Claro (no compite con la interfaz) */}
+                    <div className="mt-3.5 mb-2">
+                      <p className="text-xs text-slate-400 font-normal leading-relaxed line-clamp-3 select-none">
                         {escrito.texto}
                       </p>
                     </div>
-
-                    {/* BARRA DE BOTONES OPERATIVOS OBLIGATORIOS (Editar, Duplicar, Mover, Eliminar) */}
-                    <div className="grid grid-cols-4 gap-1.5 pt-1">
-                      {/* BOTÓN EDITAR */}
-                      <button
-                        type="button"
-                        onClick={() => handleEditarDocumento(escrito)}
-                        className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[11px] font-bold transition-colors border border-slate-200 cursor-pointer"
-                        title="Cargar documento en el Editor Notarial Activo"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-slate-700" />
-                        <span>Editar</span>
-                      </button>
-
-                      {/* BOTÓN DUPLICAR */}
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicarDocumento(escrito)}
-                        className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[11px] font-bold transition-colors border border-slate-200 cursor-pointer"
-                        title="Crear una copia exacta de este documento"
-                      >
-                        <Copy className="w-3.5 h-3.5 text-slate-700" />
-                        <span>Duplicar</span>
-                      </button>
-
-                      {/* BOTÓN MOVER */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMovingDoc(escrito);
-                          setTargetCategory(escrito.categoria || 'Sin Categoría');
-                        }}
-                        className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[11px] font-bold transition-colors border border-slate-200 cursor-pointer"
-                        title="Mover documento a otra carpeta"
-                      >
-                        <FolderInput className="w-3.5 h-3.5 text-slate-700" />
-                        <span>Mover</span>
-                      </button>
-
-                      {/* BOTÓN ELIMINAR */}
-                      <button
-                        type="button"
-                        onClick={() => setDocToDelete(escrito)}
-                        className="flex items-center justify-center gap-1 px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-[11px] font-bold transition-colors border border-red-200 cursor-pointer"
-                        title="Eliminar este documento del archivo"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-[#FF3131]" />
-                        <span>Eliminar</span>
-                      </button>
-                    </div>
                   </div>
-                  
-                  {/* Pie de tarjeta con opciones adicionales */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => onOpenDocument(escrito.texto)}
-                      className="text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-[#FF3131]" />
-                      <span>Imprimir / Exportar</span>
-                    </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleEditarDocumento(escrito)}
-                      className="text-[#FF3131] hover:underline flex items-center gap-1 font-black cursor-pointer"
-                    >
+                  {/* Pie de Tarjeta Limpio */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {escrito.texto.trim().split(/\s+/).filter(Boolean).length} palabras
+                    </span>
+
+                    <span className="text-[#FF3131] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[11px]">
                       <span>Abrir en Editor &rarr;</span>
-                    </button>
+                    </span>
                   </div>
                 </div>
               );

@@ -50,3 +50,26 @@
         break-before: page;
     }
 }
+
+/* Reglas de visualización de listas para el Editor Notarial Activo (ContentEditable) */
+#editor-notarial-activo ul,
+.editor-notarial-papel ul {
+    list-style-type: disc !important;
+    padding-left: 2rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+#editor-notarial-activo ol,
+.editor-notarial-papel ol {
+    list-style-type: decimal !important;
+    padding-left: 2rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+#editor-notarial-activo li,
+.editor-notarial-papel li {
+    display: list-item !important;
+    margin-bottom: 0.25rem !important;
+}
