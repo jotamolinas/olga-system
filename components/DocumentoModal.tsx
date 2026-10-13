@@ -6,6 +6,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useTrialStatus } from '../hooks/useTrialStatus';
 import ReactMarkdown from 'react-markdown';
 import { ModalGuardarDocumento } from './ModalGuardarDocumento';
+import { formatDocClean } from './PagarePDFPreview';
 
 interface DocumentoModalProps {
   isOpen: boolean;
@@ -71,11 +72,21 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
         win.document.write('<style>');
         win.document.write(`
           @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
-          body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           .prose { max-width: none !important; }
           @media print {
             body { padding: 0; margin: 0; }
-            @page { margin: 1cm; size: A4; }
+            @page { margin: 0; size: legal portrait; }
+            .print-content-wrapper {
+              padding-top: 4.5cm !important;
+              padding-left: 1.5cm !important;
+              padding-right: 1.5cm !important;
+              padding-bottom: 1.5cm !important;
+              box-sizing: border-box !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 215.9mm !important;
+            }
             p, div, blockquote { orphans: 3; widows: 3; }
             table, tr, td { page-break-inside: avoid; break-inside: avoid; }
           }
@@ -95,8 +106,8 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           `);
         }
 
-        // Wrap content in a container that formats nicely on A4
-        win.document.write('<div class="w-full max-w-[210mm] mx-auto bg-white print:h-auto print:m-0 print:p-0 print:overflow-hidden break-inside-avoid">');
+        // Wrap content in a container that formats nicely on Legal/Oficio
+        win.document.write('<div class="w-full max-w-[215.9mm] mx-auto bg-white print-content-wrapper print:h-auto print:m-0 print:overflow-hidden break-inside-avoid">');
         win.document.write(printContent);
         win.document.write('</div></body></html>');
         win.document.close();
@@ -212,17 +223,27 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="flex-grow overflow-y-auto p-8 md:p-12 print:overflow-visible print:p-0">
-          <div ref={printAreaRef} className="print-content-wrapper">
-            {/* Membrete Oficial */}
-            <div className="mb-12 border-b-2 border-slate-800 pb-6 text-center print:border-black">
-              {userData?.logoUrl ? (
-                <img src={userData.logoUrl} alt="Membrete Oficial" className="h-20 w-auto mx-auto mb-6 object-contain" />
-              ) : (
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-bold uppercase tracking-wider text-slate-800">{userData?.razonSocial || 'EMPRESA EMISORA'}</h2>
-                  {userData?.ruc && <p className="text-sm text-slate-500 mt-1">RUC: {userData.ruc}</p>}
-                </div>
+        <div className="flex-grow overflow-y-auto p-4 md:p-8 bg-slate-100 flex justify-center print:overflow-visible print:p-0 print:bg-white">
+          <div 
+            ref={printAreaRef} 
+            className="print-content-wrapper w-full max-w-[215.9mm] bg-white shadow-xl border border-slate-200"
+            style={{
+              paddingTop: '4.5cm',
+              paddingLeft: '1.5cm',
+              paddingRight: '1.5cm',
+              paddingBottom: '1.5cm',
+              boxSizing: 'border-box'
+            }}
+          >
+            {/* Encabezado Protocolar Notarial - Sin logotipos */}
+            <div className="mb-8 border-b-2 border-slate-800 pb-4 text-center print:border-black">
+              <h2 className="text-xl md:text-2xl font-serif font-bold uppercase tracking-wider text-slate-900">
+                {userData?.razonSocial || userData?.nombre || 'ESCRIBANÍA PÚBLICA'}
+              </h2>
+              {userData?.ruc && (
+                <p className="text-xs md:text-sm font-mono text-slate-600 mt-1">
+                  RUC: {formatDocClean(userData.ruc)}
+                </p>
               )}
             </div>
 

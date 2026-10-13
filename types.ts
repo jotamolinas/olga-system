@@ -150,3 +150,23 @@ export function formatCurrencyValue(value: number | string | undefined | null, m
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(numValue);
   }
 }
+
+/**
+ * Función notarial estricta para formato limpio de Documentos de Identidad (Cédulas y RUC).
+ * - Elimina por completo los puntos de separación de miles en los números enteros (ej. '1.234.567' -> '1234567').
+ * - Mantiene de forma limpia y estructurada los RUCs con su número base seguido de un guion y su dígito verificador (ej. '80012345-6' o '80.012.345-6' -> '80012345-6'), sin puntos intermedios en ninguna parte.
+ */
+export function formatDocClean(doc: string | number | null | undefined): string {
+  if (doc === null || doc === undefined) return '';
+  const str = String(doc).trim();
+  if (!str) return '';
+
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    const base = parts[0].replace(/[^0-9]/g, '');
+    const dv = parts.slice(1).join('').replace(/[^0-9a-zA-Z]/g, '');
+    return dv ? `${base}-${dv}` : base;
+  }
+
+  return str.replace(/\./g, '').trim();
+}

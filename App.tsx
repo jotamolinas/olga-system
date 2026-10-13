@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
@@ -34,6 +34,7 @@ import { AdminPagos } from './components/AdminPagos';
 import { FichaProfesional } from './components/FichaProfesional';
 import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
 import { ConfiguracionTab } from './components/ConfiguracionTab';
+import { NotificationBell } from './components/NotificationBell';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -484,6 +485,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Preview Pagare state
   const [selectedPagareForPreview, setSelectedPagareForPreview] = useState<Pagare | null>(null);
+
+  const handleAbrirPagarePreview = (pagare: Pagare | null) => {
+    startTransition(() => {
+      setSelectedPagareForPreview(pagare);
+    });
+  };
 
   // Documento Modal state
   const [documentoModalOpen, setDocumentoModalOpen] = useState(false);
@@ -1427,6 +1434,18 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               </button>
             )}
 
+            {/* Campana de Notificaciones Notariales Global */}
+            <NotificationBell 
+              pagares={pagares} 
+              onSelectPagare={(id) => {
+                const found = pagares.find(p => p.id === id);
+                if (found) {
+                  handleAbrirPagarePreview(found);
+                }
+                setActiveTab('pagares');
+              }}
+            />
+
             <div className="text-[10px] md:text-xs font-black text-slate-400 uppercase font-mono pb-0.5 hidden xs:block">
               Serie: PJE-{config?.anio_serie || new Date().getFullYear()}
             </div>
@@ -1442,7 +1461,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 pagares={pagares}
                 personas={personas}
                 config={config}
-                onSelectPagareForPreview={setSelectedPagareForPreview}
+                onSelectPagareForPreview={handleAbrirPagarePreview}
                 onOpenDocument={(text) => { 
                   setDocumentoInitialText(text); 
                   setDocumentoModalOpen(true); 
@@ -1478,7 +1497,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onAddPagare={handleAddPagare}
                 onDeletePagare={handleDeletePagare}
                 onAddPersona={handleAddPersona}
-                onSelectPagareForPreview={setSelectedPagareForPreview}
+                onSelectPagareForPreview={handleAbrirPagarePreview}
                 isAdmin={role === 'admin'}
                 userData={userProfile}
                 

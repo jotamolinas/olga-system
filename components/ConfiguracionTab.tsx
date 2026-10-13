@@ -151,6 +151,53 @@ export function calcularAlertasNotariales(
   return alertas;
 }
 
+/**
+ * Comprime una imagen a formato WebP utilizando un <canvas> oculto.
+ * Reduce las dimensiones a un ancho máximo de 400px (manteniendo el aspect ratio original).
+ * REGLA CRÍTICA DE FORMATO: Convierte estrictamente usando canvas.toDataURL('image/webp', 0.8).
+ * Previene el QuotaExceededError en localStorage garantizando soporte para transparencias.
+ */
+export const comprimirImagenWebP = (file: File, maxWidth = 400): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Error al leer el archivo'));
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Error al cargar la imagen'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('No se pudo inicializar el contexto 2D del canvas'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        try {
+          const webpData = canvas.toDataURL('image/webp', 0.8);
+          resolve(webpData);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({ 
   onConfigUpdate,
   initialData,
@@ -221,28 +268,6 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     return [];
   }, [pagares]);
 
-  // Almacenar IDs de alertas marcadas como leídas
-  const [alertasLeidasIds, setAlertasLeidasIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(ALERTAS_LEIDAS_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [];
-  });
-
-  // Cálculo Dinámico en Tiempo Real de Alertas Notariales
-  const alertasNotariales = useMemo(() => {
-    return calcularAlertasNotariales(pagaresEfectivos, alertasLeidasIds);
-  }, [pagaresEfectivos, alertasLeidasIds]);
-
-  // Cantidad real de incidencias pendientes no leídas
-  const totalAlertasNoLeidas = useMemo(() => {
-    return alertasNotariales.filter(a => !a.leida).length;
-  }, [alertasNotariales]);
-
-  // Campana de notificaciones interactiva
-  const [dropdownNotificacionesAbierto, setDropdownNotificacionesAbierto] = useState(false);
-
   // Mensaje flotante de confirmación de éxito
   const [mensajeExito, setMensajeExito] = useState('');
   const timeoutMensajeRef = useRef<number | null>(null);
@@ -257,30 +282,19 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [nuevoUsuarioEmail, setNuevoUsuarioEmail] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const notificacionesRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar popover de notificaciones al hacer clic fuera
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (notificacionesRef.current && !notificacionesRef.current.contains(e.target as Node)) {
-        setDropdownNotificacionesAbierto(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Manejo de carga de logo en base64
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manejo de carga de logo comprimido a formato WebP (Previene QuotaExceededError)
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64Data = reader.result as string;
-        setLogoPreview(base64Data);
-        guardarYNotificar({ logoUrl: base64Data }, 'Logo institucional cargado y sincronizado.');
-      };
-      reader.readAsDataURL(file);
+      try {
+        const webpBase64 = await comprimirImagenWebP(file, 400);
+        setLogoPreview(webpBase64);
+        guardarYNotificar({ logoUrl: webpBase64 }, 'Logo institucional optimizado (WebP) y sincronizado.');
+      } catch (err) {
+        console.error('Error al procesar y comprimir la imagen:', err);
+        mostrarMensajeExito('Error al procesar la imagen del logo.');
+      }
     }
   };
 
@@ -335,29 +349,6 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     guardarYNotificar(undefined, '¡Perfil Institucional guardado exitosamente!');
   };
 
-  // Interacción en el Centro de Alertas
-  const marcarTodasComoLeidas = () => {
-    const allIds = alertasNotariales.map(a => a.id);
-    const updated = Array.from(new Set([...alertasLeidasIds, ...allIds]));
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
-    mostrarMensajeExito('Todas las alertas marcadas como leídas.');
-  };
-
-  const alternarLeidaAlerta = (id: string) => {
-    let updated: string[];
-    if (alertasLeidasIds.includes(id)) {
-      updated = alertasLeidasIds.filter(item => item !== id);
-    } else {
-      updated = [...alertasLeidasIds, id];
-    }
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
-  };
 
   // Gestión de usuarios simulada
   const handleAgregarUsuario = (e: React.FormEvent) => {
@@ -397,149 +388,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           </div>
         </div>
 
-        {/* Panel de Acciones Superiores: Campana Interactiva Dinámica */}
+        {/* Panel de Acciones Superiores */}
         <div className="flex items-center gap-3 self-end md:self-auto">
-          {/* Campana de Notificaciones Interactiva con Cálculo Real */}
-          <div className="relative" ref={notificacionesRef}>
-            <button
-              type="button"
-              onClick={() => setDropdownNotificacionesAbierto(!dropdownNotificacionesAbierto)}
-              className="relative p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl border border-slate-700 transition-colors flex items-center justify-center"
-              title="Centro de Alertas Notariales (Alertas Reales)"
-            >
-              <Bell className="w-5 h-5" />
-              {totalAlertasNoLeidas > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 bg-[#FF3131] text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-pulse">
-                  {totalAlertasNoLeidas}
-                </span>
-              )}
-            </button>
-
-            {/* Popover Desplegable de Notificaciones Dinámicas */}
-            {dropdownNotificacionesAbierto && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden animate-scale-in text-slate-900">
-                <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Bell className="w-4 h-4 text-[#FF3131]" />
-                    <span className="text-xs font-bold uppercase tracking-wider">
-                      Centro de Alertas ({totalAlertasNoLeidas})
-                    </span>
-                  </div>
-                  {totalAlertasNoLeidas > 0 && (
-                    <button
-                      type="button"
-                      onClick={marcarTodasComoLeidas}
-                      className="text-[10px] text-slate-300 hover:text-white flex items-center gap-1 font-semibold transition-colors"
-                    >
-                      <CheckCheck className="w-3.5 h-3.5 text-[#FF3131]" />
-                      <span>Marcar leídas</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                  {alertasNotariales.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500 space-y-2">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <p className="text-xs font-bold text-slate-800">No hay alertas pendientes</p>
-                      <p className="text-[11px] text-slate-400 max-w-[240px] mx-auto leading-relaxed">
-                        Todos los pagarés y cuotas del sistema se encuentran al día y sin vencimientos en los próximos 5 días.
-                      </p>
-                    </div>
-                  ) : (
-                    alertasNotariales.map((alerta) => (
-                      <div
-                        key={alerta.id}
-                        onClick={() => alternarLeidaAlerta(alerta.id)}
-                        className={`p-3.5 hover:bg-slate-50 transition-colors cursor-pointer text-left ${
-                          !alerta.leida 
-                            ? (alerta.tipo === 'vencida' ? 'bg-red-50/40' : 'bg-amber-50/30') 
-                            : 'opacity-70'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span
-                              className={`px-2 py-0.5 text-[9px] font-black uppercase rounded flex items-center gap-1 ${
-                                alerta.tipo === 'vencida'
-                                  ? 'bg-red-100 text-red-700 border border-red-200'
-                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
-                              }`}
-                            >
-                              {alerta.tipo === 'vencida' ? (
-                                <>
-                                  <AlertTriangle className="w-3 h-3 text-red-600" />
-                                  <span>Cuota Vencida</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Clock className="w-3 h-3 text-amber-700" />
-                                  <span>Vencimiento Inminente</span>
-                                </>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-mono font-semibold">
-                              #{alerta.correlativo}
-                            </span>
-                          </div>
-
-                          {!alerta.leida ? (
-                            <span className="w-2 h-2 rounded-full bg-[#FF3131] shrink-0 mt-1" title="No leída" />
-                          ) : (
-                            <span title="Leída" className="shrink-0">
-                              <Check className="w-3.5 h-3.5 text-slate-400 mt-0.5" />
-                            </span>
-                          )}
-                        </div>
-
-                        <span className={`text-xs font-bold block ${!alerta.leida ? 'text-slate-900' : 'text-slate-600'}`}>
-                          {alerta.titulo}
-                        </span>
-
-                        <p className="text-[11px] text-slate-600 mt-1 leading-snug">
-                          {alerta.detalle}
-                        </p>
-
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-100">
-                          <span className="flex items-center gap-1 font-mono">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            {alerta.fechaVencimiento}
-                          </span>
-                          <span className="font-bold text-slate-800">
-                            {alerta.monto.toLocaleString('es-PY')} {alerta.moneda}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px]">
-                  <span className="text-slate-500 font-semibold">
-                    {alertasNotariales.length} {alertasNotariales.length === 1 ? 'incidencia detectada' : 'incidencias detectadas'}
-                  </span>
-                  {alertasLeidasIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAlertasLeidasIds([]);
-                        try {
-                          localStorage.removeItem(ALERTAS_LEIDAS_KEY);
-                        } catch {}
-                      }}
-                      className="text-slate-500 hover:text-slate-800 font-bold uppercase transition-colors"
-                    >
-                      Restablecer leídas
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <span className="px-3 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold hidden sm:inline-block">
+          <span className="px-3 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold">
             {pagaresEfectivos.length} Pagarés Monitoreados
           </span>
         </div>

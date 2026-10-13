@@ -1,6 +1,6 @@
 import { db } from '../services/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
 import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck } from 'lucide-react';
@@ -45,6 +45,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   initialEditingId = null,
   onClose
 }) => {
+  // Transición no bloqueante para abrir previsualización de pagarés sin congelar la UI
+  const handleAbrirPagare = (pagare: Pagare) => {
+    startTransition(() => {
+      onSelectPagareForPreview(pagare);
+    });
+  };
+
   // Navigation tabs for Pagares tab list vs creation form
   const [panelView, setPanelView] = useState<'list' | 'list_anulados' | 'create'>(initialPanelView);
   const [formError, setFormError] = useState<string | null>(null);
@@ -94,6 +101,32 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
     return d.toISOString().split('T')[0];
+  };
+
+  const calculateDatePlusMonths = (baseDateStr: string, monthsToAdd: number): string => {
+    const parts = (baseDateStr || '').split('-').map(Number);
+    let year: number;
+    let month: number;
+    let day: number;
+
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      year = parts[0];
+      month = parts[1] - 1;
+      day = parts[2];
+    } else {
+      const fallback = new Date();
+      year = fallback.getFullYear();
+      month = fallback.getMonth();
+      day = fallback.getDate();
+    }
+
+    const totalMonths = month + monthsToAdd;
+    const targetYear = year + Math.floor(totalMonths / 12);
+    const targetMonth = ((totalMonths % 12) + 12) % 12;
+    const maxDaysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const clampedDay = Math.min(day, maxDaysInTargetMonth);
+
+    return `${String(targetYear).padStart(4, '0')}-${String(targetMonth + 1).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
   };
 
   useEffect(() => {
@@ -173,8 +206,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
       }
     } catch (err) {
-      console.error('Error consultando DNIT Acreedor:', err);
-      setFeedbackAcreedorDnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      console.warn('Consulta DNIT Acreedor no completada:', err);
+      setFeedbackAcreedorDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
     } finally {
       setLoadingAcreedorDnit(false);
@@ -203,8 +236,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         setTimeout(() => setFeedbackDeudorDnit(null), 3500);
       }
     } catch (err) {
-      console.error('Error consultando DNIT Deudor:', err);
-      setFeedbackDeudorDnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      console.warn('Consulta DNIT Deudor no completada:', err);
+      setFeedbackDeudorDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackDeudorDnit(null), 3500);
     } finally {
       setLoadingDeudorDnit(false);
@@ -233,8 +266,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
       }
     } catch (err) {
-      console.error('Error consultando DNIT Codeudor 1:', err);
-      setFeedbackCodeudor1Dnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      console.warn('Consulta DNIT Codeudor 1 no completada:', err);
+      setFeedbackCodeudor1Dnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
     } finally {
       setLoadingCodeudor1Dnit(false);
@@ -263,8 +296,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
       }
     } catch (err) {
-      console.error('Error consultando DNIT Codeudor 2:', err);
-      setFeedbackCodeudor2Dnit('Error al consultar DNIT. Ingrese los datos manualmente.');
+      console.warn('Consulta DNIT Codeudor 2 no completada:', err);
+      setFeedbackCodeudor2Dnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
     } finally {
       setLoadingCodeudor2Dnit(false);
@@ -318,10 +351,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   // Refuerzos states: raw arrays used before generating schedule unificado
-  // Reinforcement items: { monto: number, fecha: string }
-  const [refuerzosRaw, setRefuerzosRaw] = useState<{ id: string; monto: number | string; fecha: string }[]>([
-    { id: 'r-init', monto: '', fecha: getOneMonthLaterDateString() }
+  // Reinforcement items: { monto: number, fecha: string, fecha_pag?: string, mes_ubicacion?: number | string }
+  const [refuerzosRaw, setRefuerzosRaw] = useState<{ id: string; monto: number | string; fecha: string; fecha_pag?: string; mes_ubicacion?: number | string }[]>([
+    { id: 'r-init', monto: '', fecha: getOneMonthLaterDateString(), fecha_pag: getOneMonthLaterDateString(), mes_ubicacion: '' }
   ]);
+  const setRefuerzos = setRefuerzosRaw;
 
   // Integrated unified schedule array
   const [cronograma, setCronograma] = useState<PaymentScheduleItem[]>([]);
@@ -634,16 +668,24 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       }
     } else {
       // Con Refuerzos Especiales (R1 es obligatorio)
-      const totalRefuerzosMonto = refuerzosRaw.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+      const totalRefuerzosMonto = refuerzosRaw.reduce((sum, r) => {
+        const val = (r as any).monto !== undefined && (r as any).monto !== null && (r as any).monto !== ''
+          ? (r as any).monto
+          : ((r as any).importe !== undefined ? (r as any).importe : ((r as any).valor || 0));
+        return sum + (Number(val) || 0);
+      }, 0);
       const remainingForCuotas = remainingAmount - totalRefuerzosMonto;
 
       refuerzosRaw.forEach((ref, idx) => {
+        const rawMonto = (ref as any).monto !== undefined && (ref as any).monto !== null && (ref as any).monto !== ''
+          ? (ref as any).monto
+          : ((ref as any).importe !== undefined ? (ref as any).importe : ((ref as any).valor || 0));
         baseCronograma.push({
-          id: `sch-draft-ref-${idx}-${Date.now()}`,
+          id: ref.id || `sch-draft-ref-${idx}-${Date.now()}`,
           pagare_id: 'draft',
           tipo: 'refuerzo',
-          fecha_pag: ref.fecha,
-          monto: Number(ref.monto) || 0,
+          fecha_pag: ref.fecha_pag || ref.fecha,
+          monto: Number(rawMonto) || 0,
           numero_cuota: `R${idx + 1}`
         });
       });
@@ -682,11 +724,10 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   const resequenceSchedule = (arr: PaymentScheduleItem[]): PaymentScheduleItem[] => {
-    // Sort chronologically
+    // Ordenar cronológicamente
     const sorted = [...arr].sort((a, b) => new Date(a.fecha_pag).getTime() - new Date(b.fecha_pag).getTime());
 
     let cuotaCounter = 1;
-    let refuerzoCounter = 1;
 
     return sorted.map(item => {
       if (item.tipo === 'cuota') {
@@ -694,8 +735,14 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         cuotaCounter++;
         return { ...item, numero_cuota: num };
       } else {
-        const num = `R${refuerzoCounter}`;
-        refuerzoCounter++;
+        // Mantener el nombre original del refuerzo (Ej. R1, R2) extraído de su ID temporal
+        let num = 'R';
+        if (item.numero_cuota.startsWith('R')) {
+           num = item.numero_cuota;
+        } else {
+           const match = item.id.match(/-ref-(\d+)-/);
+           num = match ? `R${parseInt(match[1]) + 1}` : 'R';
+        }
         return { ...item, numero_cuota: num };
       }
     });
@@ -707,6 +754,19 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const sumaTotalCalculada = deliveryMonto + totalMontoCuotasYRefuerzos;
   const declaredTotalVal = parseFloat(valorTotalStr) || 0;
   const totalFinanciar = declaredTotalVal - deliveryMonto;
+
+  // Desglose detallado para Validación Crítica del Crédito
+  const cuotasNormalesList = cronograma.filter(item => item.tipo === 'cuota');
+  const cantidadCuotasNormales = cuotasNormalesList.length;
+  const sumaTotalCuotasNormales = cuotasNormalesList.reduce((sum, item) => sum + (Number(item.monto) || 0), 0);
+
+  const refuerzosList = cronograma.filter(item => item.tipo === 'refuerzo');
+  const cantidadRefuerzos = refuerzosList.length > 0 
+    ? refuerzosList.length 
+    : (tipoNegociacion.includes('refuerzo') ? refuerzosRaw.length : 0);
+  const sumaTotalRefuerzos = refuerzosList.length > 0
+    ? refuerzosList.reduce((sum, r) => sum + (Number(r.monto) || 0), 0)
+    : refuerzosRaw.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
 
   const isValidationMatch = Math.abs(sumaTotalCalculada - declaredTotalVal) < 1; // permit minor float variance
 
@@ -800,9 +860,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const newRef = {
       id: newId,
       monto: '',
-      fecha: getOneMonthLaterDateString()
+      fecha: getOneMonthLaterDateString(),
+      fecha_pag: getOneMonthLaterDateString(),
+      mes_ubicacion: ''
     };
-    setRefuerzosRaw([...refuerzosRaw, newRef]);
+    setRefuerzosRaw(prev => [...prev, newRef]);
   };
 
   const handleRemoveRawRefuerzo = (idToDel: string) => {
@@ -810,13 +872,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       console.error('Se requiere por lo menos un refuerzo obligatorio R1.');
       return;
     }
-    setRefuerzosRaw(refuerzosRaw.filter(r => r.id !== idToDel));
+    setRefuerzosRaw(prev => prev.filter(r => r.id !== idToDel));
   };
 
   const handleRawRefuerzoChange = (id: string, field: 'monto' | 'fecha', val: any) => {
-    setRefuerzosRaw(refuerzosRaw.map(r => {
+    setRefuerzosRaw(prev => prev.map(r => {
       if (r.id === id) {
-        return { ...r, [field]: field === 'monto' ? (val === '' || val === undefined ? '' : parseFloat(val) || 0) : val };
+        if (field === 'monto') {
+          return { ...r, monto: (val === '' || val === undefined ? '' : parseFloat(val) || 0) };
+        } else {
+          return { ...r, fecha: val, fecha_pag: val };
+        }
       }
       return r;
     }));
@@ -845,7 +911,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setCodeudor1Id('');
     setCodeudor2Id('');
     setDuracionMeses('');
-    setRefuerzosRaw([{ id: `r-init-${Date.now()}`, monto: '', fecha: getOneMonthLaterDateString() }]);
+    setRefuerzosRaw([{ id: `r-init-${Date.now()}`, monto: '', fecha: getOneMonthLaterDateString(), fecha_pag: getOneMonthLaterDateString(), mes_ubicacion: '' }]);
     setCronograma([]);
     localStorage.removeItem(DRAFT_KEY);
     setEditingPagareId(null);
@@ -920,8 +986,48 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       }
     }
     
-    setCronograma(pag.cronograma || []);
-    setDuracionMeses(pag.cronograma.length);
+    // Hidratar cronograma normalizando los campos de importe (monto / importe / valor)
+    const rawCronograma = pag.cronograma || [];
+    const cronogramaLoaded = rawCronograma.map((item, idx) => {
+      const montoNum = (item as any).monto !== undefined && (item as any).monto !== null && (item as any).monto !== ''
+        ? Number((item as any).monto)
+        : ((item as any).importe !== undefined && (item as any).importe !== null
+          ? Number((item as any).importe)
+          : (Number((item as any).valor) || 0));
+      return {
+        ...item,
+        id: item.id || `sch-loaded-${idx}-${Date.now()}`,
+        monto: montoNum
+      };
+    });
+
+    // Hidratar refuerzosRaw para la sección de gestión de refuerzos
+    const refuerzosEnCronograma = cronogramaLoaded.filter(item => item.tipo === 'refuerzo');
+    if (refuerzosEnCronograma.length > 0) {
+      const refuerzosHydrated = refuerzosEnCronograma.map((ref, idx) => {
+        const montoVal = (ref as any).monto !== undefined && (ref as any).monto !== null && (ref as any).monto !== ''
+          ? (ref as any).monto
+          : ((ref as any).importe !== undefined ? (ref as any).importe : ((ref as any).valor || ''));
+        return {
+          id: ref.id || `r-loaded-${idx}-${Date.now()}`,
+          monto: montoVal,
+          fecha: ref.fecha_pag || (ref as any).fecha || '',
+          fecha_pag: ref.fecha_pag || (ref as any).fecha || '',
+          mes_ubicacion: (ref as any).mes_ubicacion !== undefined && (ref as any).mes_ubicacion !== null ? (ref as any).mes_ubicacion : ''
+        };
+      });
+      setRefuerzosRaw(refuerzosHydrated);
+    } else if ((pag as any).refuerzosRaw && Array.isArray((pag as any).refuerzosRaw) && (pag as any).refuerzosRaw.length > 0) {
+      setRefuerzosRaw((pag as any).refuerzosRaw);
+    } else if ((pag as any).refuerzos && Array.isArray((pag as any).refuerzos) && (pag as any).refuerzos.length > 0) {
+      setRefuerzosRaw((pag as any).refuerzos);
+    }
+
+    const cuotasCount = cronogramaLoaded.filter(c => c.tipo === 'cuota').length;
+    setDuracionMeses(cuotasCount > 0 ? cuotasCount : (cronogramaLoaded.length || 12));
+
+    setCronograma(cronogramaLoaded);
+    skipAutoGenerateRef.current = true;
     setPanelView('create');
   };
 
@@ -1120,11 +1226,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       codeudor2_nombre_raw: codeudor2NombreRaw.trim(),
       codeudor2_documento_raw: codeudor2DocumentoRaw.trim(),
       codeudor2_domicilio_raw: codeudor2DomicilioRaw.trim(),
-      codeudor2_origen: codeudor2Origen,
-      cronograma: cronograma.map(item => ({ ...item, pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now() })),
+      cronograma: cronograma.map(item => ({ 
+        ...item, 
+        monto: (item as any).monto !== undefined && (item as any).monto !== null && (item as any).monto !== ''
+          ? Number((item as any).monto)
+          : ((item as any).importe !== undefined ? Number((item as any).importe) : (Number((item as any).valor) || 0)),
+        pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now() 
+      })),
       created_at: existingPagare?.created_at || new Date().toISOString(),
-      creator_role: existingPagare?.creator_role || (isAdmin ? 'admin' : 'usuario')
-    };
+      creator_role: existingPagare?.creator_role || (isAdmin ? 'admin' : 'usuario'),
+      refuerzosRaw: refuerzosRaw
+    } as any;
 
     if (editingPagareId && onUpdatePagare) {
       onUpdatePagare(finalPagare);
@@ -1187,7 +1299,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     } else {
       setPanelView('list');
     }
-    onSelectPagareForPreview(finalPagare);
+    handleAbrirPagare(finalPagare);
   };
 
   // Quick Persona Create popup handlers
@@ -1486,7 +1598,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                 return (
                   <div
                     key={pag.id}
-                    onClick={() => onSelectPagareForPreview(pag)}
+                    onClick={() => handleAbrirPagare(pag)}
                     className={`p-6 rounded-3xl border transition-all cursor-pointer group shadow-sm hover:shadow-xl relative flex flex-col justify-between ${
                       badgeStatus === 'vencido' 
                         ? 'bg-red-50 border-red-400 hover:border-red-500' 
@@ -1989,29 +2101,40 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                           <div className="flex flex-col gap-2">
                             <select
                               className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-2 py-1 text-xs outline-none"
+                              value={ref.mes_ubicacion !== undefined && ref.mes_ubicacion !== null && ref.mes_ubicacion !== '' ? ref.mes_ubicacion : ''}
                               onChange={(e) => {
-                                const monthsFromStart = parseInt(e.target.value);
-                                if (!isNaN(monthsFromStart)) {
-                                  const [y, m, d] = (fechaPrimerPago || '').split('-').map(Number);
-                                  const dt = (y && m && d) ? new Date(y, m - 1 + monthsFromStart, d, 12, 0, 0) : new Date();
-                                  const yStr = dt.getFullYear();
-                                  const mStr = String(dt.getMonth() + 1).padStart(2, '0');
-                                  const dStr = String(dt.getDate()).padStart(2, '0');
-                                  handleRawRefuerzoChange(ref.id, 'fecha', `${yStr}-${mStr}-${dStr}`);
+                                const mes = parseInt(e.target.value);
+                                if (!isNaN(mes)) {
+                                  // Tomar la fecha base del crédito (fechaPrimerPago / primer vencimiento o fallback a 1 mes desde hoy)
+                                  const baseDate = fechaPrimerPago || getOneMonthLaterDateString();
+                                  const monthsToAdd = Math.max(0, mes - 1);
+                                  const nuevaFechaCalculada = calculateDatePlusMonths(baseDate, monthsToAdd);
+
+                                  setRefuerzos(prev => prev.map(r => 
+                                    r.id === ref.id 
+                                      ? { ...r, mes_ubicacion: mes, fecha: nuevaFechaCalculada, fecha_pag: nuevaFechaCalculada } 
+                                      : r
+                                  ));
                                 }
                               }}
-                              value=""
                             >
                               <option value="" disabled>Ubicar en Mes...</option>
-                              <option value={0}>Mes 1 (Mismo mes que 1ra cuota)</option>
-                              {Array.from({length: Math.max(0, (Number(duracionMeses) || 12) - 1)}).map((_, i) => (
-                                <option key={i + 1} value={i + 1}>Mes {i + 2}</option>
+                              <option value={1}>Mes 1 (Mismo mes que 1ra cuota)</option>
+                              {Array.from({ length: Math.max(0, (Number(duracionMeses) || 12) - 1) }).map((_, i) => (
+                                <option key={i + 2} value={i + 2}>Mes {i + 2}</option>
                               ))}
                             </select>
                             <input  autoComplete="nope"
                               type="date"
-                              value={ref.fecha}
-                              onChange={(e) => handleRawRefuerzoChange(ref.id, 'fecha', e.target.value)}
+                              value={ref.fecha_pag || ref.fecha || ''}
+                              onChange={(e) => {
+                                const nuevaFecha = e.target.value;
+                                setRefuerzos(prev => prev.map(r => 
+                                  r.id === ref.id 
+                                    ? { ...r, fecha: nuevaFecha, fecha_pag: nuevaFecha } 
+                                    : r
+                                ));
+                              }}
                               className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-2 py-1 text-xs outline-none"
                             />
                           </div>
@@ -2547,27 +2670,38 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
               <h3 className="text-sm font-black uppercase text-[#FF3131] tracking-widest relative z-10">Validación Crítica del Crédito</h3>
 
               <div className="divide-y divide-slate-800 text-xs font-medium relative z-10 space-y-4">
-                
+                {/* 1. ENTREGA INICIAL */}
                 {tipoNegociacion.includes('entrega') && (
                   <div className="flex justify-between items-center pt-4">
-                    <span className="text-slate-400">Entrega Inicial:</span>
-                    <span className="font-mono font-bold">{getMonedaSimbolo(moneda)} {formatCurrencyValue(deliveryMonto, moneda)}</span>
+                    <span className="text-slate-400">Entrega Inicial (Mismo Acto):</span>
+                    <span className="font-mono font-bold text-white">{getMonedaSimbolo(moneda)} {formatCurrencyValue(deliveryMonto, moneda)}</span>
                   </div>
                 )}
 
+                {/* 2. CUOTAS NORMALES */}
                 <div className="flex justify-between items-center pt-4">
-                  <span className="text-slate-400">Total Cronograma (Amortiz.):</span>
-                  <span className="font-mono font-bold">{getMonedaSimbolo(moneda)} {formatCurrencyValue(totalMontoCuotasYRefuerzos, moneda)}</span>
+                  <span className="text-slate-400">Total Cuotas Normales ({cantidadCuotasNormales} pagos):</span>
+                  <span className="font-mono font-bold text-amber-400">{getMonedaSimbolo(moneda)} {formatCurrencyValue(sumaTotalCuotasNormales, moneda)}</span>
                 </div>
 
-                <div className="flex justify-between items-center pt-4 font-extrabold text-14 border-t border-slate-800">
-                  <span className="text-slate-300">Suma consolidada total:</span>
+                {/* 3. REFUERZOS */}
+                {cantidadRefuerzos > 0 && (
+                  <div className="flex justify-between items-center pt-4">
+                    <span className="text-slate-400">Total Refuerzos ({cantidadRefuerzos} pagos):</span>
+                    <span className="font-mono font-bold text-amber-400">{getMonedaSimbolo(moneda)} {formatCurrencyValue(sumaTotalRefuerzos, moneda)}</span>
+                  </div>
+                )}
+
+                {/* 4. SUMA CONSOLIDADA */}
+                <div className="flex justify-between items-center pt-4 font-extrabold text-[14px] border-t border-slate-800">
+                  <span className="text-slate-300">Suma Consolidada (Entrega + Cuotas + Refuerzos):</span>
                   <span className="font-mono text-base text-white">{getMonedaSimbolo(moneda)} {formatCurrencyValue(sumaTotalCalculada, moneda)}</span>
                 </div>
 
+                {/* 5. VALOR DECLARADO PAGARÉ */}
                 <div className="flex justify-between items-center pt-4 font-black">
                   <span className="text-[#FF3131]">Valor Declarado Pagaré:</span>
-                  <span className="font-mono text-base text-red-400">{getMonedaSimbolo(moneda)} {formatCurrencyValue(declaredTotalVal, moneda)}</span>
+                  <span className="font-mono text-base text-[#FF3131]">{getMonedaSimbolo(moneda)} {formatCurrencyValue(declaredTotalVal, moneda)}</span>
                 </div>
               </div>
 

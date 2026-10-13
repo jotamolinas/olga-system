@@ -73,8 +73,26 @@ export async function consultarRUC(rucConDv: string): Promise<DnitResponse | nul
     }
     
     return null;
-  } catch (error) {
-    console.error('Error al consultar DNIT vía Cloud Function (Firebase):', error);
+  } catch (error: any) {
+    const errorMsg = String(error?.message || '');
+    const errorCode = String(error?.code || '');
+
+    // Si el documento no figura en el padrón de contribuyentes de la DNIT (404 / not-found),
+    // es un flujo previsto y normal (ej. persona física con CI sin RUC, o documento aún no registrado).
+    // Retornamos null limpiamente para permitir el ingreso libre de datos sin disparar errores críticos.
+    if (
+      errorCode === 'not-found' ||
+      errorCode === 'functions/not-found' ||
+      errorMsg.includes('404') ||
+      errorMsg.includes('No se encontró') ||
+      errorMsg.includes('not found') ||
+      errorMsg.includes('no encontrado')
+    ) {
+      return null;
+    }
+
+    // Para eventualidades de red no críticas
+    console.warn('Consulta DNIT no completada:', errorMsg || error);
     return null;
   }
 }

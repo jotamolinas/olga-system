@@ -16,7 +16,27 @@ const getMesNombre = (mesIndex: number) => {
   return meses[mesIndex] || '';
 };
 
-
+/**
+ * Función notarial estricta para formato limpio de Documentos de Identidad (Cédulas y RUC).
+ * - Elimina por completo los puntos de separación de miles en los números enteros (ej. '1.234.567' -> '1234567').
+ * - Mantiene de forma limpia y estructurada los RUCs con su número base seguido de un guion y su dígito verificador (ej. '80012345-6' o '80.012.345-6' -> '80012345-6'), sin puntos intermedios en ninguna parte.
+ */
+export const formatDocClean = (doc: string | number | null | undefined): string => {
+  if (doc === null || doc === undefined) return '';
+  const str = String(doc).trim();
+  if (!str) return '';
+  
+  // Si contiene guion (estructura de RUC con dígito verificador)
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    const base = parts[0].replace(/[^0-9]/g, '');
+    const dv = parts.slice(1).join('').replace(/[^0-9a-zA-Z]/g, '');
+    return dv ? `${base}-${dv}` : base;
+  }
+  
+  // Para cédula de identidad: elimina todos los puntos de miles
+  return str.replace(/\./g, '').trim();
+};
 
 const EditableField = ({ value, onChange, className, style }: any) => {
   const ref = useRef<HTMLSpanElement>(null);
@@ -75,34 +95,62 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
   const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
   const initialDeudorNombre = pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : '');
-  const initialDeudorDocumento = pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : '');
-  const initialDeudorDomicilio = pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : 'No especificado');
+  const initialDeudorDocumento = formatDocClean(pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : ''));
+  const rawDeudorDom = pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : '');
+  const initialDeudorDomicilio = (rawDeudorDom && rawDeudorDom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawDeudorDom : '';
 
   const initialCodeudor1 = personas.find(p => p.id === pagare?.codeudor1_id);
   const initialCodeudor1Nombre = pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : '');
-  const initialCodeudor1Documento = pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : '');
-  const initialCodeudor1Domicilio = pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : '');
+  const initialCodeudor1Documento = formatDocClean(pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : ''));
+  const rawCodeudor1Dom = pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : '');
+  const initialCodeudor1Domicilio = (rawCodeudor1Dom && rawCodeudor1Dom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor1Dom : '';
 
   const initialCodeudor2 = personas.find(p => p.id === pagare?.codeudor2_id);
   const initialCodeudor2Nombre = pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : '');
-  const initialCodeudor2Documento = pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : '');
-  const initialCodeudor2Domicilio = pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : '');
+  const initialCodeudor2Documento = formatDocClean(pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : ''));
+  const rawCodeudor2Dom = pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : '');
+  const initialCodeudor2Domicilio = (rawCodeudor2Dom && rawCodeudor2Dom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor2Dom : '';
 
   const printAreaRef = useRef<HTMLDivElement>(null);
 
+  const rawAcreedorDom = pagare?.acreedor_domicilio_raw || '';
   const [acreedorNombreEditable, setAcreedorNombreEditable] = useState(pagare?.acreedor_nombre_raw || '');
-  const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(pagare?.acreedor_domicilio_raw || 'No especificado');
+  const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(
+    (rawAcreedorDom && rawAcreedorDom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawAcreedorDom : ''
+  );
   const [deudorNombreEditable, setDeudorNombreEditable] = useState(initialDeudorNombre);
-  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(initialDeudorDocumento);
+  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(formatDocClean(initialDeudorDocumento));
   const [deudorDomicilioEditable, setDeudorDomicilioEditable] = useState(initialDeudorDomicilio);
 
   const [codeudor1NombreEditable, setCodeudor1NombreEditable] = useState(initialCodeudor1Nombre);
-  const [codeudor1DocumentoEditable, setCodeudor1DocumentoEditable] = useState(initialCodeudor1Documento);
+  const [codeudor1DocumentoEditable, setCodeudor1DocumentoEditable] = useState(formatDocClean(initialCodeudor1Documento));
   const [codeudor1DomicilioEditable, setCodeudor1DomicilioEditable] = useState(initialCodeudor1Domicilio);
 
   const [codeudor2NombreEditable, setCodeudor2NombreEditable] = useState(initialCodeudor2Nombre);
-  const [codeudor2DocumentoEditable, setCodeudor2DocumentoEditable] = useState(initialCodeudor2Documento);
+  const [codeudor2DocumentoEditable, setCodeudor2DocumentoEditable] = useState(formatDocClean(initialCodeudor2Documento));
   const [codeudor2DomicilioEditable, setCodeudor2DomicilioEditable] = useState(initialCodeudor2Domicilio);
+
+  // Optimización de Rendimiento: Renderizado Progresivo y Asíncrono del Cronograma
+  // Evita congelar el DOM montando 60+ hojas al mismo tiempo en el hilo principal
+  const INITIAL_BATCH_SIZE = 3;
+  const BATCH_INCREMENT = 8;
+  const totalHojas = pagare?.cronograma?.length || 0;
+  const [hojasRenderizadas, setHojasRenderizadas] = useState<number>(() =>
+    Math.min(INITIAL_BATCH_SIZE, totalHojas || 1)
+  );
+
+  useEffect(() => {
+    setHojasRenderizadas(Math.min(INITIAL_BATCH_SIZE, totalHojas || 1));
+  }, [pagare?.id, totalHojas]);
+
+  useEffect(() => {
+    if (hojasRenderizadas < totalHojas) {
+      const timer = setTimeout(() => {
+        setHojasRenderizadas(prev => Math.min(prev + BATCH_INCREMENT, totalHojas));
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [hojasRenderizadas, totalHojas]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -203,55 +251,63 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
   
 
-  const handlePrint = () => {
+  const executePrint = () => {
     if (printAreaRef.current) {
       const printContent = printAreaRef.current.innerHTML;
       const win = window.open('', '', 'width=900,height=650');
       if (win) {
-        win.document.write('<html><head><title>Impresión Pagaré</title>');
+        win.document.write('<!DOCTYPE html><html><head><title>Impresión Pagaré Oficial</title>');
+        win.document.write('<meta charset="utf-8">');
         win.document.write('<script src="https://cdn.tailwindcss.com"></script>');
         win.document.write(`
           <style>
+            @page { 
+              size: ${pageSize === 'legal' ? 'legal' : 'A4'}; 
+              margin-top: 4.5cm !important; 
+              margin-bottom: 1.5cm !important; 
+              margin-left: 1.5cm !important; 
+              margin-right: 1.5cm !important; 
+            }
+            *, *::before, *::after {
+              box-sizing: border-box !important;
+            }
+            html, body { 
+              padding: 0 !important; 
+              margin: 0 !important; 
+              background: #ffffff !important;
+              color: #000000 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
             @media print {
               .no-print { display: none !important; }
+              body { 
+                padding: 0 !important; 
+                margin: 0 !important; 
+              }
               .printing-sheet { 
-                page-break-after: auto;
+                page-break-after: always !important;
+                break-after: page !important;
                 border: none !important;
                 box-shadow: none !important;
                 margin: 0 !important;
-                min-height: auto !important;
                 padding: 0 !important;
+                width: 100% !important;
+                min-height: auto !important;
+                box-sizing: border-box !important;
               }
-              body { 
-                padding: 0; 
-                margin: 0; 
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-              @page { 
-                margin: 1cm; 
-                size: ${pageSize === 'legal' ? 'legal' : 'A4'}; 
+              .printing-sheet:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
               }
             }
           </style>
         `);
-        win.document.write('</head><body class="print:h-auto print:m-0 print:p-0 print:overflow-hidden">');
-        
-        const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
-        const isFree = !plan || plan.includes('gratis') || plan.includes('free') || plan === 'demo';
-
-        if (isFree) {
-          win.document.write(`
-            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-              <div style="transform: rotate(-45deg); font-size: 4rem; color: rgba(150, 150, 150, 0.15); font-weight: bold; font-family: sans-serif; white-space: nowrap; user-select: none;">
-                Generado con O.L.G.A. - Versión Gratuita/Básica
-              </div>
-            </div>
-          `);
-        }
+        win.document.write('</head><body class="print:m-0 print:p-0">');
         win.document.write(printContent);
         win.document.write('</body></html>');
         win.document.close();
+        win.focus();
         setTimeout(() => {
           win.print();
           win.close();
@@ -260,6 +316,17 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     }
   };
 
+  const handlePrint = () => {
+    if (hojasRenderizadas < totalHojas) {
+      setHojasRenderizadas(totalHojas);
+      setTimeout(() => {
+        executePrint();
+      }, 150);
+      return;
+    }
+    executePrint();
+  };
+   
   const getMockHash = () => {
     return '0x' + Array.from({length: 8}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase() + '...' + Array.from({length: 4}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
   };
@@ -319,6 +386,11 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                background-color: #ffffff !important;
                border: 1px solid #cbd5e1 !important;
                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
+               box-sizing: border-box !important;
+               padding-top: 4.5cm !important;
+               padding-left: 1.5cm !important;
+               padding-right: 1.5cm !important;
+               padding-bottom: 1.5cm !important;
             }
             @media print {
               .no-print { display: none !important; }
@@ -331,24 +403,36 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 box-shadow: none !important;
                 page-break-after: always;
                 break-after: page;
+                box-sizing: border-box !important;
               }
               .printing-sheet:last-child {
                 page-break-after: auto;
                 break-after: auto;
               }
               @page {
-                size: ${pageSize === 'legal' ? 'legal' : 'a4'};
+                size: ${pageSize === 'legal' ? 'legal' : 'A4'};
+                margin-top: 4.5cm !important;
+                margin-bottom: 1.5cm !important;
+                margin-left: 1.5cm !important;
+                margin-right: 1.5cm !important;
               }
             }
           `}} />
           
           {/* Paper Certificate Sheet Simulation */}
-          <div className={`w-full ${pageSize === 'legal' ? 'max-w-[215.9mm]' : 'max-w-[210mm]'} flex flex-col gap-12 print:h-auto print:m-0 print:p-0 print:overflow-hidden`} ref={printAreaRef}>
-            {pagare.cronograma.map((item, index) => (
+          <div className={`w-full ${pageSize === 'legal' ? 'max-w-[215.9mm]' : 'max-w-[210mm]'} flex flex-col gap-12 print:gap-0 print:h-auto print:m-0 print:p-0 print:overflow-hidden`} ref={printAreaRef}>
+            {pagare.cronograma.slice(0, hojasRenderizadas).map((item, index) => (
               <div
                 key={item.id}
-                className={`w-full ${pageSize === 'legal' ? 'min-h-[355.6mm]' : 'min-h-[297mm]'} relative text-slate-900 focus:outline-none transition-all printing-sheet outline-none p-8 md:p-14 mb-12 border-b-8 border-slate-300 print:mb-0 print:border-b-0 print:h-auto print:min-h-0 bg-white shadow-2xl ${index < pagare.cronograma.length - 1 ? 'print:break-after-page' : 'print:break-after-auto'}`}
-                style={index < pagare.cronograma.length - 1 ? { pageBreakAfter: 'always', breakAfter: 'page' } : { pageBreakAfter: 'auto', breakAfter: 'auto' }}
+                className={`w-full ${pageSize === 'legal' ? 'min-h-[355.6mm]' : 'min-h-[297mm]'} relative text-slate-900 focus:outline-none transition-all printing-sheet outline-none mb-12 border-b-8 border-slate-300 print:mb-0 print:border-b-0 print:h-auto print:min-h-0 bg-white shadow-2xl ${index < pagare.cronograma.length - 1 ? 'print:break-after-page' : 'print:break-after-auto'}`}
+                style={{
+                  paddingTop: '4.5cm',
+                  paddingLeft: '1.5cm',
+                  paddingRight: '1.5cm',
+                  paddingBottom: '1.5cm',
+                  boxSizing: 'border-box',
+                  ...(index < pagare.cronograma.length - 1 ? { pageBreakAfter: 'always', breakAfter: 'page' } : { pageBreakAfter: 'auto', breakAfter: 'auto' })
+                }}
               >
                 {pagare.status === 'anulado' && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none select-none">
@@ -373,21 +457,18 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   </div>
                 )}
 
-                {/* PAGARE A LA ORDEN HEADER */}
-                <div className="flex flex-col mb-6 mt-4 relative z-10 break-inside-avoid print:break-inside-avoid font-sans">
-                  {userData?.logoUrl || userData?.membreteUrl ? (
-                    <img src={userData?.logoUrl || userData?.membreteUrl} alt="Logo" className="w-[120px] h-auto mb-5 self-center object-contain" />
-                  ) : (
-                    <h2 className="text-center font-bold text-xl mb-5 uppercase tracking-wider">{userData?.razonSocial || userData?.nombre || 'EMPRESA EMISORA'}</h2>
-                  )}
-                  <h1 className="text-center font-bold text-lg mb-6 uppercase tracking-wider">PAGARE A LA ORDEN</h1>
+                {/* PAGARE A LA ORDEN HEADER - Primer elemento formal estricto */}
+                <div className="flex flex-col mb-4 mt-2 print:mb-3 print:mt-0 relative z-10 break-inside-avoid print:break-inside-avoid font-sans">
+                  <h1 className="text-center font-extrabold text-base md:text-lg mb-4 print:mb-3 uppercase tracking-wider text-slate-900">
+                    PAGARE A LA ORDEN
+                  </h1>
                   
                   <div className="flex justify-between items-end mb-2">
                     <p className="font-bold text-sm">N° {item.numero_cuota}/{pagare.cronograma.length}</p>
                     <p className="font-bold text-sm">Gs. {formatCurrencyValue(item.monto, pagare.moneda)}.-</p>
                   </div>
                   
-                  <p className="font-bold text-sm mb-6 uppercase">
+                  <p className="font-bold text-sm mb-4 print:mb-3 uppercase">
                     VENCIMIENTO: {new Date(item.fecha_pag + 'T12:00:00').toLocaleDateString('es-PY')}
                   </p>
                   
@@ -396,47 +477,50 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                 {/* PAGARE A LA ORDEN BODY */}
                 <div 
-                  className="text-[13px] leading-relaxed text-slate-900 mb-8 space-y-3 text-justify relative z-10 break-inside-avoid print:break-inside-avoid font-sans outline-none focus:bg-slate-50 p-2 -mx-2 rounded transition-colors cursor-text"
+                  className="text-[13px] leading-relaxed text-slate-900 mb-6 space-y-3 text-justify relative z-10 break-inside-avoid print:break-inside-avoid font-sans outline-none focus:bg-slate-50 p-2 -mx-2 rounded transition-colors cursor-text"
                 >
                   <p>
-                    El día <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate())}</span> de <span className="uppercase">{getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth())}</span> del año <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear())}</span>, pagaré al 
-                    Señor <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors" style={{width: Math.max(150, acreedorNombreEditable.length * 8) + "px"}} value={acreedorNombreEditable} onChange={setAcreedorNombreEditable} />, en su domicilio en <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors" style={{width: Math.max(200, acreedorDomicilioEditable.length * 8) + "px"}} value={acreedorDomicilioEditable} onChange={setAcreedorDomicilioEditable} />, la suma de GUARANIES <span className="uppercase">{numberToWords(item.monto)}</span> (Gs. {formatCurrencyValue(item.monto, pagare.moneda)}). Si este documento no fuera pagado, devengara un interés del <EditableField className="w-6 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={tasaInteres} onChange={setTasaInteres} />% mensual en concepto de cláusula penal (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={clausulaPenal} onChange={setClausulaPenal} /> C.C) desde la mora, que se producirá automáticamente (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={moraAutomatica} onChange={setMoraAutomatica} /> C.C) sin necesidad de interpelación judicial o extrajudicial alguna. Este documento lleva la cláusula "sin protesto" y en consecuencia, dispensa al portador de formalizar el protesto por falta de aceptación o de pago, para ejercer la acción de regreso (Art. <EditableField className="w-10 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={dispensaProtesto} onChange={setDispensaProtesto} /> C.C). Las partes constituyen domicilio especial en los lugares fijados más abajo.-
+                    El día <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate())}</span> de <span className="uppercase">{getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth())}</span> del año <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear())}</span>, pagaré al Señor <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline-block" style={{width: Math.max(150, acreedorNombreEditable.length * 8) + "px"}} value={acreedorNombreEditable} onChange={setAcreedorNombreEditable} />
+                    {acreedorDomicilioEditable && acreedorDomicilioEditable.trim().toUpperCase() !== 'NO ESPECIFICADO' ? (
+                      <span>, en su domicilio en <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline-block" style={{width: Math.max(200, acreedorDomicilioEditable.length * 8) + "px"}} value={acreedorDomicilioEditable} onChange={setAcreedorDomicilioEditable} /></span>
+                    ) : ''}
+                    , la suma de GUARANIES <span className="uppercase">{numberToWords(item.monto)}</span> (Gs. {formatCurrencyValue(item.monto, pagare.moneda)}). Si este documento no fuera pagado, devengara un interés del <EditableField className="w-6 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={tasaInteres} onChange={setTasaInteres} />% mensual en concepto de cláusula penal (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={clausulaPenal} onChange={setClausulaPenal} /> C.C) desde la mora, que se producirá automáticamente (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={moraAutomatica} onChange={setMoraAutomatica} /> C.C) sin necesidad de interpelación judicial o extrajudicial alguna. Este documento lleva la cláusula "sin protesto" y en consecuencia, dispensa al portador de formalizar el protesto por falta de aceptación o de pago, para ejercer la acción de regreso (Art. <EditableField className="w-10 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={dispensaProtesto} onChange={setDispensaProtesto} /> C.C). Las partes constituyen domicilio especial en los lugares fijados más abajo.-
                   </p>
                 </div>
 
-                {/* SIGNATURE BLOCK */}
-                <div className="pt-8 relative z-10 flex flex-wrap gap-8 font-sans break-inside-avoid print:break-inside-avoid">
+                {/* SIGNATURE BLOCK - Documentos formateados sin puntos */}
+                <div className="pt-6 print:pt-4 relative z-10 flex flex-wrap gap-6 print:gap-4 font-sans break-inside-avoid print:break-inside-avoid">
                   {/* Deudor Principal */}
-                  <div className="w-[360px] border-t border-black pt-1">
+                  <div className="w-[340px] border-t border-black pt-1">
                     <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Deudor Principal</p>
                     <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={setDeudorNombreEditable} /></p>
-                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDocumentoEditable} onChange={setDeudorDocumentoEditable} /></p>
+                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(deudorDocumentoEditable)} onChange={(val: string) => setDeudorDocumentoEditable(formatDocClean(val))} /></p>
                     <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDomicilioEditable} onChange={setDeudorDomicilioEditable} /></p>
                   </div>
 
                   {/* Co-deudor 1 (si existe) */}
                   {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
-                    <div className="w-[360px] border-t border-black pt-1">
+                    <div className="w-[340px] border-t border-black pt-1">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={setCodeudor1NombreEditable} /></p>
-                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DocumentoEditable} onChange={setCodeudor1DocumentoEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor1DocumentoEditable)} onChange={(val: string) => setCodeudor1DocumentoEditable(formatDocClean(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DomicilioEditable} onChange={setCodeudor1DomicilioEditable} /></p>
                     </div>
                   )}
 
                   {/* Co-deudor 2 (si existe) */}
                   {(codeudor2NombreEditable || codeudor2DocumentoEditable) && (
-                    <div className="w-[360px] border-t border-black pt-1">
+                    <div className="w-[340px] border-t border-black pt-1">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 2</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={setCodeudor2NombreEditable} /></p>
-                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DocumentoEditable} onChange={setCodeudor2DocumentoEditable} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor2DocumentoEditable)} onChange={(val: string) => setCodeudor2DocumentoEditable(formatDocClean(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DomicilioEditable} onChange={setCodeudor2DomicilioEditable} /></p>
                     </div>
                   )}
                 </div>
 
-                {/* CERTIFICACION DE FIRMAS FOOTER */}
-                <div className="mt-24 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-8">
+                {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
+                <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
                   <div className="text-[12px] uppercase flex items-center whitespace-nowrap">
                     LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° 
                     <EditableField className={`w-24 ml-1 bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index)} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val); }} />
@@ -461,6 +545,12 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 )}
               </div>
             ))}
+            {hojasRenderizadas < totalHojas && (
+              <div className="w-full max-w-sm mx-auto my-6 p-4 bg-white/95 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-3 text-slate-600 text-xs font-semibold no-print">
+                <div className="w-4 h-4 border-2 border-slate-300 border-t-[#FF3131] rounded-full animate-spin" />
+                <span>Cargando hojas en segundo plano ({hojasRenderizadas} de {totalHojas})...</span>
+              </div>
+            )}
           </div>
         </div>
 
