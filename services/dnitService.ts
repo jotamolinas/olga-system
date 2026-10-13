@@ -1,3 +1,5 @@
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
 export interface DnitResponse {
   documento_numero: string;
   dv: string;
@@ -14,10 +16,10 @@ export async function consultarRUC(rucConDv: string): Promise<DnitResponse | nul
 
   const rucParts = rucLimpio.split('-');
   const isRuc = rucLimpio.length >= 7 || rucParts.length > 1;
-  const dv = rucParts.length > 1 ? rucParts[1] : '';
+  const numRuc = rucParts[0];
 
-  // 1. Buscar primero en el Fichero local (localStorage)
-  const keys = ['OLGA_PERSONAS_LIST', 'fichero_personas', 'personas'];
+  // 1. Búsqueda local (Fichero) para respuesta instantánea
+  const keys = ['olga_directorio_personas', 'OLGA_PERSONAS_LIST', 'fichero_personas', 'personas'];
   const docComparar = rucLimpio.replace(/[.-]/g, '').toLowerCase();
 
   for (const k of keys) {
@@ -31,11 +33,10 @@ export async function consultarRUC(rucConDv: string): Promise<DnitResponse | nul
             return pDoc && pDoc === docComparar;
           });
           if (match) {
-            const nombreCompleto = `${match.nombre || ''} ${match.apellido || ''}`.trim();
             return {
               documento_numero: match.nro_documento || rucLimpio,
-              dv: dv || '0',
-              nombre_o_razon_social: nombreCompleto,
+              dv: rucParts.length > 1 ? rucParts[1] : '0',
+              nombre_o_razon_social: `${match.nombre || ''} ${match.apellido || ''}`.trim(),
               tipo_documento: match.tipo_documento || (isRuc ? 'RUC' : 'CI'),
               direccion: match.domicilio || '',
               telefono: match.telefono || '',
@@ -45,11 +46,35 @@ export async function consultarRUC(rucConDv: string): Promise<DnitResponse | nul
         }
       }
     } catch {
-      // Ignorar error de parseo y continuar
+      // Ignorar errores del storage
     }
   }
 
-  // 2. Si no está en el Fichero local, no forzar nombres ficticios o mocks.
-  // Retorna null para permitir ingreso 100% libre sin alterar lo escrito por el usuario.
-  return null;
+  // 2. Consulta Externa Segura vía Firebase Cloud Functions (onCall)
+  try {
+    // Inicializamos las funciones de Firebase en la aplicación
+    const functions = getFunctions();
+    
+    // Hacemos referencia a tu función exacta alojada en Google Cloud
+    const llamarConsultarRUC = httpsCallable(functions, 'consultarRUC');
+    
+    // Ejecutamos la función pasando la variable 'documento_numero' como lo exige tu backend
+    const result = await llamarConsultarRUC({ documento_numero: numRuc });
+    const data = result.data as any;
+
+    if (data && data.nombre_o_razon_social) {
+      return {
+        documento_numero: numRuc,
+        dv: data.dv || (rucParts.length > 1 ? rucParts[1] : '0'),
+        nombre_o_razon_social: data.nombre_o_razon_social,
+        tipo_documento: 'RUC',
+        origen: 'DNIT'
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error al consultar DNIT vía Cloud Function (Firebase):', error);
+    return null;
+  }
 }

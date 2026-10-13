@@ -10,6 +10,15 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         allowedHosts: true,
+        // INICIO DE LA MAGIA DEL PROXY
+        proxy: {
+          '/api/dnit': {
+            target: 'https://ruc.sun.com.py',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/dnit/, ''),
+          }
+        }
+        // FIN DE LA MAGIA
       },
       plugins: [react()],
       build: {
