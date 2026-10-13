@@ -6,7 +6,8 @@ import {
   Copy, FolderInput, X, Check, Edit3, Plus, Printer, Save, 
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
+  HelpCircle, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
@@ -98,6 +99,9 @@ export function numeroALetras(num: number): string {
   return str.trim();
 }
 
+// Alias de conversión legal de números a letras
+export const c9e = numeroALetras;
+
 export function procesarAutofillPlantilla(
   textoPlantilla: string,
   personaActiva?: any | null
@@ -120,27 +124,21 @@ export function procesarAutofillPlantilla(
   texto = texto.replace(/a los _____ días del mes de ____________ del año (?:2026|dos mil veintiséis)/g, `a los ${dia} días del mes de ${mes} del año ${anio}`);
   texto = texto.replace(/a los _____ días del mes de ____________ de 2026/g, `a los ${dia} días del mes de ${mes} del año ${anio}`);
 
-  // Datos de persona / cliente del Fichero
-  const nombreVal = personaActiva ? ((personaActiva.apellido ? `${personaActiva.nombre} ${personaActiva.apellido}` : personaActiva.nombre) || '').trim().toUpperCase() : '';
-  const docVal = personaActiva ? ((personaActiva.nro_documento ? (personaActiva.tipo_documento ? `${personaActiva.tipo_documento} Nº ${personaActiva.nro_documento}` : personaActiva.nro_documento) : '') || '').trim().toUpperCase() : '';
-  const nacVal = personaActiva ? (personaActiva.nacionalidad || 'PARAGUAYA').toUpperCase() : '';
-  const estCivilVal = personaActiva ? (personaActiva.estado_civil || personaActiva.estadoCivil || '').toUpperCase() : '';
-  const profVal = personaActiva ? (personaActiva.profesion || personaActiva.ocupacion || '').toUpperCase() : '';
-  const dirVal = personaActiva ? (personaActiva.domicilio || personaActiva.direccion || '').toUpperCase() : '';
-
-  texto = texto.replace(/\{\{NOMBRE\}\}/g, nombreVal || '_______');
-  texto = texto.replace(/\{\{DOCUMENTO\}\}/g, docVal || '_______');
-  texto = texto.replace(/\{\{NACIONALIDAD\}\}/g, nacVal || 'PARAGUAYA');
-  texto = texto.replace(/\{\{ESTADO_CIVIL\}\}/g, estCivilVal || '_______');
-  texto = texto.replace(/\{\{PROFESION\}\}/g, profVal || '_______');
-  texto = texto.replace(/\{\{DIRECCION\}\}/g, dirVal || '_______');
+  // Desactivación estricta de pre-carga de usuario (Evitar Datos Pre-cargados / Limpieza de Usuario):
+  // Todos los nombres, cédulas y datos personales en la plantilla inicial deben generarse estrictamente
+  // como espacios vacíos (_______) para que el asistente pregunte por ellos.
+  texto = texto.replace(/\{\{NOMBRE\}\}/g, '_______');
+  texto = texto.replace(/\{\{DOCUMENTO\}\}/g, '_______');
+  texto = texto.replace(/\{\{NACIONALIDAD\}\}/g, '_______');
+  texto = texto.replace(/\{\{ESTADO_CIVIL\}\}/g, '_______');
+  texto = texto.replace(/\{\{PROFESION\}\}/g, '_______');
+  texto = texto.replace(/\{\{DIRECCION\}\}/g, '_______');
 
   return texto;
 }
 
 export function construirConstitucionSA(
-  numSocios: number = 2,
-  personaActiva?: any | null
+  numSocios: number = 2
 ): string {
   const now = new Date();
   const dia = String(now.getDate());
@@ -151,31 +149,19 @@ export function construirConstitucionSA(
   const mes = meses[now.getMonth()];
   const anio = String(now.getFullYear());
 
-  const incisosLetras = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const incisosLetras = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
   const partesComparecientes: string[] = [];
 
+  // Bucle dinámico según la cantidad de socios solicitada (N)
   for (let i = 1; i <= numSocios; i++) {
     const isFirst = i === 1;
     const isLast = i === numSocios;
-    const prefijo = isFirst ? 'por una parte' : (isLast ? 'y por la otra' : 'por otra parte');
+    const prefijo = numSocios === 1 ? '' : (isFirst ? 'por una parte' : (isLast ? 'y por la otra' : 'por otra parte'));
 
-    let nombre = `{{SOCIO_${i}}}`;
-    let doc = `{{DOCUMENTO_${i}}}`;
-    let nac = `{{NACIONALIDAD_${i}}}`;
-    let estCivil = `{{ESTADO_CIVIL_${i}}}`;
-    let prof = `{{PROFESION_${i}}}`;
-    let dir = `{{DIRECCION_${i}}}`;
+    // Bloque notarial estricto con espacios vacíos (_______) sin pre-carga de usuario
+    const bloqueSocio = `Don/Doña _______, de nacionalidad _______, mayor de edad, estado civil _______, profesión _______, domiciliado/a en _______, titular de la Cédula de Identidad Civil Nº _______`;
 
-    if (isFirst && personaActiva) {
-      nombre = (personaActiva.apellido ? `${personaActiva.nombre} ${personaActiva.apellido}` : personaActiva.nombre).toUpperCase();
-      doc = (personaActiva.nro_documento ? `${personaActiva.tipo_documento || 'CI'} Nº ${personaActiva.nro_documento}` : '_______').toUpperCase();
-      nac = (personaActiva.nacionalidad || 'PARAGUAYA').toUpperCase();
-      estCivil = (personaActiva.estado_civil || personaActiva.estadoCivil || '_______').toUpperCase();
-      prof = (personaActiva.profesion || personaActiva.ocupacion || '_______').toUpperCase();
-      dir = (personaActiva.domicilio || personaActiva.direccion || '_______').toUpperCase();
-    }
-
-    partesComparecientes.push(`${prefijo}, Don/Doña ${nombre}, de nacionalidad ${nac}, mayor de edad, estado civil ${estCivil}, profesión ${prof}, domiciliado/a en ${dir}, titular de la Cédula de Identidad Civil Nº ${doc}`);
+    partesComparecientes.push(prefijo ? `${prefijo}, ${bloqueSocio}` : bloqueSocio);
   }
 
   const parrafoComparecientes = `comparecen ante mí: ${partesComparecientes.join('; ')}; personas hábiles y civilmente capaces para este acto, a quienes doy fe de conocer, y dicen:`;
@@ -183,16 +169,23 @@ export function construirConstitucionSA(
   const lineasSuscripcion: string[] = [];
   for (let i = 1; i <= numSocios; i++) {
     const letra = incisosLetras[i - 1] || `${i}`;
-    let socioNombre = `{{SOCIO_${i}}}`;
-    if (i === 1 && personaActiva) {
-      socioNombre = (personaActiva.apellido ? `${personaActiva.nombre} ${personaActiva.apellido}` : personaActiva.nombre).toUpperCase();
-    }
-    lineasSuscripcion.push(`   ${letra}) ${socioNombre} suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);`);
+    lineasSuscripcion.push(`   ${letra}) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);`);
   }
 
   const articuloQuinto = `ARTÍCULO 5º (EMISIÓN Y SUSCRIPCIÓN): El Capital Social inicial queda totalmente emitido, suscripto e integrado por los comparecientes en las siguientes proporciones:
 ${lineasSuscripcion.join('\n')}
 totalizando el cien por ciento (100%) del capital emitido y suscripto en este acto de constitución.`;
+
+  const directoresTransitorios: string[] = [
+    `- PRESIDENTE DEL DIRECTORIO: Don/Doña _______;`,
+    `- DIRECTOR TITULAR: Don/Doña _______;`
+  ];
+  if (numSocios >= 3) {
+    for (let s = 3; s <= numSocios; s++) {
+      directoresTransitorios.push(`- DIRECTOR TITULAR: Don/Doña _______;`);
+    }
+  }
+  directoresTransitorios.push(`- SÍNDICO TITULAR: Don/Doña _______;`);
 
   return `ESCRITURA NÚMERO ______.- CONSTITUCIÓN DE SOCIEDAD ANÓNIMA DENOMINADA "____________________ S.A.".-
 
@@ -212,10 +205,27 @@ ARTÍCULO 4º: El Capital Social autorizado se fija en la suma de GUARANÍES ___
 ${articuloQuinto}
 
 CAPÍTULO III: DE LA ADMINISTRACIÓN Y REPRESENTACIÓN:
-ARTÍCULO 6º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un ejercicio comercial.
+ARTÍCULO 6º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un (1) ejercicio comercial, pudiendo ser reelectos indefinidamente.
 
 CAPÍTULO IV: DE LA FISCALIZACIÓN:
-ARTÍCULO 7º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea.
+ARTÍCULO 7º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea General Ordinaria de conformidad con las disposiciones del Código Civil paraguayo.
+
+CAPÍTULO V: DE LAS ASAMBLEAS:
+ARTÍCULO 8º (CLASES DE ASAMBLEAS): Las Asambleas de Accionistas serán Ordinarias y Extraordinarias. Serán convocadas por el Directorio, o a pedido del Síndico o por accionistas que representen por lo menos el cinco por ciento (5%) del capital integrado. La Asamblea General Ordinaria se reunirá anualmente dentro de los cuatro (4) meses posteriores al cierre del ejercicio social para considerar la memoria del Directorio, balance general, estado de resultados, destino de utilidades y elección de autoridades.
+ARTÍCULO 9º (QUÓRUM Y MAYORÍAS): La Asamblea Ordinaria sesionará en primera convocatoria con la presencia de accionistas que representen la mayoría de las acciones con derecho a voto. Las resoluciones se adoptarán por mayoría absoluta de los votos presentes. Las Asambleas Extraordinarias se regirán por el quórum y mayorías calificados conforme al Código Civil.
+
+CAPÍTULO VI: DEL EJERCICIO SOCIAL:
+ARTÍCULO 10º (EJERCICIO SOCIAL): El ejercicio social cerrará el treinta y uno (31) de diciembre de cada año, fecha en la que se confeccionará el Inventario General, Balance General y Cuadro Demostrativo de Pérdidas y Ganancias conforme a las normas contables y leyes tributarias vigentes.
+ARTÍCULO 11º (DISTRIBUCIÓN DE UTILIDADES): De las utilidades líquidas y realizadas que resulten de cada ejercicio, se destinará obligatoriamente: a) Un cinco por ciento (5%) para el Fondo de Reserva Legal, hasta alcanzar el veinte por ciento (20%) del Capital Social; b) La remuneración del Directorio y Síndicos aprobada por la Asamblea; c) El remanente tendrá el destino que determine la Asamblea General de Accionistas.
+
+CAPÍTULO VII: DE LA DISOLUCIÓN Y LIQUIDACIÓN:
+ARTÍCULO 12º (DISOLUCIÓN): La sociedad se disolverá por cualquiera de las causales previstas en el Artículo 1003 y concordantes del Código Civil de la República del Paraguay.
+ARTÍCULO 13º (LIQUIDACIÓN): La liquidación de la sociedad será practicada por el Directorio en ejercicio o por los liquidadores designados por la Asamblea General de Accionistas bajo la fiscalización del Síndico actuante, procediéndose a la cancelación del pasivo social y a la distribución del remanente entre los accionistas en proporción al capital integrado.
+
+===================== DISPOSICIONES TRANSITORIAS =====================
+PRIMERA: DESIGNACIÓN DEL PRIMER DIRECTORIO Y SINDICATURA: De conformidad con los presentes Estatutos Sociales, los comparecientes resuelven por unanimidad designar para integrar los órganos de administración y fiscalización del primer ejercicio social a las siguientes personas:
+${directoresTransitorios.join('\n')}
+quienes encontrándose presentes aceptan expresamente los cargos conferidos, fijan domicilio especial a los efectos sociales en la sede de la sociedad y prestan juramento de ley para su fiel y leal desempeño.
 
 Leída y ratificada la presente escritura, la firman los comparecientes en señal de plena conformidad, ante mí, el Notario autorizante que doy fe.`;
 }
@@ -260,11 +270,35 @@ ARTÍCULO 3º: OBJETO: La sociedad tendrá por objeto dedicarse por cuenta propi
 CAPÍTULO II: CAPITAL SOCIAL Y ACCIONES:
 ARTÍCULO 4º: El Capital Social autorizado se fija en la suma de GUARANÍES ____________________ (Gs. ____________), representado por ______ acciones nominativas ordinarias de valor nominal de GUARANÍES ____________________ (Gs. ____________) cada una, con derecho a un voto por acción.
 
+ARTÍCULO 5º (EMISIÓN Y SUSCRIPCIÓN): El Capital Social inicial queda totalmente emitido, suscripto e integrado por los comparecientes en las siguientes proporciones:
+   a) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);
+   b) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);
+totalizando el cien por ciento (100%) del capital emitido y suscripto en este acto de constitución.
+
 CAPÍTULO III: DE LA ADMINISTRACIÓN Y REPRESENTACIÓN:
-ARTÍCULO 5º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un ejercicio comercial.
+ARTÍCULO 6º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un (1) ejercicio comercial, pudiendo ser reelectos indefinidamente.
 
 CAPÍTULO IV: DE LA FISCALIZACIÓN:
-ARTÍCULO 6º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea.
+ARTÍCULO 7º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea General Ordinaria de conformidad con las disposiciones del Código Civil paraguayo.
+
+CAPÍTULO V: DE LAS ASAMBLEAS:
+ARTÍCULO 8º (CLASES DE ASAMBLEAS): Las Asambleas de Accionistas serán Ordinarias y Extraordinarias. Serán convocadas por el Directorio, o a pedido del Síndico o por accionistas que representen por lo menos el cinco por ciento (5%) del capital integrado. La Asamblea General Ordinaria se reunirá anualmente dentro de los cuatro (4) meses posteriores al cierre del ejercicio social para considerar la memoria del Directorio, balance general, estado de resultados, destino de utilidades y elección de autoridades.
+ARTÍCULO 9º (QUÓRUM Y MAYORÍAS): La Asamblea Ordinaria sesionará en primera convocatoria con la presencia de accionistas que representen la mayoría de las acciones con derecho a voto. Las resoluciones se adoptarán por mayoría absoluta de los votos presentes. Las Asambleas Extraordinarias se regirán por el quórum y mayorías calificados conforme al Código Civil.
+
+CAPÍTULO VI: DEL EJERCICIO SOCIAL:
+ARTÍCULO 10º (EJERCICIO SOCIAL): El ejercicio social cerrará el treinta y uno (31) de diciembre de cada año, fecha en la que se confeccionará el Inventario General, Balance General y Cuadro Demostrativo de Pérdidas y Ganancias conforme a las normas contables y leyes tributarias vigentes.
+ARTÍCULO 11º (DISTRIBUCIÓN DE UTILIDADES): De las utilidades líquidas y realizadas que resulten de cada ejercicio, se destinará obligatoriamente: a) Un cinco por ciento (5%) para el Fondo de Reserva Legal, hasta alcanzar el veinte por ciento (20%) del Capital Social; b) La remuneración del Directorio y Síndicos aprobada por la Asamblea; c) El remanente tendrá el destino que determine la Asamblea General de Accionistas.
+
+CAPÍTULO VII: DE LA DISOLUCIÓN Y LIQUIDACIÓN:
+ARTÍCULO 12º (DISOLUCIÓN): La sociedad se disolverá por cualquiera de las causales previstas en el Artículo 1003 y concordantes del Código Civil de la República del Paraguay.
+ARTÍCULO 13º (LIQUIDACIÓN): La liquidación de la sociedad será practicada por el Directorio en ejercicio o por los liquidadores designados por la Asamblea General de Accionistas bajo la fiscalización del Síndico actuante, procediéndose a la cancelación del pasivo social y a la distribución del remanente entre los accionistas en proporción al capital integrado.
+
+===================== DISPOSICIONES TRANSITORIAS =====================
+PRIMERA: DESIGNACIÓN DEL PRIMER DIRECTORIO Y SINDICATURA: De conformidad con los presentes Estatutos Sociales, los comparecientes resuelven por unanimidad designar para integrar los órganos de administración y fiscalización del primer ejercicio social a las siguientes personas:
+- PRESIDENTE DEL DIRECTORIO: Don/Doña _______;
+- DIRECTOR TITULAR: Don/Doña _______;
+- SÍNDICO TITULAR: Don/Doña _______;
+quienes encontrándose presentes aceptan expresamente los cargos conferidos, fijan domicilio especial a los efectos sociales en la sede de la sociedad y prestan juramento de ley para su fiel y leal desempeño.
 
 Leída y ratificada la presente escritura, la firman los comparecientes en señal de plena conformidad, ante mí, el Notario autorizante que doy fe.`
   },
@@ -473,6 +507,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [targetCategory, setTargetCategory] = useState<string>('');
   const [docToDelete, setDocToDelete] = useState<Escrito | null>(null);
 
+  // Estado del Asistente Flotante de Autocompletado (Autofill Wizard)
+  const [autofillInput, setAutofillInput] = useState<string>('');
+  const [mostrarTooltipAyuda, setMostrarTooltipAyuda] = useState<boolean>(false);
+  const autofillInputRef = useRef<HTMLInputElement>(null);
+
+  // Historial de Estados para Deshacer / Retroceder en el Asistente Flotante
+  const [historialTextos, setHistorialTextos] = useState<string[]>([]);
+
+  // Diccionario de Memoria Global (Context-Awareness y Cálculos Automáticos)
+  const [memoria, setMemoria] = useState<{
+    denominacion?: string;
+    capital?: number;
+    capitalTotal?: number;
+    capitalFormateado?: string;
+    capitalLetras?: string;
+    acciones?: number;
+    totalAcciones?: number;
+    accionesSuscriptas?: number;
+    ultimaAccionesSocio?: number;
+    valorNominal?: number;
+    comparecientes?: string[];
+    cedulas?: string[];
+    [key: string]: any;
+  }>({});
+
+  // Modo de edición: saber si se está editando un documento existente abierto desde la grilla
+  const [editandoDocumentoExistente, setEditandoDocumentoExistente] = useState<boolean>(false);
+
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Carga inicial del borrador local persistido
@@ -538,7 +600,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           editorText.includes('<br>') || 
           editorText.includes('<b>') || 
           editorText.includes('<i>') || 
-          editorText.includes('<u>')
+          editorText.includes('<u>') ||
+          editorText.includes('<span') ||
+          editorText.includes('id="espacio-activo"')
         ) {
           editorContentRef.current.innerHTML = editorText;
         } else {
@@ -592,16 +656,1024 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Atajo de teclado ESC (Cerrar Editor Notarial)
+  // Atajo de teclado ESC (Cerrar Editor Notarial y volver al Dashboard principal)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && mostrarEditor) {
+        if (isAiModalOpen || isAdminModalOpen || movingDoc) {
+          return;
+        }
         setMostrarEditor(false);
+        setSelectedPlantillaId('');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mostrarEditor]);
+  }, [mostrarEditor, isAiModalOpen, isAdminModalOpen, movingDoc]);
+
+  // =========================================================================
+  // MOTOR DE DETECCIÓN DE ESPACIOS EN BLANCO Y ASISTENTE (AUTOFILL WIZARD)
+  // =========================================================================
+
+  // Extraer texto plano actual para análisis de variables
+  const currentPlainText = React.useMemo(() => {
+    return editorText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
+  }, [editorText]);
+
+  // Contar espacios en blanco totales y pendientes
+  const blankMatches = React.useMemo(() => {
+    const regex = /_{3,}/g;
+    const matches: { index: number; length: number }[] = [];
+    let match;
+    while ((match = regex.exec(currentPlainText)) !== null) {
+      matches.push({ index: match.index, length: match[0].length });
+    }
+    return matches;
+  }, [currentPlainText]);
+
+  const totalBlanks = blankMatches.length;
+
+  // =========================================================================
+  // SINCRONIZACIÓN CONTEXTUAL DEL ASISTENTE (AUTOFILL WIZARD)
+  // Analiza estrictamente las 3 o 4 palabras inmediatamente anteriores
+  // al ÚNICO espacio que actualmente tiene el <span id="espacio-activo">,
+  // ignorando los demás espacios vacíos del documento.
+  // =========================================================================
+  const currentBlankContext = React.useMemo(() => {
+    if (totalBlanks === 0) return null;
+
+    let textBeforeActive = '';
+    let textAfterActive = '';
+
+    if (editorText.includes('id="espacio-activo"')) {
+      const idx = editorText.indexOf('id="espacio-activo"');
+      const startTag = editorText.lastIndexOf('<span', idx);
+      textBeforeActive = startTag !== -1 ? editorText.substring(0, startTag) : editorText.substring(0, idx);
+
+      const closeTag = editorText.indexOf('</span>', idx);
+      if (closeTag !== -1) {
+        textAfterActive = editorText.substring(closeTag + 7, closeTag + 80);
+      }
+    } else {
+      // Si aún no se ha inyectado el span en el DOM/estado, analizar el primer espacio vacío
+      const match = editorText.match(/_{3,}/);
+      if (match && match.index !== undefined) {
+        textBeforeActive = editorText.substring(0, match.index);
+        textAfterActive = editorText.substring(match.index + match[0].length, match.index + match[0].length + 80);
+      } else {
+        return null;
+      }
+    }
+
+    // Limpieza estricta de HTML y entidades para extraer texto puro previo
+    const plainBefore = textBeforeActive
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim();
+
+    // ESTRICTAMENTE los últimos 30 caracteres justo antes de la etiqueta (ignorando todo lo anterior)
+    const textoPrevio = plainBefore.slice(-30).toLowerCase();
+
+    const plainAfter = textAfterActive
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    // 1. REGLA ESTRICTA DE ESTADO CIVIL:
+    // SOLO debe aplicarse si la palabra 'civil' está literalmente pegada al espacio en blanco
+    // (ej. 'estado civil: _______', 'estado civil _______', 'civil _______')
+    const esEstadoCivilPegado = /(?:estado\s+civil|civil)\s*[:\.]?\s*$/i.test(plainBefore);
+    if (esEstadoCivilPegado) {
+      return {
+        instruccion: 'Insertar Estado Civil',
+        ayuda: 'Estado civil legal: SOLTERO/A, CASADO/A, VIUDO/A o DIVORCIADO/A.',
+        placeholder: 'Ej. SOLTERO / CASADO'
+      };
+    }
+
+    // 2. VENTANA DE ANÁLISIS DE CONTEXTO INMEDIATO PREVIO
+    // Se analizan los últimos caracteres para priorizar la palabra clave más cercana al espacio _______
+    const windowText = plainBefore.slice(-120).toLowerCase();
+
+    // Helper para medir la posición final (último índice) de un patrón en la ventana previa.
+    // Cuanto mayor sea lastPos, más cerca se encuentra del espacio en blanco.
+    const getLastIndex = (regex: RegExp): number => {
+      let last = -1;
+      let m: RegExpExecArray | null;
+      const flags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g';
+      const r = new RegExp(regex.source, flags);
+      while ((m = r.exec(windowText)) !== null) {
+        last = m.index + m[0].length;
+      }
+      return last;
+    };
+
+    interface ContextCandidate {
+      pos: number;
+      instruccion: string;
+      ayuda: string;
+      placeholder: string;
+    }
+
+    const candidates: ContextCandidate[] = [];
+
+    // CÉDULA DE IDENTIDAD
+    // Si el texto previo contiene la palabra 'Cédula', 'CI Nº', etc., se prioriza con su posición exacta
+    const posCedula = getLastIndex(/(?:cédula|cedula|c\.i\.|ci\s*n[º°]|c\.i\s*n[º°]|identidad\s+civil\s*n[º°]|identidad\s*n[º°]|documento\s+de\s+identidad)/i);
+    if (posCedula !== -1) {
+      candidates.push({
+        pos: posCedula,
+        instruccion: 'Insertar Cédula de Identidad',
+        ayuda: 'Número de Cédula de Identidad Civil paraguaya o documento de identidad del otorgante.',
+        placeholder: 'Ej. 3.456.789'
+      });
+    }
+
+    // COMPARECIENTES Y NOMBRES (don/doña, comparece, la otra parte, etc.)
+    const posNombre = getLastIndex(/(?:don\/doña|don\b|doña\b|la\s+otra\s+parte|por\s+una\s+parte|comparecen\b|comparece\b|señor\/a|señor\b|señora\b)/i);
+    if (posNombre !== -1) {
+      if (windowText.includes('comprador')) {
+        candidates.push({
+          pos: posNombre,
+          instruccion: 'Insertar Nombre del Comprador',
+          ayuda: 'Nombres y apellidos completos de la parte compradora.',
+          placeholder: 'Ej. MARÍA ELENA GONZÁLEZ'
+        });
+      } else if (windowText.includes('vendedor')) {
+        candidates.push({
+          pos: posNombre,
+          instruccion: 'Insertar Nombre del Vendedor',
+          ayuda: 'Nombres y apellidos completos de la parte vendedora.',
+          placeholder: 'Ej. JUAN CARLOS PÉREZ GÓMEZ'
+        });
+      } else {
+        candidates.push({
+          pos: posNombre,
+          instruccion: 'Insertar Nombre',
+          ayuda: 'Nombres y apellidos completos según constan en el documento de identidad civil vigente.',
+          placeholder: 'Ej. JUAN CARLOS PÉREZ GÓMEZ'
+        });
+      }
+    }
+
+    // SI LA SUSCRIPCIÓN INICIA JUSTO DESPUÉS DEL ESPACIO (ej. "a) _______ suscribe")
+    if (plainAfter.startsWith('suscribe') || plainAfter.startsWith('suscriben')) {
+      candidates.push({
+        pos: windowText.length,
+        instruccion: 'Insertar Nombre',
+        ayuda: 'Nombres y apellidos completos del socio o compareciente suscriptor.',
+        placeholder: 'Ej. JUAN CARLOS PÉREZ GÓMEZ'
+      });
+    }
+
+    // DOMICILIO (Condición de contexto para domicilio o ciudad)
+    const posDomicilio = getLastIndex(/(?:domiciliado\/a\s+en|domiciliado\s+en|domiciliada\s+en|domiciliado\/a|domiciliado\b|domiciliada\b|con\s+domicilio\s+en|domicilio\b|ciudad\s+de)/i);
+    if (posDomicilio !== -1) {
+      candidates.push({
+        pos: posDomicilio,
+        instruccion: 'Insertar Domicilio',
+        ayuda: 'Dirección o domicilio real de la parte compareciente (calle, número y ciudad).',
+        placeholder: 'Ej. CALLE PALMA Nº 452, ASUNCIÓN'
+      });
+    }
+
+    // PROFESIÓN / OCUPACIÓN
+    const posProfesion = getLastIndex(/(?:profesión|profesion|ocupación|ocupacion|de\s+profesión|de\s+profesion)/i);
+    if (posProfesion !== -1) {
+      candidates.push({
+        pos: posProfesion,
+        instruccion: 'Insertar Profesión',
+        ayuda: 'Profesión, oficio u ocupación principal del compareciente.',
+        placeholder: 'Ej. ABOGADO / COMERCIANTE / INGENIERO'
+      });
+    }
+
+    // NACIONALIDAD
+    const posNacionalidad = getLastIndex(/(?:nacionalidad|de\s+nacionalidad)/i);
+    if (posNacionalidad !== -1) {
+      candidates.push({
+        pos: posNacionalidad,
+        instruccion: 'Insertar Nacionalidad',
+        ayuda: 'Nacionalidad de origen o adquirida del compareciente.',
+        placeholder: 'Ej. PARAGUAYA'
+      });
+    }
+
+    // PRESIDENTE DEL DIRECTORIO
+    const posPresidente = getLastIndex(/(?:presidente|presidenta)/i);
+    if (posPresidente !== -1) {
+      candidates.push({
+        pos: posPresidente,
+        instruccion: 'Insertar Nombre del Presidente',
+        ayuda: 'Nombre del compareciente designado como Presidente del Directorio.',
+        placeholder: 'Ej. JUAN CARLOS PÉREZ GÓMEZ'
+      });
+    }
+
+    // DIRECTOR TITULAR
+    const posDirector = getLastIndex(/(?:director\s+titular|directora\s+titular|director\b|directora\b|vicepresidente)/i);
+    if (posDirector !== -1) {
+      candidates.push({
+        pos: posDirector,
+        instruccion: 'Insertar Director Titular',
+        ayuda: 'Nombre del compareciente designado como Director Titular.',
+        placeholder: 'Ej. MARÍA ELENA GONZÁLEZ'
+      });
+    }
+
+    // SÍNDICO TITULAR
+    const posSindico = getLastIndex(/(?:síndico\s+titular|sindico\s+titular|síndico\b|sindico\b)/i);
+    if (posSindico !== -1) {
+      candidates.push({
+        pos: posSindico,
+        instruccion: 'Insertar Síndico Titular',
+        ayuda: 'Nombre del profesional o persona designada como Síndico Titular.',
+        placeholder: 'Ej. LIC. CARLOS BENÍTEZ'
+      });
+    }
+
+    // ESCRITURA NOTARIAL
+    const posEscritura = getLastIndex(/(?:escritura\s+número|escritura\s+nº|escritura\s+n°|escritura\s+pública|escritura\b)/i);
+    if (posEscritura !== -1) {
+      candidates.push({
+        pos: posEscritura,
+        instruccion: 'Insertar Número de Escritura',
+        ayuda: 'Número de orden correlativo de la escritura pública asignado por el Registro Notarial.',
+        placeholder: 'Ej. 42 / Cuarenta y dos'
+      });
+    }
+
+    // REGISTRO NOTARIAL
+    const posRegistro = getLastIndex(/(?:registro\s+notarial|registro\s+nº|registro\s+n°)/i);
+    if (posRegistro !== -1) {
+      candidates.push({
+        pos: posRegistro,
+        instruccion: 'Insertar Número de Registro Notarial',
+        ayuda: 'Número oficial asignado a la Escribanía / Registro Notarial ante la Corte Suprema de Justicia.',
+        placeholder: 'Ej. 748'
+      });
+    }
+
+    // DENOMINACIÓN SOCIAL
+    const posDenominacion = getLastIndex(/(?:denominada|denominación|denominacion|denominará|denominara|razón\s+social|razon\s+social)/i);
+    if (posDenominacion !== -1) {
+      candidates.push({
+        pos: posDenominacion,
+        instruccion: 'Insertar Denominación o Razón Social',
+        ayuda: 'Nombre de fantasía o denominación social de la Sociedad Anónima (sin incluir S.A.).',
+        placeholder: 'Ej. AGRO INDUSTRIAL DEL ESTE'
+      });
+    }
+
+    // ACCIONES SUSCRIPTAS
+    const posSuscribe = getLastIndex(/(?:suscribe\b|suscriben\b)/i);
+    if (posSuscribe !== -1 || plainAfter.startsWith('acciones')) {
+      candidates.push({
+        pos: posSuscribe !== -1 ? posSuscribe : windowText.length,
+        instruccion: 'Insertar Cantidad de Acciones Suscriptas',
+        ayuda: 'Número de acciones ordinarias que suscribe el compareciente.',
+        placeholder: 'Ej. 50 / Cincuenta'
+      });
+    }
+
+    // CANTIDAD TOTAL DE ACCIONES
+    const posAcciones = getLastIndex(/(?:representado\s+por|total\s+de\s+acciones|cantidad\s+de\s+acciones|acciones\s+nominativas|acciones\b)/i);
+    if (posAcciones !== -1) {
+      candidates.push({
+        pos: posAcciones,
+        instruccion: 'Insertar Cantidad de Acciones',
+        ayuda: 'Cantidad total de acciones emitidas de la sociedad.',
+        placeholder: 'Ej. 100 / Cien'
+      });
+    }
+
+    // VALOR NOMINAL POR ACCIÓN
+    const posNominal = getLastIndex(/(?:valor\s+nominal|nominal\b)/i);
+    if (posNominal !== -1) {
+      candidates.push({
+        pos: posNominal,
+        instruccion: 'Insertar Valor Nominal por Acción',
+        ayuda: 'Valor nominal individual asignado a cada acción en Guaraníes.',
+        placeholder: 'Ej. 500.000 / QUINIENTOS MIL'
+      });
+    }
+
+    // MONTO SUSCRIPTO EN GUARANÍES
+    const posMontoSuscripto = getLastIndex(/(?:representativas\s+de|representativa\s+de)/i);
+    if (posMontoSuscripto !== -1) {
+      candidates.push({
+        pos: posMontoSuscripto,
+        instruccion: 'Insertar Monto Suscripto en Guaraníes',
+        ayuda: 'Monto en Guaraníes correspondiente a las acciones suscriptas.',
+        placeholder: 'Ej. 250000000'
+      });
+    }
+
+    // MONTO EN GUARANÍES (CIFRAS)
+    const posGs = getLastIndex(/(?:gs\.|gs\b)/i);
+    if (posGs !== -1) {
+      candidates.push({
+        pos: posGs,
+        instruccion: 'Insertar Monto en Guaraníes (Cifras)',
+        ayuda: 'Monto numérico en Guaraníes.',
+        placeholder: 'Ej. 50.000.000'
+      });
+    }
+
+    // MONTO / PRECIO / CAPITAL SOCIAL
+    const posMonto = getLastIndex(/(?:guaraníes|guaranies|capital\s+social|suma\s+de|precio\b|monto\b)/i);
+    if (posMonto !== -1) {
+      const isMonetaryBlock = /^\s*(&nbsp;)?\s*\(\s*Gs\.?\s*_{3,}\s*\)/i.test(textAfterActive);
+      candidates.push({
+        pos: posMonto,
+        instruccion: isMonetaryBlock ? 'Insertar Monto o Capital Social (Bloque Completo)' : 'Insertar Monto o Precio',
+        ayuda: isMonetaryBlock
+          ? 'Ingrese el monto en números (ej. 50000000). El sistema formateará y reemplazará automáticamente el bloque completo por: GUARANÍES CINCUENTA MILLONES (Gs. 50.000.000).'
+          : 'Monto en Guaraníes. Si escribe números, se formatearán y convertirán automáticamente a letras.',
+        placeholder: isMonetaryBlock ? 'Ej. 50000000' : 'Ej. 50000000 / CINCUENTA MILLONES'
+      });
+    }
+
+    // INMUEBLES - FINCA O MATRÍCULA
+    const posFinca = getLastIndex(/(?:finca\b|matrícula\b|matricula\b)/i);
+    if (posFinca !== -1) {
+      candidates.push({
+        pos: posFinca,
+        instruccion: 'Insertar Finca o Matrícula',
+        ayuda: 'Número de Finca o Matrícula Inmobiliaria registrada ante la DGRP.',
+        placeholder: 'Ej. Finca Nº 12.345'
+      });
+    }
+
+    // INMUEBLES - PADRÓN
+    const posPadron = getLastIndex(/(?:padrón\b|padron\b)/i);
+    if (posPadron !== -1) {
+      candidates.push({
+        pos: posPadron,
+        instruccion: 'Insertar Número de Padrón',
+        ayuda: 'Número de Padrón Catastral del inmueble.',
+        placeholder: 'Ej. Padrón Nº 8.910'
+      });
+    }
+
+    // INMUEBLES - LOTE O MANZANA
+    const posLote = getLastIndex(/(?:lote\b|manzana\b)/i);
+    if (posLote !== -1) {
+      candidates.push({
+        pos: posLote,
+        instruccion: 'Insertar Lote o Manzana',
+        ayuda: 'Individualización de Lote o Manzana conforme al plano catastral.',
+        placeholder: 'Ej. Lote 04'
+      });
+    }
+
+    // INMUEBLES - DISTRITO O LOCALIDAD
+    const posDistrito = getLastIndex(/(?:distrito\b|localidad\b)/i);
+    if (posDistrito !== -1) {
+      candidates.push({
+        pos: posDistrito,
+        instruccion: 'Insertar Distrito o Localidad',
+        ayuda: 'Distrito o jurisdicción municipal donde se encuentra el inmueble.',
+        placeholder: 'Ej. Distrito de San Lorenzo'
+      });
+    }
+
+    // INMUEBLES - LINDEROS
+    const posLinderos = getLastIndex(/(?:lindando\b|linderos\b|al\s+norte|al\s+sur|al\s+este|al\s+oeste)/i);
+    if (posLinderos !== -1) {
+      candidates.push({
+        pos: posLinderos,
+        instruccion: 'Insertar Lindero del Inmueble',
+        ayuda: 'Nombre del propietario colindante o calle.',
+        placeholder: 'Ej. Propiedad de Juan González'
+      });
+    }
+
+    // INMUEBLES - MEDIDA O DIMENSIÓN
+    const posMedida = getLastIndex(/(?:metros\b|mide\b)/i);
+    if (posMedida !== -1) {
+      candidates.push({
+        pos: posMedida,
+        instruccion: 'Insertar Medida o Dimensión',
+        ayuda: 'Dimensión en metros lineales o superficie del terreno.',
+        placeholder: 'Ej. 12,50'
+      });
+    }
+
+    // INMUEBLES - INDIVIDUALIZACIÓN GENERAL
+    const posBien = getLastIndex(/(?:siguiente\s+bien|objeto\b|inmueble\b)/i);
+    if (posBien !== -1) {
+      candidates.push({
+        pos: posBien,
+        instruccion: 'Insertar Individualización del Bien',
+        ayuda: 'Descripción detallada o individualización registral del bien transferido.',
+        placeholder: 'Ej. Inmueble individualizado con Finca Nº 12.345, Padrón 8.910...'
+      });
+    }
+
+    // FECHAS - DÍA DEL OTORGAMIENTO
+    const posDia = getLastIndex(/(?:días\b|dias\b|a\s+los\b)/i);
+    if (posDia !== -1) {
+      candidates.push({
+        pos: posDia,
+        instruccion: 'Insertar Día del Otorgamiento',
+        ayuda: 'Día del mes en que se redacta el instrumento notarial.',
+        placeholder: 'Ej. 15 / quince'
+      });
+    }
+
+    // FECHAS - MES DE CELEBRACIÓN
+    const posMes = getLastIndex(/(?:mes\s+de|mes\b)/i);
+    if (posMes !== -1) {
+      candidates.push({
+        pos: posMes,
+        instruccion: 'Insertar Mes de Celebración',
+        ayuda: 'Nombre del mes correspondiente a la fecha de firma.',
+        placeholder: 'Ej. octubre'
+      });
+    }
+
+    // FECHAS - AÑO DE OTORGAMIENTO
+    const posAnio = getLastIndex(/(?:año\s+de|del\s+año|del\s+ano|año\b|ano\b)/i);
+    if (posAnio !== -1) {
+      candidates.push({
+        pos: posAnio,
+        instruccion: 'Insertar Año de Otorgamiento',
+        ayuda: 'Año de otorgamiento del instrumento notarial.',
+        placeholder: 'Ej. 2026 / dos mil veintiséis'
+      });
+    }
+
+    // SELECCIÓN POR PRIORIDAD DE PROXIMIDAD:
+    // Se elige el candidato cuya palabra clave finaliza más cerca del espacio _______
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.pos - a.pos);
+      const mejorCandidato = candidates[0];
+      return {
+        instruccion: mejorCandidato.instruccion,
+        ayuda: mejorCandidato.ayuda,
+        placeholder: mejorCandidato.placeholder
+      };
+    }
+
+    // 3. LIMPIEZA DEL TÍTULO GENÉRICO (FALLBACK LIMPIO SIN RUIDO, SIN FECHAS Y SIN CARACTERES EXTRAÑOS)
+    // Se limpia cualquier residuo con .replace() para descartar fechas (ej. 2026), saltos y símbolos
+    const fragmentoLimpio = plainBefore
+      .slice(-40)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\b(año|ano)?\s*20\d{2}\b/gi, '') // Eliminar residuos de años/fechas como 2026
+      .replace(/_{2,}/g, '') // Eliminar guiones bajos
+      .replace(/[^\w\sáéíóúüñÁÉÍÓÚÜÑ]/g, ' ') // Eliminar signos extraños
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      instruccion: 'Completar campo faltante...',
+      ayuda: fragmentoLimpio.length > 3
+        ? `Complete el dato requerido para: "${fragmentoLimpio}".`
+        : 'Complete el dato notarial correspondiente para continuar con el autocompletado del documento.',
+      placeholder: 'Ingrese el dato requerido...'
+    };
+  }, [editorText, totalBlanks]);
+
+  // Mensaje o instrucción del asistente de autocompletado si hay espacios en blanco activos
+  const mensajeAsistente = totalBlanks > 0 && currentBlankContext ? currentBlankContext.instruccion : null;
+
+  // Condición de Modo Autocompletado Activo:
+  // Se oculta la cabecera completa si mensajeAsistente tiene algún valor (modo llenado paso a paso),
+  // y solo se restaura cuando termina (mensajeAsistente === null / sin espacios pendientes) o al seleccionar 'Hoja en Blanco'.
+  const condicionAutocompletado = Boolean(mensajeAsistente) && selectedPlantillaId !== 'hoja_en_blanco';
+
+  // Lógica inteligente de visibilidad de la barra de herramientas de formato de texto (Negrita, Cursiva, Alineación, Listas)
+  // Oculta si el asistente flotante está activo con espacios pendientes.
+  // Visible si:
+  // 1. Es 'Hoja en Blanco (Redacción Libre)'
+  // 2. Se está editando un documento existente (abierto desde la grilla)
+  // 3. Se completó el 100% de los espacios en blanco (mensajeAsistente === null o totalBlanks === 0)
+  const mostrarBarraHerramientas = 
+    selectedPlantillaId === 'hoja_en_blanco' ||
+    editandoDocumentoExistente ||
+    totalBlanks === 0 ||
+    !mensajeAsistente;
+
+  // =========================================================================
+  // MOTOR DE AUTOCOMPLETADO SILENCIOSO Y CÁLCULOS MATEMÁTICOS (CONTEXT-AWARENESS)
+  // =========================================================================
+  const intentarResolverEspacioSilencioso = (
+    htmlContent: string,
+    memoriaActual: Record<string, any>
+  ): { resolved: boolean; newHtml: string; newMemoria: Record<string, any> } => {
+    let startIndex = -1;
+    let matchLength = 0;
+
+    const spanMatch = htmlContent.match(/<span id="espacio-activo"[^>]*>.*?<\/span>/i);
+    if (spanMatch && spanMatch.index !== undefined) {
+      startIndex = spanMatch.index;
+      matchLength = spanMatch[0].length;
+    } else {
+      const rawMatch = htmlContent.match(/_{3,}/);
+      if (rawMatch && rawMatch.index !== undefined) {
+        startIndex = rawMatch.index;
+        matchLength = rawMatch[0].length;
+      }
+    }
+
+    if (startIndex === -1) {
+      return { resolved: false, newHtml: htmlContent, newMemoria: memoriaActual };
+    }
+
+    const textBefore = htmlContent.substring(0, startIndex);
+    const textAfter = htmlContent.substring(startIndex + matchLength);
+
+    const regexGsAfter = /^\s*(&nbsp;)?\s*\(\s*Gs\.?\s*_{3,}\s*\)/i;
+    const matchGs = textAfter.match(regexGsAfter);
+
+    const plainBefore = textBefore
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim();
+
+    const plainAfter = textAfter
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    const sanitizedWords = plainBefore
+      .replace(/[,;:"'«»“”\(\)]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean);
+
+    const last4Words = sanitizedWords.slice(-4).join(' ').toLowerCase();
+    const last2Words = sanitizedWords.slice(-2).join(' ').toLowerCase();
+    const lastWord = sanitizedWords.slice(-1).join(' ').toLowerCase();
+
+    // 1. REGLA 1: AUTO-CÁLCULO DE VALOR NOMINAL (MATEMÁTICA AUTOMÁTICA)
+    // Cuando el analizador de contexto detecte que el siguiente espacio corresponde al 'Valor nominal'
+    // o 'Monto o Capital Social (Bloque Nominal)', el sistema DEBE calcular automáticamente:
+    // memoria.capitalTotal / memoria.totalAcciones
+    // Luego convertirá el resultado a formato GUARANÍES [LETRAS] (Gs. [NÚMEROS]) y lo inyectará directamente,
+    // saltando la pregunta al usuario.
+    const isValorNominal =
+      last4Words.includes('valor nominal') ||
+      last2Words.includes('valor nominal') ||
+      lastWord === 'nominal';
+
+    const capTotal = typeof memoriaActual.capitalTotal === 'number' && memoriaActual.capitalTotal > 0
+      ? memoriaActual.capitalTotal
+      : (typeof memoriaActual.capital === 'number' && memoriaActual.capital > 0 ? memoriaActual.capital : 0);
+
+    const totAcc = typeof memoriaActual.totalAcciones === 'number' && memoriaActual.totalAcciones > 0
+      ? memoriaActual.totalAcciones
+      : (typeof memoriaActual.acciones === 'number' && memoriaActual.acciones > 0 ? memoriaActual.acciones : 0);
+
+    if (isValorNominal && capTotal > 0 && totAcc > 0) {
+      const valorNominal = Math.floor(capTotal / totAcc);
+      const letras = numeroALetras(valorNominal);
+      const numFormateado = valorNominal.toLocaleString('es-PY');
+      const endsWithGuaranies = /(guaraníes|guaranies)\s*$/i.test(plainBefore);
+
+      let textoFinal = '';
+      let gsBlockLength = 0;
+
+      if (matchGs) {
+        gsBlockLength = matchGs[0].length;
+        if (endsWithGuaranies) {
+          textoFinal = `${letras} (Gs. ${numFormateado})`;
+        } else {
+          textoFinal = `GUARANÍES ${letras} (Gs. ${numFormateado})`;
+        }
+      } else {
+        textoFinal = `${numFormateado} (${letras})`;
+      }
+
+      const newHtml = textBefore + textoFinal + textAfter.substring(gsBlockLength);
+      const newMemoria = { ...memoriaActual, valorNominal, capitalTotal: capTotal, totalAcciones: totAcc };
+      return { resolved: true, newHtml, newMemoria };
+    }
+
+    // 2. REGLA 2: AUTOCOMPLETADO SILENCIOSO - DENOMINACIÓN SOCIAL
+    // Si el espacio requiere el Nombre de la Empresa y ya está en memoria:
+    const isDenominacion =
+      last4Words.includes('denominará') ||
+      last4Words.includes('denominara') ||
+      last4Words.includes('denominada') ||
+      last4Words.includes('denominación') ||
+      last4Words.includes('denominacion') ||
+      (last4Words.includes('sociedad') && plainAfter.startsWith('s.a'));
+
+    if (isDenominacion && memoriaActual.denominacion && memoriaActual.denominacion.trim().length > 0) {
+      const newHtml = textBefore + memoriaActual.denominacion + textAfter;
+      return { resolved: true, newHtml, newMemoria: memoriaActual };
+    }
+
+    // 3. REGLA 2: AUTOCOMPLETADO SILENCIOSO - COMPARECIENTES EN SUSCRIPCIÓN
+    // Si en la suscripción se pide el nombre del socio (ej. "a) _______ suscribe"):
+    const isSuscripcionCompareciente =
+      plainAfter.startsWith('suscribe') ||
+      plainAfter.startsWith('suscriben');
+
+    if (
+      isSuscripcionCompareciente &&
+      Array.isArray(memoriaActual.comparecientes) &&
+      memoriaActual.comparecientes.length > 0
+    ) {
+      const incisoMatch = plainBefore.match(/([a-z]|\d+)\)\s*$/i);
+      let socioIndex = 0;
+      if (incisoMatch) {
+        const letra = incisoMatch[1].toLowerCase();
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+        const foundIdx = alphabet.indexOf(letra);
+        if (foundIdx !== -1) {
+          socioIndex = foundIdx;
+        } else if (/^\d+$/.test(letra)) {
+          socioIndex = parseInt(letra, 10) - 1;
+        }
+      }
+
+      if (socioIndex >= 0 && socioIndex < memoriaActual.comparecientes.length) {
+        const nombreSocio = memoriaActual.comparecientes[socioIndex];
+        const newHtml = textBefore + nombreSocio + textAfter;
+        return { resolved: true, newHtml, newMemoria: memoriaActual };
+      }
+    }
+
+    // 4. REGLA 2: CÁLCULO AUTOMÁTICO DE MONTO SUSCRIPTO POR SOCIO (ACCIONES * VALOR NOMINAL)
+    // Cuando el usuario ingrese la cantidad de acciones que suscribe un socio (ej. 25),
+    // el inmediatamente siguiente espacio de 'Monto en Guaraníes' debe ser autocompletado multiplicando 25 * memoria.valorNominal.
+    const matchAccionesEnLinea = plainBefore.match(/(\d+[\d\.]*)\s+acciones\s+ordinarias,\s+representativas\s+de\s+(guaraníes|guaranies)?\s*$/i) ||
+      plainBefore.match(/(\d+[\d\.]*)\s+acciones.*?representativas\s+de\s+(guaraníes|guaranies)?\s*$/i);
+
+    const cantAccEncontrada = matchAccionesEnLinea
+      ? parseInt(matchAccionesEnLinea[1].replace(/\./g, ''), 10)
+      : (typeof memoriaActual.ultimaAccionesSocio === 'number' && memoriaActual.ultimaAccionesSocio > 0 ? memoriaActual.ultimaAccionesSocio : null);
+
+    const isMontoSuscripcion = plainBefore.includes('representativas de') || last4Words.includes('representativas de') || last4Words.includes('representativa de');
+
+    if (
+      (matchAccionesEnLinea || isMontoSuscripcion) &&
+      cantAccEncontrada &&
+      typeof memoriaActual.valorNominal === 'number' &&
+      memoriaActual.valorNominal > 0
+    ) {
+      const montoSocio = cantAccEncontrada * memoriaActual.valorNominal;
+      const letras = numeroALetras(montoSocio);
+      const numForm = montoSocio.toLocaleString('es-PY');
+      const endsWithGuaranies = /(guaraníes|guaranies)\s*$/i.test(plainBefore);
+
+      let textoFinal = '';
+      let gsBlockLength = 0;
+      if (matchGs) {
+        gsBlockLength = matchGs[0].length;
+        if (endsWithGuaranies) {
+          textoFinal = `${letras} (Gs. ${numForm})`;
+        } else {
+          textoFinal = `GUARANÍES ${letras} (Gs. ${numForm})`;
+        }
+      } else {
+        textoFinal = `${numForm} (${letras})`;
+      }
+
+      const newHtml = textBefore + textoFinal + textAfter.substring(gsBlockLength);
+      const newMemoria = { ...memoriaActual, ultimaAccionesSocio: undefined };
+      return { resolved: true, newHtml, newMemoria };
+    }
+
+    // 5. RECICLAJE DE NOMBRES EN DISPOSICIONES TRANSITORIAS (PRIMER DIRECTORIO)
+    // En el apartado de Disposiciones Transitorias (donde se designa el primer Directorio),
+    // el código debe recuperar automáticamente los nombres de los socios guardados en el estado memoria (memoria.comparecientes)
+    // e inyectarlos directamente en el texto como Presidente y Directores Titulares, sin volver a preguntarle al usuario.
+    const ultimos35 = plainBefore.slice(-35).toLowerCase();
+
+    const isDesignacionPresidente =
+      ultimos35.includes('presidente del directorio') ||
+      ultimos35.includes('presidente:') ||
+      (ultimos35.includes('presidente') && plainBefore.toLowerCase().includes('transitorias'));
+
+    if (
+      isDesignacionPresidente &&
+      Array.isArray(memoriaActual.comparecientes) &&
+      memoriaActual.comparecientes.length > 0
+    ) {
+      const nombrePresidente = memoriaActual.comparecientes[0];
+      const newHtml = textBefore + nombrePresidente + textAfter;
+      return { resolved: true, newHtml, newMemoria: memoriaActual };
+    }
+
+    const isDesignacionDirector =
+      (ultimos35.includes('director titular') ||
+       ultimos35.includes('directores titulares') ||
+       (ultimos35.includes('director') && plainBefore.toLowerCase().includes('transitorias'))) &&
+      !ultimos35.includes('presidente');
+
+    if (
+      isDesignacionDirector &&
+      Array.isArray(memoriaActual.comparecientes) &&
+      memoriaActual.comparecientes.length > 0
+    ) {
+      // Si hay más socios, asigna el socio 2 (o sucesivos según la cantidad de directores ya inyectados)
+      const matchesDirectores = plainBefore.match(/director titular:\s*don\/doña\s+([^;]+)/gi) || [];
+      const indexSocio = 1 + matchesDirectores.length;
+      const nombreDirector = memoriaActual.comparecientes[indexSocio] || memoriaActual.comparecientes[1] || memoriaActual.comparecientes[0];
+      const newHtml = textBefore + nombreDirector + textAfter;
+      return { resolved: true, newHtml, newMemoria: memoriaActual };
+    }
+
+    return { resolved: false, newHtml: htmlContent, newMemoria: memoriaActual };
+  };
+
+  // =========================================================================
+  // FOCO VISUAL, SINCRONIZACIÓN Y AUTO-SCROLL CONTEXTUAL
+  // =========================================================================
+
+  // Resaltado visual del espacio en blanco activo con resolución silenciosa previa:
+  useEffect(() => {
+    if (!mostrarEditor || selectedPlantillaId === 'hoja_en_blanco') return;
+
+    // Si hay espacios en blanco pendientes, verificar si alguno se puede resolver silenciosamente
+    if (/_{3,}/.test(editorText)) {
+      const res = intentarResolverEspacioSilencioso(editorText, memoria);
+      if (res.resolved) {
+        let finalHtml = res.newHtml;
+        let finalMem = res.newMemoria;
+        let maxIt = 15;
+        while (maxIt > 0) {
+          maxIt--;
+          const nextRes = intentarResolverEspacioSilencioso(finalHtml, finalMem);
+          if (nextRes.resolved) {
+            finalHtml = nextRes.newHtml;
+            finalMem = nextRes.newMemoria;
+          } else {
+            break;
+          }
+        }
+
+        if (/_{3,}/.test(finalHtml) && !finalHtml.includes('id="espacio-activo"')) {
+          finalHtml = finalHtml.replace(
+            /_{3,}/,
+            '<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">$&</span>'
+          );
+        }
+
+        setEditorText(finalHtml);
+        setMemoria(finalMem);
+        if (editorContentRef.current) {
+          editorContentRef.current.innerHTML = finalHtml;
+        }
+        return;
+      }
+    }
+
+    if (/_{3,}/.test(editorText) && !editorText.includes('id="espacio-activo"')) {
+      const textoConEspacioActivo = editorText.replace(
+        /_{3,}/,
+        '<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">$&</span>'
+      );
+      setEditorText(textoConEspacioActivo);
+      if (editorContentRef.current) {
+        editorContentRef.current.innerHTML = textoConEspacioActivo;
+      }
+    }
+  }, [mostrarEditor, selectedPlantillaId, editorText, memoria]);
+
+  // Auto-Scroll Contextual (Acompañamiento Dinámico):
+  useEffect(() => {
+    if (!mostrarEditor || totalBlanks === 0) return;
+
+    const timer = setTimeout(() => {
+      const espacioActivo = document.getElementById('espacio-activo');
+      if (espacioActivo) {
+        espacioActivo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [totalBlanks, currentBlankContext?.instruccion, mostrarEditor]);
+
+  // Auto-Focus Directo al Asistente Flotante (Flujo de Teclado Continuo):
+  // Ejecuta un .focus() manual sobre autofillInputRef cada vez que el estado mensajeAsistente
+  // (o el título/instrucción de la ventanita) cambie, asegurando que el cursor no quede atascado en el contentEditable.
+  useEffect(() => {
+    if (mostrarEditor && condicionAutocompletado && mensajeAsistente) {
+      const focusTimer = setTimeout(() => {
+        if (autofillInputRef.current) {
+          autofillInputRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(focusTimer);
+    }
+  }, [mensajeAsistente, currentBlankContext?.instruccion, mostrarEditor, condicionAutocompletado]);
+
+  // =========================================================================
+  // HISTORIAL DE ESTADOS Y DESHACER (RETROCEDER) DEL ASISTENTE FLOTANTE
+  // =========================================================================
+  const handleRetroceder = () => {
+    if (historialTextos.length === 0) return;
+    const nuevoHistorial = [...historialTextos];
+    const textoPrevio = nuevoHistorial.pop();
+    setHistorialTextos(nuevoHistorial);
+    if (textoPrevio !== undefined) {
+      setEditorText(textoPrevio);
+      if (editorContentRef.current) {
+        editorContentRef.current.innerHTML = textoPrevio;
+      }
+      setAutofillInput('');
+      setMostrarTooltipAyuda(false);
+      setTimeout(() => {
+        const espacioActivo = document.getElementById('espacio-activo');
+        if (espacioActivo) {
+          espacioActivo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        autofillInputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  // =========================================================================
+  // INYECCIÓN DE DATOS: MOTOR INTERCEPTOR, SMART REPLACE Y MEMORIA GLOBAL
+  // =========================================================================
+  const handleAplicarAutofill = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const valorOriginal = autofillInput.trim();
+    if (!valorOriginal) return;
+
+    // Guardar copia exacta del texto actual en el historial de estados antes de la inyección
+    const container = editorContentRef.current;
+    const htmlBase = container ? container.innerHTML : editorText;
+    setHistorialTextos(prev => [...prev, htmlBase]);
+
+    // 1. MOTOR INTERCEPTOR DE NÚMEROS A LETRAS
+    const soloDigitos = valorOriginal.replace(/\./g, '').replace(/,/g, '').trim();
+    const esNumeroPuro = /^\d+$/.test(soloDigitos) && soloDigitos.length > 0;
+
+    let textoFinal = '';
+    let numVal = 0;
+    let letras = '';
+    let numFormateado = '';
+
+    if (esNumeroPuro) {
+      numVal = parseInt(soloDigitos, 10);
+      numFormateado = numVal.toLocaleString('es-PY');
+      letras = numeroALetras(numVal);
+      // Formato legal notarial requerido: 50.000.000 (CINCUENTA MILLONES)
+      textoFinal = `${numFormateado} (${letras})`;
+    } else {
+      textoFinal = valorOriginal.toUpperCase();
+    }
+
+    // 2. ACTUALIZACIÓN DEL DICCIONARIO DE MEMORIA (REGLA 1 & REGLA 2)
+    const nuevaMemoria: Record<string, any> = { ...memoria };
+    const instruccionActual = currentBlankContext?.instruccion || '';
+
+    if (
+      instruccionActual.includes('Denominación') ||
+      instruccionActual.includes('Razón Social')
+    ) {
+      const denomLimpia = valorOriginal.toUpperCase().replace(/\s+S\.?A\.?$/i, '').trim();
+      nuevaMemoria.denominacion = denomLimpia;
+    } else if (
+      (instruccionActual.includes('Monto') || instruccionActual.includes('Capital Social')) &&
+      esNumeroPuro
+    ) {
+      nuevaMemoria.capital = numVal;
+      nuevaMemoria.capitalTotal = numVal;
+      nuevaMemoria.capitalFormateado = numFormateado;
+      nuevaMemoria.capitalLetras = letras;
+    } else if (
+      instruccionActual.includes('Cantidad de Acciones') &&
+      !instruccionActual.includes('Suscriptas') &&
+      esNumeroPuro
+    ) {
+      nuevaMemoria.acciones = numVal;
+      nuevaMemoria.totalAcciones = numVal;
+    } else if (
+      instruccionActual.includes('Cantidad de Acciones Suscriptas') &&
+      esNumeroPuro
+    ) {
+      nuevaMemoria.accionesSuscriptas = numVal;
+      nuevaMemoria.ultimaAccionesSocio = numVal;
+    } else if (
+      (instruccionActual.includes('Compareciente') || instruccionActual.includes('Nombre')) &&
+      !instruccionActual.includes('Presidente') &&
+      !instruccionActual.includes('Director') &&
+      !instruccionActual.includes('Síndico')
+    ) {
+      const socioUpper = valorOriginal.toUpperCase().trim();
+      const socios = [...(nuevaMemoria.comparecientes || [])];
+      if (!socios.includes(socioUpper)) {
+        socios.push(socioUpper);
+      }
+      nuevaMemoria.comparecientes = socios;
+    } else if (
+      instruccionActual.includes('Valor Nominal') &&
+      esNumeroPuro
+    ) {
+      nuevaMemoria.valorNominal = numVal;
+    }
+
+    // 3. INYECCIÓN LIMPIA CON SMART REPLACE (REGLA 3: Inyección de Bloques Monetarios)
+    // Si el asistente pide un monto y el documento tiene el formato GUARANÍES _______ (Gs. _______) o similar,
+    // al ingresar un número (ej. 50000000), formatea y reemplaza el bloque completo por
+    // GUARANÍES CINCUENTA MILLONES (Gs. 50.000.000), evitando espacios residuales o duplicaciones.
+
+    let startIndex = -1;
+    let matchLength = 0;
+
+    const spanMatch = htmlBase.match(/<span id="espacio-activo"[^>]*>.*?<\/span>/i);
+    if (spanMatch && spanMatch.index !== undefined) {
+      startIndex = spanMatch.index;
+      matchLength = spanMatch[0].length;
+    } else {
+      const rawMatch = htmlBase.match(/_{3,}/);
+      if (rawMatch && rawMatch.index !== undefined) {
+        startIndex = rawMatch.index;
+        matchLength = rawMatch[0].length;
+      }
+    }
+
+    let nuevoHtml = '';
+    if (startIndex !== -1) {
+      const textBefore = htmlBase.substring(0, startIndex);
+      const textAfter = htmlBase.substring(startIndex + matchLength);
+
+      const regexGs = /^\s*(&nbsp;)?\s*\(\s*Gs\.?\s*_{3,}\s*\)/i;
+      const matchGs = textAfter.match(regexGs);
+
+      const plainBefore = textBefore
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[\r\n\t]+/g, ' ')
+        .trim();
+
+      const endsWithGuaranies = /(guaraníes|guaranies)\s*$/i.test(plainBefore);
+
+      if (matchGs && esNumeroPuro) {
+        const gsBlockLength = matchGs[0].length;
+        const bloqueMonetario = endsWithGuaranies
+          ? `${letras} (Gs. ${numFormateado})`
+          : `GUARANÍES ${letras} (Gs. ${numFormateado})`;
+        nuevoHtml = textBefore + bloqueMonetario + textAfter.substring(gsBlockLength);
+      } else {
+        nuevoHtml = textBefore + textoFinal + textAfter;
+      }
+    } else {
+      nuevoHtml = htmlBase;
+    }
+
+    // 4. BUCLE DE AUTOCOMPLETADO SILENCIOSO Y CÁLCULOS MATEMÁTICOS (REGLAS 2 Y 4)
+    // Inyecta automáticamente datos ya presentes en memoria o calcula automáticamente
+    // el valor nominal / montos suscriptos sin volver a solicitar datos redundantes.
+    let iterHtml = nuevoHtml;
+    let iterMemoria = nuevaMemoria;
+    let continueResolving = true;
+    let maxIterations = 20;
+
+    while (continueResolving && maxIterations > 0) {
+      maxIterations--;
+      const res = intentarResolverEspacioSilencioso(iterHtml, iterMemoria);
+      if (res.resolved) {
+        iterHtml = res.newHtml;
+        iterMemoria = res.newMemoria;
+      } else {
+        continueResolving = false;
+      }
+    }
+
+    // 5. RESALTAR EL SIGUIENTE ESPACIO VACÍO PENDIENTE (SI QUEDAN MÁS)
+    if (/_{3,}/.test(iterHtml)) {
+      iterHtml = iterHtml.replace(
+        /_{3,}/,
+        '<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">$&</span>'
+      );
+    }
+
+    if (container) {
+      container.innerHTML = iterHtml;
+    }
+    setEditorText(iterHtml);
+    setMemoria(iterMemoria);
+    setAutofillInput('');
+    setMostrarTooltipAyuda(false);
+
+    // Si ya no quedan espacios en blanco, scroll suave al inicio
+    if (!/_{3,}/.test(iterHtml)) {
+      setTimeout(() => {
+        const bloque = document.getElementById('editor-notarial-activo-bloque');
+        bloque?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    } else {
+      setTimeout(() => {
+        autofillInputRef.current?.focus();
+      }, 50);
+    }
+  };
 
   // Click outside listener para menú contextual
   useEffect(() => {
@@ -744,11 +1816,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   };
 
   // Manejo del selector de plantillas:
-  // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega el Editor Notarial Activo.
+  // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega inmediatamente el Editor Notarial Activo.
   const handleSelectPlantilla = (plantillaId: string) => {
     if (!plantillaId) return;
     setMostrarEditor(true);
+    setEditandoDocumentoExistente(false);
     setSelectedPlantillaId(plantillaId);
+    setMemoria({});
 
     const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
     if (!found || plantillaId === 'hoja_en_blanco') {
@@ -757,23 +1831,46 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setDocumentTitle('Escrito en Blanco');
       setSelectedCategoryForSave('Contratos Privados');
     } else if (plantillaId === 'constitucion_sa') {
-      const personaActiva = getPersonaActiva();
-      const textoConstruido = construirConstitucionSA(2, personaActiva);
+      // Generador Dinámico de Socios (Prompt Inicial):
+      // Pregunta al usuario la cantidad de socios que conformarán la S.A.
+      let numSocios = 2;
+      try {
+        const respuestaPrompt = window.prompt('¿Cuántos socios conformarán la S.A.? (Ej. 2, 3, 4)', '2');
+        if (respuestaPrompt !== null) {
+          const parsed = parseInt(respuestaPrompt.trim(), 10);
+          if (!isNaN(parsed) && parsed >= 1) {
+            numSocios = parsed;
+          }
+        }
+      } catch (err) {
+        console.warn('Error al solicitar cantidad de socios:', err);
+      }
+
+      // Reconstruye el texto con N comparecientes sin datos pre-cargados de usuario
+      const textoConstruido = construirConstitucionSA(numSocios);
       setEditorText(textoConstruido);
       setDocumentTitle('Constitución de S.A.');
       setSelectedCategoryForSave('Contratos Privados');
     } else {
-      const personaActiva = getPersonaActiva();
-      const textoProcesado = procesarAutofillPlantilla(found.contenido, personaActiva);
+      // Plantillas limpias con espacios en blanco (_______)
+      const textoProcesado = procesarAutofillPlantilla(found.contenido);
       setEditorText(textoProcesado);
       setDocumentTitle(found.nombre);
       setSelectedCategoryForSave(found.categoriaSugerida);
     }
 
     setTimeout(() => {
-      if (editorTextareaRef.current) {
-        editorTextareaRef.current.focus();
-        editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const editorBloque = document.getElementById('editor-notarial-activo-bloque');
+      if (editorBloque) {
+        editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (plantillaId === 'hoja_en_blanco') {
+        if (editorContentRef.current) {
+          editorContentRef.current.focus();
+        }
+      } else {
+        // En plantillas con autocompletado, enfocar de inmediato el campo del Asistente Flotante
+        autofillInputRef.current?.focus();
       }
     }, 100);
   };
@@ -781,10 +1878,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Botón explícito para '+ Nuevo Escrito' (despliega el editor en hoja limpia)
   const handleNuevoEscrito = () => {
     setSelectedPlantillaId('hoja_en_blanco');
+    setEditandoDocumentoExistente(false);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
     setMostrarEditor(true);
+    setMemoria({});
     setTimeout(() => {
       if (editorTextareaRef.current) {
         editorTextareaRef.current.focus();
@@ -799,9 +1898,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Botón explícito para limpiar completamente el editor (Hoja en Blanco)
   const handleLimpiarEditor = () => {
     setSelectedPlantillaId('hoja_en_blanco');
+    setEditandoDocumentoExistente(false);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
+    setMemoria({});
   };
 
   // Copiar contenido al portapapeles
@@ -830,8 +1931,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const tipoDoc = documentTitle.trim() || 'Escrito Notarial';
       const cat = selectedCategoryForSave || 'Contratos Privados';
 
+      // Limpiar etiquetas temporales de resaltado antes de persistir
+      const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
+
       const nuevoDocData = {
-        texto: editorText,
+        texto: textoLimpio,
         tipo: tipoDoc,
         userId: user.uid,
         categoria: cat,
@@ -845,7 +1949,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         const rawTemp = localStorage.getItem('escritos_temporales');
         const list = rawTemp ? JSON.parse(rawTemp) : [];
         list.push({
-          texto: editorText,
+          texto: textoLimpio,
           tipo: tipoDoc,
           userId: user.uid,
           categoria: cat,
@@ -858,6 +1962,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
       // 3. Cerrar Editor Post-Guardado: la hoja se oculta y la vista regresa al gestor documental
       setMostrarEditor(false);
+      setSelectedPlantillaId('');
 
       // 4. Mensaje Verde de Éxito con Toast
       const mensajeFinal = `¡"${tipoDoc}" guardado exitosamente en la carpeta ${cat}!`;
@@ -883,7 +1988,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Imprimir / Descargar como PDF con los estilos de la hoja notarial (Legal/Oficio y márgenes paraguayos)
   const handleImprimirPDF = () => {
-    const content = editorContentRef.current?.innerHTML || editorText;
+    const rawContent = editorContentRef.current?.innerHTML || editorText;
+    const content = rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
     if (!content || !content.trim()) {
       alert('El documento está vacío. Escriba o seleccione una plantilla antes de imprimir.');
       return;
@@ -1149,10 +2255,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Cargar documento seleccionado en el Editor Notarial Activo
   const handleEditarDocumento = (escrito: Escrito) => {
     setMostrarEditor(true);
+    setEditandoDocumentoExistente(true);
+    setSelectedPlantillaId('');
     setEditorText(escrito.texto);
     setDocumentTitle(escrito.tipo.replace(' (Guardado Local)', ''));
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
     setPreviewMode(false);
+    setMemoria({});
 
     try {
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, escrito.texto);
@@ -1281,42 +2390,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const charCount = cleanText.length;
 
   return (
-    <div className="space-y-8">
-      {/* Cabecera Principal Unificada */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">Gestión de Escritos y Notaría</h2>
-            <span className="px-2.5 py-0.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg">
-              O.L.G.A.
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Entorno ergonómico unificado: Redacción asistida con IA (izquierda), Editor Notarial Activo (derecha) y Gestión Documental estilo Google Drive (inferior).
-          </p>
-        </div>
-
-        {/* Resumen de Estado y Acceso Directo a Drive */}
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
-          <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
-            <span>{escritos.length} Documentos en Archivo</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('seccion-gestion-documental');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-          >
-            <FolderInput className="w-3.5 h-3.5 text-[#FF3131]" />
-            <span>Ver Archivo Documental ↓</span>
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-8 animate-in fade-in duration-300">
       {/* Toast Flotante de Éxito Post-Guardado (Diseño Verde Enterprise) */}
       {mensajeExito && (
         <div className="fixed top-6 right-6 z-50 max-w-md bg-green-50 border border-green-200 text-green-800 px-4 py-3.5 rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -1358,9 +2432,47 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       )}
 
       {/* ========================================================================= */}
-      {/* 1. PANEL SUPERIOR: DOS COLUMNAS (SIEMPRE VISIBLE)                          */}
+      {/* 1. MODO DASHBOARD: VISIBLE ÚNICAMENTE CUANDO mostrarEditor ES FALSE        */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      {!mostrarEditor && (
+        <>
+          {/* Cabecera Principal Unificada */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Gestión de Escritos y Notaría</h2>
+                <span className="px-2.5 py-0.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg">
+                  O.L.G.A.
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                Entorno ergonómico unificado: Redacción asistida con IA (izquierda), Editor Notarial Activo (derecha) y Gestión Documental estilo Google Drive (inferior).
+              </p>
+            </div>
+
+            {/* Resumen de Estado y Acceso Directo a Drive */}
+            <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
+                <span>{escritos.length} Documentos en Archivo</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('seccion-gestion-documental');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+              >
+                <FolderInput className="w-3.5 h-3.5 text-[#FF3131]" />
+                <span>Ver Archivo Documental ↓</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 1. PANEL SUPERIOR: DOS COLUMNAS */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
 
         {/* ----------------------------------------------------------------------- */}
         {/* PANEL SUPERIOR - IZQUIERDA (lg:col-span-6): BANNER COMPACTO IA          */}
@@ -1452,10 +2564,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               </label>
               <select
                 value={selectedPlantillaId}
-                onChange={(e) => handleSelectPlantilla(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedPlantillaId(val);
+                  if (val && val.trim() !== '') {
+                    setMostrarEditor(true);
+                    handleSelectPlantilla(val);
+                  }
+                }}
                 className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-2xl px-3.5 py-3 text-xs font-bold text-slate-900 outline-none transition-colors shadow-inner cursor-pointer"
               >
-                <option value="">-- Seleccione una Plantilla Notarial --</option>
+                <option value="" disabled>Seleccione un modelo para abrir el editor...</option>
                 <option value="hoja_en_blanco">📄 Hoja en Blanco (Redacción Libre)</option>
                 {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
                   <option key={plantilla.id} value={plantilla.id}>
@@ -1484,7 +2603,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             {mostrarEditor && (
               <button
                 type="button"
-                onClick={() => setMostrarEditor(false)}
+                onClick={() => {
+                  setMostrarEditor(false);
+                  setSelectedPlantillaId('');
+                }}
                 className="py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-colors border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
                 title="Ocultar editor notarial"
               >
@@ -1494,40 +2616,47 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             )}
           </div>
         </div>
-
       </div>
+    </>
+  )}
 
       {/* ========================================================================= */}
-      {/* 2. CUERPO CENTRAL: EDITOR NOTARIAL ACTIVO (CONDICIONAL: mostrarEditor)    */}
+      {/* 2. CUERPO CENTRAL: EDITOR NOTARIAL ACTIVO (MODO DE ENFOQUE TOTAL)         */}
       {/* ========================================================================= */}
       {mostrarEditor && (
-        <div id="editor-notarial-activo-bloque" className="relative bg-white rounded-3xl shadow-sm border border-slate-200 animate-in fade-in slide-in-from-top-4 duration-300">
-          {/* CABECERA FLOTANTE (STICKY TOOLBAR ESTILO WORD) */}
-          <div className="sticky top-0 z-50 bg-slate-50/95 backdrop-blur-md border-b border-slate-200 shadow-sm w-full pt-4 pb-3 px-4 md:px-8 mb-8 transition-all space-y-3.5 rounded-t-3xl">
-            {/* Fila superior: Título del editor y estadísticas */}
+        <div id="editor-notarial-activo-bloque" className="min-h-screen bg-slate-100 relative -m-4 sm:-m-6 md:-m-8 p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
+          {/* CABECERA FLOTANTE FIJA (FIXED TOOLBAR ESTILO WORD) - SIEMPRE ACCESIBLE */}
+          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 md:px-8 pt-3 pb-3 transition-all space-y-3">
+            {/* Fila superior: Botón '⬅ Volver (ESC)', Título del editor y estadísticas */}
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
-              <span className="uppercase tracking-widest text-slate-700 flex items-center gap-2">
-                <Edit3 className="w-4 h-4 text-[#FF3131]" />
-                <span className="font-black text-slate-900 text-xs">
-                  {previewMode ? 'MODO LECTURA / PREVISUALIZACIÓN' : 'EDITOR NOTARIAL ACTIVO'}
-                </span>
-              </span>
-              <div className="flex items-center gap-3 font-mono text-[10px]">
-                <span>{wordCount} palabras</span>
-                <span>•</span>
-                <span>{charCount} caracteres</span>
-                <span>•</span>
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setMostrarEditor(false)}
-                  className="font-sans font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer hover:underline"
-                  title="Ocultar editor notarial"
+                  onClick={() => {
+                    setMostrarEditor(false);
+                    setSelectedPlantillaId('');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs cursor-pointer active:scale-95 shrink-0"
+                  title="Volver al dashboard principal de archivos (ESC)"
                 >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                  <span>Ocultar Editor</span>
+                  <ArrowLeft className="w-3.5 h-3.5 text-slate-700" />
+                  <span>⬅ Volver (ESC)</span>
                 </button>
+
+                  <span className="uppercase tracking-widest text-slate-700 flex items-center gap-2 border-l border-slate-200 pl-3">
+                    <Edit3 className="w-4 h-4 text-[#FF3131]" />
+                    <span className="font-black text-slate-900 text-xs">
+                      {previewMode ? 'MODO LECTURA / PREVISUALIZACIÓN' : 'EDITOR NOTARIAL ACTIVO'}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 font-mono text-[10px]">
+                  <span>{wordCount} palabras</span>
+                  <span>•</span>
+                  <span>{charCount} caracteres</span>
+                </div>
               </div>
-            </div>
 
             {/* CAMPOS: TÍTULO DEL ESCRITO Y CARPETA DE ARCHIVO */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
@@ -1646,146 +2775,148 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               </div>
             </div>
 
-            {/* BARRA DE HERRAMIENTAS (TOOLBAR MINIMALISTA TIPO WORD) */}
-            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner">
-              {/* Formato de Texto: Negrita, Cursiva, Subrayado */}
-              <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('bold')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.bold
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Negrita"
-                >
-                  <Bold className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('italic')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.italic
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Cursiva"
-                >
-                  <Italic className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('underline')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.underline
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Subrayado"
-                >
-                  <Underline className="w-4 h-4" />
-                </button>
-              </div>
+            {/* BARRA DE HERRAMIENTAS (TOOLBAR MINIMALISTA TIPO WORD) - CONDICIONAL INTELIGENTE */}
+            {mostrarBarraHerramientas && (
+              <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner animate-in fade-in duration-200">
+                {/* Formato de Texto: Negrita, Cursiva, Subrayado */}
+                <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('bold')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.bold
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Negrita"
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('italic')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.italic
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Cursiva"
+                  >
+                    <Italic className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('underline')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.underline
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Subrayado"
+                  >
+                    <Underline className="w-4 h-4" />
+                  </button>
+                </div>
 
-              {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
-              <div className="flex items-center gap-1 px-2.5 border-r border-slate-200">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('justifyLeft')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.justifyLeft
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Alinear a la Izquierda"
-                >
-                  <AlignLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('justifyCenter')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.justifyCenter
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Centrar"
-                >
-                  <AlignCenter className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('justifyRight')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.justifyRight
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Alinear a la Derecha"
-                >
-                  <AlignRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('justifyFull')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.justifyFull
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Justificar"
-                >
-                  <AlignJustify className="w-4 h-4" />
-                </button>
-              </div>
+                {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
+                <div className="flex items-center gap-1 px-2.5 border-r border-slate-200">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('justifyLeft')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.justifyLeft
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Alinear a la Izquierda"
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('justifyCenter')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.justifyCenter
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Centrar"
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('justifyRight')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.justifyRight
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Alinear a la Derecha"
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('justifyFull')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.justifyFull
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Justificar"
+                  >
+                    <AlignJustify className="w-4 h-4" />
+                  </button>
+                </div>
 
-              {/* Listas: Desordenada, Ordenada */}
-              <div className="flex items-center gap-1 pl-1">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('insertUnorderedList')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.insertUnorderedList
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Lista con viñetas"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeCommand('insertOrderedList')}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    activeFormats.insertOrderedList
-                      ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
-                  }`}
-                  title="Lista numerada"
-                >
-                  <ListOrdered className="w-4 h-4" />
-                </button>
-              </div>
+                {/* Listas: Desordenada, Ordenada */}
+                <div className="flex items-center gap-1 pl-1">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('insertUnorderedList')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.insertUnorderedList
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Lista con viñetas"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeCommand('insertOrderedList')}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      activeFormats.insertOrderedList
+                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
+                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                    }`}
+                    title="Lista numerada"
+                  >
+                    <ListOrdered className="w-4 h-4" />
+                  </button>
+                </div>
 
-              <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Hoja de Protocolo Notarial (Oficio)</span>
+                <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Hoja de Protocolo Notarial (Oficio)</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* SIMULACIÓN DE HOJA DE PROTOCOLO NOTARIAL (MESA DE TRABAJO / ESCRITORIO NOTARIAL) */}
-          <div className="relative z-10 px-4 md:px-8 pb-8">
+          <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
             <div className="bg-slate-200/50 py-10 sm:py-12 px-4 sm:px-8 rounded-3xl border border-slate-200/80 overflow-x-auto flex justify-center shadow-inner">
               <style>{`
                 #editor-notarial-activo ul,
@@ -1828,7 +2959,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
           {/* Aviso Notarial Mandatorio */}
           <div className="px-4 md:px-8 pb-6">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5 text-[11px] text-slate-600 font-medium">
+            <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5 text-[11px] text-slate-600 font-medium shadow-xs">
               <AlertCircle className="w-4 h-4 text-[#FF3131] shrink-0" />
               <span>
                 <strong>Aviso Legal Notarial:</strong> Todo documento generado en este sistema es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
@@ -1839,9 +2970,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       )}
 
       {/* ========================================================================= */}
-      {/* 2. SECCIÓN INFERIOR DE ARCHIVOS Y CARPETAS (ESTILO GOOGLE DRIVE)          */}
+      {/* 3. SECCIÓN INFERIOR DE ARCHIVOS Y CARPETAS (DASHBOARD DOCUMENTAL)         */}
       {/* ========================================================================= */}
-      <div id="seccion-gestion-documental" className="space-y-6 pt-4 border-t border-slate-200">
+      {!mostrarEditor && (
+        <div id="seccion-gestion-documental" className="space-y-6 pt-4 border-t border-slate-200">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col gap-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -2123,6 +3255,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           </div>
         )}
       </div>
+    )}
 
       {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
       {docToDelete && (
@@ -2457,6 +3590,116 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. ASISTENTE FLOTANTE DE AUTOCOMPLETADO (AUTOFILL WIZARD)                  */}
+      {/* ========================================================================= */}
+      {mostrarEditor && condicionAutocompletado && currentBlankContext && (
+        <aside
+          role="region"
+          aria-label="Asistente de Autocompletado Notarial"
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-white shadow-2xl rounded-3xl border border-slate-200/90 ring-1 ring-slate-100 p-4 sm:p-5 max-w-lg w-[92%] sm:w-[90%] animate-in fade-in slide-in-from-bottom-6 duration-300 transition-all backdrop-blur-sm"
+        >
+          {/* Cabecera del Wizard: Instrucción y Contador */}
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FF3131] animate-pulse shrink-0"></span>
+              <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate">
+                {currentBlankContext.instruccion}
+              </h4>
+
+              {/* Botón de Ayuda (?) con Tooltip Notarial */}
+              <div className="relative inline-block shrink-0">
+                <button
+                  type="button"
+                  onMouseEnter={() => setMostrarTooltipAyuda(true)}
+                  onMouseLeave={() => setMostrarTooltipAyuda(false)}
+                  onClick={() => setMostrarTooltipAyuda(!mostrarTooltipAyuda)}
+                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Ver explicación y ejemplos legales"
+                  aria-label="Información de ayuda"
+                >
+                  <HelpCircle className="w-4 h-4 text-slate-400" />
+                </button>
+
+                {mostrarTooltipAyuda && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
+                    <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
+                      Guía Notarial de Llenado
+                    </p>
+                    <p className="text-slate-200 leading-relaxed font-normal">
+                      {currentBlankContext.ayuda}
+                    </p>
+                    <div className="w-2 h-2 bg-slate-900 rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Contador de Espacios Pendientes */}
+              <div className="px-2.5 py-1 bg-slate-100 rounded-xl text-[10px] font-mono font-black text-slate-600 border border-slate-200">
+                {totalBlanks} {totalBlanks === 1 ? 'campo pendiente' : 'campos pendientes'}
+              </div>
+
+              {/* Botón Salir / Volver (ESC) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMostrarEditor(false);
+                  setSelectedPlantillaId('');
+                }}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Cerrar editor y volver al dashboard (ESC)"
+                aria-label="Cerrar editor"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Formulario de Inserción Rápida con Enter */}
+          <form onSubmit={handleAplicarAutofill} className="mt-3 flex items-center gap-2">
+            {/* Botón '↩ Retroceder' (Deshacer) */}
+            <button
+              type="button"
+              onClick={handleRetroceder}
+              disabled={historialTextos.length === 0}
+              className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
+              title="Retroceder al paso anterior (Deshacer última inserción)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+              <span className="hidden sm:inline">Retroceder</span>
+            </button>
+
+            <input
+              ref={autofillInputRef}
+              type="text"
+              autoFocus={true}
+              value={autofillInput}
+              onChange={(e) => setAutofillInput(e.target.value)}
+              placeholder={currentBlankContext.placeholder}
+              className="flex-1 box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] focus:bg-white rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-all shadow-inner placeholder:text-slate-400 placeholder:font-normal"
+            />
+
+            <button
+              type="submit"
+              disabled={!autofillInput.trim()}
+              className="py-2.5 px-4 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 disabled:hover:bg-[#FF3131] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer"
+              title="Insertar valor y avanzar al siguiente espacio (Enter)"
+            >
+              <span>Completar</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
+
+          {/* Pista de teclado */}
+          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-medium px-1">
+            <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para insertar y pasar al siguiente</span>
+            <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
+          </div>
+        </aside>
       )}
     </div>
   );
