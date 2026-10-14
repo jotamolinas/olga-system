@@ -1531,6 +1531,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <ConfiguracionTab 
                 onConfigUpdate={(data) => setCustomBranding(data)} 
                 pagares={pagares} 
+                userPlan={userProfile?.planActual || userProfile?.plan || activePlan}
+                userData={userProfile}
               />
             )}
 
