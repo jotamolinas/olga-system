@@ -35,6 +35,7 @@ import { FichaProfesional } from './components/FichaProfesional';
 import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
 import { ConfiguracionTab } from './components/ConfiguracionTab';
 import { NotificationBell } from './components/NotificationBell';
+import { RegistroOperador } from './components/RegistroOperador';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -281,6 +282,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // Authentication & Roles state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const { pruebaActiva, diasRestantes, userData } = useTrialStatus(currentUser);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [isCheckingProfile, setIsCheckingProfile] = useState(true);
+  const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
   const [olgaDocsCount, setOlgaDocsCount] = useState<number>(0);
 
   useEffect(() => {
@@ -288,9 +292,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       setOlgaDocsCount(0);
       return;
     }
+    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+    const workspaceId = isOperador
+      ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || currentUser.uid)
+      : currentUser.uid;
+
     const q = query(
       collection(db, 'documentos_olga'),
-      where('userId', '==', currentUser.uid)
+      where('userId', '==', workspaceId)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setOlgaDocsCount(snapshot.size);
@@ -298,10 +307,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       console.error("Error with olga docs snapshot:", error);
     });
     return () => unsubscribe();
-  }, [currentUser]);
-  const [isCheckingProfile, setIsCheckingProfile] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
+  }, [currentUser, userProfile?.rol, userProfile?.tenant_id, userData?.tenant_id]);
   
   // Plan selection and Checkout Modal state
   const [activePlan, setActivePlan] = useState<'ninguno' | 'Intermedio' | 'Pro'>('ninguno');
@@ -578,12 +584,17 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   useEffect(() => {
     // Usamos el estado 'currentUser' de React para que espere pacientemente a Firebase
-    if (!currentUser?.uid || !userProfile || !userProfile.perfilCompletado) return;
+    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+    if (!currentUser?.uid || !userProfile || (!userProfile.perfilCompletado && !isOperador)) return;
 
     const uid = currentUser.uid;
+    const workspaceId = isOperador
+      ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || uid)
+      : uid;
+
     Promise.all([
-      fetchPersonasFromFirestore(uid).catch(e => { console.warn('Fetch personas err', e); return []; }),
-      fetchKnowledgeDocsFromFirestore(uid).catch(e => { console.warn('Fetch docs err', e); return []; })
+      fetchPersonasFromFirestore(workspaceId).catch(e => { console.warn('Fetch personas err', e); return []; }),
+      fetchKnowledgeDocsFromFirestore(workspaceId).catch(e => { console.warn('Fetch docs err', e); return []; })
     ]).then(([pers, docs]) => {
       if (pers && pers.length > 0) {
         setPersonas(pers);
@@ -599,7 +610,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     
     const qPagares = isAdmin 
       ? query(collection(db, 'pagares'))
-      : query(collection(db, 'pagares'), where('userId', '==', uid));
+      : query(collection(db, 'pagares'), where('userId', '==', workspaceId));
       
     const unsubscribePagares = onSnapshot(qPagares, (snapshot) => {
       try {
@@ -607,14 +618,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         
         snapshot.forEach(doc => {
           const data = doc.data() as any;
-          // Si es admin, mostramos todo. Si no, mostramos solo lo del usuario.
-          if (isAdmin || data.userId === uid || data.creator_id === uid || data.email === userEmail || data.userEmail === userEmail) {
+          // Si es admin o pertenece al workspace/usuario/creador
+          if (isAdmin || data.userId === workspaceId || data.userId === uid || data.creator_id === uid || data.createdBy === uid || data.email === userEmail || data.userEmail === userEmail) {
             delete data.userId;
             pags.push({ ...data, id: doc.id } as Pagare);
           }
         });
         
-        console.log("RADAR FIREBASE - Pagarés filtrados:", pags);
+        console.log("RADAR FIREBASE - Pagarés filtrados del workspace:", pags);
         setPagares(pags);
         try {
           localStorage.setItem('olga_pagares', JSON.stringify(pags));
@@ -629,7 +640,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => {
       unsubscribePagares();
     };
-  }, [currentUser?.uid, userProfile?.perfilCompletado]);
+  }, [currentUser?.uid, userProfile?.perfilCompletado, userProfile?.rol, userProfile?.tenant_id, userData?.tenant_id]);
 
   useEffect(() => {
     localStorage.setItem('ihara_config', JSON.stringify(config));
@@ -695,7 +706,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return <LoginScreen onLogin={() => {}} />;
   }
 
-  const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com";
+  const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+  const workspaceId = isOperador
+    ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || currentUser?.uid)
+    : currentUser?.uid;
+
+  const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com" || isOperador;
   if (!skipOnboarding && (!userProfile || !userProfile.perfilCompletado)) {
     return (
       <FichaProfesional 
@@ -727,7 +743,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
-    if (currentUser) syncPersonaToFirestore(currentUser.uid, newPersona);
+    if (workspaceId) syncPersonaToFirestore(workspaceId, newPersona);
     return true;
   };
 
@@ -739,7 +755,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
-    if (currentUser) syncPersonaToFirestore(currentUser.uid, updatedPersona);
+    if (workspaceId) syncPersonaToFirestore(workspaceId, updatedPersona);
   };
 
   const handleDeletePersona = (id: string) => {
@@ -757,7 +773,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const handleAddPagare = (newPagare: Pagare) => {
     const pag = {
       ...newPagare,
-      userId: currentUser?.uid || '',
+      userId: workspaceId || currentUser?.uid || '',
+      creator_id: currentUser?.uid,
       created_at: newPagare.created_at || new Date().toISOString(),
       status: newPagare.status || 'activo'
     };
@@ -768,8 +785,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
-    if (currentUser) {
-      syncPagareToFirestore(currentUser.uid, pag).catch(e => console.error("Error saving pagare:", e));
+    if (workspaceId) {
+      syncPagareToFirestore(workspaceId, pag).catch(e => console.error("Error saving pagare:", e));
     }
   };
 
@@ -781,10 +798,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
-    if (currentUser) {
-      updatePagareInFirestore(currentUser.uid, {
+    if (workspaceId) {
+      updatePagareInFirestore(workspaceId, {
         ...updatedPagare,
-        userId: currentUser.uid
+        userId: workspaceId
       }).catch(e => console.error("Error saving pagare:", e));
     }
   };
@@ -1259,6 +1276,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
         {/* Upgrade Banner in sidebar */}
         {(() => {
+          const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+          if (isOperador) return null;
+
           const plan = userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '';
 
           if (plan.includes('full')) {
@@ -1357,6 +1377,18 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2 md:gap-3 shrink-0">
             {/* INICIO DEL BLOQUE DE INSIGNIAS CONDICIONALES ACTUALIZADO MANUALMENTE */}
 {(() => {
+  const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+  if (isOperador) {
+    return (
+      <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
+        <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
+          <span>OPERADOR NOTARIAL</span>
+        </span>
+      </div>
+    );
+  }
+
   const rawPlan = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'VACIO';
   const currentPlan = String(rawPlan).trim().toLowerCase();
   
@@ -1422,6 +1454,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 })()}
 
             {(() => {
+              const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
+              if (isOperador) return null;
               const planActivoBtn = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
               return !planActivoBtn.includes('pro') && !planActivoBtn.includes('empresa') && !planActivoBtn.includes('full');
             })() && (
@@ -2003,6 +2037,7 @@ export default function App() {
       <Route path="/admin" element={<AdminLoginRoute />} />
       <Route path="/consola" element={<ConsolaApp />} />
       <Route path="/consola/admin" element={<ConsolaApp forceAdmin={true} />} />
+      <Route path="/registro-operador" element={<RegistroOperador />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

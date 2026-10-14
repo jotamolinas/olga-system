@@ -7,9 +7,10 @@ interface ModalGuardarDocumentoProps {
   onClose: () => void;
   onConfirm: (categoria: string) => void;
   userCarpetas?: { id: string, nombre: string, orden: number, predeterminada: boolean }[];
+  workspaceId?: string;
 }
 
-export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ onClose, onConfirm, userCarpetas }) => {
+export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ onClose, onConfirm, userCarpetas, workspaceId }) => {
   const [categorias, setCategorias] = useState<string[]>(['Compraventa', 'Pagarés', 'Alquiler', 'Contratos Privados', 'Traspasos']);
   const [carpetaSeleccionada, setCarpetaSeleccionada] = useState(categorias[0]);
   const [nuevaCarpetaNombre, setNuevaCarpetaNombre] = useState('');
@@ -40,9 +41,10 @@ export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ on
            sortedNames = ['Compraventa', 'Pagarés', 'Alquiler', 'Contratos Privados', 'Traspasos'];
         }
 
+        const targetUserId = workspaceId || auth.currentUser.uid;
         const q = query(
           collection(db, 'documentos_olga'),
-          where('userId', '==', auth.currentUser.uid)
+          where('userId', '==', targetUserId)
         );
         const snapshot = await getDocs(q);
         const cats = new Set<string>();

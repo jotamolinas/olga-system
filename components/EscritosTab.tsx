@@ -1722,7 +1722,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
-    const q = query(collection(db, 'documentos_olga'), where('userId', '==', user.uid));
+    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+    const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user.uid) : user.uid;
+
+    const q = query(collection(db, 'documentos_olga'), where('userId', '==', workspaceId));
     const unsubscribe = onSnapshot(
       q,
       (querySnapshot) => {
@@ -1934,10 +1937,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       // Limpiar etiquetas temporales de resaltado antes de persistir
       const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
 
+      const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+      const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user.uid) : user.uid;
+
       const nuevoDocData = {
         texto: textoLimpio,
         tipo: tipoDoc,
-        userId: user.uid,
+        userId: workspaceId,
+        createdBy: user.uid,
         categoria: cat,
         createdAt: new Date().toISOString()
       };
@@ -2327,9 +2334,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           ...prev
         ]);
       } else {
+        const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+        const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user?.uid) : user?.uid;
         const { id, ...dataToCopy } = escrito;
         await addDoc(collection(db, 'documentos_olga'), {
           ...dataToCopy,
+          userId: workspaceId,
+          createdBy: user?.uid,
           tipo: nuevoTipo,
           createdAt: new Date().toISOString()
         });
@@ -3297,7 +3308,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           isOpen={isAdminModalOpen}
           onClose={() => setIsAdminModalOpen(false)}
           carpetasActuales={allCarpetasToAdmin}
-          userId={currentUser.uid}
+          userId={(userProfile?.rol === 'operador' || userProfile?.role === 'operador') ? (userProfile?.tenant_id || userProfile?.tenantId || currentUser.uid) : currentUser.uid}
         />
       )}
 

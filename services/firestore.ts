@@ -6,15 +6,17 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'personas', persona.id);
   const cleanPersona = JSON.parse(JSON.stringify(persona));
-  await setDoc(docRef, { ...cleanPersona, userId: auth.currentUser.uid });
+  const effectiveUserId = userId || auth.currentUser.uid;
+  await setDoc(docRef, { ...cleanPersona, userId: effectiveUserId, createdBy: auth.currentUser.uid }, { merge: true });
 };
 
-export const fetchPersonasFromFirestore = async (userId: string): Promise<Persona[]> => {
+export const fetchPersonasFromFirestore = async (userId?: string): Promise<Persona[]> => {
   if (!auth?.currentUser?.uid) return [];
   const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
+  const effectiveUserId = userId || auth.currentUser.uid;
   const q = isAdmin 
     ? query(collection(db, 'personas'))
-    : query(collection(db, 'personas'), where('userId', '==', auth.currentUser.uid));
+    : query(collection(db, 'personas'), where('userId', '==', effectiveUserId));
   const snapshot = await getDocs(q);
   const personas: Persona[] = [];
   snapshot.forEach(doc => {
@@ -37,28 +39,29 @@ export const syncPagareToFirestore = async (userId: string, pagare: Pagare) => {
   
   // Clean undefined values to prevent Firestore errors (JSON stringify strips undefined)
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
+  const effectiveUserId = userId || auth.currentUser.uid;
 
-  await setDoc(docRef, { ...cleanPagare, userId: auth.currentUser.uid });
+  await setDoc(docRef, { ...cleanPagare, userId: effectiveUserId, createdBy: auth.currentUser.uid }, { merge: true });
 };
-
 
 export const updatePagareInFirestore = async (userId: string, pagare: Pagare) => {
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'pagares', pagare.id);
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
+  const effectiveUserId = userId || auth.currentUser.uid;
   
   // Usamos updateDoc para asegurar que solo se actualizan los campos provistos
-  // sin sobrescribir ni borrar campos clave existentes como 'status' o 'creator_role'
-  await updateDoc(docRef, { ...cleanPagare, userId: auth.currentUser.uid });
+  await updateDoc(docRef, { ...cleanPagare, userId: effectiveUserId });
 };
 
-export const fetchPagaresFromFirestore = async (userId: string): Promise<Pagare[]> => {
+export const fetchPagaresFromFirestore = async (userId?: string): Promise<Pagare[]> => {
   if (!auth?.currentUser?.uid) return [];
   
   const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
+  const effectiveUserId = userId || auth.currentUser.uid;
   const q = isAdmin 
     ? query(collection(db, 'pagares'))
-    : query(collection(db, 'pagares'), where('userId', '==', auth.currentUser.uid));
+    : query(collection(db, 'pagares'), where('userId', '==', effectiveUserId));
     
   const snapshot = await getDocs(q);
   const pagares: Pagare[] = [];
@@ -67,7 +70,7 @@ export const fetchPagaresFromFirestore = async (userId: string): Promise<Pagare[
   
   snapshot.forEach(doc => {
     const data = doc.data() as any;
-    if (isAdmin || data.userId === uid || data.creator_id === uid || data.email === userEmail || data.userEmail === userEmail) {
+    if (isAdmin || data.userId === effectiveUserId || data.userId === uid || data.creator_id === uid || data.createdBy === uid || data.email === userEmail || data.userEmail === userEmail) {
       delete data.userId;
       pagares.push({ ...data, id: doc.id } as Pagare);
     }
@@ -84,15 +87,17 @@ export const anularPagareFromFirestore = async (pagareId: string) => {
 export const syncKnowledgeDocToFirestore = async (userId: string, kDoc: KnowledgeDoc) => {
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'knowledge_docs', kDoc.id);
-  await setDoc(docRef, { ...kDoc, userId: auth.currentUser.uid });
+  const effectiveUserId = userId || auth.currentUser.uid;
+  await setDoc(docRef, { ...kDoc, userId: effectiveUserId }, { merge: true });
 };
 
-export const fetchKnowledgeDocsFromFirestore = async (userId: string): Promise<KnowledgeDoc[]> => {
+export const fetchKnowledgeDocsFromFirestore = async (userId?: string): Promise<KnowledgeDoc[]> => {
   if (!auth?.currentUser?.uid) return [];
   const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
+  const effectiveUserId = userId || auth.currentUser.uid;
   const q = isAdmin 
     ? query(collection(db, 'knowledge_docs'))
-    : query(collection(db, 'knowledge_docs'), where('userId', '==', auth.currentUser.uid));
+    : query(collection(db, 'knowledge_docs'), where('userId', '==', effectiveUserId));
   const snapshot = await getDocs(q);
   const docs: KnowledgeDoc[] = [];
   snapshot.forEach(doc => {
@@ -107,13 +112,16 @@ export const deleteKnowledgeDocFromFirestore = async (kDocId: string) => {
   if (!auth?.currentUser?.uid) return;
   await deleteDoc(doc(db, 'knowledge_docs', kDocId));
 };
+
 export const guardarEscritoToFirestore = async (userId: string, texto: string, tipo: string = 'Escrito Generado') => {
   if (!auth.currentUser || !auth.currentUser.uid) return;
-  console.log("Guardando con UID:", auth.currentUser.uid);
+  const effectiveUserId = userId || auth.currentUser.uid;
+  console.log("Guardando escrito con Workspace/UserId:", effectiveUserId);
   const datosDelDocumento = {
     texto,
     tipo,
-    userId: auth.currentUser.uid
+    userId: effectiveUserId,
+    createdBy: auth.currentUser.uid
   };
   const docRef = await addDoc(collection(db, 'documentos_olga'), { 
     ...datosDelDocumento, 

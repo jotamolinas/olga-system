@@ -141,11 +141,14 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      console.log("Guardando con UID:", auth.currentUser.uid);
+      const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
+      const workspaceId = isOperador ? (userData?.tenant_id || userData?.tenantId || auth.currentUser.uid) : auth.currentUser.uid;
+      console.log("Guardando con Workspace ID:", workspaceId);
       const datosDelDocumento = {
         texto: text,
         tipo: 'Escrito Generado',
-        userId: auth.currentUser.uid,
+        userId: workspaceId,
+        createdBy: auth.currentUser.uid,
         categoria: categoria
       };
       await addDoc(collection(db, 'documentos_olga'), { ...datosDelDocumento, createdAt: new Date().toISOString() });
@@ -269,6 +272,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           onClose={() => setShowSaveModal(false)}
           onConfirm={confirmSave}
           userCarpetas={userData?.carpetas}
+          workspaceId={(userData?.rol === 'operador' || userData?.role === 'operador') ? (userData?.tenant_id || userData?.tenantId || auth.currentUser?.uid) : auth.currentUser?.uid}
         />
       )}
     </div>

@@ -213,9 +213,11 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       try {
         if (!auth.currentUser) return;
         const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
+        const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
+        const workspaceId = isOperador ? (userData?.tenant_id || userData?.tenantId || auth.currentUser.uid) : auth.currentUser.uid;
         const q = isAdmin 
           ? query(collection(db, 'documentos_olga'))
-          : query(collection(db, 'documentos_olga'), where('userId', '==', auth.currentUser.uid));
+          : query(collection(db, 'documentos_olga'), where('userId', '==', workspaceId));
         const querySnapshot = await getDocs(q);
         const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         docs.sort((a: any, b: any) => {
@@ -229,7 +231,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       }
     };
     fetchEscritos();
-  }, []);
+  }, [userData?.rol, userData?.tenant_id]);
 
   const { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado } = useMemo(() => {
     const totalPagares = pagares.length;

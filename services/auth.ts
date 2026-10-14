@@ -93,7 +93,22 @@ export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
+export const registerNewSession = async (uid: string): Promise<string> => {
+  const localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+  localStorage.setItem('appSessionId', localSessionId);
+  try {
+    const { doc, setDoc } = await import('firebase/firestore');
+    await setDoc(doc(db, 'users', uid), { activeSessionId: localSessionId }, { merge: true });
+  } catch (err) {
+    console.warn('Advertencia registrando activeSessionId en Firestore:', err);
+  }
+  return localSessionId;
+};
+
 export const logout = async () => {
+  localStorage.removeItem('appSessionId');
   await auth.signOut();
   cachedAccessToken = null;
 };
@@ -102,6 +117,9 @@ export const emailSignIn = async (email: string, password: string): Promise<{ us
   try {
     isSigningIn = true;
     const result = await signInWithEmailAndPassword(auth, email, password);
+    if (result.user) {
+      await registerNewSession(result.user.uid);
+    }
     return { user: result.user };
   } catch (error) {
     console.error('Email sign in error:', error);
@@ -115,6 +133,9 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
   try {
     isSigningIn = true;
     const result = await createUserWithEmailAndPassword(auth, email, password);
+    if (result.user) {
+      await registerNewSession(result.user.uid);
+    }
     return { user: result.user };
   } catch (error) {
     console.error('Email sign up error:', error);
