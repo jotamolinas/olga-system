@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { auth } from '../services/auth';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { 
   Users, 
   User, 
@@ -56,6 +58,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   initialEditingId = null,
   onClose
 }) => {
+  // FASE 3: Asignación de Propiedad al Workspace
+  const { workspaceId } = useWorkspace(currentUser || auth?.currentUser);
+
   // 1. Estado de Personas con persistencia en localStorage y respaldo inicial en memoria
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
     try {
@@ -70,49 +75,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       console.warn('Error leyendo directorio desde localStorage:', err);
     }
 
-    if (personas && personas.length > 0) return personas;
-
-    return [
-      {
-        id: 'p-1',
-        tipo_persona: 'física',
-        nombre: 'Juan Carlos',
-        apellido: 'Pérez Gómez',
-        tipo_documento: 'CI',
-        nro_documento: '1.234.567',
-        telefono: '+595 981 123456',
-        email: 'juan.perez@email.com',
-        domicilio: 'Avda. Mariscal López 1250, Asunción',
-        origen: 'MANUAL',
-        notas_notariales: 'Cliente compareciente habitual. Ha firmado pagarés de garantías sin antecedentes de mora bancaria.'
-      },
-      {
-        id: 'p-2',
-        tipo_persona: 'física',
-        nombre: 'María Elena',
-        apellido: 'González Benítez',
-        tipo_documento: 'CI',
-        nro_documento: '2.345.678',
-        telefono: '+595 971 654321',
-        email: 'maria.gonzalez@email.com',
-        domicilio: 'Palma 850 c/ Montevideo, Asunción',
-        origen: 'MANUAL',
-        notas_notariales: 'Acreedora con cuenta corriente verificada. Presentó solvencia patrimonial para constitución de fideicomiso.'
-      },
-      {
-        id: 'p-3',
-        tipo_persona: 'jurídica',
-        nombre: 'Agroganadera del Este S.A.',
-        tipo_documento: 'RUC',
-        nro_documento: '80012345-6',
-        telefono: '+595 21 445566',
-        email: 'contacto@agroganadera.com.py',
-        domicilio: 'Ruta 2 Km 14, San Lorenzo',
-        representante_id: 'p-1',
-        origen: 'DNIT',
-        notas_notariales: 'Sociedad anónima inscripta en Registro Público de Comercio. Poder general de administración vigente protocolizado.'
-      }
-    ];
+    if (personas && Array.isArray(personas)) return personas;
+    return [];
   });
 
   // Pagarés del sistema para el Expediente 360° (de props o localStorage)
@@ -252,7 +216,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
   // Sincronización continua de listaPersonas con props recibidas
   useEffect(() => {
-    if (personas && personas.length > 0) {
+    if (Array.isArray(personas)) {
       setListaPersonas(personas);
     }
   }, [personas]);
@@ -399,20 +363,29 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-    const registroFinal: Persona = {
-      id: editingId || `p-${Date.now()}`,
-      tipo_persona: tipoPersona,
-      nombre: nombre.trim(),
-      apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
-      tipo_documento: tipoPersona === 'física' ? 'CI' : 'RUC',
-      nro_documento: nroDocumento.trim(),
-      telefono: telefono.trim(),
-      email: email.trim(),
-      domicilio: domicilio.trim(),
-      representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
-      origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
-      notas_notariales: editingId ? listaPersonas.find(p => p.id === editingId)?.notas_notariales : undefined
-    };
+      const activeUser = (currentUser || auth?.currentUser) as any;
+      const creatorName = activeUser?.nombre || activeUser?.displayName || activeUser?.email?.split('@')[0] || 'Usuario';
+      const creatorRole = activeUser?.role || activeUser?.rol || 'titular';
+
+      const registroFinal: Persona = {
+        id: editingId || `p-${Date.now()}`,
+        tipo_persona: tipoPersona,
+        nombre: nombre.trim(),
+        apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
+        tipo_documento: tipoPersona === 'física' ? 'CI' : 'RUC',
+        nro_documento: nroDocumento.trim(),
+        telefono: telefono.trim(),
+        email: email.trim(),
+        domicilio: domicilio.trim(),
+        representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
+        origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
+        notas_notariales: editingId ? listaPersonas.find(p => p.id === editingId)?.notas_notariales : undefined,
+        userId: workspaceId || activeUser?.uid || '',
+        creator_id: activeUser?.uid,
+        createdBy: activeUser?.uid,
+        creator_name: creatorName,
+        creator_role: creatorRole
+      };
 
     let nuevaLista: Persona[];
     if (editingId) {
@@ -882,13 +855,14 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   <th className="py-3 px-3">Tipo / Documento</th>
                   <th className="py-3 px-3">Contacto</th>
                   <th className="py-3 px-3">Representante Legal</th>
+                  <th className="py-3 px-3">Responsable</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {listaFiltrada.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                    <td colSpan={6} className="py-12 text-center text-slate-400">
                       <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                       <p className="font-bold text-sm text-slate-600">No se encontraron registros coincidentes.</p>
                       <p className="text-xs text-slate-400 mt-0.5">
@@ -991,6 +965,20 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                           ) : (
                             <span className="text-slate-400 italic text-[11px]">No aplica (Física)</span>
                           )}
+                        </td>
+
+                        {/* Responsable / Creado Por */}
+                        <td className="py-3 px-3 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-800 text-[11px] truncate max-w-[120px]" title={p.creator_name || 'Titular'}>
+                              {p.creator_name || (p as any).creatorName || 'Titular'}
+                            </span>
+                            {(p.creator_role === 'operador' || (p as any).creatorRole === 'operador') && (
+                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                                Operador
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Acciones */}

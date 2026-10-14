@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, Timestamp, doc, deleteDoc, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, doc, deleteDoc, onSnapshot, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { 
   FileText, Loader2, Calendar, Trash2, Settings, MoreVertical, 
   Copy, FolderInput, X, Check, Edit3, Plus, Printer, Save, 
@@ -21,6 +22,10 @@ interface Escrito {
   tipo: string;
   userId: string;
   categoria?: string;
+  creator_id?: string;
+  createdBy?: string;
+  creator_name?: string;
+  creator_role?: string;
 }
 
 interface EscritosTabProps {
@@ -453,6 +458,9 @@ const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 
 export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument }) => {
+  // FASE 2: Identificador maestro del Workspace (Tenant)
+  const { workspaceId } = useWorkspace(currentUser, userProfile);
+
   // Modo de navegación: Redacción activa vs Archivo de Documentos
   const [activeSubTab, setActiveSubTab] = useState<'redaccion' | 'archivo'>('redaccion');
 
@@ -1714,16 +1722,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return combined;
   }, [sortedCarpetas, extractedCategories]);
 
-  // Sincronización en tiempo real de Firestore con prevención de fuga de memoria (array de deps [])
+  // FASE 2: Sincronización en tiempo real de Documentos Olga por Workspace
   useEffect(() => {
-    const user = auth?.currentUser;
-    if (!user) {
+    // Bloqueo de seguridad: No ejecutar si el ID no está listo
+    if (!workspaceId) {
       setLoading(false);
       return;
     }
-
-    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
-    const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user.uid) : user.uid;
 
     const q = query(collection(db, 'documentos_olga'), where('userId', '==', workspaceId));
     const unsubscribe = onSnapshot(
@@ -1750,7 +1755,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           try {
             const tempDocs = JSON.parse(tempDocsString);
             tempDocs.forEach((tDoc: any, idx: number) => {
-              if (tDoc.userId === user.uid) {
+              if (tDoc.userId === workspaceId || tDoc.userId === auth?.currentUser?.uid) {
                 let categoria = tDoc.categoria || 'Sin Categoría';
                 if (!tDoc.categoria && tDoc.tipo) {
                   const lowerTipo = tDoc.tipo.toLowerCase();
@@ -1799,8 +1804,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
     );
 
-    return () => unsubscribe();
-  }, []);
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [workspaceId]); // Dependencia única
 
   const getPersonaActiva = () => {
     try {
@@ -1937,16 +1942,26 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       // Limpiar etiquetas temporales de resaltado antes de persistir
       const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
 
-      const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
-      const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user.uid) : user.uid;
+      if (!workspaceId) {
+        console.error("Operación abortada: Workspace no identificado.");
+        setIsSavingDraft(false);
+        return;
+      }
+
+      const creatorName = (currentUser as any)?.nombre || userProfile?.nombre || userProfile?.razonSocial || (currentUser as any)?.displayName || currentUser?.email?.split('@')[0] || (user as any)?.displayName || user?.email?.split('@')[0] || 'Usuario';
+      const creatorRole = (currentUser as any)?.role || (currentUser as any)?.rol || userProfile?.rol || userProfile?.role || 'titular';
 
       const nuevoDocData = {
         texto: textoLimpio,
         tipo: tipoDoc,
-        userId: workspaceId,
-        createdBy: user.uid,
+        userId: workspaceId,            // El propietario legal de los datos (Titular)
+        creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
+        createdBy: user?.uid,
+        creator_name: creatorName,
+        creator_role: creatorRole,
         categoria: cat,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        fechaCreacion: serverTimestamp()
       };
 
       await addDoc(collection(db, 'documentos_olga'), nuevoDocData);
@@ -2334,15 +2349,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           ...prev
         ]);
       } else {
-        const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
-        const workspaceId = isOperador ? (userProfile?.tenant_id || userProfile?.tenantId || user?.uid) : user?.uid;
+        if (!workspaceId) {
+          console.error("Operación abortada: Workspace no identificado.");
+          return;
+        }
+        const creatorName = (currentUser as any)?.nombre || userProfile?.nombre || userProfile?.razonSocial || (currentUser as any)?.displayName || currentUser?.email?.split('@')[0] || (user as any)?.displayName || user?.email?.split('@')[0] || 'Usuario';
+        const creatorRole = (currentUser as any)?.role || (currentUser as any)?.rol || userProfile?.rol || userProfile?.role || 'titular';
         const { id, ...dataToCopy } = escrito;
         await addDoc(collection(db, 'documentos_olga'), {
           ...dataToCopy,
-          userId: workspaceId,
+          userId: workspaceId,            // El propietario legal de los datos (Titular)
+          creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
+          creator_name: creatorName,
+          creator_role: creatorRole,
           tipo: nuevoTipo,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          fechaCreacion: serverTimestamp()
         });
       }
 
@@ -3250,13 +3273,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     </div>
                   </div>
 
-                  {/* Pie de Tarjeta Limpio */}
+                  {/* Pie de Tarjeta con Responsable / Creador */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      {escrito.texto.trim().split(/\s+/).filter(Boolean).length} palabras
-                    </span>
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-[10px] text-slate-400 font-medium shrink-0">
+                        {escrito.texto.trim().split(/\s+/).filter(Boolean).length} palabras
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <div className="flex items-center gap-1.5 overflow-hidden text-[10px]">
+                        <span className="text-slate-400 font-normal shrink-0">Responsable:</span>
+                        <span className="font-bold text-slate-700 truncate max-w-[110px]" title={escrito.creator_name || 'Titular'}>
+                          {escrito.creator_name || 'Titular'}
+                        </span>
+                        {escrito.creator_role === 'operador' && (
+                          <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                            Operador
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                    <span className="text-[#FF3131] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[11px]">
+                    <span className="text-[#FF3131] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[11px] shrink-0">
                       <span>Abrir en Editor &rarr;</span>
                     </span>
                   </div>

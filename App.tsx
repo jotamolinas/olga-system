@@ -14,6 +14,7 @@ import {
 import { LoginScreen } from './components/LoginScreen';
 
 import { useTrialStatus } from './hooks/useTrialStatus';
+import { useWorkspace } from './hooks/useWorkspace';
 
 
 // Subcomponents
@@ -280,34 +281,38 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   };
 
   // Authentication & Roles state
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<(User & { role?: string; rol?: string; nombre?: string }) | null>(null);
   const { pruebaActiva, diasRestantes, userData } = useTrialStatus(currentUser);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
   const [olgaDocsCount, setOlgaDocsCount] = useState<number>(0);
+  const [sessionKickedAlert, setSessionKickedAlert] = useState<string | null>(null);
 
+  // Hook unificado de Workspace y membrete del Titular
+  const { workspaceId, workspaceName, workspaceData } = useWorkspace(currentUser, userProfile || userData);
+
+  // FASE 2: Sincronización de Documentos Olga por Workspace
   useEffect(() => {
-    if (!currentUser || !currentUser.uid) {
+    // Bloqueo de seguridad: No ejecutar si el ID no está listo
+    if (!workspaceId) {
       setOlgaDocsCount(0);
       return;
     }
-    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
-    const workspaceId = isOperador
-      ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || currentUser.uid)
-      : currentUser.uid;
 
     const q = query(
       collection(db, 'documentos_olga'),
-      where('userId', '==', workspaceId)
+      where('userId', '==', workspaceId) // Filtro maestro por Tenant
     );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setOlgaDocsCount(snapshot.size);
     }, (error) => {
-      console.error("Error with olga docs snapshot:", error);
+      console.error("Fallo en sincronización de documentos_olga:", error);
     });
-    return () => unsubscribe();
-  }, [currentUser, userProfile?.rol, userProfile?.tenant_id, userData?.tenant_id]);
+
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [workspaceId]); // Dependencia única
   
   // Plan selection and Checkout Modal state
   const [activePlan, setActivePlan] = useState<'ninguno' | 'Intermedio' | 'Pro'>('ninguno');
@@ -516,7 +521,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
 
   useEffect(() => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
     const unsubscribe = initAuth(async (user, token) => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       if (!user) {
         setCurrentUser(null);
         setUserProfile(null);
@@ -527,23 +539,58 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       setCurrentUser(user);
       
       try {
-        const unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
-          const fallbackProfile = { 
-            email: user.email || '', 
-            planActual: 'Sin Plan',
-            rol: 'usuario',
-            diasRestantes: 5
-          };
-          
-          if (!docSnap.exists() || !docSnap.data().email) {
+        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+          if (!docSnap.exists()) {
+            const fallbackProfile = { 
+              email: user.email || '', 
+              planActual: 'Sin Plan',
+              rol: 'usuario',
+              diasRestantes: 5
+            };
             setDoc(doc(db, 'users', user.uid), fallbackProfile, { merge: true }).catch(console.error);
-          }
-          
-          if (docSnap.exists()) {
-            setUserProfile(docSnap.data());
-          } else {
             setUserProfile(fallbackProfile);
+            setIsCheckingProfile(false);
+            return;
           }
+
+          const data = docSnap.data();
+          const firestoreSessionId = data.activeSessionId;
+          const localSessionId = localStorage.getItem('appSessionId');
+
+          // Lógica de Expulsión (Logout Automático para prevenir compartir cuentas):
+          if (firestoreSessionId && localSessionId && firestoreSessionId !== localSessionId) {
+            console.warn("⚠️ Sesión cerrada por seguridad: inicio de sesión detectado en otro dispositivo.");
+            localStorage.removeItem('appSessionId');
+            if (unsubscribeSnapshot) {
+              unsubscribeSnapshot();
+              unsubscribeSnapshot = null;
+            }
+            setSessionKickedAlert("Sesión cerrada por seguridad: Has iniciado sesión en otro dispositivo.");
+            logout().catch(console.error);
+            setCurrentUser(null);
+            setUserProfile(null);
+            setIsCheckingProfile(false);
+            return;
+          }
+
+          if (firestoreSessionId && !localSessionId) {
+            localStorage.setItem('appSessionId', firestoreSessionId);
+          } else if (!firestoreSessionId && localSessionId) {
+            setDoc(doc(db, 'users', user.uid), { activeSessionId: localSessionId }, { merge: true }).catch(console.error);
+          } else if (!firestoreSessionId && !localSessionId) {
+            const newSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+              ? crypto.randomUUID()
+              : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem('appSessionId', newSessionId);
+            setDoc(doc(db, 'users', user.uid), { activeSessionId: newSessionId }, { merge: true }).catch(console.error);
+          }
+
+          if (user) {
+            (user as any).role = data?.role || data?.rol || 'usuario';
+            (user as any).rol = (user as any).role;
+            (user as any).nombre = data?.nombre || data?.razonSocial || data?.nombreInstitucion || data?.nombreCompleto || user.displayName || user.email?.split('@')[0] || 'Usuario';
+          }
+          setUserProfile(data);
           setIsCheckingProfile(false);
         }, (err) => {
           console.error("Error fetching user profile:", err);
@@ -555,11 +602,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           });
           setIsCheckingProfile(false);
         });
-        
-        // We attach the snapshot unsubscribe to the window or a ref in a real app, 
-        // but here we can just let it run for the session, or better, we should clean it up.
-        // For simplicity, we just leave it active or attach to a custom property if needed.
-        (window as any)._userProfileUnsubscribe = unsubscribeSnapshot;
       } catch (err) {
         console.error("Error setting up profile snapshot:", err);
         setUserProfile({
@@ -572,75 +614,91 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       }
       
     }, () => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
       setCurrentUser(null);
       setUserProfile(null);
       setIsCheckingProfile(false);
     });
     
     return () => {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
       if (typeof unsubscribe === 'function') unsubscribe();
-    }
+    };
   }, []);
 
+  // FASE 2: Sincronización de Pagarés por Workspace
   useEffect(() => {
-    // Usamos el estado 'currentUser' de React para que espere pacientemente a Firebase
-    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
-    if (!currentUser?.uid || !userProfile || (!userProfile.perfilCompletado && !isOperador)) return;
+    // Bloqueo de seguridad: No ejecutar si el ID no está listo
+    if (!workspaceId) return;
 
-    const uid = currentUser.uid;
-    const workspaceId = isOperador
-      ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || uid)
-      : uid;
+    const q = query(
+      collection(db, 'pagares'),
+      where('userId', '==', workspaceId) // Filtro maestro por Tenant
+    );
 
-    Promise.all([
-      fetchPersonasFromFirestore(workspaceId).catch(e => { console.warn('Fetch personas err', e); return []; }),
-      fetchKnowledgeDocsFromFirestore(workspaceId).catch(e => { console.warn('Fetch docs err', e); return []; })
-    ]).then(([pers, docs]) => {
-      if (pers && pers.length > 0) {
-        setPersonas(pers);
-        try {
-          localStorage.setItem('olga_directorio_personas', JSON.stringify(pers));
-        } catch {}
-      }
-      setKnowledgeDocs(docs);
-    });
-
-    const isAdmin = currentUser.email === 'jotamolinas@gmail.com';
-    const userEmail = currentUser.email || 'no-email@example.com';
-    
-    const qPagares = isAdmin 
-      ? query(collection(db, 'pagares'))
-      : query(collection(db, 'pagares'), where('userId', '==', workspaceId));
-      
-    const unsubscribePagares = onSnapshot(qPagares, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => {
+        const item = doc.data() as any;
+        return { ...item, id: doc.id } as Pagare;
+      });
+      setPagares(data);
       try {
-        const pags: Pagare[] = [];
-        
-        snapshot.forEach(doc => {
-          const data = doc.data() as any;
-          // Si es admin o pertenece al workspace/usuario/creador
-          if (isAdmin || data.userId === workspaceId || data.userId === uid || data.creator_id === uid || data.createdBy === uid || data.email === userEmail || data.userEmail === userEmail) {
-            delete data.userId;
-            pags.push({ ...data, id: doc.id } as Pagare);
-          }
-        });
-        
-        console.log("RADAR FIREBASE - Pagarés filtrados del workspace:", pags);
-        setPagares(pags);
-        try {
-          localStorage.setItem('olga_pagares', JSON.stringify(pags));
-        } catch {}
-      } catch (e) {
-        console.error("RADAR FIREBASE Error processing pagares snapshot:", e);
-      }
+        localStorage.setItem('olga_pagares', JSON.stringify(data));
+      } catch {}
     }, (error) => {
-      console.error("RADAR FIREBASE Error fetching pagares:", error);
+      console.error("Fallo en sincronización de pagarés:", error);
     });
 
-    return () => {
-      unsubscribePagares();
-    };
-  }, [currentUser?.uid, userProfile?.perfilCompletado, userProfile?.rol, userProfile?.tenant_id, userData?.tenant_id]);
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [workspaceId]); // Dependencia única
+
+  // FASE 2: Sincronización de Personas por Workspace
+  useEffect(() => {
+    // Bloqueo de seguridad: No ejecutar si el ID no está listo
+    if (!workspaceId) return;
+
+    const q = query(
+      collection(db, 'personas'),
+      where('userId', '==', workspaceId) // Filtro maestro por Tenant
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => {
+        const item = doc.data() as any;
+        return { ...item, id: doc.id } as Persona;
+      });
+      setPersonas(data);
+      try {
+        localStorage.setItem('olga_directorio_personas', JSON.stringify(data));
+      } catch {}
+    }, (error) => {
+      console.error("Fallo en sincronización de personas:", error);
+    });
+
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [workspaceId]); // Dependencia única
+
+  // FASE 2: Sincronización de Base de Conocimiento por Workspace
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    const q = query(
+      collection(db, 'knowledge_docs'),
+      where('userId', '==', workspaceId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as KnowledgeDoc));
+      setKnowledgeDocs(data);
+    }, (error) => {
+      console.error("Fallo en sincronización de knowledge_docs:", error);
+    });
+
+    return () => unsubscribe();
+  }, [workspaceId]);
 
   useEffect(() => {
     localStorage.setItem('ihara_config', JSON.stringify(config));
@@ -706,10 +764,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return <LoginScreen onLogin={() => {}} />;
   }
 
-  const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
-  const workspaceId = isOperador
+  const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador' || (currentUser as any)?.role === 'operador';
+  const currentWorkspaceId = workspaceId || (isOperador
     ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || currentUser?.uid)
-    : currentUser?.uid;
+    : currentUser?.uid);
 
   const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com" || isOperador;
   if (!skipOnboarding && (!userProfile || !userProfile.perfilCompletado)) {
@@ -736,26 +794,51 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     if (exists) {
       return false;
     }
-    const updated = [...personas, newPersona];
+
+    if (!workspaceId) {
+      console.error("Operación abortada: Workspace no identificado.");
+      return false;
+    }
+
+    const creatorName = currentUser?.nombre || userProfile?.nombre || userProfile?.razonSocial || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuario';
+    const creatorRole = currentUser?.role || userProfile?.rol || userProfile?.role || 'titular';
+
+    const per: Persona = {
+      ...newPersona,
+      userId: workspaceId,            // El propietario legal de los datos (Titular)
+      creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
+      createdBy: currentUser?.uid,
+      creator_name: newPersona.creator_name || creatorName,
+      creator_role: newPersona.creator_role || creatorRole
+    };
+    const updated = [...personas, per];
     setPersonas(updated);
     try {
       localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
-    if (workspaceId) syncPersonaToFirestore(workspaceId, newPersona);
+    syncPersonaToFirestore(workspaceId, per).catch(e => console.error("Error en escritura persona:", e));
     return true;
   };
 
   const handleUpdatePersona = (updatedPersona: Persona) => {
-    const updated = personas.map(p => p.id === updatedPersona.id ? updatedPersona : p);
+    if (!workspaceId) {
+      console.error("Operación abortada: Workspace no identificado.");
+      return;
+    }
+    const per: Persona = {
+      ...updatedPersona,
+      userId: workspaceId
+    };
+    const updated = personas.map(p => p.id === per.id ? per : p);
     setPersonas(updated);
     try {
       localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
-    if (workspaceId) syncPersonaToFirestore(workspaceId, updatedPersona);
+    syncPersonaToFirestore(workspaceId, per).catch(e => console.error("Error actualizando persona:", e));
   };
 
   const handleDeletePersona = (id: string) => {
@@ -769,28 +852,45 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     if (currentUser) deletePersonaFromFirestore(id);
   };
 
-  // Handlers for Pagares CRUD
-  const handleAddPagare = (newPagare: Pagare) => {
-    const pag = {
-      ...newPagare,
-      userId: workspaceId || currentUser?.uid || '',
-      creator_id: currentUser?.uid,
-      created_at: newPagare.created_at || new Date().toISOString(),
-      status: newPagare.status || 'activo'
-    };
-    const updated = [pag, ...pagares];
-    setPagares(updated);
-    try {
-      localStorage.setItem('olga_pagares', JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Error saving pagares to localStorage:', e);
+  // FASE 3: Handlers for Pagares CRUD con Asignación de Propiedad (Titular)
+  const handleAddPagare = async (newPagare: Pagare) => {
+    if (!workspaceId) {
+      console.error("Operación abortada: Workspace no identificado.");
+      return;
     }
-    if (workspaceId) {
-      syncPagareToFirestore(workspaceId, pag).catch(e => console.error("Error saving pagare:", e));
+
+    try {
+      const creatorName = currentUser?.nombre || userProfile?.nombre || userProfile?.razonSocial || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuario';
+      const creatorRole = currentUser?.role || userProfile?.rol || userProfile?.role || 'titular';
+
+      const pag = {
+        ...newPagare,
+        userId: workspaceId,            // El propietario legal de los datos (Titular)
+        creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
+        createdBy: currentUser?.uid,
+        creator_name: newPagare.creator_name || creatorName,
+        creator_role: newPagare.creator_role || creatorRole,
+        created_at: newPagare.created_at || new Date().toISOString(),
+        status: newPagare.status || 'activo'
+      };
+      const updated = [pag, ...pagares];
+      setPagares(updated);
+      try {
+        localStorage.setItem('olga_pagares', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error saving pagares to localStorage:', e);
+      }
+      await syncPagareToFirestore(workspaceId, pag);
+    } catch (error) {
+      console.error("Error en escritura:", error);
     }
   };
 
-  const handleUpdatePagare = (updatedPagare: Pagare) => {
+  const handleUpdatePagare = async (updatedPagare: Pagare) => {
+    if (!workspaceId) {
+      console.error("Operación abortada: Workspace no identificado.");
+      return;
+    }
     const updated = pagares.map(p => p.id === updatedPagare.id ? updatedPagare : p);
     setPagares(updated);
     try {
@@ -798,12 +898,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
-    if (workspaceId) {
-      updatePagareInFirestore(workspaceId, {
-        ...updatedPagare,
-        userId: workspaceId
-      }).catch(e => console.error("Error saving pagare:", e));
-    }
+    await updatePagareInFirestore(workspaceId, {
+      ...updatedPagare,
+      userId: workspaceId
+    }).catch(e => console.error("Error updating pagare:", e));
   };
 
   const handleDeletePagare = (id: string) => {
@@ -990,12 +1088,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     }
   };
 
-  // Filter pagarés based on user role permission guidelines:
-  // "Usuario Administrador: Accede a todos los pagarés del sistema; Usuario: Solo ve y gestiona los pagarés que crea"
-  // We simulate "usuario owner" status by matching the pagare creator_role.
-  const visiblePagares = role === 'admin' 
-    ? pagares 
-    : pagares.filter(p => p.creator_role === 'usuario');
+  // En el workspace compartido, los pagarés pertenecen a la notaría
+  const visiblePagares = pagares;
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-pattern text-slate-800 print:block print:h-auto print:overflow-visible print:bg-white" id="main-panel-container">
@@ -1072,18 +1166,24 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           
           <div className="flex items-center gap-3 bg-slate-950/50 p-2.5 rounded-2xl border border-slate-800 relative group">
             <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-700">
-              {customBranding.logoUrl ? (
-                <img src={customBranding.logoUrl} alt="Logo Notaría" className="w-full h-full object-cover" />
+              {workspaceData?.logoUrl || customBranding.logoUrl ? (
+                <img src={workspaceData?.logoUrl || customBranding.logoUrl} alt="Logo Notaría" className="w-full h-full object-cover" />
               ) : (
                 <UserIcon className="w-5 h-5 text-slate-400" />
               )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-white truncate">
-                {customBranding.nombreInstitucion || userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Usuario'}
+                {isOperador 
+                  ? (currentUser?.displayName || currentUser?.email || 'Operador Notarial')
+                  : (workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Usuario')
+                }
               </p>
               <p className="text-[9px] text-slate-400 truncate uppercase tracking-wider mt-0.5 font-bold">
-                {customBranding.registroNotarial || (role === 'admin' ? 'Administrador' : 'Profesional Titular')}
+                {isOperador 
+                  ? (workspaceName ? `Escribanía ${workspaceName}` : 'Operador Notarial')
+                  : (customBranding.registroNotarial || (role === 'admin' ? 'Administrador' : 'Profesional Titular'))
+                }
               </p>
             </div>
             <button 
@@ -1274,11 +1374,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           </button>
         </nav>
 
-        {/* Upgrade Banner in sidebar */}
-        {(() => {
-          const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
-          if (isOperador) return null;
-
+        {/* Upgrade Banner in sidebar (Oculto para operadores) */}
+        {currentUser?.role !== 'operador' && !isOperador && (() => {
           const plan = userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '';
 
           if (plan.includes('full')) {
@@ -1358,18 +1455,24 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <Menu className="w-5 h-5" />
             </button>
             <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200">
-              {customBranding.logoUrl ? (
-                <img src={customBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+              {workspaceData?.logoUrl || customBranding.logoUrl ? (
+                <img src={workspaceData?.logoUrl || customBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" />
               ) : (
                 <Building className="w-5 h-5 text-white" />
               )}
             </div>
             <div className="min-w-0">
               <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
-                {customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
+                {isOperador 
+                  ? (workspaceName || "Escribanía Titular")
+                  : (customBranding.nombreInstitucion || userData?.razonSocial || workspaceName || config.escribania.nombre)
+                }
               </h1>
               <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
-                {customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular {userData?.matricula || config.escribania.nro_registro}
+                {isOperador 
+                  ? `Operador Notarial • ${workspaceName || 'Escribanía Titular'}`
+                  : `${customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular ${userData?.matricula || config.escribania.nro_registro}`
+                }
               </p>
             </div>
           </div>
@@ -1453,9 +1556,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   );
 })()}
 
-            {(() => {
-              const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
-              if (isOperador) return null;
+            {currentUser?.role !== 'operador' && !isOperador && (() => {
               const planActivoBtn = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
               return !planActivoBtn.includes('pro') && !planActivoBtn.includes('empresa') && !planActivoBtn.includes('full');
             })() && (
@@ -1507,12 +1608,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onUpdatePersona={handleUpdatePersona}
                 onDeletePersona={handleDeletePersona}
                 isAdmin={role === 'admin'}
-                userData={userProfile}
-                
+                userData={userProfile || userData}
+                workspaceId={workspaceId}
+                workspaceName={workspaceName}
               />
             )}
 
-            {activeTab === 'planes' && (
+            {activeTab === 'planes' && currentUser?.role !== 'operador' && !isOperador && (
               <PlanesTab 
                 activePlan={activePlan}
                 onPlanSelect={(planName, planPrice) => {
@@ -1546,13 +1648,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onUpdatePersona={handleUpdatePersona}
                 onDeletePersona={handleDeletePersona}
                 isAdmin={role === 'admin'}
+                currentUser={currentUser}
               />
             )}
 
             {activeTab === 'escritos' && (
               <EscritosTab  
                 currentUser={currentUser} 
-                userProfile={userProfile}
+                userProfile={userProfile || userData}
                 personas={personas}
                 onOpenDocument={(text) => { 
                   setDocumentoInitialText(text); 
@@ -1566,7 +1669,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onConfigUpdate={(data) => setCustomBranding(data)} 
                 pagares={pagares} 
                 userPlan={userProfile?.planActual || userProfile?.plan || activePlan}
-                userData={userProfile}
+                userData={userProfile || userData}
+                currentUser={currentUser}
               />
             )}
 
@@ -1813,12 +1917,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                     <p className="text-xs text-slate-500 text-center max-w-md mb-6 leading-relaxed">
                       Para seguir auditando documentos y desbloquear los dictámenes con membrete oficial, completa tu Ficha Profesional.
                     </p>
-                    <button 
-                      onClick={() => setActiveTab('planes')}
-                      className="bg-[#FF3131] hover:bg-red-600 shadow-lg shadow-red-600/20 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
-                    >
-                      Completar Registro
-                    </button>
+                    {currentUser?.role !== 'operador' && !isOperador && (
+                      <button 
+                        onClick={() => setActiveTab('planes')}
+                        className="bg-[#FF3131] hover:bg-red-600 shadow-lg shadow-red-600/20 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
+                      >
+                        Completar Registro
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

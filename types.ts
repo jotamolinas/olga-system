@@ -15,6 +15,11 @@ export interface Persona {
   domicilio: string;
   representante_id?: string; // ID de otra persona (física) que actúa como representante legal
   userId?: string;
+  creator_id?: string;
+  createdBy?: string;
+  creator_name?: string;
+  creator_role?: string;
+  fechaCreacion?: any;
   origen?: 'MANUAL' | 'DNIT';
   notas_notariales?: string;
 }
@@ -82,7 +87,11 @@ export interface Pagare {
   // Metadatos
   created_at: string;
   userId?: string;
-  creator_role: 'admin' | 'usuario';
+  creator_id?: string;
+  createdBy?: string;
+  creator_name?: string;
+  fechaCreacion?: any;
+  creator_role?: 'admin' | 'usuario' | 'operador' | 'titular' | string;
 }
 
 export interface KnowledgeDoc {

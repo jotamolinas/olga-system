@@ -1,6 +1,7 @@
-import { db } from '../services/auth';
+import { db, auth } from '../services/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useState, useEffect, useRef, startTransition } from 'react';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
 import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck } from 'lucide-react';
@@ -45,6 +46,9 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   initialEditingId = null,
   onClose
 }) => {
+  // FASE 3: Asignación de Propiedad al Workspace
+  const { workspaceId } = useWorkspace(auth?.currentUser, userData);
+
   // Transición no bloqueante para abrir previsualización de pagarés sin congelar la UI
   const handleAbrirPagare = (pagare: Pagare) => {
     startTransition(() => {
@@ -1234,8 +1238,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now() 
       })),
       created_at: existingPagare?.created_at || new Date().toISOString(),
-      creator_role: existingPagare?.creator_role || (isAdmin ? 'admin' : 'usuario'),
-      refuerzosRaw: refuerzosRaw
+      creator_role: existingPagare?.creator_role || (auth?.currentUser as any)?.role || (auth?.currentUser as any)?.rol || (isAdmin ? 'admin' : 'titular'),
+      creator_name: existingPagare?.creator_name || (auth?.currentUser as any)?.displayName || (auth?.currentUser as any)?.nombre || auth?.currentUser?.email?.split('@')[0] || 'Usuario',
+      refuerzosRaw: refuerzosRaw,
+      userId: workspaceId || existingPagare?.userId || auth?.currentUser?.uid || '',
+      creator_id: existingPagare?.creator_id || auth?.currentUser?.uid,
+      createdBy: existingPagare?.createdBy || auth?.currentUser?.uid
     } as any;
 
     if (editingPagareId && onUpdatePagare) {
@@ -1677,6 +1685,15 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             <span>Emisión: {new Date(pag.created_at).toLocaleDateString()}</span>
                           </p>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable:</span>
+                            <span className="font-bold text-slate-800 text-[11px]">{pag.creator_name || (pag as any).creatorName || 'Titular'}</span>
+                            {(pag.creator_role === 'operador' || (pag as any).creatorRole === 'operador') && (
+                              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                Operador
+                              </span>
+                            )}
+                          </div>
                           {nextDueDate && (
                             <p className="flex items-center gap-2 text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
                               <Calendar className="w-3.5 h-3.5 text-indigo-500" />

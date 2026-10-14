@@ -7,7 +7,16 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
   const docRef = doc(db, 'personas', persona.id);
   const cleanPersona = JSON.parse(JSON.stringify(persona));
   const effectiveUserId = userId || auth.currentUser.uid;
-  await setDoc(docRef, { ...cleanPersona, userId: effectiveUserId, createdBy: auth.currentUser.uid }, { merge: true });
+  const user = auth.currentUser as any;
+  await setDoc(docRef, { 
+    ...cleanPersona, 
+    userId: effectiveUserId, 
+    creator_id: cleanPersona.creator_id || user.uid,
+    createdBy: cleanPersona.createdBy || user.uid,
+    creator_name: cleanPersona.creator_name || user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
+    creator_role: cleanPersona.creator_role || user.role || user.rol || 'titular',
+    fechaCreacion: cleanPersona.fechaCreacion || serverTimestamp() 
+  }, { merge: true });
 };
 
 export const fetchPersonasFromFirestore = async (userId?: string): Promise<Persona[]> => {
@@ -40,8 +49,17 @@ export const syncPagareToFirestore = async (userId: string, pagare: Pagare) => {
   // Clean undefined values to prevent Firestore errors (JSON stringify strips undefined)
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
   const effectiveUserId = userId || auth.currentUser.uid;
+  const user = auth.currentUser as any;
 
-  await setDoc(docRef, { ...cleanPagare, userId: effectiveUserId, createdBy: auth.currentUser.uid }, { merge: true });
+  await setDoc(docRef, { 
+    ...cleanPagare, 
+    userId: effectiveUserId, 
+    creator_id: cleanPagare.creator_id || user.uid,
+    createdBy: cleanPagare.createdBy || user.uid,
+    creator_name: cleanPagare.creator_name || user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
+    creator_role: cleanPagare.creator_role || user.role || user.rol || 'titular',
+    fechaCreacion: cleanPagare.fechaCreacion || serverTimestamp() 
+  }, { merge: true });
 };
 
 export const updatePagareInFirestore = async (userId: string, pagare: Pagare) => {
@@ -117,15 +135,20 @@ export const guardarEscritoToFirestore = async (userId: string, texto: string, t
   if (!auth.currentUser || !auth.currentUser.uid) return;
   const effectiveUserId = userId || auth.currentUser.uid;
   console.log("Guardando escrito con Workspace/UserId:", effectiveUserId);
+  const user = auth.currentUser as any;
   const datosDelDocumento = {
     texto,
     tipo,
     userId: effectiveUserId,
-    createdBy: auth.currentUser.uid
+    creator_id: user.uid,
+    createdBy: user.uid,
+    creator_name: user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
+    creator_role: user.role || user.rol || 'titular'
   };
   const docRef = await addDoc(collection(db, 'documentos_olga'), { 
     ...datosDelDocumento, 
-    createdAt: new Date().toISOString() 
+    createdAt: new Date().toISOString(),
+    fechaCreacion: serverTimestamp() 
   });
   return docRef.id;
 };

@@ -1,7 +1,8 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
 import { FileText, Users, Clock, DollarSign, Activity, ShieldCheck, ChevronRight, X, PieChartIcon, AlertTriangle } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -22,6 +23,8 @@ interface TableroTabProps {
   onDeletePersona: (id: string) => void;
   isAdmin: boolean;
   userData?: any;
+  workspaceId?: string;
+  workspaceName?: string;
 }
 
 const CountUp: React.FC<{ end: number; duration?: number; isCurrency?: boolean }> = ({ end, duration = 1500, isCurrency = false }) => {
@@ -119,6 +122,15 @@ const OverlayDetails: React.FC<{
                            Pagaré Correlativo: {(item as Pagare).correlativo || `#${(item as Pagare).id?.slice(0,6)}`}
                          </p>
                          <p className="text-xs text-slate-500 mt-1.5 ml-6">Fecha de pago: {(item as Pagare).fecha_primer_pago || 'No definida'}</p>
+                         <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
+                           <span className="text-slate-400 font-medium">Responsable:</span>
+                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{(item as Pagare).creator_name || (item as any).creatorName || 'Titular'}</span>
+                           {((item as Pagare).creator_role === 'operador' || (item as any).creatorRole === 'operador') && (
+                             <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                               Operador
+                             </span>
+                           )}
+                         </div>
                        </div>
                        <div className="text-right">
                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Total ({(item as Pagare).moneda})</p>
@@ -135,6 +147,15 @@ const OverlayDetails: React.FC<{
                          <p className="text-xs text-slate-500 mt-1 ml-6">
                            {item.createdAt ? new Date(item.createdAt).toLocaleDateString('es-PY') : (item.fechaCreacion?.toMillis ? new Date(item.fechaCreacion.toMillis()).toLocaleDateString('es-PY') : 'Fecha desconocida')}
                          </p>
+                         <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
+                           <span className="text-slate-400 font-medium">Responsable:</span>
+                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{item.creator_name || item.creatorName || 'Titular'}</span>
+                           {(item.creator_role === 'operador' || item.creatorRole === 'operador') && (
+                             <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                               Operador
+                             </span>
+                           )}
+                         </div>
                          <p className="text-xs text-slate-500 mt-1.5 ml-6 italic line-clamp-2">
                            {item.texto ? `"${item.texto.substring(0, 150)}..."` : 'Sin contenido de texto extraído'}
                          </p>
@@ -151,6 +172,15 @@ const OverlayDetails: React.FC<{
                            {(item as Persona).nombre} {(item as Persona).apellido || ''}
                          </p>
                          <p className="text-xs text-slate-500 mt-1.5 ml-6">{(item as Persona).tipo_documento}: {(item as Persona).nro_documento}</p>
+                         <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
+                           <span className="text-slate-400 font-medium">Responsable:</span>
+                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{(item as Persona).creator_name || (item as any).creatorName || 'Titular'}</span>
+                           {((item as Persona).creator_role === 'operador' || (item as any).creatorRole === 'operador') && (
+                             <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                               Operador
+                             </span>
+                           )}
+                         </div>
                        </div>
                        <div className="text-right">
                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-xl inline-block">{(item as Persona).tipo_persona}</p>
@@ -181,8 +211,13 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   onUpdatePersona,
   onDeletePersona,
   isAdmin,
-  userData
+  userData,
+  workspaceId,
+  workspaceName
 }) => {
+  const { workspaceId: hookWorkspaceId } = useWorkspace(auth?.currentUser, userData);
+  const activeWorkspaceId = workspaceId || hookWorkspaceId;
+
   const [escritos, setEscritos] = useState<any[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | null>(null);
 
@@ -208,44 +243,66 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPagareEditorOpen, isPersonasEditorOpen]);
 
+  // FASE 2: Sincronización en tiempo real de Documentos para Métricas de Tablero
   useEffect(() => {
-    const fetchEscritos = async () => {
-      try {
-        if (!auth.currentUser) return;
-        const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
-        const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
-        const workspaceId = isOperador ? (userData?.tenant_id || userData?.tenantId || auth.currentUser.uid) : auth.currentUser.uid;
-        const q = isAdmin 
-          ? query(collection(db, 'documentos_olga'))
-          : query(collection(db, 'documentos_olga'), where('userId', '==', workspaceId));
-        const querySnapshot = await getDocs(q);
-        const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        docs.sort((a: any, b: any) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : (a.fechaCreacion?.toMillis?.() || 0);
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : (b.fechaCreacion?.toMillis?.() || 0);
-          return bTime - aTime;
-        });
-        setEscritos(docs);
-      } catch (err) {
-        console.error("Error fetching documentos_olga", err);
-      }
-    };
-    fetchEscritos();
-  }, [userData?.rol, userData?.tenant_id]);
+    // Bloqueo de seguridad: No ejecutar si el ID no está listo
+    if (!activeWorkspaceId) return;
+
+    const q = query(
+      collection(db, 'documentos_olga'),
+      where('userId', '==', activeWorkspaceId) // Filtro maestro por Tenant
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      docs.sort((a: any, b: any) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : (a.fechaCreacion?.toMillis?.() || 0);
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : (b.fechaCreacion?.toMillis?.() || 0);
+        return bTime - aTime;
+      });
+      setEscritos(docs);
+    }, (error) => {
+      console.error("Fallo en sincronización de documentos_olga en Tablero:", error);
+    });
+
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [activeWorkspaceId]); // Dependencia única
+
+  const [localPersonas, setLocalPersonas] = useState<Persona[]>([]);
+
+  // Sincronización en tiempo real de Personas por Workspace para métricas y overlay
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    const q = query(
+      collection(db, 'personas'),
+      where('userId', '==', activeWorkspaceId) // Filtro maestro por Tenant
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }) as Persona);
+      setLocalPersonas(data);
+    }, (error) => {
+      console.error("Fallo en sincronización de personas en Tablero:", error);
+    });
+
+    return () => unsubscribe(); // Limpieza estricta de memoria
+  }, [activeWorkspaceId]);
+
+  const effectivePersonas = (personas && Array.isArray(personas) && personas.length > 0) ? personas : localPersonas;
 
   const { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado } = useMemo(() => {
     const totalPagares = pagares.length;
     const pagaresAnulados = pagares.filter(p => p.status === 'anulado').length;
     
-    // Contamos personas que están envueltas en al menos un pagaré como deudores o acreedores
-    const personasActivas = personas.length;
+    // Contamos personas que pertenecen al entorno de trabajo (workspaceId)
+    const personasActivas = effectivePersonas.length;
 
-    // Registros pendientes: Pagarés donde falte vincular el acreedor o el deudor
     // Total valor notariado
     const totalValorNotariado = pagares.reduce((sum, p) => p.status !== 'anulado' ? sum + p.valor_total : sum, 0);
 
     return { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado };
-  }, [pagares, personas]);
+  }, [pagares, effectivePersonas]);
 
   const pagaresProximosAVencer = useMemo(() => {
     const today = new Date();
@@ -550,13 +607,23 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between md:flex-col md:items-end gap-1">
+                  <div className="flex items-center justify-between md:flex-col md:items-end gap-1.5">
                     <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> {dateStr}
                     </span>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
-                      Guardado
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-700">
+                        Por: {escrito.creator_name || 'Titular'}
+                      </span>
+                      {escrito.creator_role === 'operador' && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                          Operador
+                        </span>
+                      )}
+                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        Guardado
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
@@ -589,7 +656,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           title="Personas Registradas"
           icon={<Users className="w-6 h-6" />}
           onClose={() => setActiveOverlay(null)}
-          items={personas}
+          items={effectivePersonas}
           type="personas"
           onSelectPersona={(id) => {
             setEditingPersonaId(id);

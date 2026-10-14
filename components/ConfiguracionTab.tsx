@@ -59,6 +59,7 @@ interface ConfiguracionTabProps {
   pagares?: Pagare[];
   userPlan?: string;
   userData?: any;
+  currentUser?: any;
 }
 
 const PLAN_LIMITS = {
@@ -217,7 +218,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   initialData,
   pagares = [],
   userPlan,
-  userData
+  userData,
+  currentUser
 }) => {
   // Helper para inicializar configuración desde localStorage
   const loadStoredConfig = (): ConfiguracionInstitucionalData => {
@@ -314,7 +316,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     return 'basico' as const;
   }, [userPlan, userData]);
 
-  const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
+  const isOperador = currentUser?.role === 'operador' || currentUser?.rol === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
   const limiteActual = PLAN_LIMITS[planKey] ?? PLAN_LIMITS.basico;
   const slotsLibres = Math.max(0, limiteActual - operadores.length);
 
@@ -322,7 +324,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   // Fase 3: Lectura Inicial (Fetch de Datos en Vivo con prevención de bucles infinitos)
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || isOperador) return;
     let isMounted = true;
 
     const fetchOperadores = async () => {
@@ -605,8 +607,24 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
         </div>
       )}
 
-      {/* Tarjeta 1: Perfil Institucional */}
-      <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+      {/* Banner Informativo de Entorno de Operador Notarial */}
+      {isOperador && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-slate-900 text-white rounded-xl shrink-0 mt-0.5">
+            <Building className="w-5 h-5 text-[#FF3131]" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Entorno de Operador Notarial</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Estás conectado como operador notarial bajo el membrete oficial del Escribano Titular. Los ajustes de membrete institucional, facturación y administración de equipo están centralizados bajo la supervisión del Titular.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tarjeta 1: Perfil Institucional / Configuración de Membrete (Oculto para operadores) */}
+      {currentUser?.role !== 'operador' && !isOperador && (
+        <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-slate-100 rounded-xl text-slate-900">
@@ -724,6 +742,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           </div>
         </form>
       </div>
+      )}
 
       {/* Tarjeta 2: Preferencias y Notificaciones */}
       <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
@@ -885,14 +904,14 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             </button>
           </div>
 
-          {/* Botón secundario Gestionar Usuarios (Oculto para operadores) */}
-          {!isOperador && (
+          {/* Botón secundario Gestionar Operadores (Oculto para operadores) */}
+          {currentUser?.role !== 'operador' && !isOperador && (
             <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200 gap-4">
               <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-slate-700 shrink-0" />
                 <div>
                   <span className="text-sm font-bold text-slate-900 block">
-                    Control de Operadores Notariales
+                    Gestión de Operadores Notariales
                   </span>
                   <p className="text-xs text-slate-500">
                     Slots utilizados: {operadores.length} de {limiteActual} ({slotsLibres} libres)
@@ -905,15 +924,15 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
                 <Users className="w-3.5 h-3.5 text-[#FF3131]" />
-                <span>Gestionar Usuarios</span>
+                <span>Gestionar Operadores</span>
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal Interactivo de Gestión de Usuarios (100% en memoria) */}
-      {!isOperador && modalUsuariosAbierto && (
+      {/* Modal Interactivo de Gestión de Operadores */}
+      {currentUser?.role !== 'operador' && !isOperador && modalUsuariosAbierto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">

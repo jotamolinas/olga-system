@@ -4,6 +4,7 @@ import { db, auth } from '../services/auth';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 import { useTrialStatus } from '../hooks/useTrialStatus';
+import { useWorkspace } from '../hooks/useWorkspace';
 import ReactMarkdown from 'react-markdown';
 import { ModalGuardarDocumento } from './ModalGuardarDocumento';
 import { formatDocClean } from './PagarePDFPreview';
@@ -32,6 +33,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const { diasRestantes, pruebaActiva } = useTrialStatus(currentUser);
+  const { workspaceId } = useWorkspace(currentUser || auth.currentUser, userData);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const isFree = userData?.plan === 'ninguno' || !userData?.plan;
@@ -141,17 +143,28 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
-      const workspaceId = isOperador ? (userData?.tenant_id || userData?.tenantId || auth.currentUser.uid) : auth.currentUser.uid;
+      if (!workspaceId) {
+        console.error("Operación abortada: Workspace no identificado.");
+        return;
+      }
       console.log("Guardando con Workspace ID:", workspaceId);
+      const user = (currentUser || auth.currentUser) as any;
+      const creatorName = user?.nombre || userData?.nombre || userData?.razonSocial || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+      const creatorRole = user?.role || user?.rol || userData?.role || userData?.rol || 'titular';
+
       const datosDelDocumento = {
         texto: text,
         tipo: 'Escrito Generado',
-        userId: workspaceId,
+        userId: workspaceId,            // El propietario legal de los datos (Titular)
+        creator_id: auth.currentUser.uid, // Rastro de auditoría: Quién lo digitó
         createdBy: auth.currentUser.uid,
-        categoria: categoria
+        creator_name: creatorName,
+        creator_role: creatorRole,
+        categoria: categoria,
+        createdAt: new Date().toISOString(),
+        fechaCreacion: serverTimestamp()
       };
-      await addDoc(collection(db, 'documentos_olga'), { ...datosDelDocumento, createdAt: new Date().toISOString() });
+      await addDoc(collection(db, 'documentos_olga'), datosDelDocumento);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -272,7 +285,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           onClose={() => setShowSaveModal(false)}
           onConfirm={confirmSave}
           userCarpetas={userData?.carpetas}
-          workspaceId={(userData?.rol === 'operador' || userData?.role === 'operador') ? (userData?.tenant_id || userData?.tenantId || auth.currentUser?.uid) : auth.currentUser?.uid}
+          workspaceId={workspaceId}
         />
       )}
     </div>
