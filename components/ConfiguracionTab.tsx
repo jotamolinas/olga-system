@@ -22,8 +22,9 @@ import {
   Copy,
   Mail
 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDocs, query, where, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare } from '../types';
 
 export interface ConfiguracionInstitucionalData {
@@ -31,6 +32,7 @@ export interface ConfiguracionInstitucionalData {
   ruc: string;
   registroNotarial: string;
   logoUrl: string | null;
+  logo_institucional?: string | null;
   notificacionesVencimiento: boolean;
   multasMoraAutomatica: boolean;
   numeracionCorrelativa: boolean;
@@ -221,17 +223,30 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   userData,
   currentUser
 }) => {
-  // Helper para inicializar configuración desde localStorage
+  // FASE 3: Identificación de Workspace para persistencia en la nube
+  const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
+  const effectiveWorkspaceId = workspaceId || userData?.tenant_id || userData?.uid || currentUser?.uid;
+
+  // El logo se obtiene EXCLUSIVAMENTE de Firestore (userData.logo_institucional)
+  const firestoreLogo = userData?.logo_institucional || userData?.logoUrl || initialData?.logo_institucional || initialData?.logoUrl || null;
+
+  // Helper para inicializar configuración desde localStorage (excluyendo el logo)
   const loadStoredConfig = (): ConfiguracionInstitucionalData => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
+        // Purgar inmediatamente cualquier residuo de logoUrl en localStorage
+        if (parsed.logoUrl || parsed.logo_institucional) {
+          delete parsed.logoUrl;
+          delete parsed.logo_institucional;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        }
         return {
-          nombreInstitucion: parsed.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
-          ruc: parsed.ruc || '80012345-6',
-          registroNotarial: parsed.registroNotarial || 'Registro Notarial N° 742 - Asunción',
-          logoUrl: parsed.logoUrl || null,
+          nombreInstitucion: userData?.nombreInstitucion || userData?.razonSocial || parsed.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
+          ruc: userData?.ruc || parsed.ruc || '80012345-6',
+          registroNotarial: userData?.registroNotarial || parsed.registroNotarial || 'Registro Notarial N° 742 - Asunción',
+          logoUrl: firestoreLogo,
           notificacionesVencimiento: parsed.notificacionesVencimiento ?? true,
           multasMoraAutomatica: parsed.multasMoraAutomatica ?? true,
           numeracionCorrelativa: parsed.numeracionCorrelativa ?? true,
@@ -243,10 +258,10 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }
 
     return {
-      nombreInstitucion: initialData?.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
-      ruc: initialData?.ruc || '80012345-6',
-      registroNotarial: initialData?.registroNotarial || 'Registro Notarial N° 742 - Asunción',
-      logoUrl: initialData?.logoUrl || null,
+      nombreInstitucion: userData?.nombreInstitucion || userData?.razonSocial || initialData?.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
+      ruc: userData?.ruc || initialData?.ruc || '80012345-6',
+      registroNotarial: userData?.registroNotarial || initialData?.registroNotarial || 'Registro Notarial N° 742 - Asunción',
+      logoUrl: firestoreLogo,
       notificacionesVencimiento: initialData?.notificacionesVencimiento ?? true,
       multasMoraAutomatica: initialData?.multasMoraAutomatica ?? true,
       numeracionCorrelativa: initialData?.numeracionCorrelativa ?? true,
@@ -260,7 +275,16 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [nombreInstitucion, setNombreInstitucion] = useState(initialValues.nombreInstitucion);
   const [ruc, setRuc] = useState(initialValues.ruc);
   const [registroNotarial, setRegistroNotarial] = useState(initialValues.registroNotarial);
-  const [logoPreview, setLogoPreview] = useState<string | null>(initialValues.logoUrl);
+  const [logoPreview, setLogoPreview] = useState<string | null>(firestoreLogo);
+
+  // Sincronización reactiva del logo directamente desde Firestore (userData)
+  useEffect(() => {
+    if (userData?.logo_institucional !== undefined) {
+      setLogoPreview(userData.logo_institucional);
+    } else if (userData?.logoUrl !== undefined) {
+      setLogoPreview(userData.logoUrl);
+    }
+  }, [userData?.logo_institucional, userData?.logoUrl]);
 
   // Estados Preferencias y Notificaciones (Toggles)
   const [notificacionesVencimiento, setNotificacionesVencimiento] = useState(initialValues.notificacionesVencimiento);
@@ -356,28 +380,68 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manejo de carga de logo comprimido a formato WebP (Previene QuotaExceededError)
+  // MIGRACIÓN A LA NUBE: Guardar imagen directamente en Firestore (users/{workspaceId}.logo_institucional)
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
         const webpBase64 = await comprimirImagenWebP(file, 400);
         setLogoPreview(webpBase64);
-        guardarYNotificar({ logoUrl: webpBase64 }, 'Logo institucional optimizado (WebP) y sincronizado.');
+
+        if (effectiveWorkspaceId) {
+          await setDoc(doc(db, 'users', effectiveWorkspaceId), {
+            logo_institucional: webpBase64
+          }, { merge: true });
+        }
+
+        // Purgar inmediatamente cualquier residuo de logo en localStorage
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            delete parsed.logoUrl;
+            delete parsed.logo_institucional;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          }
+        } catch {}
+
+        mostrarMensajeExito('Insignia institucional guardada en la nube (Firestore) y sincronizada.');
       } catch (err) {
-        console.error('Error al procesar y comprimir la imagen:', err);
+        console.error('Error al procesar y subir la imagen:', err);
         mostrarMensajeExito('Error al procesar la imagen del logo.');
       }
     }
   };
 
-  const handleRemoverLogo = () => {
+  const handleRemoverLogo = async () => {
     setLogoPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    guardarYNotificar({ logoUrl: null }, 'Logo institucional removido.');
+
+    if (effectiveWorkspaceId) {
+      try {
+        await setDoc(doc(db, 'users', effectiveWorkspaceId), {
+          logo_institucional: null
+        }, { merge: true });
+      } catch (err) {
+        console.error('Error al remover logo en Firestore:', err);
+      }
+    }
+
+    // Purgar residuo de localStorage
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        delete parsed.logoUrl;
+        delete parsed.logo_institucional;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch {}
+
+    mostrarMensajeExito('Insignia institucional removida de la nube.');
   };
 
-  // Función principal para persistir en localStorage y propagar globalmente
+  // Función principal para persistir preferencias no-sensibles en localStorage (sin el logo)
   const guardarYNotificar = (
     overrides?: Partial<ConfiguracionInstitucionalData>,
     mensajeFeedback?: string
@@ -386,7 +450,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       nombreInstitucion: overrides?.nombreInstitucion ?? nombreInstitucion,
       ruc: overrides?.ruc ?? ruc,
       registroNotarial: overrides?.registroNotarial ?? registroNotarial,
-      logoUrl: overrides?.logoUrl !== undefined ? overrides.logoUrl : logoPreview,
+      logoUrl: null, // ELIMINADO de localStorage para prevenir fugas de estado entre sesiones
       notificacionesVencimiento: overrides?.notificacionesVencimiento ?? notificacionesVencimiento,
       multasMoraAutomatica: overrides?.multasMoraAutomatica ?? multasMoraAutomatica,
       numeracionCorrelativa: overrides?.numeracionCorrelativa ?? numeracionCorrelativa,
@@ -417,9 +481,45 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }, 4000);
   };
 
-  const handleGuardarPerfil = (e: React.FormEvent) => {
+ const handleGuardarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
-    guardarYNotificar(undefined, '¡Perfil Institucional guardado exitosamente!');
+
+    if (effectiveWorkspaceId) {
+      try {
+        const userRef = doc(db, 'users', effectiveWorkspaceId);
+        
+        // 1. Validar la estructura actual del documento para no pisar metadatos
+        const { getDoc, serverTimestamp } = await import('firebase/firestore');
+        const userSnap = await getDoc(userRef);
+        
+        // 2. Preparamos la data del formulario
+        const dataToUpdate: any = {
+          nombreInstitucion,
+          razonSocial: nombreInstitucion,
+          ruc,
+          registroNotarial,
+          logo_institucional: logoPreview || null,
+          perfilCompletado: true
+        };
+
+        // 3. FALLBACK DE CONTINGENCIA (Parche 9.2)
+        // Si el usuario no tiene los datos base del plan trial, los inyectamos aquí.
+        if (!userSnap.data()?.fecha_creacion) {
+          dataToUpdate.fecha_creacion = serverTimestamp();
+          dataToUpdate.planActual = 'trial';
+          dataToUpdate.role = 'titular';
+          dataToUpdate.estado_cuenta = 'activa';
+        }
+
+        // 4. Guardado seguro usando merge: true
+        await setDoc(userRef, dataToUpdate, { merge: true });
+
+      } catch (err) {
+        console.error('Error guardando perfil institucional en Firestore:', err);
+      }
+    }
+
+    guardarYNotificar(undefined, '¡Perfil Institucional guardado exitosamente en la nube!');
   };
 
   // Fase 2: Lógica de Invitación Segura de Operadores (Soporte Email / Celular PY)
@@ -646,8 +746,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   <img src={logoPreview} alt="Logo Notaría" className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
-                    <ImageIcon className="w-8 h-8 mb-1 text-slate-400" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Logo Notaría</span>
+                    <Building className="w-8 h-8 mb-1 text-slate-400" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">O.L.G.A.</span>
                   </div>
                 )}
               </div>
@@ -657,7 +757,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="space-y-2 text-center md:text-left flex-grow">
               <h4 className="text-sm font-bold text-slate-800">Insignia o Logotipo Oficial</h4>
               <p className="text-xs text-slate-500 max-w-md">
-                Se guardará en localStorage y se sincronizará automáticamente con el encabezado y panel lateral de la aplicación.
+                Se guardará directamente en su cuenta en la nube (Firestore) y se sincronizará automáticamente con el encabezado y panel lateral de la aplicación.
               </p>
               <div className="flex flex-wrap items-center gap-2 pt-1 justify-center md:justify-start">
                 <input 

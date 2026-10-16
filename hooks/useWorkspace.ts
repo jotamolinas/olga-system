@@ -43,7 +43,7 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
     }
 
     return () => { isMounted = false; };
-  }, [workspaceId, isOperador, userDisplayName]);
+  }, [workspaceId, isOperador, userDisplayName, userProfile]);
 
   return { workspaceId, workspaceName, workspaceData };
 };

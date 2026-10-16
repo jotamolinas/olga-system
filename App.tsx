@@ -55,7 +55,7 @@ export interface AdminTramiteRecord {
 
 // Chat & AI
 import { sendMessageToOlga } from './services/gemini';
-import { doc, updateDoc, increment, setDoc, getDoc, collection, query, where, onSnapshot, or } from 'firebase/firestore';
+import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from './services/auth';
 import ReactMarkdown from 'react-markdown';
 
@@ -94,7 +94,7 @@ import {
   Zap,
   ShieldCheck,
   User as UserIcon, LogOut,
-  AlertTriangle, LifeBuoy , Award, Download} from 'lucide-react';
+  AlertTriangle, LifeBuoy , Award, Download, HelpCircle} from 'lucide-react';
 
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
   <div className={`flex flex-col ${large ? 'items-center' : 'items-start'} gap-1.5`}>
@@ -282,7 +282,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Authentication & Roles state
   const [currentUser, setCurrentUser] = useState<(User & { role?: string; rol?: string; nombre?: string }) | null>(null);
-  const { pruebaActiva, diasRestantes, userData } = useTrialStatus(currentUser);
+  const { pruebaActiva, diasRestantes, userData, isTrialExpired } = useTrialStatus(currentUser);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
@@ -404,30 +404,32 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   });
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
 
-  // Sincronización Institucional de ConfiguracionTab (localStorage + Real-time)
+  // Sincronización Institucional de ConfiguracionTab (Real-time de textos institucionales)
   const [customBranding, setCustomBranding] = useState<{
     nombreInstitucion: string;
     ruc: string;
     registroNotarial: string;
-    logoUrl: string | null;
   }>(() => {
     try {
       const stored = localStorage.getItem('olga_configuracion_institucional');
       if (stored) {
         const p = JSON.parse(stored);
+        if (p.logoUrl || p.logo_institucional) {
+          delete p.logoUrl;
+          delete p.logo_institucional;
+          localStorage.setItem('olga_configuracion_institucional', JSON.stringify(p));
+        }
         return {
           nombreInstitucion: p.nombreInstitucion || '',
           ruc: p.ruc || '',
-          registroNotarial: p.registroNotarial || '',
-          logoUrl: p.logoUrl || null
+          registroNotarial: p.registroNotarial || ''
         };
       }
     } catch {}
     return {
       nombreInstitucion: '',
       ruc: '',
-      registroNotarial: '',
-      logoUrl: null
+      registroNotarial: ''
     };
   });
 
@@ -437,8 +439,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         setCustomBranding({
           nombreInstitucion: e.detail.nombreInstitucion || '',
           ruc: e.detail.ruc || '',
-          registroNotarial: e.detail.registroNotarial || '',
-          logoUrl: e.detail.logoUrl || null
+          registroNotarial: e.detail.registroNotarial || ''
         });
       }
     };
@@ -539,21 +540,52 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       setCurrentUser(user);
       
       try {
-        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
           if (!docSnap.exists()) {
-            const fallbackProfile = { 
-              email: user.email || '', 
-              planActual: 'Sin Plan',
-              rol: 'usuario',
-              diasRestantes: 5
-            };
-            setDoc(doc(db, 'users', user.uid), fallbackProfile, { merge: true }).catch(console.error);
-            setUserProfile(fallbackProfile);
-            setIsCheckingProfile(false);
-            return;
+            const userRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userRef);
+            if (!userSnap.exists()) {
+              // SOLO si el usuario es NUEVO, inyecta la metadata inicial:
+              const fallbackProfile = { 
+                uid: user.uid,
+                email: user.email || '', 
+                fecha_creacion: serverTimestamp(),
+                planActual: 'trial',
+                role: 'titular',
+                rol: 'titular',
+                estado_cuenta: 'activa',
+                consultasUsadas: 0,
+                escritosUsados: 0,
+                usoIA: 0,
+                diasRestantes: 5
+              };
+              await setDoc(userRef, fallbackProfile, { merge: true }).catch(console.error);
+              setUserProfile(fallbackProfile);
+              setIsCheckingProfile(false);
+              return;
+            }
           }
 
           const data = docSnap.data();
+          if (!data) return;
+
+          // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
+          const isGavanah = 
+            (user.email && user.email.toLowerCase().includes('gavanah')) ||
+            (data.email && data.email.toLowerCase().includes('gavanah')) ||
+            (data.nombre && data.nombre.toLowerCase().includes('gavanah'));
+
+          if (isGavanah && (data.role !== 'operador' || data.rol !== 'operador' || data.planActual !== 'Operador Notarial')) {
+            console.log("Restaurando rol y plan de operador para cuenta Gavanah...");
+            await updateDoc(doc(db, 'users', user.uid), {
+              role: 'operador',
+              rol: 'operador',
+              planActual: 'Operador Notarial'
+            }).catch(console.error);
+            data.role = 'operador';
+            data.rol = 'operador';
+            data.planActual = 'Operador Notarial';
+          }
           const firestoreSessionId = data.activeSessionId;
           const localSessionId = localStorage.getItem('appSessionId');
 
@@ -612,6 +644,28 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           diasRestantes: 5
         });
         setIsCheckingProfile(false);
+      }
+
+      // Parche Fase 9.1: Reparación proactiva por cuenta administradora para restaurar el poder de Gavanah
+      if (user.email === 'jotamolinas@gmail.com') {
+        getDocs(collection(db, 'users')).then((usersSnap) => {
+          usersSnap.forEach((uDoc) => {
+            const uData = uDoc.data();
+            const matchGavanah = 
+              (uData.email && uData.email.toLowerCase().includes('gavanah')) ||
+              (uData.nombre && uData.nombre.toLowerCase().includes('gavanah')) ||
+              uDoc.id.toLowerCase().includes('gavanah');
+
+            if (matchGavanah && (uData.role !== 'operador' || uData.rol !== 'operador' || uData.planActual !== 'Operador Notarial')) {
+              console.log("Admin restaurando cuenta de Gavanah en Firestore:", uDoc.id);
+              updateDoc(doc(db, 'users', uDoc.id), {
+                role: 'operador',
+                rol: 'operador',
+                planActual: 'Operador Notarial'
+              }).catch(console.error);
+            }
+          });
+        }).catch(err => console.warn("Admin repair scan:", err));
       }
       
     }, () => {
@@ -795,6 +849,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const currentWorkspaceId = workspaceId || (isOperador
     ? (userProfile?.tenant_id || userProfile?.tenantId || userData?.tenant_id || userData?.tenantId || currentUser?.uid)
     : currentUser?.uid);
+
+  // Lectura Exclusiva de Logo Institucional desde Firestore (users/{workspaceId})
+  const logoInstitucional = workspaceData?.logo_institucional || userProfile?.logo_institucional || null;
 
   const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com" || isOperador;
   if (!skipOnboarding && (!userProfile || !userProfile.perfilCompletado)) {
@@ -1193,10 +1250,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           
           <div className="flex items-center gap-3 bg-slate-950/50 p-2.5 rounded-2xl border border-slate-800 relative group">
             <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-700">
-              {workspaceData?.logoUrl || customBranding.logoUrl ? (
-                <img src={workspaceData?.logoUrl || customBranding.logoUrl} alt="Logo Notaría" className="w-full h-full object-cover" />
+              {logoInstitucional ? (
+                <img src={logoInstitucional} alt="Logo Notaría" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon className="w-5 h-5 text-slate-400" />
+                <Building className="w-5 h-5 text-slate-400" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -1214,7 +1271,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               </p>
             </div>
             <button 
-              onClick={() => logout()}
+              onClick={async () => {
+                await logout();
+                setCurrentUser(null);
+                setUserProfile(null);
+                setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
+              }}
               className="p-2 bg-slate-800 hover:bg-[#FF3131] text-slate-400 hover:text-white rounded-xl transition-colors shrink-0"
               title="Cerrar Sesión"
             >
@@ -1472,7 +1534,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         
         {/* Dynamic header display */}
         <header className="bg-white/80 border-b border-slate-100 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
-          <div className="flex items-center gap-3 md:gap-4 min-w-0">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -1482,13 +1544,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <Menu className="w-5 h-5" />
             </button>
             <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200">
-              {workspaceData?.logoUrl || customBranding.logoUrl ? (
-                <img src={workspaceData?.logoUrl || customBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+              {logoInstitucional ? (
+                <img src={logoInstitucional} alt="Logo" className="w-full h-full object-cover" />
               ) : (
                 <Building className="w-5 h-5 text-white" />
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
@@ -1504,14 +1566,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2 md:gap-3 shrink-0">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 flex-shrink-0">
             {/* INICIO DEL BLOQUE DE INSIGNIAS CONDICIONALES ACTUALIZADO MANUALMENTE */}
 {(() => {
   const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
   if (isOperador) {
     return (
-      <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
-        <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5">
+      <div className="flex items-center shrink-0 flex-shrink-0">
+        <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5 whitespace-nowrap">
           <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
           <span>OPERADOR NOTARIAL</span>
         </span>
@@ -1524,61 +1586,98 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   
   if (currentPlan.includes('pro')) {
     return (
-      <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
-        <span className="bg-blue-600 text-white px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-bold shadow-sm">
-          <span className="sm:hidden">PRO</span><span className="hidden sm:inline">PLAN PRO</span>
-        </span>
-        <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
-          ✨ <span className="sm:hidden">IA: </span><span className="hidden sm:inline">CONSULTAS IA: </span>{userProfile?.consultasUsadas || userData?.consultasUsadas || 0}/50
-        </span>
-        <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
-          📄 <span className="hidden sm:inline">ESCRITOS: ILIMITADO</span><span className="sm:hidden">∞</span>
+      <div className="flex items-center shrink-0 flex-shrink-0">
+        <span className="bg-blue-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
+          PLAN PRO
         </span>
       </div>
     );
   }
   if (currentPlan.includes('empresa')) {
     return (
-      <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
+      <div className="flex items-center shrink-0 flex-shrink-0">
         <span 
           onClick={() => setShowEmpresaBenefits(true)}
-          className="cursor-pointer bg-gradient-to-r from-gray-900 via-black to-gray-800 text-white font-extrabold px-3 py-1 rounded-md border border-gray-600 shadow-[0_0_12px_rgba(255,255,255,0.2)] text-[10px] sm:text-xs transition-transform hover:scale-105"
+          className="cursor-pointer bg-gradient-to-r from-gray-900 via-black to-gray-800 text-white font-extrabold px-3 py-1 rounded-md border border-gray-600 shadow-[0_0_12px_rgba(255,255,255,0.2)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
-          <span className="sm:hidden">EMPRESA</span><span className="hidden sm:inline">PLAN EMPRESA</span>
+          PLAN EMPRESA
         </span>
       </div>
     );
   }
   if (currentPlan.includes('full')) {
     return (
-      <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
+      <div className="flex items-center shrink-0 flex-shrink-0">
         <span 
           onClick={() => setShowBenefits(true)}
-          className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] sm:text-xs transition-transform hover:scale-105"
+          className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
-          <span className="sm:hidden">FULL</span><span className="hidden sm:inline">PLAN FULL</span>
+          PLAN FULL
         </span>
       </div>
     );
   }
-  // Calculamos los valores reales y evitamos bugs de números gigantes como 9999
-  const diasCalculados = userProfile?.diasRestantes ?? userData?.diasRestantes ?? diasRestantes ?? 5;
-  const diasMostrar = diasCalculados > 5 ? 5 : (diasCalculados < 0 ? 0 : diasCalculados);
-  
+  // Fase 9: Cálculo real y dinámico comparando la fecha actual contra fecha_creacion en Firestore
+  const rawCreation = userProfile?.fecha_creacion || userData?.fecha_creacion || userProfile?.fechaCreacion || userData?.fechaCreacion || userProfile?.created_at;
+  let dynamicDays = 5;
+  let isExpiredTrial = isTrialExpired || !pruebaActiva || diasRestantes <= 0;
+
+  if (rawCreation) {
+    let creationDate = new Date();
+    if (typeof rawCreation.toDate === 'function') {
+      creationDate = rawCreation.toDate();
+    } else if (rawCreation.seconds) {
+      creationDate = new Date(rawCreation.seconds * 1000);
+    } else {
+      creationDate = new Date(rawCreation);
+    }
+    const diffDaysPassed = (Date.now() - creationDate.getTime()) / (1000 * 60 * 60 * 24);
+    dynamicDays = Math.max(0, Math.ceil(5 - diffDaysPassed));
+    if (diffDaysPassed > 5 || dynamicDays <= 0) {
+      isExpiredTrial = true;
+      dynamicDays = 0;
+    }
+  } else {
+    dynamicDays = userProfile?.diasRestantes ?? userData?.diasRestantes ?? diasRestantes ?? 5;
+    if (dynamicDays <= 0) {
+      isExpiredTrial = true;
+      dynamicDays = 0;
+    }
+  }
+
+  const diasMostrar = isExpiredTrial ? 0 : (dynamicDays > 5 ? 5 : (dynamicDays < 0 ? 0 : dynamicDays));
   const iaUsadas = userProfile?.usoIA || userData?.usoIA || userProfile?.consultasUsadas || userData?.consultasUsadas || 0;
   const escritosUsados = typeof olgaDocsCount !== 'undefined' ? olgaDocsCount : (userProfile?.escritosUsados || userData?.escritosUsados || 0);
 
+  const detalleLimites = isExpiredTrial
+    ? `Límites de prueba: Periodo finalizado (> 5 días). Escritos (${escritosUsados}/5) - Consultas IA (${iaUsadas}/5)`
+    : `Límites de prueba: Escritos (${escritosUsados}/5) - Consultas IA (${iaUsadas}/5)`;
+
   return (
-    <div className="flex flex-wrap gap-1 sm:gap-2 justify-end items-center">
-      <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-bold shadow-sm">
-        <span className="sm:hidden">PRUEBA: {diasMostrar}d</span><span className="hidden sm:inline">PRUEBA GRATUITA: {diasMostrar} DÍAS</span>
-      </span>
-      <span className="bg-slate-100 text-slate-700 border border-slate-300 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
-        ✨ <span className="sm:hidden">IA: </span><span className="hidden sm:inline">CONSULTAS IA: </span>{iaUsadas}/5
-      </span>
-      <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
-        📄 <span className="hidden sm:inline">ESCRITOS: </span>{escritosUsados}/5
-      </span>
+    <div className="flex items-center shrink-0 flex-shrink-0">
+      <div className="relative group/trial flex items-center">
+        <div 
+          className={`${isExpiredTrial ? 'bg-red-50 text-red-700 border-red-300' : 'bg-amber-100 text-amber-900 border-amber-300'} border px-3 py-1 rounded-full text-[10px] sm:text-xs font-black shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-default`}
+          title={detalleLimites}
+        >
+          <span>PRUEBA GRATUITA: {isExpiredTrial ? '0 DÍAS' : `${diasMostrar} DÍAS`}</span>
+          <span 
+            className={`${isExpiredTrial ? 'text-red-600 hover:text-red-900' : 'text-amber-700 hover:text-amber-950'} transition-colors inline-flex items-center cursor-help`}
+            aria-label="Detalles de límites de prueba"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </span>
+        </div>
+
+        {/* Tooltip flotante enriquecido al hover */}
+        <div className="absolute right-0 top-full mt-1.5 hidden group-hover/trial:flex flex-col z-50 bg-slate-900 text-white text-[11px] font-medium py-1.5 px-3 rounded-xl shadow-xl border border-slate-700 whitespace-nowrap animate-in fade-in zoom-in-95 pointer-events-none">
+          <span className="font-bold text-amber-400">Límites de prueba:</span>
+          <span className="text-slate-200">Escritos ({escritosUsados}/5) - Consultas IA ({iaUsadas}/5)</span>
+          {isExpiredTrial && (
+            <span className="text-red-400 text-[10px] mt-0.5 font-bold">Acceso bloqueado: periodo de 5 días expirado</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 })()}
@@ -1589,10 +1688,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             })() && (
               <button 
                 onClick={() => setActiveTab('planes')}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md hover:scale-105"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md hover:scale-105 shrink-0 flex-shrink-0 transition-transform cursor-pointer"
               >
                 <Target className="w-3 h-3 animate-pulse text-blue-100" />
-                <span className="text-[10px] font-black uppercase tracking-wider">Obtener Planes</span>
+                <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">Obtener Planes</span>
               </button>
             )}
 
@@ -1608,7 +1707,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               }}
             />
 
-            <div className="text-[10px] md:text-xs font-black text-slate-400 uppercase font-mono pb-0.5 hidden xs:block">
+            <div className="text-[10px] md:text-xs font-black text-slate-400 uppercase font-mono pb-0.5 hidden xs:block whitespace-nowrap shrink-0 flex-shrink-0">
               Serie: PJE-{config?.anio_serie || new Date().getFullYear()}
             </div>
           </div>
@@ -1618,7 +1717,64 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         <div className={`flex-grow overflow-y-auto ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col' : 'p-4 md:p-8'}`}>
           <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : 'pb-24'}`}>
             
-            {activeTab === 'tablero' && (
+            {(() => {
+              const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
+              const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (userData?.estadoPlataforma === 'Aprobado') || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+              const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
+
+              if (accesoBloqueadoPorTrial && activeTab !== 'planes' && activeTab !== 'soporte') {
+                return (
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-8 sm:p-12 text-center max-w-2xl mx-auto my-auto flex flex-col items-center animate-in fade-in">
+                    <div className="w-16 h-16 bg-slate-900 text-[#FF3131] rounded-2xl flex items-center justify-center mb-6 shadow-md border border-slate-800">
+                      <Lock className="w-8 h-8" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#FF3131] bg-red-50 border border-red-200 px-3 py-1 rounded-full mb-3">
+                      Periodo de Prueba Finalizado
+                    </span>
+                    <h2 className="text-2xl font-black text-slate-900 font-serif tracking-tight mb-3">
+                      Acceso Restringido: Prueba de 5 Días Expirada
+                    </h2>
+                    <p className="text-slate-600 text-sm leading-relaxed mb-6 max-w-lg">
+                      Tu periodo de 5 días de prueba gratuita ha finalizado según el registro de tu cuenta en la plataforma. Para continuar emitiendo pagarés notariales, redactando escritos jurídicos y utilizando las consultas notariales de O.L.G.A., por favor selecciona un plan comercial.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+                      <button
+                        onClick={() => setActiveTab('planes')}
+                        className="px-6 py-3 bg-[#FF3131] hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Target className="w-4 h-4" />
+                        <span>Obtener Planes Disponibles</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('soporte')}
+                        className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Contactar Soporte</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await logout();
+                          setCurrentUser(null);
+                          setUserProfile(null);
+                        }}
+                        className="px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors border border-slate-200 cursor-pointer"
+                      >
+                        <span>Cerrar Sesión</span>
+                      </button>
+                    </div>
+                    <div className="mt-8 pt-6 border-t border-slate-100 text-[11px] text-slate-400 font-mono">
+                      Escribano Titular: {userProfile?.email || currentUser?.email} | Workspace: {workspaceId || currentUser?.uid}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-3 max-w-md">
+                      Nota: Todo documento generado en la plataforma es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  {activeTab === 'tablero' && (
               <TableroTab 
                 pagares={pagares}
                 personas={personas}
@@ -1956,6 +2112,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 )}
               </div>
             )}
+                </>
+              );
+            })()}
 
           </div>
         </div>

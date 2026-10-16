@@ -108,7 +108,27 @@ export const registerNewSession = async (uid: string): Promise<string> => {
 };
 
 export const logout = async () => {
-  localStorage.removeItem('appSessionId');
+  // Purgar rigurosamente tokens de sesión y estados locales remanentes (previene fugas de identidad visual y logos)
+  try {
+    localStorage.removeItem('appSessionId');
+    localStorage.removeItem('olga_configuracion_institucional');
+    localStorage.removeItem('olga_configuracion_v1');
+    localStorage.removeItem('escritos_temporales');
+    localStorage.removeItem('olga_escritos_redaccion_draft_texto');
+    localStorage.removeItem('olga_escritos_redaccion_draft_titulo');
+    localStorage.removeItem('olga_escritos_redaccion_draft_categoria');
+    localStorage.removeItem('olga_draft_pagare');
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('olga') || key.includes('config') || key.includes('logo') || key.includes('draft'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('Error purgando localStorage en logout:', e);
+  }
   await auth.signOut();
   cachedAccessToken = null;
 };
@@ -134,7 +154,32 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
     isSigningIn = true;
     const result = await createUserWithEmailAndPassword(auth, email, password);
     if (result.user) {
-      await registerNewSession(result.user.uid);
+      const sessionId = await registerNewSession(result.user.uid);
+      const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
+      const userRef = doc(db, 'users', result.user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        // SOLO si el usuario es NUEVO, inyecta la metadata inicial:
+        await setDoc(userRef, {
+          uid: result.user.uid,
+          email: result.user.email || email,
+          fecha_creacion: serverTimestamp(),
+          planActual: 'trial',
+          role: 'titular',
+          rol: 'titular',
+          estado_cuenta: 'activa',
+          consultasUsadas: 0,
+          escritosUsados: 0,
+          usoIA: 0,
+          activeSessionId: sessionId
+        });
+      } else {
+        // Si el usuario ya existe, SOLO actualiza datos de sesión, NO toques roles ni planes.
+        await setDoc(userRef, {
+          activeSessionId: sessionId
+        }, { merge: true });
+      }
     }
     return { user: result.user };
   } catch (error) {
