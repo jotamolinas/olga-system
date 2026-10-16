@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
 import { consultarRUC } from '../services/dnitService';
@@ -14,6 +14,7 @@ import {
   sincronizarRetroactivoTodosLosPagares, 
   savePagaresToStorage 
 } from '../services/personaSync';
+import { ModalDetallePagare } from './ModalDetallePagare';
 
 interface PagaresTabProps {
   pagares: Pagare[];
@@ -64,6 +65,34 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   // Sincronización Automática con Fichero de Personas
   const [syncAlertBanner, setSyncAlertBanner] = useState<{ tipo: 'success' | 'info'; texto: string } | null>(null);
   const [isSyncingRetroactivo, setIsSyncingRetroactivo] = useState(false);
+
+  // Fase 8: Trazabilidad UX - Código de Soporte Técnico
+  const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
+  const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
+  const [selectedPagareForDetail, setSelectedPagareForDetail] = useState<Pagare | null>(null);
+
+  const handleCopiarCodigoSoporte = async (pag: Pagare) => {
+    const effectiveWorkspaceId = workspaceId || pag.userId || auth?.currentUser?.uid || 'no-workspace';
+    const textToCopy = `Solicitud Soporte O.L.G.A. | Workspace: ${effectiveWorkspaceId} | Pagaré ID: ${pag.id} | Correlativo: ${pag.correlativo}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setCopiedSupportId(pag.id);
+      setSupportCopiedToast("Código de soporte copiado");
+      setTimeout(() => setCopiedSupportId(null), 3000);
+      setTimeout(() => setSupportCopiedToast(null), 3000);
+    } catch (err) {
+      console.error("Error al copiar código de soporte:", err);
+    }
+  };
 
   // Auto-cierre de banner de confirmación
   useEffect(() => {
@@ -1886,10 +1915,49 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         )}
                         </div>
                         )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPagareForDetail(pag);
+                          }}
+                          className="text-[10px] sm:text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          Ver Detalle
+                        </button>
                         <span className="text-[10px] sm:text-[11px] font-black text-[#FF3131] uppercase tracking-wider group-hover:underline px-2 py-1.5">
-                          Ver Documento &rarr;
+                          Ver Impresión &rarr;
                         </span>
                       </div>
+                    </div>
+
+                    {/* Código de Soporte Técnico (Fase 8) */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-mono text-slate-400">
+                        Ref. Soporte: {pag.correlativo} - {String(pag.id || '').slice(-6)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleCopiarCodigoSoporte(pag);
+                        }}
+                        className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
+                        title="Copiar código de soporte técnico"
+                      >
+                        {copiedSupportId === pag.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700 font-bold text-[10px]">Copiado</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clipboard className="w-3.5 h-3.5" />
+                            <span className="text-[10px]">Copiar</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 );
@@ -2954,6 +3022,23 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
           </div>
         </div>,
         document.body
+      )}
+      {supportCopiedToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white border border-slate-700 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-bottom-2">
+          <Check className="w-4 h-4 text-[#FF3131]" />
+          <span>{supportCopiedToast}</span>
+        </div>
+      )}
+
+      {selectedPagareForDetail && (
+        <ModalDetallePagare
+          isOpen={!!selectedPagareForDetail}
+          onClose={() => setSelectedPagareForDetail(null)}
+          pagare={selectedPagareForDetail}
+          personas={personas}
+          onOpenPDFPreview={(p) => handleAbrirPagare(p)}
+          userData={userData}
+        />
       )}
 
     </div>

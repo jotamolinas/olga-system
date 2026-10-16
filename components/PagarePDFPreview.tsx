@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
-import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle } from 'lucide-react';
+import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check } from 'lucide-react';
+import { useWorkspace } from '../hooks/useWorkspace';
+import { auth } from '../services/auth';
 
 interface PagarePDFPreviewProps {
   pagare: Pagare | null;
@@ -75,6 +77,33 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const [clausulaPenal, setClausulaPenal] = useState('454');
   const [moraAutomatica, setMoraAutomatica] = useState('424');
   const [dispensaProtesto, setDispensaProtesto] = useState('1349');
+  const { workspaceId } = useWorkspace(auth?.currentUser, userData);
+  const [copiedSupport, setCopiedSupport] = useState(false);
+  const [supportToast, setSupportToast] = useState(false);
+
+  const handleCopiarCodigoSoporte = async () => {
+    if (!pagare) return;
+    const effectiveWorkspaceId = workspaceId || pagare.userId || auth?.currentUser?.uid || 'no-workspace';
+    const textToCopy = `Solicitud Soporte O.L.G.A. | Workspace: ${effectiveWorkspaceId} | Pagaré ID: ${pagare.id} | Correlativo: ${pagare.correlativo}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setCopiedSupport(true);
+      setSupportToast(true);
+      setTimeout(() => setCopiedSupport(false), 3000);
+      setTimeout(() => setSupportToast(false), 3000);
+    } catch (err) {
+      console.error("Error al copiar código de soporte:", err);
+    }
+  };
 
   const currentFormattedDateTime = () => {
     return new Date().toLocaleString('es-PY', {
@@ -555,18 +584,53 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         </div>
 
         {/* Modal Bottom control bar */}
-        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between shrink-0">
-          <div className="flex gap-2 items-center text-xs font-bold font-sans text-slate-500">
-            <CheckCircle className="w-5 h-5 text-green-500" />
-            <span>Documento listo para firmar bajo Certificado de Firmas Nº {pagare.certificado_firmas_nro}.</span>
+        <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0 no-print">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+            <div className="flex gap-2 items-center text-xs font-bold font-sans text-slate-500">
+              <CheckCircle className="w-5 h-5 text-green-500 shrink-0" />
+              <span>Documento listo para firmar bajo Certificado de Firmas Nº {pagare.certificado_firmas_nro}.</span>
+            </div>
+
+            {/* Referencia de Soporte Técnico (Fase 8) */}
+            <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l sm:border-slate-200">
+              <span className="text-[11px] font-mono text-slate-400">
+                Ref. Soporte: {pagare.correlativo} - {String(pagare.id || '').slice(-6)}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopiarCodigoSoporte}
+                className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/80 transition-colors cursor-pointer"
+                title="Copiar código estructurado para soporte técnico"
+              >
+                {copiedSupport ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700 font-bold text-[10px]">Copiado</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">Copiar</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
           <button
             onClick={onClose}
-            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs uppercase tracking-wider shadow-md"
+            className="w-full md:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs uppercase tracking-wider shadow-md transition-colors"
           >
             Aceptar & Cerrar Vista
           </button>
         </div>
+
+        {supportToast && (
+          <div className="fixed bottom-6 right-6 z-[250] bg-slate-900 text-white border border-slate-700 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-bottom-2">
+            <Check className="w-4 h-4 text-[#FF3131]" />
+            <span>Código de soporte copiado</span>
+          </div>
+        )}
       </div>
     </div>
   );

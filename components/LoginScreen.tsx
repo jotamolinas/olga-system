@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { emailSignIn, emailSignUp, resetPassword } from '../services/auth';
-import { Sparkles, ArrowRight, ShieldCheck, Mail, Key } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle } from 'lucide-react';
 
 interface LoginScreenProps {
   onLogin: () => void;
+  sessionRevokedAlert?: string | null;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevokedAlert }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +83,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           {isLogin ? 'Acceso Seguro al Sistema' : 'Registro de Nueva Cuenta'}
         </p>
         
+        {sessionRevokedAlert && (
+          <div className="w-full box-border bg-red-950/80 text-red-200 text-xs font-bold p-4 rounded-xl mb-6 border border-red-500/70 relative z-10 flex items-center gap-3 text-left shadow-xl animate-fade-in">
+            <AlertTriangle className="w-5 h-5 text-[#FF3131] shrink-0" />
+            <div className="flex-1">
+              <span className="block font-black text-red-100">{sessionRevokedAlert}</span>
+              <span className="block text-[10px] text-red-300 font-normal mt-0.5">Por motivos de seguridad, solo se permite una sesión activa simultánea por cuenta.</span>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="w-full box-border bg-slate-900/50 text-slate-300 text-xs font-bold p-4 rounded-xl mb-6 border border-slate-700 relative z-10">
             {error}

@@ -8,7 +8,7 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
@@ -22,6 +22,7 @@ interface Escrito {
   tipo: string;
   userId: string;
   categoria?: string;
+  correlativo?: string | number;
   creator_id?: string;
   createdBy?: string;
   creator_name?: string;
@@ -514,6 +515,35 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [movingDoc, setMovingDoc] = useState<Escrito | null>(null);
   const [targetCategory, setTargetCategory] = useState<string>('');
   const [docToDelete, setDocToDelete] = useState<Escrito | null>(null);
+
+  // Fase 8: Trazabilidad UX - Código de Soporte Técnico
+  const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
+  const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
+  const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
+
+  const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
+    const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
+    const correlativo = docObj.correlativo || String(docObj.id || '').slice(0, 4) || 'DOC';
+    const textToCopy = `Solicitud Soporte O.L.G.A. | Workspace: ${effectiveWorkspaceId} | Pagaré ID: ${docObj.id} | Correlativo: ${correlativo}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setCopiedSupportId(docObj.id);
+      setSupportCopiedToast("Código de soporte copiado");
+      setTimeout(() => setCopiedSupportId(null), 3000);
+      setTimeout(() => setSupportCopiedToast(null), 3000);
+    } catch (err) {
+      console.error("Error al copiar código de soporte:", err);
+    }
+  };
 
   // Estado del Asistente Flotante de Autocompletado (Autofill Wizard)
   const [autofillInput, setAutofillInput] = useState<string>('');
@@ -1887,6 +1917,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleNuevoEscrito = () => {
     setSelectedPlantillaId('hoja_en_blanco');
     setEditandoDocumentoExistente(false);
+    setActiveEditingDoc(null);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
@@ -1907,6 +1938,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleLimpiarEditor = () => {
     setSelectedPlantillaId('hoja_en_blanco');
     setEditandoDocumentoExistente(false);
+    setActiveEditingDoc(null);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
@@ -2278,6 +2310,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleEditarDocumento = (escrito: Escrito) => {
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
+    setActiveEditingDoc(escrito);
     setSelectedPlantillaId('');
     setEditorText(escrito.texto);
     setDocumentTitle(escrito.tipo.replace(' (Guardado Local)', ''));
@@ -2689,6 +2722,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <span>{wordCount} palabras</span>
                   <span>•</span>
                   <span>{charCount} caracteres</span>
+                  {activeEditingDoc && (
+                    <>
+                      <span>•</span>
+                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-0.5 rounded-lg text-slate-500 font-sans">
+                        <span className="font-mono text-[10px] text-slate-400">
+                          Ref. Soporte: {activeEditingDoc.correlativo || String(activeEditingDoc.id || '').slice(0, 3)} - {String(activeEditingDoc.id || '').slice(-6)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopiarCodigoSoporte(activeEditingDoc)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                          title="Copiar código estructurado para soporte técnico"
+                        >
+                          {copiedSupportId === activeEditingDoc.id ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span className="text-emerald-700 text-[9px]">Copiado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clipboard className="w-3 h-3 text-slate-400" />
+                              <span className="text-[9px]">Copiar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -3297,6 +3358,35 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       <span>Abrir en Editor &rarr;</span>
                     </span>
                   </div>
+
+                  {/* Código de Soporte Técnico (Fase 8) */}
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="font-mono text-slate-400 text-[10px]">
+                      Ref. Soporte: {escrito.correlativo || String(escrito.id || '').slice(0, 3)} - {String(escrito.id || '').slice(-6)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopiarCodigoSoporte(escrito);
+                      }}
+                      className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
+                      title="Copiar código estructurado para soporte técnico"
+                    >
+                      {copiedSupportId === escrito.id ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-700 font-bold text-[9px]">Copiado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clipboard className="w-3 h-3" />
+                          <span className="text-[9px]">Copiar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -3748,6 +3838,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
           </div>
         </aside>
+      )}
+
+      {supportCopiedToast && (
+        <div className="fixed bottom-6 right-6 z-[250] bg-slate-900 text-white border border-slate-700 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-bottom-2">
+          <Check className="w-4 h-4 text-[#FF3131]" />
+          <span>{supportCopiedToast}</span>
+        </div>
       )}
     </div>
   );

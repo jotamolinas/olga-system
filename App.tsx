@@ -4,7 +4,7 @@ import { LandingPage } from './components/LandingPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
 import { Persona, GlobalConfig, Pagare, KnowledgeDoc } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
-import { User } from 'firebase/auth';
+import { User, signOut } from 'firebase/auth';
 import { initAuth, logout, getAccessToken } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore,
@@ -559,13 +559,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
           // Lógica de Expulsión (Logout Automático para prevenir compartir cuentas):
           if (firestoreSessionId && localSessionId && firestoreSessionId !== localSessionId) {
-            console.warn("⚠️ Sesión cerrada por seguridad: inicio de sesión detectado en otro dispositivo.");
+            console.warn("⚠️ Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
             localStorage.removeItem('appSessionId');
             if (unsubscribeSnapshot) {
               unsubscribeSnapshot();
               unsubscribeSnapshot = null;
             }
-            setSessionKickedAlert("Sesión cerrada por seguridad: Has iniciado sesión en otro dispositivo.");
+            setSessionKickedAlert("Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
+            signOut(auth).catch(console.error);
             logout().catch(console.error);
             setCurrentUser(null);
             setUserProfile(null);
@@ -761,7 +762,33 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={() => {}} />;
+    return (
+      <div className="relative">
+        {sessionKickedAlert && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[92%] animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="bg-slate-900 border-2 border-[#FF3131] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-[#FF3131] flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white leading-snug">{sessionKickedAlert}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Por directiva de seguridad, solo se permite una sesión activa simultánea por cuenta.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setSessionKickedAlert(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        <LoginScreen onLogin={() => setSessionKickedAlert(null)} sessionRevokedAlert={sessionKickedAlert} />
+      </div>
+    );
   }
 
   const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador' || (currentUser as any)?.role === 'operador';
