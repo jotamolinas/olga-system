@@ -43,7 +43,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const { workspaceId } = useWorkspace(currentUser || auth.currentUser, userData);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const isFree = userData?.plan === 'ninguno' || !userData?.plan;
+  const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
+  const isAprobado = String(userData?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma).toUpperCase() === 'APROBADO';
+  const hasPaidPlan = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isAprobado;
+  const isFree = !hasPaidPlan && (userData?.plan === 'ninguno' || !userData?.plan || plan.includes('trial') || plan.includes('prueba'));
   const isTrialAgotado = isFree && (!pruebaActiva || diasRestantes <= 0 || olgaDocsCount >= 5);
   const [temporalWarning, setTemporalWarning] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
@@ -72,11 +75,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
   if (!isOpen) return null;
 
-  const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
   const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
   const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || userData?.estadoPlataforma === 'Aprobado';
-  const isWatermarkRequired = !isWhitelisted && (!isPaid || isTrialAgotado || isTrialExpired || !pruebaActiva || diasRestantes <= 0 || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan);
+  const isPaid = hasPaidPlan;
+  const isWatermarkRequired = !isWhitelisted && !isPaid;
 
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;
@@ -90,7 +92,6 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
           body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           .prose { max-width: none !important; }
-          .watermark { display: none; }
           @media print {
             body { padding: 0; margin: 0; }
             @page { margin: 0; size: legal portrait; }
@@ -106,6 +107,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             }
             p, div, blockquote { orphans: 3; widows: 3; }
             table, tr, td { page-break-inside: avoid; break-inside: avoid; }
+            ${isWatermarkRequired ? `
             .watermark {
               display: block !important;
               position: fixed !important;
@@ -122,6 +124,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
               width: 100% !important;
               line-height: 1.2 !important;
             }
+            ` : ''}
           }
         `);
         win.document.write('</style></head><body class="print:h-auto print:m-0 print:p-0 print:overflow-hidden">');

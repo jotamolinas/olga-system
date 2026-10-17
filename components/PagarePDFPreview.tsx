@@ -285,8 +285,9 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const plan = String(userData?.planActual || userData?.plan || '').toLowerCase();
   const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
   const isWhitelisted = auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || userData?.estadoPlataforma === 'Aprobado';
-  const isWatermarkRequired = !isWhitelisted && (!isPaid || isTrialExpired || !pruebaActiva || diasRestantes <= 0 || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan);
+  const isApproved = String(userData?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma).toUpperCase() === 'APROBADO';
+  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isApproved;
+  const isWatermarkRequired = !isWhitelisted && !isPaid;
 
   const executePrint = () => {
     if (printAreaRef.current) {
@@ -316,15 +317,13 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-            .watermark {
-              display: none;
-            }
             @media print {
               .no-print { display: none !important; }
               body { 
                 padding: 0 !important; 
                 margin: 0 !important; 
               }
+              ${isWatermarkRequired ? `
               .watermark {
                 display: block !important;
                 position: fixed !important;
@@ -341,6 +340,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 width: 100% !important;
                 line-height: 1.2 !important;
               }
+              ` : ''}
               .printing-sheet { 
                 page-break-after: always !important;
                 break-after: page !important;

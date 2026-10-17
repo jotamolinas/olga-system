@@ -75,7 +75,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
   const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (activeUserData?.estadoPlataforma === 'Aprobado') || esAdmin;
+  const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
+  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || isAprobado || esAdmin;
   const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
 
   let suscripcionVencida = false;
@@ -283,6 +284,25 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   }, [clienteExpediente]);
 
+  // Cerrar vista de persona (Expediente 360° o Formulario de Edición) con la tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (clienteExpediente) {
+          setClienteExpediente(null);
+        } else if (editingId) {
+          resetFormulario();
+          if (onClose) onClose();
+        } else if (onClose) {
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [clienteExpediente, editingId, onClose]);
+
   // Sincronizar si se recibe initialEditingId externo
   useEffect(() => {
     if (initialEditingId) {
@@ -328,6 +348,10 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
   // Iniciar edición de una persona
   const handleEditPersona = (persona: Persona) => {
+    if (!persona || !persona.id) {
+      console.warn('handleEditPersona: registro de persona inválido o sin id');
+      return;
+    }
     setEditingId(persona.id);
     setTipoPersona(persona.tipo_persona);
     setNombre(persona.nombre || '');
@@ -339,6 +363,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setDomicilio(persona.domicilio || '');
     setErrorMsg('');
     setSuccessMsg('');
+    setFeedbackDnit(null);
     
     const formElement = document.getElementById('formulario-persona');
     if (formElement) {
@@ -442,12 +467,16 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-      const activeUser = (currentUser || auth?.currentUser) as any;
-      const creatorName = activeUser?.nombre || activeUser?.displayName || activeUser?.email?.split('@')[0] || 'Usuario';
-      const creatorRole = activeUser?.role || activeUser?.rol || 'titular';
+    const activeUser = (currentUser || auth?.currentUser) as any;
+    const creatorName = activeUser?.nombre || activeUser?.displayName || activeUser?.email?.split('@')[0] || 'Usuario';
+    const creatorRole = activeUser?.role || activeUser?.rol || 'titular';
 
+    // 1. SI ES EDICIÓN: El ID ya existe y debe preservarse de forma intacta
+    if (editingId) {
+      const personaExistente = (personas && personas.length > 0 ? personas : listaPersonas).find(p => p.id === editingId);
       const registroFinal: Persona = {
-        id: editingId || `p-${Date.now()}`,
+        ...(personaExistente || {}),
+        id: editingId, // Preservar exactamente el ID original
         tipo_persona: tipoPersona,
         nombre: nombre.trim(),
         apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
@@ -457,33 +486,67 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         email: email.trim(),
         domicilio: domicilio.trim(),
         representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
-        origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
-        notas_notariales: editingId ? listaPersonas.find(p => p.id === editingId)?.notas_notariales : undefined,
-        userId: workspaceId || activeUser?.uid || '',
-        creator_id: activeUser?.uid,
-        createdBy: activeUser?.uid,
-        creator_name: creatorName,
-        creator_role: creatorRole
+        origen: tipoPersona === 'jurídica' ? 'DNIT' : (personaExistente?.origen || 'MANUAL'),
+        notas_notariales: personaExistente?.notas_notariales,
+        userId: personaExistente?.userId || workspaceId || activeUser?.uid || '',
+        creator_id: personaExistente?.creator_id || activeUser?.uid,
+        createdBy: personaExistente?.createdBy || activeUser?.uid,
+        creator_name: personaExistente?.creator_name || creatorName,
+        creator_role: personaExistente?.creator_role || creatorRole
       };
 
-    let nuevaLista: Persona[];
-    if (editingId) {
-      nuevaLista = listaPersonas.map(p => p.id === editingId ? registroFinal : p);
-      if (onUpdatePersona) onUpdatePersona(registroFinal);
+      // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
+      if (onUpdatePersona) {
+        onUpdatePersona(registroFinal);
+      }
+
+      // Mapeo no destructivo: se preservan íntegramente todos los demás registros
+      const baseParaActualizar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
+      const nuevaLista = baseParaActualizar.map(p => p.id === editingId ? registroFinal : p);
+      guardarListaPersistente(nuevaLista);
+
       setSuccessMsg(`Datos de "${registroFinal.nombre}" actualizados exitosamente.`);
-    } else {
-      nuevaLista = [registroFinal, ...listaPersonas];
-      if (onAddPersona) onAddPersona(registroFinal);
-      setSuccessMsg(`Persona "${registroFinal.nombre}" registrada en el fichero.`);
+      resetFormulario();
+      setTimeout(() => setSuccessMsg(''), 4000);
+
+      if (onClose) {
+        onClose();
+      }
+      return;
     }
 
+    // 2. SI ES CREACIÓN NUEVA (editingId no existe)
+    const nuevoId = `p-${Date.now()}`;
+    const registroNuevo: Persona = {
+      id: nuevoId,
+      tipo_persona: tipoPersona,
+      nombre: nombre.trim(),
+      apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
+      tipo_documento: tipoPersona === 'física' ? 'CI' : 'RUC',
+      nro_documento: nroDocumento.trim(),
+      telefono: telefono.trim(),
+      email: email.trim(),
+      domicilio: domicilio.trim(),
+      representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
+      origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
+      userId: workspaceId || activeUser?.uid || '',
+      creator_id: activeUser?.uid,
+      createdBy: activeUser?.uid,
+      creator_name: creatorName,
+      creator_role: creatorRole
+    };
+
+    if (onAddPersona) {
+      onAddPersona(registroNuevo);
+    }
+
+    const baseParaAgregar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
+    const nuevaLista = [registroNuevo, ...baseParaAgregar];
     guardarListaPersistente(nuevaLista);
+
+    setSuccessMsg(`Persona "${registroNuevo.nombre}" registrada en el fichero.`);
     resetFormulario();
     setTimeout(() => setSuccessMsg(''), 4000);
-
-    if (onClose && editingId) {
-      onClose();
-    }
   };
 
   // 5. Filtrado en tiempo real con .filter()
@@ -710,6 +773,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       type="text"
                       value={nroDocumento}
                       onChange={(e) => setNroDocumento(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarPersonaDnit();
+                        }
+                      }}
                       placeholder="Ej. 1.234.567 o 1234567-8"
                       className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
                     />
@@ -777,6 +846,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       type="text"
                       value={nroDocumento}
                       onChange={(e) => setNroDocumento(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarPersonaDnit();
+                        }
+                      }}
                       placeholder="Ej. 80012345-6"
                       className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
                     />

@@ -2143,8 +2143,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
     const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
     const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
-    const isWatermarkRequired = !isPaidPlan || isTrialExpired || diasRestantes <= 0 || !pruebaActiva || planStr.includes('trial') || planStr.includes('prueba') || planStr.includes('ninguno');
+    const isApproved = String(userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO';
+    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || isApproved || isWhitelisted;
+    const isWatermarkRequired = !isPaidPlan;
 
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
@@ -2167,9 +2168,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
-    }
-    .watermark {
-      display: none;
     }
     .hoja-notarial-print {
       width: 100%;
@@ -2215,6 +2213,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         padding-left: 140px;
         padding-right: 60px;
       }
+      ${isWatermarkRequired ? `
       .watermark {
         display: block !important;
         position: fixed;
@@ -2231,6 +2230,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         width: 100%;
         line-height: 1.2;
       }
+      ` : ''}
     }
   </style>
 </head>
@@ -2353,7 +2353,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
     const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
     const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
+    const isApproved = String(userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO';
+    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || isApproved || isWhitelisted;
 
     if (!isPaidPlan && (isTrialExpired || diasRestantes <= 0 || !pruebaActiva)) {
       setAiError('Tu período de prueba gratuita de 5 días ha finalizado. Por favor, adquiere o renueva un plan en la sección "Planes y Precios" para continuar redactando con IA.');

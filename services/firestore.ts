@@ -4,19 +4,29 @@ import { Persona, Pagare, KnowledgeDoc } from '../types';
 
 export const syncPersonaToFirestore = async (userId: string, persona: Persona) => {
   if (!auth?.currentUser?.uid) return;
+  if (!persona || !persona.id) {
+    console.error("syncPersonaToFirestore: ID de persona ausente o inválido", persona);
+    return;
+  }
   const docRef = doc(db, 'personas', persona.id);
   const cleanPersona = JSON.parse(JSON.stringify(persona));
   const effectiveUserId = userId || auth.currentUser.uid;
   const user = auth.currentUser as any;
   await setDoc(docRef, { 
     ...cleanPersona, 
+    id: persona.id,
     userId: effectiveUserId, 
     creator_id: cleanPersona.creator_id || user.uid,
     createdBy: cleanPersona.createdBy || user.uid,
     creator_name: cleanPersona.creator_name || user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
     creator_role: cleanPersona.creator_role || user.role || user.rol || 'titular',
-    fechaCreacion: cleanPersona.fechaCreacion || serverTimestamp() 
+    fechaCreacion: cleanPersona.fechaCreacion || serverTimestamp(),
+    fechaActualizacion: serverTimestamp()
   }, { merge: true });
+};
+
+export const updatePersonaInFirestore = async (userId: string, persona: Persona) => {
+  return syncPersonaToFirestore(userId, persona);
 };
 
 export const fetchPersonasFromFirestore = async (userId?: string): Promise<Persona[]> => {
@@ -30,8 +40,7 @@ export const fetchPersonasFromFirestore = async (userId?: string): Promise<Perso
   const personas: Persona[] = [];
   snapshot.forEach(doc => {
     const data = doc.data() as any;
-    delete data.userId;
-    personas.push({ ...data, id: doc.id } as Persona);
+    personas.push({ ...data, id: doc.id, userId: data.userId || effectiveUserId } as Persona);
   });
   console.log("Personas recuperadas: ", personas);
   return personas;

@@ -59,7 +59,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
   const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (activeUserData?.estadoPlataforma === 'Aprobado') || esAdmin;
+  const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
+  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || isAprobado || esAdmin;
   const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
 
   let suscripcionVencida = false;
@@ -2407,6 +2408,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         setAcreedorOrigen('MANUAL');
                         setAcreedorId('');
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarAcreedorDnit();
+                        }
+                      }}
                       className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none ${formError && !acreedorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
                     />
                     <button
@@ -2506,6 +2513,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         setDeudorDocumentoRaw(e.target.value);
                         setDeudorOrigen('MANUAL');
                         setDeudorId('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarDeudorDnit();
+                        }
                       }}
                       className={`w-full bg-slate-50 border focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none ${formError && !deudorDocumentoRaw.trim() ? 'border-red-500 bg-red-50' : 'border-slate-200'}`}
                     />
@@ -2607,6 +2620,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         setCodeudor1Origen('MANUAL');
                         setCodeudor1Id('');
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarCodeudor1Dnit();
+                        }
+                      }}
                       className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none"
                     />
                     <button
@@ -2706,6 +2725,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         setCodeudor2DocumentoRaw(e.target.value);
                         setCodeudor2Origen('MANUAL');
                         setCodeudor2Id('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarCodeudor2Dnit();
+                        }
                       }}
                       className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3 py-2 pr-20 text-xs font-bold outline-none"
                     />
@@ -3060,6 +3085,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       type="text"
                       value={quickNroDoc}
                       onChange={(e) => setQuickNroDoc(formatCI(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConsultarQuickDnit();
+                        }
+                      }}
                       placeholder="Ej. 1234567 o 80012345-6"
                       className="w-full box-border bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pr-20 text-xs font-medium outline-none"
                     />

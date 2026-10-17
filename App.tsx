@@ -121,11 +121,12 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
   const ciudad = usuario?.ciudad || 'Ciudad no especificada';
   const telefono = usuario?.telefono || 'Sin teléfono de contacto';
 
-  const plan = String(usuario?.planActual || usuario?.plan || 'trial').toLowerCase();
+  const plan = String(usuario?.planActual || usuario?.plan || '').toLowerCase();
   const isOperador = usuario?.rol === 'operador' || usuario?.role === 'operador';
   const isWhitelisted = usuario?.email === 'jotamolinas@gmail.com' || isOperador;
-  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || usuario?.estadoPlataforma === 'Aprobado';
-  const isWatermarkRequired = !isWhitelisted && (!isPaid || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan || usuario?.isTrialExpired);
+  const isApproved = String(usuario?.estadoPago || '').toUpperCase() === 'APROBADO' || String(usuario?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
+  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isApproved;
+  const isWatermarkRequired = !isWhitelisted && !isPaid;
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
@@ -197,6 +198,7 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
         .firma-titulo {
           font-size: 10pt;
         }
+        ${isWatermarkRequired ? `
         .watermark {
           display: none;
         }
@@ -224,6 +226,16 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
             line-height: 1.2 !important;
           }
         }
+        ` : `
+        @media print {
+          @page { margin: 0; }
+          body { 
+            padding: 2cm;
+            print-color-adjust: exact; 
+            -webkit-print-color-adjust: exact; 
+          }
+        }
+        `}
       </style>
     </head>
     <body>
@@ -762,10 +774,29 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         const item = doc.data() as any;
         return { ...item, id: doc.id } as Persona;
       });
-      setPersonas(data);
-      try {
-        localStorage.setItem('olga_directorio_personas', JSON.stringify(data));
-      } catch {}
+      // Sincronización segura y no destructiva: fusionar por ID con el estado previo
+      setPersonas(prev => {
+        if (!data || data.length === 0) {
+          if (prev && prev.length > 0) {
+            prev.forEach(p => syncPersonaToFirestore(workspaceId, p).catch(console.error));
+          }
+          return prev;
+        }
+
+        const map = new Map<string, Persona>();
+        (prev || []).forEach(p => {
+          if (p && p.id) map.set(p.id, p);
+        });
+        data.forEach(p => {
+          if (p && p.id) map.set(p.id, p);
+        });
+
+        const merged = Array.from(map.values());
+        try {
+          localStorage.setItem('olga_directorio_personas', JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
     }, (error) => {
       console.error("Fallo en sincronización de personas:", error);
     });
@@ -948,17 +979,26 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       console.error("Operación abortada: Workspace no identificado.");
       return;
     }
+    if (!updatedPersona || !updatedPersona.id) {
+      console.error("Operación abortada: Persona o ID no válido para actualización.");
+      return;
+    }
     const per: Persona = {
       ...updatedPersona,
       userId: workspaceId
     };
-    const updated = personas.map(p => p.id === per.id ? per : p);
-    setPersonas(updated);
-    try {
-      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Error saving personas to localStorage:', e);
-    }
+    setPersonas(prev => {
+      const exists = prev.some(p => p.id === per.id);
+      const updated = exists 
+        ? prev.map(p => p.id === per.id ? per : p)
+        : [...prev, per];
+      try {
+        localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error saving personas to localStorage:', e);
+      }
+      return updated;
+    });
     syncPersonaToFirestore(workspaceId, per).catch(e => console.error("Error actualizando persona:", e));
   };
 
@@ -1054,7 +1094,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       const planStr = String(userData?.planActual || userData?.plan || userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
       const isOperador = userData?.rol === 'operador' || userData?.role === 'operador' || userProfile?.rol === 'operador' || userProfile?.role === 'operador';
       const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-      const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userData?.estadoPlataforma === 'Aprobado' || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
+      const isApprovedPayment = String(userData?.estadoPago || userProfile?.estadoPago || '').toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
+      const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || isApprovedPayment || isWhitelisted;
 
       // 1. BLOQUEO ESTRICTO: Si el usuario no tiene plan de pago y el trial expiró (días restantes <= 0 o expiración de 5 días), bloquear la consulta a la IA sin gastar tokens
       if (!isPaidPlan && (isTrialExpired || diasRestantes <= 0 || !pruebaActiva)) {
@@ -1084,12 +1125,18 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           setPendingFiles([]);
           return;
         }
-      } else {
         // Control de límite para planes de pago
-        let aiLimit = 20;
+        let aiLimit = 30;
         if (planStr.includes('full')) aiLimit = 300;
         else if (planStr.includes('empresa')) aiLimit = 100;
         else if (planStr.includes('pro')) aiLimit = 50;
+        else if (planStr.includes('basico') || planStr.includes('básico')) aiLimit = 30;
+        else if (isApprovedPayment || isWhitelisted) aiLimit = 300;
+
+        if (currentUser?.email === 'jotamolinas@gmail.com' || isOperador) {
+          aiLimit = 999999;
+        }
+
         const consultasRealizadas = userData?.usoIA || 0;
         if (consultasRealizadas >= aiLimit) {
           setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
@@ -1641,6 +1688,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   const rawPlan = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'VACIO';
   const currentPlan = String(rawPlan).trim().toLowerCase();
+  const estadoPagoVal = String(userProfile?.estadoPago || userData?.estadoPago || '').toUpperCase();
+  const estadoPlataformaVal = String(userProfile?.estadoPlataforma || userData?.estadoPlataforma || '').toUpperCase();
+  const isAprobado = estadoPagoVal === 'APROBADO' || estadoPlataformaVal === 'APROBADO';
   
   if (currentPlan.includes('pro')) {
     return (
@@ -1671,6 +1721,22 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
           PLAN FULL
+        </span>
+      </div>
+    );
+  }
+  if (currentPlan.includes('basico') || currentPlan.includes('básico') || isAprobado) {
+    const badgeText = currentPlan.includes('empresa') 
+      ? 'PLAN EMPRESA' 
+      : currentPlan.includes('full') 
+      ? 'PLAN FULL' 
+      : currentPlan.includes('pro') 
+      ? 'PLAN PRO' 
+      : (userProfile?.planActual || userData?.planActual || 'PLAN BÁSICO').toUpperCase();
+    return (
+      <div className="flex items-center shrink-0 flex-shrink-0">
+        <span className="bg-emerald-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
+          {badgeText.includes('PLAN') ? badgeText : `PLAN ${badgeText}`}
         </span>
       </div>
     );
@@ -1742,7 +1808,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
             {currentUser?.role !== 'operador' && !isOperador && (() => {
               const planActivoBtn = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
-              return !planActivoBtn.includes('pro') && !planActivoBtn.includes('empresa') && !planActivoBtn.includes('full');
+              const isPagoAprobado = String(userData?.estadoPago || userProfile?.estadoPago || '').toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
+              const hasActivePlan = planActivoBtn.includes('pro') || planActivoBtn.includes('empresa') || planActivoBtn.includes('full') || planActivoBtn.includes('basico') || planActivoBtn.includes('básico') || isPagoAprobado;
+              return !hasActivePlan;
             })() && (
               <button 
                 onClick={() => setActiveTab('planes')}
@@ -1777,7 +1845,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             
             {(() => {
               const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
-              const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (userData?.estadoPlataforma === 'Aprobado') || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+              const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || String(userData?.estadoPago || userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO' || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
               const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
 
 // 1. Lógica de cálculo de vencimiento
@@ -1947,222 +2015,241 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <SoporteClienteTab currentUser={currentUser} userData={userProfile} />
             )}
 
-            {activeTab === 'chat' && (
-              /* Conversational assistance with O.L.G.A. IA */
-              <div className="bg-white p-4 md:p-8 md:rounded-[2.5rem] border-0 md:border md:border-slate-100 shadow-none md:shadow-md flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message" id="chat-assistant-container">
-                <div className="border-b border-slate-50 pb-4 shrink-0">
-                  <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-2.5">
-                    <Sparkles className="w-6 h-6 text-[#FF3131]" />
-                    {(role === 'admin' || (userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '').includes('full')) ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Consulta Jurídica y Tributaria'}
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {(role === 'admin' || (userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '').includes('full')) 
-                      ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
-                      : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
-                  </p>
-                  {userData?.plan === 'Demo' && (
-                    <div className="mt-3 inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 shadow-sm">
-                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                      Prueba Gratuita: {userData.usoIA || 0}/{userData.limiteIA || 20} consultas usadas - Vence en {
-                        userData.fechaVencimientoDemo ? 
-                        Math.max(0, Math.ceil(((userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
-                        : 0
-                      } días
+            {activeTab === 'chat' && (() => {
+              const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
+              const tienePlanPago = rawPlan.includes('basico') || rawPlan.includes('básico') || rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || String(userData?.estadoPago || userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO' || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+              const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || rawPlan.includes('full');
+              const tieneAccesoChat = pruebaActiva || tienePlanPago;
+
+              return (
+                /* Conversational assistance with O.L.G.A. IA */
+                <div className="bg-white p-4 md:p-8 md:rounded-[2.5rem] border-0 md:border md:border-slate-100 shadow-none md:shadow-md flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message" id="chat-assistant-container">
+                  <div className="border-b border-slate-50 pb-4 shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-2.5">
+                          {esPlanFull ? <Sparkles className="w-6 h-6 text-[#FF3131]" /> : <MessageSquare className="w-6 h-6 text-[#FF3131]" />}
+                          {esPlanFull ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Asistente Jurídico y Tributario'}
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {esPlanFull 
+                            ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
+                            : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
+                        </p>
+                      </div>
+
+                      {/* Estado de acceso / Plan badge */}
+                      <div className="shrink-0 flex items-center gap-2">
+                        {tienePlanPago ? (
+                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${esPlanFull ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                            {esPlanFull ? 'Plan Full / Oráculo Habilitado' : 'Plan Básico Activo'}
+                          </div>
+                        ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
+                          <div className="mt-1 inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 shadow-sm">
+                            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                            Prueba Gratuita: {userData?.usoIA || 0}/{userData?.limiteIA || 20} consultas usadas - Vence en {
+                              userData?.fechaVencimientoDemo ? 
+                              Math.max(0, Math.ceil(((userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+                              : Math.max(0, diasRestantes)
+                            } días
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dialog Messages viewport */}
+                  <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                    {chatMessages.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
+                          {msg.role === 'model' ? (
+                            <div className="flex flex-col gap-2 relative group w-full box-border">
+                              <div id={`model-msg-${i}`} className="markdown-body prose prose-slate max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 border-b border-transparent group-hover:border-slate-50 pb-2">
+                                <ReactMarkdown>{msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text}</ReactMarkdown>
+                              </div>
+                              <div className="flex items-center gap-2 self-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {(!tienePlanPago && (activePlan === 'ninguno' || activePlan === undefined) && (!pruebaActiva || diasRestantes <= 0 || olgaDocsCount >= 5)) ? (
+                                  <div className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 flex items-center gap-2">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Plan Gratuito Agotado. Has alcanzado el límite de 5 escritos o 5 días. Adquiere un plan para continuar.
+                                  </div>
+                                ) : (
+                                  <button 
+                                    onClick={async () => {
+                                      const extractedText = msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text;
+                                      handleOpenDocumentModal(extractedText);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    Exportar a Escrito
+                                  </button>
+                                )}
+                                {(role === 'admin' || esPlanFull) && (
+                                  <button 
+                                    onClick={() => {
+                                      const elm = document.getElementById(`model-msg-${i}`);
+                                      imprimirDocumentoOficial(elm?.innerHTML || '', userProfile || userData || currentUser);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors border border-slate-200"
+                                  >
+                                    <Printer className="w-3 h-3" />
+                                    Imprimir Dictamen
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {chatLoading && (
+                      <div className="flex justify-start items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl w-fit">
+                        <div className="flex gap-1">
+                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce"></div>
+                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-75"></div>
+                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-150"></div>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">O.L.G.A. procesando...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Question Input form bar */}
+                  {tieneAccesoChat ? (
+                    <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
+                      {/* Oracle Admin / Full Plan Chips */}
+                      {esPlanFull && (
+                        <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
+                          <button
+                            type="button"
+                            onClick={() => handleSendChatMessage('Actúa como auditor legal. Analiza este documento y enumera cualquier cláusula abusiva, usura o renuncia ilegal de derechos según el Código Civil Paraguayo.')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors rounded-xl text-[10px] font-bold border border-rose-200/50"
+                          >
+                            <ShieldAlert className="w-3 h-3" />
+                            Escáner de Abusos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendChatMessage('Actúa como Oficial de Cumplimiento. Revisa este texto y emite un dictamen de alerta temprana sobre posibles riesgos de lavado de dinero o inconsistencias financieras.')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors rounded-xl text-[10px] font-bold border border-amber-200/50"
+                          >
+                            <RefreshCcw className="w-3 h-3" />
+                            Perfil SEPRELAD
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendChatMessage('Traduce este documento al español, utilizando terminología jurídica y notarial estricta de Paraguay.')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors rounded-xl text-[10px] font-bold border border-blue-200/50"
+                          >
+                            <Globe className="w-3 h-3" />
+                            Traducir al español
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendChatMessage('Redacta un correo formal y cortés solicitando a las partes que aclaren las inconsistencias de este documento.')}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors rounded-xl text-[10px] font-bold border border-emerald-200/50"
+                          >
+                            <Mail className="w-3 h-3" />
+                            Redactar Requerimiento
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Pending Files Display */}
+                      {pendingFiles.length > 0 && (
+                        <div className="flex flex-wrap gap-2 p-2 mb-1">
+                          {pendingFiles.map((pf, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 bg-slate-200 text-slate-800 px-3 py-1.5 rounded-lg text-xs font-medium shadow-sm">
+                              <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                              <span className="max-w-[150px] truncate">{pf.name}</span>
+                              <button onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1 text-slate-400 hover:text-red-500 transition-colors">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-0.5 px-2 text-slate-500 overflow-visible relative">
+                        <div className="relative">
+                          <button onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)} type="button" className={`p-2 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex-shrink-0 ${attachmentMenuOpen ? 'bg-slate-200 text-slate-800' : 'hover:text-slate-800'}`} title="Adjuntar">
+                            <Plus className="w-4 h-4" />
+                          </button>
+                          {attachmentMenuOpen && (
+                            <div className="absolute bottom-full left-0 mb-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 overflow-hidden">
+                              <button onClick={() => handleAttachmentClick('Documento/PDF')} type="button" className="w-full box-border text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2">
+                                <Paperclip className="w-4 h-4 text-slate-400" /> Documento / PDF
+                              </button>
+                              <button onClick={() => handleAttachmentClick('Imagen')} type="button" className="w-full box-border text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4 text-slate-400" /> Imagen de galería
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => handleAttachmentClick('Cámara')} type="button" className="p-2 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors cursor-pointer flex-shrink-0" title="Cámara">
+                          <Camera className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleAttachmentClick('Audio')} type="button" className="p-2 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors cursor-pointer flex-shrink-0" title="Grabar Audio">
+                          <Mic className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          accept="image/*,application/pdf,.doc,.docx"
+                          multiple
+                        />
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSendChatMessage();
+                            }
+                          }}
+                          placeholder={esPlanFull ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta jurídica al Asistente O.L.G.A...."}
+                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
+                        />
+                        <button
+                          onClick={() => handleSendChatMessage()}
+                          className="w-10 h-10 flex-shrink-0 flex items-center justify-center bg-slate-900 text-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.1)] hover:bg-[#FF3131] hover:scale-105 transition-all"
+                        >
+                          <Send className="w-4 h-4 ml-0.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-6 md:p-8 bg-slate-50 border border-slate-200 rounded-3xl shrink-0 mx-2 md:mx-4 mb-2 md:mb-4 mt-2">
+                      <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center mb-4">
+                        <Lock className="w-6 h-6 text-slate-500" />
+                      </div>
+                      <h3 className="text-sm md:text-base font-bold text-slate-800 text-center mb-2">Tu periodo de prueba de 5 días ha finalizado.</h3>
+                      <p className="text-xs text-slate-500 text-center max-w-md mb-6 leading-relaxed">
+                        Para seguir consultando al asistente y desbloquear los dictámenes con membrete oficial, activa un Plan Profesional.
+                      </p>
+                      {currentUser?.role !== 'operador' && !isOperador && (
+                        <button 
+                          onClick={() => setActiveTab('planes')}
+                          className="bg-[#FF3131] hover:bg-red-600 shadow-lg shadow-red-600/20 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
+                        >
+                          Ver Planes y Precios
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
-
-                {/* Dialog Messages viewport */}
-                <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
-                        {msg.role === 'model' ? (
-                          <div className="flex flex-col gap-2 relative group w-full box-border">
-                            <div id={`model-msg-${i}`} className="markdown-body prose prose-slate max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 border-b border-transparent group-hover:border-slate-50 pb-2">
-                              <ReactMarkdown>{msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text}</ReactMarkdown>
-                            </div>
-                            <div className="flex items-center gap-2 self-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {((activePlan === 'ninguno' || activePlan === undefined) && (!pruebaActiva || diasRestantes <= 0 || olgaDocsCount >= 5)) ? (
-                                <div className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 flex items-center gap-2">
-                                  <AlertTriangle className="w-3 h-3" />
-                                  Plan Gratuito Agotado. Has alcanzado el límite de 5 escritos o 5 días. Adquiere un plan para continuar.
-                                </div>
-                              ) : (
-                                <button 
-                                  onClick={async () => {
-                                    const extractedText = msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text;
-                                    handleOpenDocumentModal(extractedText);
-                                  }}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
-                                >
-                                  <FileText className="w-3 h-3" />
-                                  Exportar a Escrito
-                                </button>
-                              )}
-                              {role === 'admin' && (
-                                <button 
-                                  onClick={() => {
-                                    const elm = document.getElementById(`model-msg-${i}`);
-                                    imprimirDocumentoOficial(elm?.innerHTML || '', userProfile || userData || currentUser);
-                                  }}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors border border-slate-200"
-                                >
-                                  <Printer className="w-3 h-3" />
-                                  Imprimir Dictamen
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap">{msg.text}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {chatLoading && (
-                    <div className="flex justify-start items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl w-fit">
-                      <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce"></div>
-                        <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-75"></div>
-                        <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-150"></div>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">O.L.G.A. procesando...</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Question Input form bar */}
-                {pruebaActiva ? (
-                  <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
-                    {/* Oracle Admin Chips */}
-                    {(role === 'admin' || (userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '').includes('full')) && (
-                      <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
-                        <button
-                          type="button"
-                          onClick={() => handleSendChatMessage('Actúa como auditor legal. Analiza este documento y enumera cualquier cláusula abusiva, usura o renuncia ilegal de derechos según el Código Civil Paraguayo.')}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors rounded-xl text-[10px] font-bold border border-rose-200/50"
-                        >
-                          <ShieldAlert className="w-3 h-3" />
-                          Escáner de Abusos
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendChatMessage('Actúa como Oficial de Cumplimiento. Revisa este texto y emite un dictamen de alerta temprana sobre posibles riesgos de lavado de dinero o inconsistencias financieras.')}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors rounded-xl text-[10px] font-bold border border-amber-200/50"
-                        >
-                          <RefreshCcw className="w-3 h-3" />
-                          Perfil SEPRELAD
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendChatMessage('Traduce este documento al español, utilizando terminología jurídica y notarial estricta de Paraguay.')}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors rounded-xl text-[10px] font-bold border border-blue-200/50"
-                        >
-                          <Globe className="w-3 h-3" />
-                          Traducir al español
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendChatMessage('Redacta un correo formal y cortés solicitando a las partes que aclaren las inconsistencias de este documento.')}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors rounded-xl text-[10px] font-bold border border-emerald-200/50"
-                        >
-                          <Mail className="w-3 h-3" />
-                          Redactar Requerimiento
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Pending Files Display */}
-                    {pendingFiles.length > 0 && (
-                      <div className="flex flex-wrap gap-2 p-2 mb-1">
-                        {pendingFiles.map((pf, idx) => (
-                          <div key={idx} className="flex items-center gap-1.5 bg-slate-200 text-slate-800 px-3 py-1.5 rounded-lg text-xs font-medium shadow-sm">
-                            <Paperclip className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="max-w-[150px] truncate">{pf.name}</span>
-                            <button onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))} className="ml-1 text-slate-400 hover:text-red-500 transition-colors">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-0.5 px-2 text-slate-500 overflow-visible relative">
-                      <div className="relative">
-                        <button onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)} type="button" className={`p-2 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex-shrink-0 ${attachmentMenuOpen ? 'bg-slate-200 text-slate-800' : 'hover:text-slate-800'}`} title="Adjuntar">
-                          <Plus className="w-4 h-4" />
-                        </button>
-                        {attachmentMenuOpen && (
-                          <div className="absolute bottom-full left-0 mb-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 overflow-hidden">
-                            <button onClick={() => handleAttachmentClick('Documento/PDF')} type="button" className="w-full box-border text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2">
-                              <Paperclip className="w-4 h-4 text-slate-400" /> Documento / PDF
-                            </button>
-                            <button onClick={() => handleAttachmentClick('Imagen')} type="button" className="w-full box-border text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2">
-                              <ImageIcon className="w-4 h-4 text-slate-400" /> Imagen de galería
-                            </button>
-                            
-                          </div>
-                        )}
-                      </div>
-                      <button onClick={() => handleAttachmentClick('Cámara')} type="button" className="p-2 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors cursor-pointer flex-shrink-0" title="Cámara">
-                        <Camera className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleAttachmentClick('Audio')} type="button" className="p-2 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors cursor-pointer flex-shrink-0" title="Grabar Audio">
-                        <Mic className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileUpload}
-                        accept="image/*,application/pdf,.doc,.docx"
-                        multiple
-                      />
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleSendChatMessage();
-                          }
-                        }}
-                        placeholder="Escriba su duda jurídica o anexos..."
-                        className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
-                      />
-                      <button
-                        onClick={() => handleSendChatMessage()}
-                        className="w-10 h-10 flex-shrink-0 flex items-center justify-center bg-slate-900 text-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.1)] hover:bg-[#FF3131] hover:scale-105 transition-all"
-                      >
-                        <Send className="w-4 h-4 ml-0.5" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-6 md:p-8 bg-slate-50 border border-slate-200 rounded-3xl shrink-0 mx-2 md:mx-4 mb-2 md:mb-4 mt-2">
-                    <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center mb-4">
-                      <Lock className="w-6 h-6 text-slate-500" />
-                    </div>
-                    <h3 className="text-sm md:text-base font-bold text-slate-800 text-center mb-2">Tu periodo de prueba de 5 días ha finalizado.</h3>
-                    <p className="text-xs text-slate-500 text-center max-w-md mb-6 leading-relaxed">
-                      Para seguir auditando documentos y desbloquear los dictámenes con membrete oficial, completa tu Ficha Profesional.
-                    </p>
-                    {currentUser?.role !== 'operador' && !isOperador && (
-                      <button 
-                        onClick={() => setActiveTab('planes')}
-                        className="bg-[#FF3131] hover:bg-red-600 shadow-lg shadow-red-600/20 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
-                      >
-                        Completar Registro
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
                 </>
               );
             })()}
