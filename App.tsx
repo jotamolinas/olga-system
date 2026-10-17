@@ -121,6 +121,12 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
   const ciudad = usuario?.ciudad || 'Ciudad no especificada';
   const telefono = usuario?.telefono || 'Sin teléfono de contacto';
 
+  const plan = String(usuario?.planActual || usuario?.plan || 'trial').toLowerCase();
+  const isOperador = usuario?.rol === 'operador' || usuario?.role === 'operador';
+  const isWhitelisted = usuario?.email === 'jotamolinas@gmail.com' || isOperador;
+  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || usuario?.estadoPlataforma === 'Aprobado';
+  const isWatermarkRequired = !isWhitelisted && (!isPaid || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan || usuario?.isTrialExpired);
+
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
@@ -191,6 +197,9 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
         .firma-titulo {
           font-size: 10pt;
         }
+        .watermark {
+          display: none;
+        }
         @media print {
           @page { margin: 0; }
           body { 
@@ -198,10 +207,27 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
             print-color-adjust: exact; 
             -webkit-print-color-adjust: exact; 
           }
+          .watermark {
+            display: block !important;
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) rotate(-45deg) !important;
+            font-size: 80px !important;
+            color: rgba(255, 0, 0, 0.15) !important;
+            font-weight: bold !important;
+            text-transform: uppercase !important;
+            z-index: 9999 !important;
+            pointer-events: none !important;
+            text-align: center !important;
+            width: 100% !important;
+            line-height: 1.2 !important;
+          }
         }
       </style>
     </head>
     <body>
+      ${isWatermarkRequired ? '<div class="watermark">VERSIÓN DE PRUEBA - SÓLO PARA USO NO COMERCIAL</div>' : ''}
       <div class="header">
         <h1>ESCRIBANÍA PÚBLICA ${nombreCompleto || ''}</h1>
         <h2>Registro Notarial Nº ${numeroRegistro || ''} - Matrícula de la CSJ Nº ${matricula || ''}</h2>
@@ -507,6 +533,17 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // Documento Modal state
   const [documentoModalOpen, setDocumentoModalOpen] = useState(false);
   const [documentoInitialText, setDocumentoInitialText] = useState('');
+  const [documentoModalDocId, setDocumentoModalDocId] = useState<string | undefined>(undefined);
+  const [documentoModalTipo, setDocumentoModalTipo] = useState<string | undefined>(undefined);
+  const [documentoModalCategoria, setDocumentoModalCategoria] = useState<string | undefined>(undefined);
+
+  const handleOpenDocumentModal = (text: string, docId?: string, tipo?: string, categoria?: string) => {
+    setDocumentoInitialText(text);
+    setDocumentoModalDocId(docId);
+    setDocumentoModalTipo(tipo);
+    setDocumentoModalCategoria(categoria);
+    setDocumentoModalOpen(true);
+  };
 
   // Chat/Olga IA state
   const [chatMessages, setChatMessages] = useState<any[]>([
@@ -1014,32 +1051,53 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     const currentPendingFiles = [...pendingFiles];
     
     if (role !== 'admin') {
-      const isDemo = userData?.plan === 'Demo';
-      
-      if (isDemo) {
+      const planStr = String(userData?.planActual || userData?.plan || userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
+      const isOperador = userData?.rol === 'operador' || userData?.role === 'operador' || userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+      const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+      const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userData?.estadoPlataforma === 'Aprobado' || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
+
+      // 1. BLOQUEO ESTRICTO: Si el usuario no tiene plan de pago y el trial expiró (días restantes <= 0 o expiración de 5 días), bloquear la consulta a la IA sin gastar tokens
+      if (!isPaidPlan && (isTrialExpired || diasRestantes <= 0 || !pruebaActiva)) {
+        setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
+        setChatMessages(prev => [...prev, { 
+          role: 'model', 
+          text: 'Tu período de prueba gratuita de 5 días ha finalizado. Para continuar consultando al Oráculo Jurídico de IA y acceder a todas las funciones sin restricciones, por favor adquiere o renueva un plan en la sección "Planes y Precios".', 
+          timestamp: new Date() 
+        }]);
+        setChatInput('');
+        setPendingFiles([]);
+        return;
+      }
+
+      // 2. Control de límite de consultas para usuarios en periodo de prueba activa
+      if (!isPaidPlan) {
         const usoIA = userData?.usoIA || 0;
-        const limiteIA = userData?.limiteIA || 20;
-        const fechaVencimiento = userData?.fechaVencimientoDemo ? 
-          (userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)) 
-          : new Date(0);
-          
-        if (usoIA >= limiteIA || new Date() > fechaVencimiento) {
+        const limiteIA = 20;
+        if (usoIA >= limiteIA) {
           setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
-          setChatMessages(prev => [...prev, { role: 'model', text: 'Tu prueba gratuita ha finalizado (límite de 5 días o 20 consultas alcanzado). Por favor, adquiere un Plan en la sección de Suscripciones para continuar.', timestamp: new Date() }]);
+          setChatMessages(prev => [...prev, { 
+            role: 'model', 
+            text: 'Has alcanzado el límite de 20 consultas de tu período de prueba gratuita. Por favor, adquiere un Plan en la sección "Planes y Precios" para continuar consultando al Oráculo.', 
+            timestamp: new Date() 
+          }]);
           setChatInput('');
           setPendingFiles([]);
           return;
         }
       } else {
+        // Control de límite para planes de pago
         let aiLimit = 20;
-        const planStr = (userData?.plan || '').toLowerCase();
         if (planStr.includes('full')) aiLimit = 300;
         else if (planStr.includes('empresa')) aiLimit = 100;
         else if (planStr.includes('pro')) aiLimit = 50;
         const consultasRealizadas = userData?.usoIA || 0;
         if (consultasRealizadas >= aiLimit) {
           setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
-          setChatMessages(prev => [...prev, { role: 'model', text: `Has alcanzado el límite de ${aiLimit} consultas de tu plan actual. Por favor, actualiza tu plan en la pestaña "Planes y Precios" para continuar consultando al Oráculo.`, timestamp: new Date() }]);
+          setChatMessages(prev => [...prev, { 
+            role: 'model', 
+            text: `Has alcanzado el límite de ${aiLimit} consultas de tu plan actual. Por favor, actualiza tu plan en la pestaña "Planes y Precios" para continuar consultando al Oráculo.`, 
+            timestamp: new Date() 
+          }]);
           setChatInput('');
           setPendingFiles([]);
           return;
@@ -1722,68 +1780,65 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (userData?.estadoPlataforma === 'Aprobado') || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
               const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
 
-              if (accesoBloqueadoPorTrial && activeTab !== 'planes' && activeTab !== 'soporte') {
-                return (
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-8 sm:p-12 text-center max-w-2xl mx-auto my-auto flex flex-col items-center animate-in fade-in">
-                    <div className="w-16 h-16 bg-slate-900 text-[#FF3131] rounded-2xl flex items-center justify-center mb-6 shadow-md border border-slate-800">
-                      <Lock className="w-8 h-8" />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#FF3131] bg-red-50 border border-red-200 px-3 py-1 rounded-full mb-3">
-                      Periodo de Prueba Finalizado
-                    </span>
-                    <h2 className="text-2xl font-black text-slate-900 font-serif tracking-tight mb-3">
-                      Acceso Restringido: Prueba de 5 Días Expirada
-                    </h2>
-                    <p className="text-slate-600 text-sm leading-relaxed mb-6 max-w-lg">
-                      Tu periodo de 5 días de prueba gratuita ha finalizado según el registro de tu cuenta en la plataforma. Para continuar emitiendo pagarés notariales, redactando escritos jurídicos y utilizando las consultas notariales de O.L.G.A., por favor selecciona un plan comercial.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
-                      <button
-                        onClick={() => setActiveTab('planes')}
-                        className="px-6 py-3 bg-[#FF3131] hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <Target className="w-4 h-4" />
-                        <span>Obtener Planes Disponibles</span>
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('soporte')}
-                        className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>Contactar Soporte</span>
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await logout();
-                          setCurrentUser(null);
-                          setUserProfile(null);
-                        }}
-                        className="px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors border border-slate-200 cursor-pointer"
-                      >
-                        <span>Cerrar Sesión</span>
-                      </button>
-                    </div>
-                    <div className="mt-8 pt-6 border-t border-slate-100 text-[11px] text-slate-400 font-mono">
-                      Escribano Titular: {userProfile?.email || currentUser?.email} | Workspace: {workspaceId || currentUser?.uid}
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-3 max-w-md">
-                      Nota: Todo documento generado en la plataforma es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
-                    </p>
-                  </div>
-                );
+// 1. Lógica de cálculo de vencimiento
+              let diasParaVencimientoPago = 999;
+              let suscripcionVencida = false;
+              const fechaVencimientoPlan = userProfile?.fecha_vencimiento_plan || userData?.fecha_vencimiento_plan;
+              const esAdmin = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com';
+
+              if (tienePlanPago && fechaVencimientoPlan && !esAdmin) {
+                const vDate = new Date(fechaVencimientoPlan);
+                diasParaVencimientoPago = Math.ceil((vDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                if (diasParaVencimientoPago < 0) suscripcionVencida = true;
               }
+
+              const isSoftBlocked = (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
+              const isWarning = tienePlanPago && diasParaVencimientoPago <= 5 && diasParaVencimientoPago >= 0 && !esAdmin;
 
               return (
                 <>
+                  {/* BANNERS PREVENTIVOS Y GUARDIÁN BLANDO */}
+                  {isSoftBlocked && activeTab !== 'planes' && (
+                    <div className="bg-red-50 border-b border-red-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-red-100 rounded-lg">
+                          <AlertTriangle className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-red-900">Tu suscripción ha expirado</p>
+                          <p className="text-xs text-red-700">Modo "Solo Lectura" activado. La creación de documentos y consultas IA están limitadas.</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveTab('planes')} className="whitespace-nowrap px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-md">
+                        Renovar Plan
+                      </button>
+                    </div>
+                  )}
+
+                  {isWarning && !isSoftBlocked && activeTab !== 'planes' && (
+                    <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-100 rounded-lg">
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Suscripción próxima a vencer</p>
+                          <p className="text-xs text-amber-700">Tu plan actual vence en <strong>{diasParaVencimientoPago} días</strong>. Por favor, renueva tu plan para evitar interrupciones.</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveTab('planes')} className="whitespace-nowrap px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-md">
+                        Ver Planes
+                      </button>
+                    </div>
+                  )}
+                  
                   {activeTab === 'tablero' && (
               <TableroTab 
                 pagares={pagares}
                 personas={personas}
                 config={config}
                 onSelectPagareForPreview={handleAbrirPagarePreview}
-                onOpenDocument={(text) => { 
-                  setDocumentoInitialText(text); 
-                  setDocumentoModalOpen(true); 
-                }} 
+                onOpenDocument={handleOpenDocumentModal} 
                 onAddPagare={handleAddPagare}
                 onUpdatePagare={handleUpdatePagare}
                 onDeletePagare={handleDeletePagare}
@@ -1794,6 +1849,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 userData={userProfile || userData}
                 workspaceId={workspaceId}
                 workspaceName={workspaceName}
+                isSoftBlocked={isSoftBlocked}
               />
             )}
 
@@ -1818,8 +1874,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onAddPersona={handleAddPersona}
                 onSelectPagareForPreview={handleAbrirPagarePreview}
                 isAdmin={role === 'admin'}
-                userData={userProfile}
-                
+                userData={userProfile || userData}
+                isSoftBlocked={isSoftBlocked}
               />
             )}
 
@@ -1832,6 +1888,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 onDeletePersona={handleDeletePersona}
                 isAdmin={role === 'admin'}
                 currentUser={currentUser}
+                userData={userProfile || userData}
+                isSoftBlocked={isSoftBlocked}
               />
             )}
 
@@ -1840,10 +1898,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 currentUser={currentUser} 
                 userProfile={userProfile || userData}
                 personas={personas}
-                onOpenDocument={(text) => { 
-                  setDocumentoInitialText(text); 
-                  setDocumentoModalOpen(true); 
-                }} 
+                onOpenDocument={handleOpenDocumentModal} 
               />
             )}
             
@@ -1871,10 +1926,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 docs={knowledgeDocs}
                 setDocs={setKnowledgeDocs}
                 currentUser={currentUser}
-                onOpenDocument={(text) => {
-                  setDocumentoInitialText(text);
-                  setDocumentoModalOpen(true);
-                }}
+                onOpenDocument={handleOpenDocumentModal}
               />
             )}
 
@@ -1940,20 +1992,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                                 <button 
                                   onClick={async () => {
                                     const extractedText = msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text;
-                                  setDocumentoInitialText(extractedText);
-                                  setDocumentoModalOpen(true);
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
-                              >
-                                <FileText className="w-3 h-3" />
-                                Exportar a Escrito
-                              </button>
+                                    handleOpenDocumentModal(extractedText);
+                                  }}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  Exportar a Escrito
+                                </button>
                               )}
                               {role === 'admin' && (
                                 <button 
                                   onClick={() => {
                                     const elm = document.getElementById(`model-msg-${i}`);
-                                    imprimirDocumentoOficial(elm?.innerHTML || '', currentUser);
+                                    imprimirDocumentoOficial(elm?.innerHTML || '', userProfile || userData || currentUser);
                                   }}
                                   className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors border border-slate-200"
                                 >
@@ -2218,13 +2269,20 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       )}
 
       {/* Documento Modal */}
-      <DocumentoModal userData={userProfile} isOpen={documentoModalOpen}
+      <DocumentoModal 
+        userData={userProfile || userData} 
+        isOpen={documentoModalOpen}
         onClose={() => {
           setDocumentoModalOpen(false);
           setDocumentoInitialText('');
+          setDocumentoModalDocId(undefined);
+          setDocumentoModalTipo(undefined);
+          setDocumentoModalCategoria(undefined);
         }}
         initialText={documentoInitialText}
-        
+        documentId={documentoModalDocId}
+        tipo={documentoModalTipo}
+        categoria={documentoModalCategoria}
         currentUser={currentUser}
         config={config}
         olgaDocsCount={olgaDocsCount}

@@ -48,7 +48,9 @@ export const AdminLoginRoute: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
+    if (!cleanEmail || !cleanPassword) {
       setError('Por favor complete ambos campos.');
       return;
     }
@@ -56,7 +58,7 @@ export const AdminLoginRoute: React.FC = () => {
     setError('');
     
     try {
-      await emailSignIn(email, password);
+      await emailSignIn(cleanEmail, cleanPassword);
       // Wait for auth state change to trigger redirect
     } catch (err: any) {
       console.error(err);

@@ -223,22 +223,33 @@ export const SuperAdminDashboard: React.FC = () => {
     return 'Fecha inválida';
   };
 
-  const handleAprobar = async (userId: string, planSolicitado: string) => {
+const handleAprobar = async (userId: string, planSolicitado: string) => {
     try {
       const userRef = doc(db, 'users', userId);
+      
+      // 1. Calculamos la fecha actual y la fecha de vencimiento (+30 días)
+      const fechaActual = new Date();
+      const fechaVencimiento = new Date();
+      fechaVencimiento.setDate(fechaActual.getDate() + 30);
+
+      // 2. Ejecutamos la actualización inyectando la matemática de los planes
       await updateDoc(userRef, {
         planActual: planSolicitado,
         estadoPago: 'APROBADO',
-        fechaAprobacion: new Date().toISOString()
+        estado_cuenta: 'activa', // Garantiza que la cuenta se desbloquee
+        fecha_inicio_plan: fechaActual.toISOString(), // Fecha nativa, sin errores
+        fecha_vencimiento_plan: fechaVencimiento.toISOString(), // Bloqueo exacto en 30 días
+        fechaAprobacion: fechaActual.toISOString() // Rastro de auditoría
       });
+
+      // 3. Limpiamos la UI y avisamos al SuperAdmin
       setPendingPayments(prev => prev.filter(p => p.userId !== userId));
-      alert('Operación exitosa');
+      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" vencerá automáticamente el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
       console.error(err);
-      alert('Error al aprobar');
+      alert('Error al aprobar la suscripción.');
     }
   };
-
   const handleRechazar = async (userId: string) => {
     try {
       const userRef = doc(db, 'users', userId);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Save, Edit3, CheckCircle } from 'lucide-react';
 import { db, auth } from '../services/auth';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 import { useTrialStatus } from '../hooks/useTrialStatus';
 import { useWorkspace } from '../hooks/useWorkspace';
@@ -13,6 +13,9 @@ interface DocumentoModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialText: string;
+  documentId?: string;
+  tipo?: string;
+  categoria?: string;
   userData: any;
   currentUser: any;
   config?: any;
@@ -23,16 +26,20 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   isOpen,
   onClose,
   initialText,
+  documentId,
+  tipo,
+  categoria,
   userData,
   currentUser,
   config,
   olgaDocsCount
 }) => {
   const [text, setText] = useState(initialText);
+  const [currentDocId, setCurrentDocId] = useState<string | undefined>(documentId);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const { diasRestantes, pruebaActiva } = useTrialStatus(currentUser);
+  const { diasRestantes, pruebaActiva, isTrialExpired } = useTrialStatus(currentUser);
   const { workspaceId } = useWorkspace(currentUser || auth.currentUser, userData);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -44,7 +51,8 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
   useEffect(() => {
     setText(initialText);
-  }, [initialText]);
+    setCurrentDocId(documentId);
+  }, [initialText, documentId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,6 +72,12 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
   if (!isOpen) return null;
 
+  const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
+  const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
+  const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || userData?.estadoPlataforma === 'Aprobado';
+  const isWatermarkRequired = !isWhitelisted && (!isPaid || isTrialAgotado || isTrialExpired || !pruebaActiva || diasRestantes <= 0 || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan);
+
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;
     if (printContent) {
@@ -76,6 +90,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
           body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           .prose { max-width: none !important; }
+          .watermark { display: none; }
           @media print {
             body { padding: 0; margin: 0; }
             @page { margin: 0; size: legal portrait; }
@@ -91,19 +106,30 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             }
             p, div, blockquote { orphans: 3; widows: 3; }
             table, tr, td { page-break-inside: avoid; break-inside: avoid; }
+            .watermark {
+              display: block !important;
+              position: fixed !important;
+              top: 50% !important;
+              left: 50% !important;
+              transform: translate(-50%, -50%) rotate(-45deg) !important;
+              font-size: 80px !important;
+              color: rgba(255, 0, 0, 0.15) !important;
+              font-weight: bold !important;
+              text-transform: uppercase !important;
+              z-index: 9999 !important;
+              pointer-events: none !important;
+              text-align: center !important;
+              width: 100% !important;
+              line-height: 1.2 !important;
+            }
           }
         `);
         win.document.write('</style></head><body class="print:h-auto print:m-0 print:p-0 print:overflow-hidden">');
         
-        const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
-        const isFree = !plan || plan.includes('gratis') || plan.includes('free') || plan === 'demo';
-
-        if (isFree) {
+        if (isWatermarkRequired) {
           win.document.write(`
-            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-              <div style="transform: rotate(-45deg); font-size: 4rem; color: rgba(150, 150, 150, 0.15); font-weight: bold; font-family: sans-serif; white-space: nowrap; user-select: none;">
-                Generado con O.L.G.A. - Versión Gratuita/Básica
-              </div>
+            <div class="watermark">
+              VERSIÓN DE PRUEBA - SÓLO PARA USO NO COMERCIAL
             </div>
           `);
         }
@@ -128,15 +154,21 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     
     if (!auth.currentUser || !auth.currentUser.uid) return;
 
-    if (isTrialAgotado) {
+    if (!currentDocId && isTrialAgotado) {
       console.error("Plan Gratuito Agotado. Has alcanzado el límite de 5 escritos o 5 días. Adquiere un plan para continuar.");
+      return;
+    }
+
+    // Si existe un ID previo, actualizar directamente sobre ese documento (updateDoc) sin crear duplicado
+    if (currentDocId && !currentDocId.startsWith('temp-')) {
+      await confirmSave(categoria || 'Sin Categoría');
       return;
     }
 
     setShowSaveModal(true);
   };
 
-  const confirmSave = async (categoria: string) => {
+  const confirmSave = async (categoriaSeleccionada: string) => {
     setShowSaveModal(false);
     if (!auth.currentUser || !auth.currentUser.uid) return;
     
@@ -152,19 +184,34 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
       const creatorName = user?.nombre || userData?.nombre || userData?.razonSocial || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
       const creatorRole = user?.role || user?.rol || userData?.role || userData?.rol || 'titular';
 
-      const datosDelDocumento = {
-        texto: text,
-        tipo: 'Escrito Generado',
-        userId: workspaceId,            // El propietario legal de los datos (Titular)
-        creator_id: auth.currentUser.uid, // Rastro de auditoría: Quién lo digitó
-        createdBy: auth.currentUser.uid,
-        creator_name: creatorName,
-        creator_role: creatorRole,
-        categoria: categoria,
-        createdAt: new Date().toISOString(),
-        fechaCreacion: serverTimestamp()
-      };
-      await addDoc(collection(db, 'documentos_olga'), datosDelDocumento);
+      if (currentDocId && !currentDocId.startsWith('temp-')) {
+        // ACTUALIZACIÓN DIRECTA (updateDoc) DEL DOCUMENTO EXISTENTE
+        const docRef = doc(db, 'documentos_olga', currentDocId);
+        await updateDoc(docRef, {
+          texto: text,
+          categoria: categoriaSeleccionada || categoria || 'Sin Categoría',
+          ultimaModificacion: serverTimestamp(),
+          lastModifiedBy: auth.currentUser.uid,
+          lastModifiedByName: creatorName
+        });
+      } else {
+        // CREACIÓN DE NUEVO DOCUMENTO (addDoc)
+        const datosDelDocumento = {
+          texto: text,
+          tipo: tipo || 'Escrito Generado',
+          userId: workspaceId,            // El propietario legal de los datos (Titular)
+          creator_id: auth.currentUser.uid, // Rastro de auditoría: Quién lo digitó
+          createdBy: auth.currentUser.uid,
+          creator_name: creatorName,
+          creator_role: creatorRole,
+          categoria: categoriaSeleccionada || categoria || 'Sin Categoría',
+          createdAt: new Date().toISOString(),
+          fechaCreacion: serverTimestamp()
+        };
+        const newRef = await addDoc(collection(db, 'documentos_olga'), datosDelDocumento);
+        setCurrentDocId(newRef.id);
+      }
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -209,17 +256,17 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             >
               {isEditing ? <><CheckCircle className="w-4 h-4" /> Vista Previa</> : <><Edit3 className="w-4 h-4" /> Editar</>}
             </button>
-            {isTrialAgotado ? (
+            {isTrialAgotado && !currentDocId ? (
               <div className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-2 rounded-xl border border-red-100 flex items-center gap-2">
                 Plan Gratuito Agotado. Has alcanzado el límite de 5 escritos o 5 días. Adquiere un plan para continuar.
               </div>
             ) : (
               <button
                 onClick={handleSave}
-                disabled={isSaving || isTrialAgotado || isSavingRef.current || olgaDocsCount >= 5}
+                disabled={isSaving || isSavingRef.current || (!currentDocId && (isTrialAgotado || (olgaDocsCount >= 5 && isFree)))}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
-                <Save className="w-4 h-4" /> {isSaving || isSavingRef.current ? 'Guardando...' : (olgaDocsCount >= 5 && isFree ? 'Límite del Plan Alcanzado' : 'Guardar')}
+                <Save className="w-4 h-4" /> {isSaving || isSavingRef.current ? 'Guardando...' : (!currentDocId && olgaDocsCount >= 5 && isFree ? 'Límite del Plan Alcanzado' : 'Guardar')}
               </button>
             )}
             <button

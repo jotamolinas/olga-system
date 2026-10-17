@@ -28,9 +28,13 @@ import {
   FolderOpen,
   Save,
   Calendar,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  Loader2
 } from 'lucide-react';
 import { Persona, TipoPersona, TipoDocumento, Pagare } from '../types';
+import { consultarRUC } from '../services/dnitService';
+import { useTrialStatus } from '../hooks/useTrialStatus';
 
 interface PersonasTabProps {
   personas?: Persona[];
@@ -40,6 +44,8 @@ interface PersonasTabProps {
   onDeletePersona?: (id: string) => void;
   isAdmin?: boolean;
   currentUser?: any;
+  userData?: any;
+  isSoftBlocked?: boolean;
   initialEditingId?: string | null;
   onClose?: () => void;
 }
@@ -55,11 +61,84 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   onDeletePersona,
   isAdmin = false,
   currentUser,
+  userData,
+  isSoftBlocked = false,
   initialEditingId = null,
   onClose
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
   const { workspaceId } = useWorkspace(currentUser || auth?.currentUser);
+
+  // Guardián Blando de Recursos - Restricción de consultas a la API del DNIT
+  const { diasRestantes, pruebaActiva, isTrialExpired, userData: liveUserData } = useTrialStatus(auth?.currentUser);
+  const activeUserData = liveUserData || userData;
+  const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
+  const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
+  const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (activeUserData?.estadoPlataforma === 'Aprobado') || esAdmin;
+  const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
+
+  let suscripcionVencida = false;
+  const fechaVencimientoPlan = activeUserData?.fecha_vencimiento_plan;
+  if (tienePlanPago && fechaVencimientoPlan && !esAdmin) {
+    const vDate = new Date(fechaVencimientoPlan);
+    const diasParaVencimiento = Math.ceil((vDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    if (diasParaVencimiento < 0) suscripcionVencida = true;
+  }
+
+  const isDnitBlocked = isSoftBlocked || (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
+
+  const [loadingDnit, setLoadingDnit] = useState(false);
+  const [feedbackDnit, setFeedbackDnit] = useState<string | null>(null);
+
+  const handleConsultarPersonaDnit = async () => {
+    if (isDnitBlocked) {
+      setFeedbackDnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackDnit(null), 5000);
+      return;
+    }
+
+    const ruc = nroDocumento.trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackDnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackDnit(null), 3000);
+      return;
+    }
+
+    setLoadingDnit(true);
+    setFeedbackDnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        if (tipoPersona === 'física') {
+          const raw = res.nombre_o_razon_social.trim();
+          const parts = raw.split(/\s+/);
+          if (parts.length >= 2) {
+            const mid = Math.ceil(parts.length / 2);
+            setNombre(parts.slice(0, mid).join(' '));
+            setApellido(parts.slice(mid).join(' '));
+          } else {
+            setNombre(raw);
+          }
+        } else {
+          setNombre(res.nombre_o_razon_social);
+        }
+        if (res.direccion) setDomicilio(res.direccion);
+        if (res.telefono) setTelefono(res.telefono);
+        setFeedbackDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackDnit(null), 4000);
+      } else {
+        setFeedbackDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        setTimeout(() => setFeedbackDnit(null), 3500);
+      }
+    } catch (err) {
+      console.warn('Consulta DNIT no completada:', err);
+      setFeedbackDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
+      setTimeout(() => setFeedbackDnit(null), 3500);
+    } finally {
+      setLoadingDnit(false);
+    }
+  };
 
   // 1. Estado de Personas con persistencia en localStorage y respaldo inicial en memoria
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
@@ -621,18 +700,55 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   </div>
                 </div>
 
-                {/* C.I. */}
+                {/* C.I. / R.U.C. */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
-                    Cédula de Identidad (C.I.) *
+                    Nro. Documento (CI / RUC) *
                   </label>
-                  <input
-                    type="text"
-                    value={nroDocumento}
-                    onChange={(e) => setNroDocumento(e.target.value)}
-                    placeholder="Ej. 1.234.567"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={nroDocumento}
+                      onChange={(e) => setNroDocumento(e.target.value)}
+                      placeholder="Ej. 1.234.567 o 1234567-8"
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingDnit}
+                      onClick={() => handleConsultarPersonaDnit()}
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar documento en DNIT"}
+                    >
+                      {loadingDnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingDnit && (
+                    <div className="mt-1.5 p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackDnit && !loadingDnit && (
+                    <p className={`mt-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border leading-tight ${
+                      feedbackDnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
+                      {feedbackDnit}
+                    </p>
+                  )}
                 </div>
               </>
             ) : (
@@ -640,7 +756,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 {/* Razón Social */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
-                    Razón Social *
+                    Nombre Completo / Razón Social *
                   </label>
                   <input
                     type="text"
@@ -654,15 +770,52 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 {/* R.U.C. */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
-                    R.U.C. *
+                    Nro. Documento (R.U.C.) *
                   </label>
-                  <input
-                    type="text"
-                    value={nroDocumento}
-                    onChange={(e) => setNroDocumento(e.target.value)}
-                    placeholder="Ej. 80012345-6"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={nroDocumento}
+                      onChange={(e) => setNroDocumento(e.target.value)}
+                      placeholder="Ej. 80012345-6"
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingDnit}
+                      onClick={() => handleConsultarPersonaDnit()}
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar RUC en DNIT (Acción voluntaria)"}
+                    >
+                      {loadingDnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingDnit && (
+                    <div className="mt-1.5 p-1.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 text-[11px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackDnit && !loadingDnit && (
+                    <p className={`mt-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border leading-tight ${
+                      feedbackDnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
+                      {feedbackDnit}
+                    </p>
+                  )}
                 </div>
 
                 {/* Selector de Representante Legal */}

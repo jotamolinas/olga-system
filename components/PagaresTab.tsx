@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
 import { consultarRUC } from '../services/dnitService';
+import { useTrialStatus } from '../hooks/useTrialStatus';
 import { 
   sincronizarFirmantesDePagare, 
   sincronizarFirmantesDeFormulario, 
@@ -27,6 +28,7 @@ interface PagaresTabProps {
   onSelectPagareForPreview: (pagare: Pagare) => void;
   isAdmin: boolean;
   userData?: any;
+  isSoftBlocked?: boolean;
   initialPanelView?: 'list' | 'list_anulados' | 'create';
   initialEditingId?: string | null;
   onClose?: () => void;
@@ -43,12 +45,32 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   onSelectPagareForPreview,
   isAdmin,
   userData,
+  isSoftBlocked = false,
   initialPanelView = 'list',
   initialEditingId = null,
   onClose
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
   const { workspaceId } = useWorkspace(auth?.currentUser, userData);
+
+  // Guardián Blando de Recursos - Restricción de consultas a la API del DNIT
+  const { diasRestantes, pruebaActiva, isTrialExpired, userData: liveUserData } = useTrialStatus(auth?.currentUser);
+  const activeUserData = liveUserData || userData;
+  const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
+  const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
+  const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+  const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || (activeUserData?.estadoPlataforma === 'Aprobado') || esAdmin;
+  const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
+
+  let suscripcionVencida = false;
+  const fechaVencimientoPlan = activeUserData?.fecha_vencimiento_plan;
+  if (tienePlanPago && fechaVencimientoPlan && !esAdmin) {
+    const vDate = new Date(fechaVencimientoPlan);
+    const diasParaVencimiento = Math.ceil((vDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    if (diasParaVencimiento < 0) suscripcionVencida = true;
+  }
+
+  const isDnitBlocked = isSoftBlocked || (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
 
   // Transición no bloqueante para abrir previsualización de pagarés sin congelar la UI
   const handleAbrirPagare = (pagare: Pagare) => {
@@ -218,6 +240,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   // Consultas DNIT voluntarias (solo disparadas por clic explícito del usuario)
   const handleConsultarAcreedorDnit = async (rucInput?: string) => {
+    if (isDnitBlocked) {
+      setFeedbackAcreedorDnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackAcreedorDnit(null), 5000);
+      return;
+    }
     const ruc = (rucInput !== undefined ? rucInput : acreedorDocumentoRaw).trim();
     if (!ruc || ruc.length < 4) {
       setFeedbackAcreedorDnit('Ingrese un número de documento para consultar.');
@@ -248,6 +275,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   const handleConsultarDeudorDnit = async (rucInput?: string) => {
+    if (isDnitBlocked) {
+      setFeedbackDeudorDnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackDeudorDnit(null), 5000);
+      return;
+    }
     const ruc = (rucInput !== undefined ? rucInput : deudorDocumentoRaw).trim();
     if (!ruc || ruc.length < 4) {
       setFeedbackDeudorDnit('Ingrese un número de documento para consultar.');
@@ -278,6 +310,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   const handleConsultarCodeudor1Dnit = async () => {
+    if (isDnitBlocked) {
+      setFeedbackCodeudor1Dnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackCodeudor1Dnit(null), 5000);
+      return;
+    }
     const ruc = codeudor1DocumentoRaw.trim();
     if (!ruc || ruc.length < 4) {
       setFeedbackCodeudor1Dnit('Ingrese un número de documento para consultar.');
@@ -308,6 +345,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   const handleConsultarCodeudor2Dnit = async () => {
+    if (isDnitBlocked) {
+      setFeedbackCodeudor2Dnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackCodeudor2Dnit(null), 5000);
+      return;
+    }
     const ruc = codeudor2DocumentoRaw.trim();
     if (!ruc || ruc.length < 4) {
       setFeedbackCodeudor2Dnit('Ingrese un número de documento para consultar.');
@@ -406,6 +448,54 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [quickDom, setQuickDom] = useState('');
   const [quickRepId, setQuickRepId] = useState('');
   const [quickError, setQuickError] = useState('');
+  const [loadingQuickDnit, setLoadingQuickDnit] = useState(false);
+  const [feedbackQuickDnit, setFeedbackQuickDnit] = useState<string | null>(null);
+
+  const handleConsultarQuickDnit = async () => {
+    if (isDnitBlocked) {
+      setFeedbackQuickDnit("⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT.");
+      setTimeout(() => setFeedbackQuickDnit(null), 5000);
+      return;
+    }
+    const ruc = quickNroDoc.trim();
+    if (!ruc || ruc.length < 4) {
+      setFeedbackQuickDnit('Ingrese un número de documento para consultar.');
+      setTimeout(() => setFeedbackQuickDnit(null), 3000);
+      return;
+    }
+    setLoadingQuickDnit(true);
+    setFeedbackQuickDnit(null);
+    try {
+      const res = await consultarRUC(ruc);
+      if (res && res.nombre_o_razon_social) {
+        if (quickTipoPersona === 'física') {
+          const raw = res.nombre_o_razon_social.trim();
+          const parts = raw.split(/\s+/);
+          if (parts.length >= 2) {
+            const mid = Math.ceil(parts.length / 2);
+            setQuickNombre(parts.slice(0, mid).join(' '));
+            setQuickApellido(parts.slice(mid).join(' '));
+          } else {
+            setQuickNombre(raw);
+          }
+        } else {
+          setQuickNombre(res.nombre_o_razon_social);
+        }
+        if (res.direccion) setQuickDom(res.direccion);
+        if (res.telefono) setQuickTel(res.telefono);
+        setFeedbackQuickDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setTimeout(() => setFeedbackQuickDnit(null), 4000);
+      } else {
+        setFeedbackQuickDnit('No encontrado en DNIT. Complete manualmente.');
+        setTimeout(() => setFeedbackQuickDnit(null), 3500);
+      }
+    } catch {
+      setFeedbackQuickDnit('No encontrado en DNIT.');
+      setTimeout(() => setFeedbackQuickDnit(null), 3500);
+    } finally {
+      setLoadingQuickDnit(false);
+    }
+  };
 
   // Handle escape to close quick add persona modal
   useEffect(() => {
@@ -2323,11 +2413,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       type="button"
                       disabled={loadingAcreedorDnit}
                       onClick={() => handleConsultarAcreedorDnit()}
-                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
-                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar RUC en DNIT (Acción voluntaria)"}
                     >
                       {loadingAcreedorDnit ? (
                         <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
                       ) : (
                         <Search className="w-3 h-3 text-white" />
                       )}
@@ -2341,7 +2437,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     </div>
                   )}
                   {feedbackAcreedorDnit && !loadingAcreedorDnit && (
-                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                    <p className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border leading-tight ${
+                      feedbackAcreedorDnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
                       {feedbackAcreedorDnit}
                     </p>
                   )}
@@ -2413,11 +2513,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       type="button"
                       disabled={loadingDeudorDnit}
                       onClick={() => handleConsultarDeudorDnit()}
-                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
-                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar RUC en DNIT (Acción voluntaria)"}
                     >
                       {loadingDeudorDnit ? (
                         <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
                       ) : (
                         <Search className="w-3 h-3 text-white" />
                       )}
@@ -2431,7 +2537,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     </div>
                   )}
                   {feedbackDeudorDnit && !loadingDeudorDnit && (
-                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                    <p className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border leading-tight ${
+                      feedbackDeudorDnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
                       {feedbackDeudorDnit}
                     </p>
                   )}
@@ -2503,11 +2613,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       type="button"
                       disabled={loadingCodeudor1Dnit}
                       onClick={() => handleConsultarCodeudor1Dnit()}
-                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
-                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar RUC en DNIT (Acción voluntaria)"}
                     >
                       {loadingCodeudor1Dnit ? (
                         <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
                       ) : (
                         <Search className="w-3 h-3 text-white" />
                       )}
@@ -2521,7 +2637,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     </div>
                   )}
                   {feedbackCodeudor1Dnit && !loadingCodeudor1Dnit && (
-                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                    <p className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border leading-tight ${
+                      feedbackCodeudor1Dnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
                       {feedbackCodeudor1Dnit}
                     </p>
                   )}
@@ -2593,11 +2713,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       type="button"
                       disabled={loadingCodeudor2Dnit}
                       onClick={() => handleConsultarCodeudor2Dnit()}
-                      className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
-                      title="Consultar RUC en DNIT (Acción voluntaria)"
+                      className={`absolute right-1.5 top-1.5 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar RUC en DNIT (Acción voluntaria)"}
                     >
                       {loadingCodeudor2Dnit ? (
                         <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
                       ) : (
                         <Search className="w-3 h-3 text-white" />
                       )}
@@ -2611,7 +2737,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     </div>
                   )}
                   {feedbackCodeudor2Dnit && !loadingCodeudor2Dnit && (
-                    <p className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                    <p className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border leading-tight ${
+                      feedbackCodeudor2Dnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-xs' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
                       {feedbackCodeudor2Dnit}
                     </p>
                   )}
@@ -2924,14 +3054,51 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Número único</label>
-                  <input  autoComplete="nope"
-                    type="text"
-                    value={quickNroDoc}
-                    onChange={(e) => setQuickNroDoc(formatCI(e.target.value))}
-                    placeholder="Ej. 1234567"
-                    className="w-full box-border bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none"
-                  />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Número único (CI / RUC)</label>
+                  <div className="relative">
+                    <input  autoComplete="nope"
+                      type="text"
+                      value={quickNroDoc}
+                      onChange={(e) => setQuickNroDoc(formatCI(e.target.value))}
+                      placeholder="Ej. 1234567 o 80012345-6"
+                      className="w-full box-border bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pr-20 text-xs font-medium outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingQuickDnit}
+                      onClick={() => handleConsultarQuickDnit()}
+                      className={`absolute right-1.5 top-1 px-2.5 py-1 ${
+                        isDnitBlocked 
+                          ? 'bg-slate-400 text-slate-100 hover:bg-slate-500 cursor-pointer' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      } disabled:bg-slate-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors shadow-xs`}
+                      title={isDnitBlocked ? "⚠️ Consulta bloqueada: Requiere un plan activo o periodo de prueba vigente para utilizar la conexión con el DNIT." : "Consultar documento en DNIT"}
+                    >
+                      {loadingQuickDnit ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : isDnitBlocked ? (
+                        <Lock className="w-3 h-3 text-white/90" />
+                      ) : (
+                        <Search className="w-3 h-3 text-white" />
+                      )}
+                      <span>DNIT</span>
+                    </button>
+                  </div>
+                  {loadingQuickDnit && (
+                    <div className="mt-1 p-1 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1 text-[10px] font-bold text-slate-800 animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin text-[#FF3131]" />
+                      <span>Consultando registro DNIT...</span>
+                    </div>
+                  )}
+                  {feedbackQuickDnit && !loadingQuickDnit && (
+                    <p className={`mt-1 text-[10px] font-bold px-2 py-1 rounded-lg border leading-tight ${
+                      feedbackQuickDnit.includes('⚠️') 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                        : 'text-slate-700 bg-slate-100 border-slate-200'
+                    }`}>
+                      {feedbackQuickDnit}
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, Timestamp, doc, deleteDoc, onSnapshot, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useTrialStatus } from '../hooks/useTrialStatus';
 import { 
   FileText, Loader2, Calendar, Trash2, Settings, MoreVertical, 
   Copy, FolderInput, X, Check, Edit3, Plus, Printer, Save, 
@@ -33,7 +34,7 @@ interface EscritosTabProps {
   currentUser: User | null;
   userProfile?: any;
   personas?: any[];
-  onOpenDocument: (text: string) => void;
+  onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string) => void;
 }
 
 // =========================================================================
@@ -461,6 +462,8 @@ const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
   const { workspaceId } = useWorkspace(currentUser, userProfile);
+  // Estado de prueba gratuita / billing
+  const { pruebaActiva, diasRestantes, isTrialExpired } = useTrialStatus(currentUser);
 
   // Modo de navegación: Redacción activa vs Archivo de Documentos
   const [activeSubTab, setActiveSubTab] = useState<'redaccion' | 'archivo'>('redaccion');
@@ -503,6 +506,25 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const editorTextareaRef = editorContentRef;
+
+  // Callback ref para garantizar la inyección inmediata del HTML al montar el nodo contentEditable
+  const setEditorRef = (el: HTMLDivElement | null) => {
+    (editorContentRef as any).current = el;
+    if (el && editorText) {
+      if (el.innerHTML !== editorText) {
+        el.innerHTML = editorText;
+      }
+    }
+  };
+
+  // Sincronización garantizada del contenido en el editor visual al abrir o alternar documento
+  useEffect(() => {
+    if (mostrarEditor && editorContentRef.current) {
+      if (editorText && editorContentRef.current.innerHTML !== editorText) {
+        editorContentRef.current.innerHTML = editorText;
+      }
+    }
+  }, [mostrarEditor, editorText]);
 
   // Estado de la Lista de Escritos Guardados
   const [escritos, setEscritos] = useState<Escrito[]>([]);
@@ -1764,7 +1786,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const unsubscribe = onSnapshot(
       q,
       (querySnapshot) => {
-        const docs: Escrito[] = [];
+        const docsMap = new Map<string, Escrito>();
         querySnapshot.forEach((d) => {
           const data = d.data();
           let categoria = data.categoria || 'Sin Categoría';
@@ -1776,43 +1798,56 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             else if (lowerTipo.includes('contrato privado')) categoria = 'Contratos Privados';
             else if (lowerTipo.includes('traspaso')) categoria = 'Traspasos';
           }
-          docs.push({ id: d.id, ...data, categoria } as Escrito);
+          docsMap.set(d.id, { id: d.id, ...data, categoria } as Escrito);
         });
 
-        // Leer documentos temporales del localStorage
+        // Leer documentos temporales del localStorage SOLO si no existen ya en Firestore
         const tempDocsString = localStorage.getItem('escritos_temporales');
         if (tempDocsString) {
           try {
             const tempDocs = JSON.parse(tempDocsString);
+            const remainingTempDocs: any[] = [];
             tempDocs.forEach((tDoc: any, idx: number) => {
               if (tDoc.userId === workspaceId || tDoc.userId === auth?.currentUser?.uid) {
-                let categoria = tDoc.categoria || 'Sin Categoría';
-                if (!tDoc.categoria && tDoc.tipo) {
-                  const lowerTipo = tDoc.tipo.toLowerCase();
-                  if (lowerTipo.includes('compraventa')) categoria = 'Compraventa';
-                  else if (lowerTipo.includes('pagaré') || lowerTipo.includes('pagare')) categoria = 'Pagarés';
-                  else if (lowerTipo.includes('alquiler')) categoria = 'Alquiler';
-                  else if (lowerTipo.includes('contrato privado')) categoria = 'Contratos Privados';
-                  else if (lowerTipo.includes('traspaso')) categoria = 'Traspasos';
+                // Filtro para evitar duplicación visual de escritos ya sincronizados desde Firestore
+                const yaExisteEnFirestore = Array.from(docsMap.values()).some(
+                  d => d.texto?.trim() === tDoc.texto?.trim() && d.tipo?.replace(' (Guardado Local)', '') === tDoc.tipo?.replace(' (Guardado Local)', '')
+                );
+                if (!yaExisteEnFirestore) {
+                  remainingTempDocs.push(tDoc);
+                  let categoria = tDoc.categoria || 'Sin Categoría';
+                  if (!tDoc.categoria && tDoc.tipo) {
+                    const lowerTipo = tDoc.tipo.toLowerCase();
+                    if (lowerTipo.includes('compraventa')) categoria = 'Compraventa';
+                    else if (lowerTipo.includes('pagaré') || lowerTipo.includes('pagare')) categoria = 'Pagarés';
+                    else if (lowerTipo.includes('alquiler')) categoria = 'Alquiler';
+                    else if (lowerTipo.includes('contrato privado')) categoria = 'Contratos Privados';
+                    else if (lowerTipo.includes('traspaso')) categoria = 'Traspasos';
+                  }
+                  docsMap.set(`temp-${idx}`, {
+                    id: `temp-${idx}`,
+                    texto: tDoc.texto,
+                    tipo: `${tDoc.tipo} (Guardado Local)`,
+                    categoria: categoria,
+                    userId: tDoc.userId,
+                    fechaCreacion: {
+                      toMillis: () => new Date(tDoc.fechaCreacion).getTime(),
+                      toDate: () => new Date(tDoc.fechaCreacion)
+                    } as any
+                  });
                 }
-                docs.push({
-                  id: `temp-${idx}`,
-                  texto: tDoc.texto,
-                  tipo: `${tDoc.tipo} (Guardado Local)`,
-                  categoria: categoria,
-                  userId: tDoc.userId,
-                  fechaCreacion: {
-                    toMillis: () => new Date(tDoc.fechaCreacion).getTime(),
-                    toDate: () => new Date(tDoc.fechaCreacion)
-                  } as any
-                });
               }
             });
+            // Si algunos ya fueron sincronizados en Firestore, depurar el respaldo local para evitar residuos
+            if (remainingTempDocs.length !== tempDocs.length) {
+              localStorage.setItem('escritos_temporales', JSON.stringify(remainingTempDocs));
+            }
           } catch (e) {
             console.error('Error parsing temp docs', e);
           }
         }
 
+        const docs = Array.from(docsMap.values());
         docs.sort((a, b) => {
           const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.fechaCreacion?.toMillis?.() || 0);
           const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.fechaCreacion?.toMillis?.() || 0);
@@ -1862,9 +1897,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setSelectedPlantillaId(plantillaId);
     setMemoria({});
 
+    let textoParaEditor = '';
     const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
     if (!found || plantillaId === 'hoja_en_blanco') {
       // Limpieza total del editor
+      textoParaEditor = '';
       setEditorText('');
       setDocumentTitle('Escrito en Blanco');
       setSelectedCategoryForSave('Contratos Privados');
@@ -1885,22 +1922,31 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
 
       // Reconstruye el texto con N comparecientes sin datos pre-cargados de usuario
-      const textoConstruido = construirConstitucionSA(numSocios);
-      setEditorText(textoConstruido);
+      textoParaEditor = construirConstitucionSA(numSocios);
+      setEditorText(textoParaEditor);
       setDocumentTitle('Constitución de S.A.');
       setSelectedCategoryForSave('Contratos Privados');
     } else {
       // Plantillas limpias con espacios en blanco (_______)
-      const textoProcesado = procesarAutofillPlantilla(found.contenido);
-      setEditorText(textoProcesado);
+      textoParaEditor = procesarAutofillPlantilla(found.contenido);
+      setEditorText(textoParaEditor);
       setDocumentTitle(found.nombre);
       setSelectedCategoryForSave(found.categoriaSugerida);
+    }
+
+    if (editorContentRef.current) {
+      editorContentRef.current.innerHTML = textoParaEditor;
     }
 
     setTimeout(() => {
       const editorBloque = document.getElementById('editor-notarial-activo-bloque');
       if (editorBloque) {
         editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (editorContentRef.current) {
+        if (editorContentRef.current.innerHTML !== textoParaEditor) {
+          editorContentRef.current.innerHTML = textoParaEditor;
+        }
       }
       if (plantillaId === 'hoja_en_blanco') {
         if (editorContentRef.current) {
@@ -1923,7 +1969,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setPreviewMode(false);
     setMostrarEditor(true);
     setMemoria({});
+    if (editorContentRef.current) {
+      editorContentRef.current.innerHTML = '';
+    }
     setTimeout(() => {
+      if (editorContentRef.current) {
+        editorContentRef.current.innerHTML = '';
+      }
       if (editorTextareaRef.current) {
         editorTextareaRef.current.focus();
         editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1943,6 +1995,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
     setMemoria({});
+    if (editorContentRef.current) {
+      editorContentRef.current.innerHTML = '';
+    }
   };
 
   // Copiar contenido al portapapeles
@@ -1983,43 +2038,60 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const creatorName = (currentUser as any)?.nombre || userProfile?.nombre || userProfile?.razonSocial || (currentUser as any)?.displayName || currentUser?.email?.split('@')[0] || (user as any)?.displayName || user?.email?.split('@')[0] || 'Usuario';
       const creatorRole = (currentUser as any)?.role || (currentUser as any)?.rol || userProfile?.rol || userProfile?.role || 'titular';
 
-      const nuevoDocData = {
-        texto: textoLimpio,
-        tipo: tipoDoc,
-        userId: workspaceId,            // El propietario legal de los datos (Titular)
-        creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
-        createdBy: user?.uid,
-        creator_name: creatorName,
-        creator_role: creatorRole,
-        categoria: cat,
-        createdAt: new Date().toISOString(),
-        fechaCreacion: serverTimestamp()
-      };
+      const docId = activeEditingDoc?.id;
+      const isExistingFirestoreDoc = !!(docId && !docId.startsWith('temp-'));
 
-      await addDoc(collection(db, 'documentos_olga'), nuevoDocData);
-
-      // Guardado como respaldo local
-      try {
-        const rawTemp = localStorage.getItem('escritos_temporales');
-        const list = rawTemp ? JSON.parse(rawTemp) : [];
-        list.push({
+      if (isExistingFirestoreDoc && docId) {
+        // ACTUALIZACIÓN DIRECTA (updateDoc) SOBRE EL DOCUMENTO EXISTENTE
+        const docRef = doc(db, 'documentos_olga', docId);
+        await updateDoc(docRef, {
           texto: textoLimpio,
           tipo: tipoDoc,
-          userId: user.uid,
           categoria: cat,
-          fechaCreacion: new Date().toISOString()
+          ultimaModificacion: serverTimestamp(),
+          lastModifiedBy: user?.uid,
+          lastModifiedByName: creatorName
         });
-        localStorage.setItem('escritos_temporales', JSON.stringify(list));
-      } catch (err) {
-        console.warn('Error guardando copia local temporal:', err);
+      } else if (docId && docId.startsWith('temp-')) {
+        // Actualización de borrador local
+        const tempDocsString = localStorage.getItem('escritos_temporales');
+        if (tempDocsString) {
+          const tempDocs = JSON.parse(tempDocsString);
+          const idx = parseInt(docId.replace('temp-', ''), 10);
+          if (!isNaN(idx) && tempDocs[idx]) {
+            tempDocs[idx].texto = textoLimpio;
+            tempDocs[idx].tipo = tipoDoc;
+            tempDocs[idx].categoria = cat;
+            localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
+          }
+        }
+      } else {
+        // CREACIÓN DE NUEVO DOCUMENTO (addDoc)
+        const nuevoDocData = {
+          texto: textoLimpio,
+          tipo: tipoDoc,
+          userId: workspaceId,            // El propietario legal de los datos (Titular)
+          creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
+          createdBy: user?.uid,
+          creator_name: creatorName,
+          creator_role: creatorRole,
+          categoria: cat,
+          createdAt: new Date().toISOString(),
+          fechaCreacion: serverTimestamp()
+        };
+        await addDoc(collection(db, 'documentos_olga'), nuevoDocData);
       }
 
-      // 3. Cerrar Editor Post-Guardado: la hoja se oculta y la vista regresa al gestor documental
+      // 3. Cerrar Editor Post-Guardado y resetear estado de edición activa
       setMostrarEditor(false);
       setSelectedPlantillaId('');
+      setActiveEditingDoc(null);
+      setEditandoDocumentoExistente(false);
 
       // 4. Mensaje Verde de Éxito con Toast
-      const mensajeFinal = `¡"${tipoDoc}" guardado exitosamente en la carpeta ${cat}!`;
+      const mensajeFinal = isExistingFirestoreDoc 
+        ? `¡"${tipoDoc}" actualizado exitosamente en la carpeta ${cat}!`
+        : `¡"${tipoDoc}" guardado exitosamente en la carpeta ${cat}!`;
       setMensajeExito(mensajeFinal);
       setSaveSuccessBanner(mensajeFinal);
       setTimeout(() => {
@@ -2034,7 +2106,25 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
     } catch (err) {
       console.error('Error al guardar documento:', err);
-      alert('Ocurrió un error al guardar. Verifica tu conexión.');
+      // Guardado como respaldo local de emergencia únicamente en caso de fallo de conexión
+      try {
+        const tipoDoc = documentTitle.trim() || 'Escrito Notarial';
+        const cat = selectedCategoryForSave || 'Contratos Privados';
+        const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
+        const rawTemp = localStorage.getItem('escritos_temporales');
+        const list = rawTemp ? JSON.parse(rawTemp) : [];
+        list.push({
+          texto: textoLimpio,
+          tipo: tipoDoc,
+          userId: user.uid,
+          categoria: cat,
+          fechaCreacion: new Date().toISOString()
+        });
+        localStorage.setItem('escritos_temporales', JSON.stringify(list));
+      } catch (backupErr) {
+        console.warn('Error guardando copia local de emergencia:', backupErr);
+      }
+      alert('Ocurrió un error al guardar en la nube. Se ha respaldado una copia local.');
     } finally {
       setIsSavingDraft(false);
     }
@@ -2050,6 +2140,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     const title = documentTitle.trim() || 'Escrito Notarial';
+    const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
+    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+    const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
+    const isWatermarkRequired = !isPaidPlan || isTrialExpired || diasRestantes <= 0 || !pruebaActiva || planStr.includes('trial') || planStr.includes('prueba') || planStr.includes('ninguno');
+
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -2071,6 +2167,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+    }
+    .watermark {
+      display: none;
     }
     .hoja-notarial-print {
       width: 100%;
@@ -2116,10 +2215,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         padding-left: 140px;
         padding-right: 60px;
       }
+      .watermark {
+        display: block !important;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-45deg);
+        font-size: 80px;
+        color: rgba(255, 0, 0, 0.15);
+        font-weight: bold;
+        text-transform: uppercase;
+        z-index: 9999;
+        pointer-events: none;
+        text-align: center;
+        width: 100%;
+        line-height: 1.2;
+      }
     }
   </style>
 </head>
 <body>
+  ${isWatermarkRequired ? '<div class="watermark">VERSIÓN DE PRUEBA - SÓLO PARA USO NO COMERCIAL</div>' : ''}
   <div class="hoja-notarial-print">
     ${content}
   </div>
@@ -2234,6 +2350,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Generación asistida por IA
   const handleGenerarConIA = async () => {
+    const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
+    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+    const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || userProfile?.estadoPlataforma === 'Aprobado' || isWhitelisted;
+
+    if (!isPaidPlan && (isTrialExpired || diasRestantes <= 0 || !pruebaActiva)) {
+      setAiError('Tu período de prueba gratuita de 5 días ha finalizado. Por favor, adquiere o renueva un plan en la sección "Planes y Precios" para continuar redactando con IA.');
+      return;
+    }
+
     if (!aiPrompt.trim() && aiAttachments.length === 0) {
       setAiError('Por favor, ingresa una instrucción o adjunta un archivo para redactar con IA.');
       return;
@@ -2280,6 +2406,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // Desplegar el editor y desactivar vista previa
     setMostrarEditor(true);
     setPreviewMode(false);
+    if (editorContentRef.current) {
+      editorContentRef.current.innerHTML = nuevoTexto;
+    }
 
     // Persistencia local inmediata y segura
     try {
@@ -2291,6 +2420,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // Scroll suave y enfoque automático en el Editor Notarial Activo
     setTimeout(() => {
       if (editorTextareaRef.current) {
+        if (editorTextareaRef.current.innerHTML !== nuevoTexto) {
+          editorTextareaRef.current.innerHTML = nuevoTexto;
+        }
         editorTextareaRef.current.focus();
         editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -2308,31 +2440,38 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Cargar documento seleccionado en el Editor Notarial Activo
   const handleEditarDocumento = (escrito: Escrito) => {
+    const docTexto = escrito.texto || '';
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
     setActiveEditingDoc(escrito);
     setSelectedPlantillaId('');
-    setEditorText(escrito.texto);
+    setEditorText(docTexto);
     setDocumentTitle(escrito.tipo.replace(' (Guardado Local)', ''));
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
     setPreviewMode(false);
     setMemoria({});
 
     try {
-      localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, escrito.texto);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, docTexto);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, escrito.tipo.replace(' (Guardado Local)', ''));
       localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, escrito.categoria || 'Contratos Privados');
     } catch (e) {
       console.warn('Error sincronizando borrador local:', e);
     }
 
-    // Foco Automático y scroll suave al Editor Notarial Activo
+    // Inyección forzada garantizada en el nodo contentEditable
+    if (editorContentRef.current) {
+      editorContentRef.current.innerHTML = docTexto;
+    }
+
+    // Foco Automático, inyección asegurada y scroll suave al Editor Notarial Activo
     setTimeout(() => {
       const editorBloque = document.getElementById('editor-notarial-activo-bloque');
       if (editorBloque) {
         editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       if (editorContentRef.current) {
+        editorContentRef.current.innerHTML = docTexto;
         editorContentRef.current.focus();
         try {
           const selection = window.getSelection();
@@ -2345,7 +2484,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           // Focus básico garantizado
         }
       }
-    }, 100);
+    }, 50);
 
     setSaveSuccessBanner(`"${escrito.tipo}" cargado en el Editor Notarial Activo.`);
     setTimeout(() => setSaveSuccessBanner(null), 3500);
@@ -2832,7 +2971,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <button
                   type="button"
-                  onClick={() => onOpenDocument(editorText)}
+                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave)}
                   disabled={!editorText.trim()}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors border border-slate-800 shadow-sm cursor-pointer"
                   title="Abrir con membrete oficial e imprimir en PDF"
@@ -3014,6 +3153,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
             <div className="bg-slate-200/50 py-10 sm:py-12 px-4 sm:px-8 rounded-3xl border border-slate-200/80 overflow-x-auto flex justify-center shadow-inner">
               <style>{`
+                #editor-notarial-activo,
+                .editor-notarial-papel {
+                  color: #0f172a !important;
+                  background-color: #ffffff !important;
+                }
+                #editor-notarial-activo * {
+                  color: inherit;
+                }
                 #editor-notarial-activo ul,
                 .editor-notarial-papel ul {
                   list-style-type: disc !important;
@@ -3035,7 +3182,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 }
               `}</style>
               <div
-                ref={editorContentRef}
+                ref={setEditorRef}
                 id="editor-notarial-activo"
                 contentEditable={!previewMode}
                 suppressContentEditableWarning={true}
@@ -3299,7 +3446,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setActiveMenuId(null);
-                                    onOpenDocument(escrito.texto);
+                                    onOpenDocument(escrito.texto, escrito.id, escrito.tipo, escrito.categoria);
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
                                 >

@@ -136,7 +136,8 @@ export const logout = async () => {
 export const emailSignIn = async (email: string, password: string): Promise<{ user: User } | null> => {
   try {
     isSigningIn = true;
-    const result = await signInWithEmailAndPassword(auth, email, password);
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
     if (result.user) {
       await registerNewSession(result.user.uid);
     }
@@ -152,7 +153,8 @@ export const emailSignIn = async (email: string, password: string): Promise<{ us
 export const emailSignUp = async (email: string, password: string): Promise<{ user: User } | null> => {
   try {
     isSigningIn = true;
-    const result = await createUserWithEmailAndPassword(auth, email, password);
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     if (result.user) {
       const sessionId = await registerNewSession(result.user.uid);
       const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
@@ -163,7 +165,7 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
         // SOLO si el usuario es NUEVO, inyecta la metadata inicial:
         await setDoc(userRef, {
           uid: result.user.uid,
-          email: result.user.email || email,
+          email: result.user.email || cleanEmail,
           fecha_creacion: serverTimestamp(),
           planActual: 'trial',
           role: 'titular',
@@ -192,7 +194,8 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
 
 export const resetPassword = async (email: string): Promise<void> => {
   try {
-    await sendPasswordResetEmail(auth, email);
+    const cleanEmail = (email || '').trim().toLowerCase();
+    await sendPasswordResetEmail(auth, cleanEmail);
   } catch (error) {
     console.error('Password reset error:', error);
     throw error;

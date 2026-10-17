@@ -17,29 +17,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
+    if (!cleanEmail || !cleanPassword) return;
     
     try {
       setLoading(true);
       setError('');
       
       if (isLogin) {
-        await emailSignIn(email, password);
+        await emailSignIn(cleanEmail, cleanPassword);
       } else {
-        await emailSignUp(email, password);
+        await emailSignUp(cleanEmail, cleanPassword);
       }
       onLogin();
     } catch (err: any) {
       console.error(err);
       let errorMessage = err.message || 'Error de autenticación';
-      if (err.code === 'auth/invalid-credential') {
-        errorMessage = 'Credenciales inválidas. Verifica tu correo y contraseña.';
+      if (err.code === 'auth/invalid-credential' || err.message?.includes('invalid-credential')) {
+        errorMessage = isLogin 
+          ? 'Credenciales inválidas. Verifica tu correo y contraseña. Si aún no te has registrado, haz clic abajo en "¿No tienes cuenta? Regístrate aquí".'
+          : 'No se pudo crear la cuenta con estas credenciales. Si ya existe, por favor inicia sesión.';
       } else if (err.code === 'auth/user-not-found') {
-        errorMessage = 'No se encontró una cuenta con este correo.';
+        errorMessage = 'No se encontró una cuenta con este correo. Por favor regístrate primero.';
       } else if (err.code === 'auth/wrong-password') {
-        errorMessage = 'Contraseña incorrecta.';
+        errorMessage = 'Contraseña incorrecta. Puedes restablecerla abajo.';
       } else if (err.code === 'auth/email-already-in-use') {
-        errorMessage = 'Este correo ya está registrado.';
+        errorMessage = 'Este correo ya está registrado. Por favor inicia sesión.';
       } else if (err.code === 'auth/weak-password') {
         errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
       }

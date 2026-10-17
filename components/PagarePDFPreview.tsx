@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
 import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check } from 'lucide-react';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useTrialStatus } from '../hooks/useTrialStatus';
 import { auth } from '../services/auth';
 
 interface PagarePDFPreviewProps {
@@ -280,6 +281,13 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
   
 
+  const { diasRestantes, pruebaActiva, isTrialExpired } = useTrialStatus(auth?.currentUser);
+  const plan = String(userData?.planActual || userData?.plan || '').toLowerCase();
+  const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
+  const isWhitelisted = auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || userData?.estadoPlataforma === 'Aprobado';
+  const isWatermarkRequired = !isWhitelisted && (!isPaid || isTrialExpired || !pruebaActiva || diasRestantes <= 0 || plan.includes('trial') || plan.includes('prueba') || plan.includes('ninguno') || plan === 'demo' || !plan);
+
   const executePrint = () => {
     if (printAreaRef.current) {
       const printContent = printAreaRef.current.innerHTML;
@@ -308,11 +316,30 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
+            .watermark {
+              display: none;
+            }
             @media print {
               .no-print { display: none !important; }
               body { 
                 padding: 0 !important; 
                 margin: 0 !important; 
+              }
+              .watermark {
+                display: block !important;
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-45deg) !important;
+                font-size: 80px !important;
+                color: rgba(255, 0, 0, 0.15) !important;
+                font-weight: bold !important;
+                text-transform: uppercase !important;
+                z-index: 9999 !important;
+                pointer-events: none !important;
+                text-align: center !important;
+                width: 100% !important;
+                line-height: 1.2 !important;
               }
               .printing-sheet { 
                 page-break-after: always !important;
@@ -333,6 +360,9 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
           </style>
         `);
         win.document.write('</head><body class="print:m-0 print:p-0">');
+        if (isWatermarkRequired) {
+          win.document.write('<div class="watermark">VERSIÓN DE PRUEBA - SÓLO PARA USO NO COMERCIAL</div>');
+        }
         win.document.write(printContent);
         win.document.write('</body></html>');
         win.document.close();

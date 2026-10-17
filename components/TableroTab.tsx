@@ -25,6 +25,7 @@ interface TableroTabProps {
   userData?: any;
   workspaceId?: string;
   workspaceName?: string;
+  isSoftBlocked?: boolean; // <-- NUEVO
 }
 
 const CountUp: React.FC<{ end: number; duration?: number; isCurrency?: boolean }> = ({ end, duration = 1500, isCurrency = false }) => {
@@ -455,7 +456,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        {/* TARJETA 1: Pagarés */}
         <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
           <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white">
             <FileText className="w-6 h-6" />
@@ -474,6 +477,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           </div>
         </div>
 
+        {/* TARJETA 2: Personas Activas */}
         <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
           <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white">
             <Users className="w-6 h-6" />
@@ -489,6 +493,8 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           </div>
         </div>
 
+        {/* TARJETA 3: Escritos Guardados */}
+        
         <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
           <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white">
             <Clock className="w-6 h-6" />
@@ -498,10 +504,13 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             <p className="text-3xl font-black text-slate-800"><CountUp end={escritos.length} /></p>
           </div>
           <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                        <button onClick={() => setActiveOverlay('escritos')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">              Ver Detalles <ChevronRight className="w-3 h-3" />            </button>
+            <button onClick={() => setActiveOverlay('escritos')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">
+              Ver Detalles <ChevronRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 
+        {/* TARJETA 4: Valor Notariado */}
         <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
           <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white">
             <DollarSign className="w-6 h-6" />
@@ -518,6 +527,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             </button>
           </div>
         </div>
+
       </div>
 
       {/* Resumen de Estado de Pagarés (30 días) */}

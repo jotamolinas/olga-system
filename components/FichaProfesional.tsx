@@ -49,16 +49,34 @@ export const FichaProfesional: React.FC<FichaProfesionalProps> = ({ currentUser,
       return;
     }
 
-
-
-
-
     setLoading(true);
     setError('');
     
     try {
       const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, { ...formData, uid: user.uid, email: currentUser.email || user.email || '', perfilCompletado: true }, { merge: true });
+      
+      // 1. Importamos getDoc y serverTimestamp dinámicamente
+      const { getDoc, serverTimestamp } = await import('firebase/firestore');
+      const userSnap = await getDoc(userRef);
+
+      // 2. Preparamos toda la data del formulario
+      const dataToUpdate: any = {
+        ...formData,
+        uid: user.uid,
+        email: currentUser.email || user.email || '',
+        perfilCompletado: true
+      };
+
+      // 3. EL ESCUDO DE CONTINGENCIA (Parche 9.2)
+      if (!userSnap.data()?.fecha_creacion) {
+        dataToUpdate.fecha_creacion = serverTimestamp();
+        dataToUpdate.planActual = 'trial';
+        dataToUpdate.role = 'titular';
+        dataToUpdate.estado_cuenta = 'activa';
+      }
+
+      // 4. Guardado seguro en Firebase
+      await setDoc(userRef, dataToUpdate, { merge: true });
 
       if (onComplete) {
         onComplete();
@@ -66,6 +84,7 @@ export const FichaProfesional: React.FC<FichaProfesionalProps> = ({ currentUser,
     } catch (err: any) {
       console.error('Error al guardar el perfil:', err);
       setError(err.message || 'Ocurrió un error al guardar. Inténtalo de nuevo.');
+    } finally {
       setLoading(false);
     }
   };
