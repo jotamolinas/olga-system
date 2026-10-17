@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { emailSignIn, emailSignUp, resetPassword } from '../services/auth';
 import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle } from 'lucide-react';
 
@@ -8,7 +9,8 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevokedAlert }) => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [searchParams] = useSearchParams();
+  const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'register');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   

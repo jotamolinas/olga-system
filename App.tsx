@@ -37,6 +37,7 @@ import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
 import { ConfiguracionTab } from './components/ConfiguracionTab';
 import { NotificationBell } from './components/NotificationBell';
 import { RegistroOperador } from './components/RegistroOperador';
+import { EditorNotarialOficial } from './components/EditorNotarialOficial';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -94,7 +95,9 @@ import {
   Zap,
   ShieldCheck,
   User as UserIcon, LogOut,
-  AlertTriangle, LifeBuoy , Award, Download, HelpCircle} from 'lucide-react';
+  AlertTriangle, LifeBuoy , Award, Download, HelpCircle,
+  Stamp
+} from 'lucide-react';
 
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
   <div className={`flex flex-col ${large ? 'items-center' : 'items-start'} gap-1.5`}>
@@ -526,7 +529,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo'>(forceAdmin ? 'monitor' : 'tablero');
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -1486,6 +1489,17 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             <span className="text-xs font-black uppercase tracking-wider">Gestión Escritos</span>
           </button>
 
+          <button
+            onClick={() => {
+              setActiveTab('lienzo');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'lienzo' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
+          >
+            <Stamp className="w-5 h-5 text-amber-400" />
+            <span className="text-xs font-black uppercase tracking-wider">Lienzo Notarial</span>
+          </button>
+
           {role === 'admin' && (
             <>
               <button
@@ -1968,6 +1982,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 personas={personas}
                 onOpenDocument={handleOpenDocumentModal} 
               />
+            )}
+
+            {activeTab === 'lienzo' && (
+              <EditorNotarialOficial onVolver={() => setActiveTab('escritos')} />
             )}
             
             {activeTab === 'cuenta' && (

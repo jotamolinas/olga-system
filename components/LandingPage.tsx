@@ -307,8 +307,12 @@ export const LandingPage: React.FC = () => {
           
           <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
             <a 
-              href="#planes"
-              className="w-full box-border sm:w-auto px-8 py-4 bg-blue-600 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-center flex items-center justify-center"
+              href="/consola?mode=register"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/consola?mode=register');
+              }}
+              className="w-full box-border sm:w-auto px-8 py-4 bg-blue-600 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer"
             >
               Comenzar Prueba Gratuita
             </a>

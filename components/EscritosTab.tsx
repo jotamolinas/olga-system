@@ -9,11 +9,12 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft, Clipboard
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard, ShieldCheck
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
+import { EditorNotarialOficial } from './EditorNotarialOficial';
 
 interface Escrito {
   id: string;
@@ -470,6 +471,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Visibilidad condicional del Editor Notarial (Oculto por defecto según directriz UI/UX)
   const [mostrarEditor, setMostrarEditor] = useState<boolean>(false);
+  const [showSplitScreen, setShowSplitScreen] = useState<boolean>(false);
 
   // Estado del Redactor de Escritos
   const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
@@ -724,6 +726,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           return;
         }
         setMostrarEditor(false);
+        setShowSplitScreen(false);
         setSelectedPlantillaId('');
       }
     };
@@ -1994,6 +1997,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
+    setShowSplitScreen(false);
     setMemoria({});
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = '';
@@ -2084,6 +2088,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
       // 3. Cerrar Editor Post-Guardado y resetear estado de edición activa
       setMostrarEditor(false);
+      setShowSplitScreen(false);
       setSelectedPlantillaId('');
       setActiveEditingDoc(null);
       setEditandoDocumentoExistente(false);
@@ -2812,6 +2817,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 type="button"
                 onClick={() => {
                   setMostrarEditor(false);
+                  setShowSplitScreen(false);
                   setSelectedPlantillaId('');
                 }}
                 className="py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-colors border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
@@ -2841,6 +2847,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   type="button"
                   onClick={() => {
                     setMostrarEditor(false);
+                    setShowSplitScreen(false);
                     setSelectedPlantillaId('');
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs cursor-pointer active:scale-95 shrink-0"
@@ -2979,6 +2986,20 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 >
                   <Printer className="w-3 h-3 text-[#FF3131]" />
                   <span>Membrete / Imprimir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSplitScreen(!showSplitScreen)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border cursor-pointer ${
+                    showSplitScreen 
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-inner' 
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                  }`}
+                  title="Dividir pantalla para rellenar Hoja de Seguridad CSJ"
+                >
+                  <ShieldCheck className="w-3 h-3"/>
+                  <span>{showSplitScreen ? 'Cerrar Hoja CSJ' : 'Anexar Hoja CSJ'}</span>
                 </button>
               </div>
 
@@ -3152,51 +3173,97 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
           {/* SIMULACIÓN DE HOJA DE PROTOCOLO NOTARIAL (MESA DE TRABAJO / ESCRITORIO NOTARIAL) */}
           <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
-            <div className="bg-slate-200/50 py-10 sm:py-12 px-4 sm:px-8 rounded-3xl border border-slate-200/80 overflow-x-auto flex justify-center shadow-inner">
-              <style>{`
-                #editor-notarial-activo,
-                .editor-notarial-papel {
-                  color: #0f172a !important;
-                  background-color: #ffffff !important;
-                }
-                #editor-notarial-activo * {
-                  color: inherit;
-                }
-                #editor-notarial-activo ul,
-                .editor-notarial-papel ul {
-                  list-style-type: disc !important;
-                  padding-left: 2rem !important;
-                  margin-top: 0.5rem !important;
-                  margin-bottom: 0.5rem !important;
-                }
-                #editor-notarial-activo ol,
-                .editor-notarial-papel ol {
-                  list-style-type: decimal !important;
-                  padding-left: 2rem !important;
-                  margin-top: 0.5rem !important;
-                  margin-bottom: 0.5rem !important;
-                }
-                #editor-notarial-activo li,
-                .editor-notarial-papel li {
-                  display: list-item !important;
-                  margin-bottom: 0.25rem !important;
-                }
-              `}</style>
-              <div
-                ref={setEditorRef}
-                id="editor-notarial-activo"
-                contentEditable={!previewMode}
-                suppressContentEditableWarning={true}
-                onInput={(e) => {
-                  setEditorText(e.currentTarget.innerHTML);
-                }}
-                onKeyUp={checkFormatStates}
-                onMouseUp={checkFormatStates}
-                onFocus={checkFormatStates}
-                className={`w-full max-w-[850px] min-h-[1100px] bg-white shadow-2xl mx-auto ring-1 ring-slate-200 outline-none overflow-y-auto pt-[180px] pb-[100px] pl-[140px] pr-[60px] font-serif text-lg leading-relaxed text-justify text-slate-900 selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
-                  previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
-                }`}
-              />
+            <div className={`flex flex-col ${showSplitScreen ? '2xl:flex-row' : ''} gap-6 items-start`}>
+              
+              {/* LADO IZQUIERDO: Editor Normal */}
+              <div className={`w-full bg-slate-200/60 py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 overflow-x-auto flex justify-center shadow-inner ${showSplitScreen ? '2xl:w-1/2' : ''}`}>
+                <style>{`
+                  #editor-notarial-activo,
+                  .editor-notarial-papel {
+                    width: 100% !important;
+                    max-width: 850px !important;
+                    min-height: 1100px !important;
+                    background-color: #ffffff !important;
+                    color: #0f172a !important;
+                    padding-top: 180px !important;
+                    padding-bottom: 100px !important;
+                    padding-left: 140px !important;
+                    padding-right: 60px !important;
+                    font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif !important;
+                    font-size: 18px !important;
+                    line-height: 1.75 !important;
+                    text-align: justify !important;
+                    box-sizing: border-box !important;
+                  }
+                  #editor-notarial-activo * {
+                    color: inherit;
+                    font-family: inherit;
+                  }
+                  #editor-notarial-activo p {
+                    margin-top: 0;
+                    margin-bottom: 1rem;
+                    text-align: justify !important;
+                    line-height: 1.75 !important;
+                  }
+                  #editor-notarial-activo ul,
+                  .editor-notarial-papel ul {
+                    list-style-type: disc !important;
+                    padding-left: 2rem !important;
+                    margin-top: 0.5rem !important;
+                    margin-bottom: 0.5rem !important;
+                  }
+                  #editor-notarial-activo ol,
+                  .editor-notarial-papel ol {
+                    list-style-type: decimal !important;
+                    padding-left: 2rem !important;
+                    margin-top: 0.5rem !important;
+                    margin-bottom: 0.5rem !important;
+                  }
+                  #editor-notarial-activo li,
+                  .editor-notarial-papel li {
+                    display: list-item !important;
+                    margin-bottom: 0.25rem !important;
+                    text-align: justify !important;
+                  }
+                `}</style>
+                <div
+                  ref={setEditorRef}
+                  id="editor-notarial-activo"
+                  contentEditable={!previewMode}
+                  suppressContentEditableWarning={true}
+                  onInput={(e) => {
+                    setEditorText(e.currentTarget.innerHTML);
+                  }}
+                  onKeyUp={checkFormatStates}
+                  onMouseUp={checkFormatStates}
+                  onFocus={checkFormatStates}
+                  style={{
+                    width: '100%',
+                    maxWidth: '850px',
+                    minHeight: '1100px',
+                    backgroundColor: '#ffffff',
+                    paddingTop: '180px',
+                    paddingBottom: '100px',
+                    paddingLeft: '140px',
+                    paddingRight: '60px',
+                    fontSize: '18px',
+                    lineHeight: '1.75',
+                    textAlign: 'justify',
+                    boxSizing: 'border-box'
+                  }}
+                  className={`w-full max-w-[850px] min-h-[1100px] bg-white shadow-2xl mx-auto ring-1 ring-slate-200 outline-none overflow-y-auto font-serif text-[18px] leading-relaxed text-justify text-slate-900 selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                    previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
+                  }`}
+                />
+              </div>
+
+              {/* LADO DERECHO: Editor Notarial Oficial (Hoja Verde) */}
+              {showSplitScreen && (
+                <div className="w-full 2xl:w-1/2 rounded-3xl overflow-hidden shadow-2xl border border-slate-300 animate-in slide-in-from-right-8 duration-300">
+                  <EditorNotarialOficial onVolver={() => setShowSplitScreen(false)} />
+                </div>
+              )}
+
             </div>
           </div>
 
@@ -3934,6 +4001,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 type="button"
                 onClick={() => {
                   setMostrarEditor(false);
+                  setShowSplitScreen(false);
                   setSelectedPlantillaId('');
                 }}
                 className="text-slate-400 hover:text-slate-700 p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
@@ -3965,6 +4033,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               autoFocus={true}
               value={autofillInput}
               onChange={(e) => setAutofillInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (autofillInput.trim()) {
+                    handleAplicarAutofill();
+                  }
+                }
+              }}
               placeholder={currentBlankContext.placeholder}
               className="flex-1 box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] focus:bg-white rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-all shadow-inner placeholder:text-slate-400 placeholder:font-normal"
             />
