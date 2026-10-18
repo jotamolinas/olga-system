@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
 import { consultarRUC } from '../services/dnitService';
@@ -84,6 +84,10 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [panelView, setPanelView] = useState<'list' | 'list_anulados' | 'create'>(initialPanelView);
   const [formError, setFormError] = useState<string | null>(null);
   const [pagareToAnular, setPagareToAnular] = useState<any>(null); // We use any because Pagare type is somewhat complex or missing in scope
+  
+  // Doble Validación de Cobro Notarial
+  const [cuotaParaCobrar, setCuotaParaCobrar] = useState<{ pagare: Pagare; index: number; cuotaNum: string; monto: number } | null>(null);
+  const [isCobrandoCuota, setIsCobrandoCuota] = useState<boolean>(false);
 
   // Sincronización Automática con Fichero de Personas
   const [syncAlertBanner, setSyncAlertBanner] = useState<{ tipo: 'success' | 'info'; texto: string } | null>(null);
@@ -93,6 +97,16 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
   const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
   const [selectedPagareForDetail, setSelectedPagareForDetail] = useState<Pagare | null>(null);
+
+  // Menú de 3 puntitos para acciones secundarias de tarjetas (estilo Google Drive)
+  const [activePagareMenuId, setActivePagareMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activePagareMenuId) return;
+    const handleOutsideClick = () => setActivePagareMenuId(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [activePagareMenuId]);
 
   const handleCopiarCodigoSoporte = async (pag: Pagare) => {
     const effectiveWorkspaceId = workspaceId || pag.userId || auth?.currentUser?.uid || 'no-workspace';
@@ -1601,7 +1615,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
             onClick={() => { setPanelView('list_anulados'); setEditingPagareId(null); }}
             className={`flex-1 lg:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all ${panelView === 'list_anulados' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
-            Anulados ({pagares.filter(p => p.status === 'anulado').length})
+            Eliminados ({pagares.filter(p => p.status === 'anulado').length})
           </button>
           <button
             onClick={() => {
@@ -1770,7 +1784,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                   <span>Caja Registradora de Pagarés</span>
                   {panelView === 'list_anulados' && (
                     <span className="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-sans font-bold">
-                      Papelera / Anulados
+                      Papelera / Eliminados
                     </span>
                   )}
                 </h2>
@@ -1828,387 +1842,288 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {pagaresOrdenados.map((pag) => {
                   const acreedor = personas.find(p => p.id === pag.acreedor_id);
                   const deudor = personas.find(p => p.id === pag.deudor_id);
-                  const { badgeStatus, nextDueDate, cuotasPendientesCount } = getPagareStatusDetails(pag);
+                  const { badgeStatus, nextDueDate } = getPagareStatusDetails(pag);
+
+                  let dateStr = 'Fecha reciente';
+                  if (pag.created_at) {
+                    try {
+                      dateStr = new Date(pag.created_at).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' });
+                    } catch {
+                      dateStr = String(pag.created_at).slice(0, 10);
+                    }
+                  }
+
+                  const nombreAcreedor = pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || 'Sin especificar';
+                  const nombreDeudor = pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || 'Sin especificar';
 
                   return (
                     <div
                       key={pag.id}
-                      onClick={() => handleAbrirPagare(pag)}
-                      className={`p-6 sm:p-7 rounded-3xl border-2 transition-all cursor-pointer group shadow-sm hover:shadow-xl relative flex flex-col justify-between ${
+                      onClick={() => setSelectedPagareForDetail(pag)}
+                      className={`bg-white rounded-3xl border shadow-xs hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all flex flex-col justify-between p-5 md:p-6 relative group cursor-pointer ${
                         badgeStatus === 'vencido' 
-                          ? 'bg-gradient-to-b from-red-50/70 to-white border-red-300 hover:border-red-500 shadow-red-500/5' 
-                          : badgeStatus === 'proximo'
-                            ? 'bg-gradient-to-b from-amber-50/70 to-white border-amber-300 hover:border-amber-500 shadow-amber-500/5'
-                            : badgeStatus === 'al_dia'
-                              ? 'bg-gradient-to-b from-emerald-50/40 to-white border-emerald-300 hover:border-emerald-500 shadow-emerald-500/5'
-                              : badgeStatus === 'pagado'
-                                ? 'bg-gradient-to-b from-emerald-950/[0.03] to-white border-emerald-700/40 hover:border-emerald-700'
-                                : 'bg-slate-50 border-slate-200/50 hover:border-[#FF3131]'
-                      }`}
+                          ? 'border-red-200 hover:border-red-400' 
+                          : badgeStatus === 'proximo' 
+                            ? 'border-amber-200 hover:border-amber-400' 
+                            : 'border-slate-200/90 hover:border-[#FF3131]'
+                      } ${activePagareMenuId === pag.id ? 'z-30' : 'z-0 hover:z-10'}`}
                     >
-                      {/* Insignias de Estado Superior Derecha */}
-                      {badgeStatus === 'vencido' && (
-                        <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-red-600/30 border-2 border-white flex items-center gap-1.5 animate-pulse">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Vencido</span>
-                        </div>
-                      )}
-                      {badgeStatus === 'proximo' && (
-                        <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-amber-500/30 border-2 border-white flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>Próximo a Vencer</span>
-                        </div>
-                      )}
-                      {badgeStatus === 'al_dia' && (
-                        <div className="absolute -top-3 -right-3 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-emerald-600/30 border-2 border-white flex items-center gap-1.5">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>Al Día</span>
-                        </div>
-                      )}
-                      {badgeStatus === 'pagado' && (
-                        <div className="absolute -top-3 -right-3 bg-emerald-800 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 border-2 border-white flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Pagado Total</span>
-                        </div>
-                      )}
-                      {badgeStatus === 'anulado' && (
-                        <div className="absolute -top-3 -right-3 bg-slate-600 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border-2 border-white flex items-center gap-1">
-                          <span>Anulado</span>
-                        </div>
-                      )}
-
                       <div>
-                        {/* Cabecera de tarjeta */}
-                        <div className="flex items-center justify-between gap-2 mb-4">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-lg bg-slate-100 text-[#FF3131] border border-slate-200/80 font-mono">
-                              N° {pag.correlativo}
-                            </span>
-                            {cuotasPendientesCount > 0 && (
-                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-200 tracking-wider">
-                                {cuotasPendientesCount} pend.
+                        {/* 1. CABECERA DE LA TARJETA (Idéntica a Escritos) */}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                            <div className="w-10 h-10 bg-slate-900 text-[#FF3131] rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                              <FileText className="w-5 h-5 text-[#FF3131]" />
+                            </div>
+                            <div className="flex-1 overflow-hidden min-w-0">
+                              <h4 className="font-bold text-slate-900 text-sm truncate" title={`Pagaré Nº ${pag.correlativo || 'S/N'}`}>
+                                Pagaré Nº {pag.correlativo || 'S/N'}
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                                <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
+                                <span className="truncate">{dateStr}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Pill de Estado + Menú Kebab */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {badgeStatus === 'vencido' && (
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-red-50 text-red-600 border-red-200 shrink-0">
+                                Vencido
                               </span>
                             )}
+                            {badgeStatus === 'proximo' && (
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-amber-50 text-amber-600 border-amber-200 shrink-0">
+                                Próximo
+                              </span>
+                            )}
+                            {badgeStatus === 'al_dia' && (
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 shrink-0">
+                                Al Día
+                              </span>
+                            )}
+                            {badgeStatus === 'pagado' && (
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">
+                                Pagado
+                              </span>
+                            )}
+                            {badgeStatus === 'anulado' && (
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-slate-50 text-slate-500 border-slate-200 shrink-0">
+                                Eliminado
+                              </span>
+                            )}
+
+                            {/* Menú Desplegable (Tres Puntos) */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActivePagareMenuId(activePagareMenuId === pag.id ? null : pag.id);
+                                }}
+                                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Opciones del pagaré"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {/* Dropdown flotante */}
+                              {activePagareMenuId === pag.id && (
+                                <>
+                                  <div 
+                                    className="fixed inset-0 z-40 cursor-default" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActivePagareMenuId(null);
+                                    }} 
+                                  />
+                                  <div 
+                                    className="absolute right-0 top-9 z-50 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 duration-150 text-xs font-bold"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActivePagareMenuId(null);
+                                        handleAbrirPagare(pag);
+                                      }}
+                                      className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Printer className="w-3.5 h-3.5 text-slate-400" />
+                                      <span>Imprimir / Notarial</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActivePagareMenuId(null);
+                                        handleSincronizarFirmantesDePagare(pag);
+                                      }}
+                                      className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 hover:text-emerald-700 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span>Sincronizar con Fichero</span>
+                                    </button>
+
+                                    {(pag.status !== 'anulado' && pag.estado !== 'Anulado') && (
+                                      <>
+                                        <div className="my-1 border-t border-slate-100" />
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActivePagareMenuId(null);
+                                            setPagareToAnular(pag);
+                                          }}
+                                          className="w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                        >
+                                          <XCircle className="w-3.5 h-3.5 text-red-500" />
+                                          <span>🚫 Eliminar Pagaré</span>
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                        </div>
+
+                        {/* 2. CUERPO DE LA TARJETA (Minimalista) */}
+                        <div className="mt-3 mb-3">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div className="text-lg md:text-xl font-black text-slate-900 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors flex items-baseline gap-1">
+                              <span className="text-xs font-bold text-slate-400">{getMonedaSimbolo(pag.moneda)}</span>
+                              <span>{formatCurrencyValue(pag.valor_total || (pag as any).monto || 0, pag.moneda)}</span>
+                            </div>
                             {(() => {
                               const pendingIndex = pag.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
                               if (pendingIndex !== -1 && pag.cronograma) {
                                 return (
-                                  <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-200 tracking-widest uppercase">
+                                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-lg shrink-0">
                                     Cuota {pag.cronograma[pendingIndex].numero_cuota}/{pag.cronograma.length}
+                                  </span>
+                                );
+                              }
+                              if (nextDueDate) {
+                                return (
+                                  <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                                    Vence: {nextDueDate.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit' })}
                                   </span>
                                 );
                               }
                               return null;
                             })()}
-                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-white text-slate-600 border border-slate-200 shadow-2xs">
-                              {getTipoNegociacionLabel(pag.tipo_negociacion)}
-                            </span>
                           </div>
                         </div>
 
-                        {/* Monto principal */}
-                        <div className="flex items-baseline justify-between mb-4">
-                          <h3 className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors">
-                            <span className="text-lg font-bold text-slate-400 mr-1.5">{getMonedaSimbolo(pag.moneda)}</span>
-                            {formatCurrencyValue(pag.valor_total || (pag as any).monto || 0, pag.moneda)}
-                          </h3>
-                          {pag.moneda && (
-                            <span className="text-[10px] font-bold font-mono uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                              {pag.moneda}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Bloques de Acreedor y Deudor */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-xs text-slate-600">
-                          <div className="p-3 rounded-2xl bg-white/90 border border-slate-100 shadow-2xs">
-                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                              Acreedor
-                            </p>
-                            <p className="font-bold text-slate-800 truncate" title={pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || ""}>
-                              {pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || "Buscando datos..."}
+                        {/* Partes Compactas: Acreedor y Deudor */}
+                        <div className="space-y-1.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                          <div className="overflow-hidden">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold leading-none mb-0.5">Acreedor</p>
+                            <p className="text-xs font-bold text-slate-700 truncate" title={nombreAcreedor}>
+                              {nombreAcreedor}
                             </p>
                           </div>
-                          <div className="p-3 rounded-2xl bg-white/90 border border-slate-100 shadow-2xs">
-                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#FF3131]"></span>
-                              Deudor Principal
-                            </p>
-                            <p className="font-bold text-slate-800 truncate" title={pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || ""}>
-                              {pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || "Buscando datos..."}
+                          <div className="pt-1.5 border-t border-slate-200/60 overflow-hidden">
+                            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold leading-none mb-0.5">Deudor Principal</p>
+                            <p className="text-xs font-bold text-slate-700 truncate" title={nombreDeudor}>
+                              {nombreDeudor}
                             </p>
                           </div>
-                        </div>
-
-                        {/* Metadatos: Emisión, Responsable y Próximo Vencimiento */}
-                        <div className="mt-4 pt-3.5 border-t border-slate-200/60 text-xs text-slate-500 space-y-2">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <p className="flex items-center gap-2">
-                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Emisión: {new Date(pag.created_at).toLocaleDateString()}</span>
-                            </p>
-                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable:</span>
-                              <span className="font-bold text-slate-800 text-[11px]">{pag.creator_name || (pag as any).creatorName || 'Titular'}</span>
-                              {(pag.creator_role === 'operador' || (pag as any).creatorRole === 'operador') && (
-                                <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  Operador
-                                </span>
-                              )}
-                            </div>
-                            {nextDueDate && (
-                              <p className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-lg text-xs border ${
-                                badgeStatus === 'vencido' 
-                                  ? 'bg-red-100/90 text-red-700 border-red-200' 
-                                  : badgeStatus === 'proximo'
-                                    ? 'bg-amber-100/90 text-amber-800 border-amber-200'
-                                    : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                              }`}>
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span>Vence: {nextDueDate.toLocaleDateString()}</span>
-                              </p>
-                            )}
-                          </div>
-                          {(userData?.tipoPerfil === 'Escribanía Pública' || pag.certificado_firmas_nro) && (
-                            <p className="flex items-center gap-2">
-                              <ShieldCheck className={pag.certificado_firmas_nro ? "w-3.5 h-3.5 text-green-600" : "w-3.5 h-3.5 text-[#FF3131]"} />
-                              <span className={`font-black px-2.5 py-0.5 rounded-md text-[10px] tracking-widest uppercase border ${pag.certificado_firmas_nro ? 'text-green-700 bg-green-50 border-green-200' : 'text-[#FF3131] bg-red-50 border-red-100'}`}>
-                                Cert. Firmas: {pag.certificado_firmas_nro ? `N° ${pag.certificado_firmas_nro}` : "NO REGISTRADO"}
-                              </span>
-                            </p>
-                          )}
                         </div>
                       </div>
 
-                    <div className="mt-4 border-t border-slate-200/40 pt-4">
-                      {pag.cronograma && pag.cronograma.length > 0 && (
-                        <details className="group/details text-xs" onClick={(e) => e.stopPropagation()}>
-                          <summary className="cursor-pointer font-bold text-slate-500 hover:text-slate-700 flex items-center justify-between outline-none bg-slate-100 px-3 py-2 rounded-lg transition-colors">
-                            <span>Ver Cronograma ({pag.cronograma.length} cuotas)</span>
-                            <span className="transition group-open/details:rotate-180">▼</span>
-                          </summary>
-                          <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {pag.cronograma.map((c, i) => {
-                              const cDate = new Date(c.fecha_pag);
-                              const parts = c.fecha_pag.split('-');
-                              if (parts.length === 3) {
-                                cDate.setFullYear(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                              }
-                              cDate.setHours(0,0,0,0);
-                              const today = new Date();
-                              today.setHours(0,0,0,0);
-                              const diffDays = Math.ceil((cDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                              
-                              let statusLabel = 'Pendiente';
-                              let statusColor = 'bg-slate-100 text-slate-600 border-slate-200';
-                              
-                              if (c.estado === 'cobrado' || c.pagado) {
-                                statusLabel = 'Pagada';
-                                statusColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
-                              } else if (diffDays < 0) {
-                                statusLabel = 'Vencida';
-                                statusColor = 'bg-red-100 text-red-700 border-red-200';
-                              }
-
-                              return (
-                                <div 
-                                  key={c.id || i} 
-                                  className="flex items-center justify-between p-2 rounded-lg bg-white shadow-sm border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      const docRef = doc(db, 'pagares', pag.id);
-                                      const newCronograma = [...pag.cronograma];
-                                      const isCurrentlyPaid = c.estado === 'cobrado' || c.pagado;
-                                      
-                                      newCronograma[i] = { 
-                                        ...newCronograma[i], 
-                                        estado: isCurrentlyPaid ? 'pendiente' : 'cobrado',
-                                        pagado: !isCurrentlyPaid,
-                                        fecha_cobro: isCurrentlyPaid ? null : new Date().toISOString()
-                                      };
-                                      
-                                      const allPaid = newCronograma.every((ci: any) => ci.estado === 'cobrado' || ci.pagado === true);
-                                      const updates: any = { 
-                                        cronograma: newCronograma,
-                                        status: allPaid ? 'cobrado' : 'pendiente',
-                                        estado: allPaid ? 'Cobrado' : 'Pendiente'
-                                      };
-                                      
-                                      if (allPaid) {
-                                        updates.cobradoAt = new Date().toISOString();
-                                      } else if (pag.status === 'cobrado' || pag.estado === 'Cobrado') {
-                                        updates.cobradoAt = null;
-                                      }
-
-                                      await updateDoc(docRef, updates);
-                                    } catch (error) {
-                                      console.error("Fallo al actualizar cuota:", error);
-                                    }
-                                  }}
-                                >
-                                  <div className="flex flex-col pointer-events-none">
-                                    <span className="font-black text-[10px] text-slate-400">Cuota {c.numero_cuota}</span>
-                                    <span className="font-bold text-slate-700">{cDate.toLocaleDateString()}</span>
-                                  </div>
-                                  <div className="flex flex-col items-end pointer-events-none">
-                                    <span className="font-bold text-slate-800">{getMonedaSimbolo(pag.moneda)} {formatCurrencyValue(c.monto, pag.moneda)}</span>
-                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border mt-0.5 ${statusColor}`}>
-                                      {statusLabel}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-
-                    <div className="mt-4 flex flex-col sm:flex-row items-center sm:justify-end gap-3">
-                      <div className="flex flex-wrap justify-center gap-2 items-center">
-                        {(pag.status !== 'anulado' && pag.estado !== 'Anulado') && (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditPagare(pag);
-                              }}
-                              className="text-blue-500 hover:text-blue-600 text-[10px] sm:text-xs text-center font-black uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-full"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleSincronizarFirmantesDePagare(pag);
-                              }}
-                              className="text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 text-[10px] sm:text-xs text-center px-2 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-200 transition-colors"
-                              title="Sincronizar retroactivamente los firmantes de este pagaré con el Fichero de Clientes para habilitar su Expediente 360°"
-                            >
-                              <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />
-                              <span>Sincronizar Firmantes con Fichero</span>
-                            </button>
-                        <button 
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setPagareToAnular(pag);
-                          }}
-                          className="text-red-600 hover:text-red-800 font-bold flex items-center gap-1 text-[10px] sm:text-xs text-center px-2 py-1.5 bg-red-50 rounded-md border border-red-200 transition-colors"
-                        >
-                          🚫 ANULAR DIRECTO
-                        </button>
-                        {(pag.status !== 'cobrado' && pag.estado !== 'Cobrado') && (
+                      {/* 3. PIE DE LA TARJETA Y ACCIONES */}
+                      <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                        {/* A la izquierda: Botón de EDITAR */}
+                        {(pag.status !== 'anulado' && pag.estado !== 'Anulado') ? (
                           <button
                             type="button"
-                            onClick={async (e) => {
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditPagare(pag);
+                            }}
+                            className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
+                            title="Editar datos del pagaré"
+                          >
+                            EDITAR
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400">Eliminado</span>
+                        )}
+
+                        {/* A la derecha: Botón de COBRAR CUOTA */}
+                        {(pag.status !== 'anulado' && pag.estado !== 'Anulado' && pag.status !== 'cobrado' && pag.estado !== 'Cobrado') ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              try {
-                                const docRef = doc(db, 'pagares', pag.id);
-                                if (pag.cronograma && pag.cronograma.length > 0) {
-                                  const pendingIndex = pag.cronograma.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true);
-                                  if (pendingIndex !== -1) {
-                                    const newCronograma = [...pag.cronograma];
-                                    newCronograma[pendingIndex] = { ...newCronograma[pendingIndex], estado: 'cobrado', pagado: true, fecha_cobro: new Date().toISOString() };
-                                    const allPaid = newCronograma.every((c: any) => c.estado === 'cobrado' || c.pagado === true);
-                                    const updates: any = { cronograma: newCronograma, status: allPaid ? 'cobrado' : 'pendiente', estado: allPaid ? 'Cobrado' : 'Pendiente' };
-                                    if (allPaid) {
-                                      updates.cobradoAt = new Date().toISOString();
-                                    } else {
-                                      updates.cobradoAt = null;
-                                    }
-                                    await updateDoc(docRef, updates);
-                                    console.log(`Cuota ${newCronograma[pendingIndex].numero_cuota} de ${pag.id} cobrada exitosamente.`);
-                                  } else {
-                                    await updateDoc(docRef, { status: 'cobrado', estado: 'Cobrado', cobradoAt: new Date().toISOString() });
-                                    console.log(`Documento ${pag.id} cobrado exitosamente.`);
-                                  }
-                                } else {
-                                  await updateDoc(docRef, { status: 'cobrado', estado: 'Cobrado', cobradoAt: new Date().toISOString() });
-                                  console.log(`Documento ${pag.id} cobrado exitosamente.`);
-                                }
-                              } catch (error) {
-                                console.error("Fallo al cobrar en Firebase:", error);
-                              }
-                            }}
-                            className="text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1 text-[10px] sm:text-xs text-center px-2 py-1.5 bg-emerald-50 rounded-md border border-emerald-200 transition-colors"
-                          >
-                            {pag.cronograma && pag.cronograma.length > 0 ? (
-                              (() => {
+                              if (pag.cronograma && pag.cronograma.length > 0) {
                                 const pendingIndex = pag.cronograma.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true);
                                 if (pendingIndex !== -1) {
-                                  return `✔ COBRAR CUOTA ${pag.cronograma[pendingIndex].numero_cuota}`;
+                                  setCuotaParaCobrar({
+                                    pagare: pag,
+                                    index: pendingIndex,
+                                    cuotaNum: String(pag.cronograma[pendingIndex].numero_cuota),
+                                    monto: pag.cronograma[pendingIndex].monto
+                                  });
+                                } else {
+                                  setCuotaParaCobrar({
+                                    pagare: pag,
+                                    index: -1,
+                                    cuotaNum: 'TOTALIDAD',
+                                    monto: pag.valor_total || (pag as any).monto || 0
+                                  });
                                 }
-                                return `✔ MARCAR COBRADO`;
-                              })()
-                            ) : (
-                              '✔ MARCAR COBRADO'
-                            )}
+                              } else {
+                                setCuotaParaCobrar({
+                                  pagare: pag,
+                                  index: -1,
+                                  cuotaNum: 'TOTALIDAD',
+                                  monto: pag.valor_total || (pag as any).monto || 0
+                                });
+                              }
+                            }}
+                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                            title="Registrar cobro notarial con doble confirmación"
+                          >
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>
+                              {pag.cronograma && pag.cronograma.length > 0 ? (
+                                (() => {
+                                  const pendingIndex = pag.cronograma.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true);
+                                  if (pendingIndex !== -1) {
+                                    return `COBRAR CUOTA ${pag.cronograma[pendingIndex].numero_cuota}`;
+                                  }
+                                  return 'MARCAR COBRADO';
+                                })()
+                              ) : (
+                                'MARCAR COBRADO'
+                              )}
+                            </span>
                           </button>
+                        ) : (
+                          (pag.status === 'cobrado' || pag.estado === 'Cobrado') ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>Cobrado Total</span>
+                            </span>
+                          ) : null
                         )}
-                        </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedPagareForDetail(pag);
-                          }}
-                          className="text-[10px] sm:text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                        >
-                          Ver Detalle
-                        </button>
-                        <span className="text-[10px] sm:text-[11px] font-black text-[#FF3131] uppercase tracking-wider group-hover:underline px-2 py-1.5">
-                          Ver Impresión &rarr;
-                        </span>
                       </div>
                     </div>
-
-                    {/* Código de Soporte Técnico (Fase 8) */}
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="font-mono text-slate-400">
-                        Ref. Soporte: {pag.correlativo} - {String(pag.id || '').slice(-6)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleCopiarCodigoSoporte(pag);
-                        }}
-                        className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
-                        title="Copiar código de soporte técnico"
-                      >
-                        {copiedSupportId === pag.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700 font-bold text-[10px]">Copiado</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clipboard className="w-3.5 h-3.5" />
-                            <span className="text-[10px]">Copiar</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
           )}
         </div>
       );
@@ -3338,7 +3253,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
               <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center">
                 <AlertTriangle className="w-8 h-8 text-red-500" />
               </div>
-              <h3 className="text-xl font-bold text-red-500">¿Estás seguro de anular este pagaré?</h3>
+              <h3 className="text-xl font-bold text-red-500">¿Estás seguro de eliminar este pagaré?</h3>
               <p className="text-sm text-gray-300">
                 Esta acción eliminará por completo todas las cuotas del cronograma y el registro financiero asociado. Esta operación es irreversible.
               </p>
@@ -3355,23 +3270,137 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                   type="button"
                   onClick={async () => {
                     try {
-                      
-                      
-                      
-                      
                       const docRef = doc(db, 'pagares', pagareToAnular.id);
                       await updateDoc(docRef, { status: 'anulado', anuladoAt: new Date().toISOString() });
-                      console.log('Documento anulado exitosamente en Firebase.');
+                      console.log('Documento eliminado exitosamente en Firebase.');
                       setPagareToAnular(null);
                     } catch (error) {
-                      console.error("Fallo al anular en Firebase:", error);
+                      console.error("Fallo al eliminar en Firebase:", error);
                     }
                   }}
                   className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shadow-lg shadow-red-500/20"
                 >
-                  Sí, anular y borrar todo
+                  Sí, eliminar y borrar todo
                 </button>
               </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal de Doble Validación de Cobro Notarial */}
+      {cuotaParaCobrar && createPortal(
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => { if (!isCobrandoCuota) setCuotaParaCobrar(null); }}
+        >
+          <div 
+            className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center space-y-3">
+              <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-center text-emerald-600 shadow-inner">
+                <ShieldCheck className="w-8 h-8 text-emerald-600" />
+              </div>
+              
+              <h3 className="text-xl font-bold font-serif text-slate-800">
+                Confirmar Cobro Notarial
+              </h3>
+
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 w-full text-left space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Pagaré Correlativo:</span>
+                  <span className="font-mono font-bold text-slate-700">N° {cuotaParaCobrar.pagare.correlativo}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Cuota a Cobrar:</span>
+                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {cuotaParaCobrar.cuotaNum === 'TOTALIDAD' ? 'Pago Total' : `Cuota N° ${cuotaParaCobrar.cuotaNum}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-sm">
+                  <span className="font-bold text-slate-700">Importe a Percibir:</span>
+                  <span className="font-mono font-black text-emerald-700 text-base">
+                    {getMonedaSimbolo(cuotaParaCobrar.pagare.moneda)} {formatCurrencyValue(cuotaParaCobrar.monto, cuotaParaCobrar.pagare.moneda)}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                ¿Confirma la recepción del pago por la <strong className="text-slate-700">{cuotaParaCobrar.cuotaNum === 'TOTALIDAD' ? 'totalidad del pagaré' : `Cuota ${cuotaParaCobrar.cuotaNum}`}</strong> correspondiente a <strong className="text-slate-800 font-mono">{getMonedaSimbolo(cuotaParaCobrar.pagare.moneda)} {formatCurrencyValue(cuotaParaCobrar.monto, cuotaParaCobrar.pagare.moneda)}</strong>? Esta acción actualizará formalmente el cronograma y el estado del documento.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
+              <button
+                type="button"
+                disabled={isCobrandoCuota}
+                onClick={() => setCuotaParaCobrar(null)}
+                className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors border border-slate-200 text-xs sm:text-sm cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isCobrandoCuota}
+                onClick={async () => {
+                  try {
+                    setIsCobrandoCuota(true);
+                    const { pagare, index } = cuotaParaCobrar;
+                    const docRef = doc(db, 'pagares', pagare.id);
+
+                    if (pagare.cronograma && pagare.cronograma.length > 0 && index !== -1) {
+                      const newCronograma = [...pagare.cronograma];
+                      newCronograma[index] = {
+                        ...newCronograma[index],
+                        estado: 'cobrado',
+                        pagado: true,
+                        fecha_cobro: new Date().toISOString()
+                      };
+                      const allPaid = newCronograma.every((c: any) => c.estado === 'cobrado' || c.pagado === true);
+                      const updates: any = {
+                        cronograma: newCronograma,
+                        status: allPaid ? 'cobrado' : 'pendiente',
+                        estado: allPaid ? 'Cobrado' : 'Pendiente'
+                      };
+                      if (allPaid) {
+                        updates.cobradoAt = new Date().toISOString();
+                      } else {
+                        updates.cobradoAt = null;
+                      }
+                      await updateDoc(docRef, updates);
+                      console.log(`Cuota ${newCronograma[index].numero_cuota} de ${pagare.id} cobrada exitosamente.`);
+                    } else {
+                      await updateDoc(docRef, {
+                        status: 'cobrado',
+                        estado: 'Cobrado',
+                        cobradoAt: new Date().toISOString()
+                      });
+                      console.log(`Documento ${pagare.id} cobrado en su totalidad exitosamente.`);
+                    }
+
+                    setCuotaParaCobrar(null);
+                  } catch (error) {
+                    console.error("Fallo al registrar cobro en Firebase:", error);
+                  } finally {
+                    setIsCobrandoCuota(false);
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-600/20 text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isCobrandoCuota ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Registrando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Confirmar Pago</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>,

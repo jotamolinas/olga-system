@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Pagare, Persona, formatCurrencyValue } from '../types';
 import { X, Clipboard, Check, FileText, Calendar, ShieldCheck, UserCheck, CreditCard, Printer } from 'lucide-react';
 import { useWorkspace } from '../hooks/useWorkspace';
@@ -24,6 +25,25 @@ export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
   const [copied, setCopied] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const { workspaceId } = useWorkspace(auth?.currentUser, userData);
+
+  // Bloquear el scroll del documento de fondo mientras el modal está abierto y escuchar tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen || !pagare) return null;
 
@@ -64,9 +84,15 @@ export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+  return createPortal(
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden relative z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
@@ -280,6 +306,7 @@ export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
           <span>Código de soporte copiado</span>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };

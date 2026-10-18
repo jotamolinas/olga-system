@@ -318,14 +318,14 @@ export const LandingPage: React.FC = () => {
           
           <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
             <a 
-              href={currentUser ? "/consola" : "/consola?mode=register"}
+              href={currentUser ? "/consola" : "/consola"}
               onClick={(e) => {
                 e.preventDefault();
-                navigate(currentUser ? '/consola' : '/consola?mode=register');
+                navigate(currentUser ? '/consola' : '/consola');
               }}
               className="w-full box-border sm:w-auto px-8 py-4 bg-blue-600 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer gap-2 group"
             >
-              <span>{currentUser ? 'Ir a mi Consola' : 'Comenzar Prueba Gratuita'}</span>
+              <span>{currentUser ? 'Ir a mi Consola' : 'Iniciar Sesión o Registrarse'}</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </a>
             <a 
