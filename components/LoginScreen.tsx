@@ -85,10 +85,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         </div>
         
         <h1 className="text-3xl font-black text-white tracking-tight font-serif mb-2 relative z-10">O.L.G.A.</h1>
-        <p className="text-slate-400 font-medium mb-8 text-sm relative z-10 tracking-wide">
+        <p className="text-slate-400 font-medium mb-6 text-sm relative z-10 tracking-wide">
           {isLogin ? 'Acceso Seguro al Sistema' : 'Registro de Nueva Cuenta'}
         </p>
-        
+
+        {/* Selector directo de Iniciar Sesión o Registrarse */}
+        <div className="w-full box-border grid grid-cols-2 p-1 bg-slate-900/80 rounded-xl mb-6 border border-slate-700/80 relative z-10 shadow-inner">
+          <button
+            type="button"
+            onClick={() => { setIsLogin(true); setError(''); }}
+            className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              isLogin 
+                ? 'bg-blue-600 text-white shadow-md' 
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>Iniciar Sesión</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsLogin(false); setError(''); }}
+            className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              !isLogin 
+                ? 'bg-[#FF3131] text-white shadow-md' 
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>Registrarse</span>
+          </button>
+        </div>
+
         {sessionRevokedAlert && (
           <div className="w-full box-border bg-red-950/80 text-red-200 text-xs font-bold p-4 rounded-xl mb-6 border border-red-500/70 relative z-10 flex items-center gap-3 text-left shadow-xl animate-fade-in">
             <AlertTriangle className="w-5 h-5 text-[#FF3131] shrink-0" />

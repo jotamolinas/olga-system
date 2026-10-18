@@ -1,8 +1,12 @@
 {
+  "projectId": "nipponguay",
+  "appId": "1:933976114072:web:ee8106d228b40ad09961ed",
   "apiKey": "AIzaSyDGxd8nQTXTRpmwTKAw9xLl9uiTZuRT2UM",
   "authDomain": "nipponguay.firebaseapp.com",
-  "projectId": "nipponguay",
+  "firestoreDatabaseId": "ai-studio-olga-1681eae3-e951-4538-bb15-ff98f52a7343",
   "storageBucket": "nipponguay.firebasestorage.app",
   "messagingSenderId": "933976114072",
-  "appId": "1:933976114072:web:ee8106d228b40ad09961ed"
+  "measurementId": "",
+  "oAuthClientId": "933976114072-1b5p5obb25ds022fnvr7ea1queskcmac.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

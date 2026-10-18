@@ -589,7 +589,20 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         return;
       }
       
+      setIsCheckingProfile(true);
       setCurrentUser(user);
+
+      // Sesión local para este inicio de sesión
+      let localSessionId = localStorage.getItem('appSessionId');
+      if (!localSessionId) {
+        localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem('appSessionId', localSessionId);
+      }
+
+      // El usuario acaba de iniciar sesión: ACEPTAR la sesión actual y sobrescribir el activeSessionId de Firestore
+      let isFirstSnapshotAfterAuth = true;
       
       try {
         unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
@@ -638,36 +651,35 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             data.rol = 'operador';
             data.planActual = 'Operador Notarial';
           }
+
           const firestoreSessionId = data.activeSessionId;
-          const localSessionId = localStorage.getItem('appSessionId');
+          const currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
 
-          // Lógica de Expulsión (Logout Automático para prevenir compartir cuentas):
-          if (firestoreSessionId && localSessionId && firestoreSessionId !== localSessionId) {
-            console.warn("⚠️ Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
-            localStorage.removeItem('appSessionId');
-            if (unsubscribeSnapshot) {
-              unsubscribeSnapshot();
-              unsubscribeSnapshot = null;
+          // Si el usuario acaba de hacer login (el estado pasó de no user a user), aceptar la sesión
+          // y sincronizar en Firestore con el del dispositivo local
+          if (isFirstSnapshotAfterAuth) {
+            isFirstSnapshotAfterAuth = false;
+            if (firestoreSessionId !== currentLocalSession) {
+              setDoc(doc(db, 'users', user.uid), { activeSessionId: currentLocalSession }, { merge: true }).catch(console.error);
             }
-            setSessionKickedAlert("Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
-            signOut(auth).catch(console.error);
-            logout().catch(console.error);
-            setCurrentUser(null);
-            setUserProfile(null);
-            setIsCheckingProfile(false);
-            return;
-          }
-
-          if (firestoreSessionId && !localSessionId) {
-            localStorage.setItem('appSessionId', firestoreSessionId);
-          } else if (!firestoreSessionId && localSessionId) {
-            setDoc(doc(db, 'users', user.uid), { activeSessionId: localSessionId }, { merge: true }).catch(console.error);
-          } else if (!firestoreSessionId && !localSessionId) {
-            const newSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
-              ? crypto.randomUUID()
-              : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-            localStorage.setItem('appSessionId', newSessionId);
-            setDoc(doc(db, 'users', user.uid), { activeSessionId: newSessionId }, { merge: true }).catch(console.error);
+          } else {
+            // Lógica de Expulsión: El bloqueo SÓLO debe dispararse si firestoreSessionId existe,
+            // localSessionId existe, y son DIFERENTES.
+            if (firestoreSessionId && currentLocalSession && firestoreSessionId !== currentLocalSession) {
+              console.warn("⚠️ Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
+              localStorage.removeItem('appSessionId');
+              if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+                unsubscribeSnapshot = null;
+              }
+              setSessionKickedAlert("Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
+              signOut(auth).catch(console.error);
+              logout().catch(console.error);
+              setCurrentUser(null);
+              setUserProfile(null);
+              setIsCheckingProfile(false);
+              return;
+            }
           }
 
           if (user) {
@@ -877,7 +889,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // Wait, if setPersonas is called on fetch, it triggers effect. We want isolated handlers to update firestore to avoid infinite loops or overwrites.
   // Actually, I can just keep local update logic in handlers! Let's do that.
 
-  if (isCheckingProfile) {
+  if (isCheckingProfile || (currentUser && !userProfile)) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
         <div className="w-10 h-10 border-4 border-slate-700 border-t-[#FF3131] rounded-full animate-spin"></div>
@@ -925,7 +937,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const logoInstitucional = workspaceData?.logo_institucional || userProfile?.logo_institucional || null;
 
   const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com" || isOperador;
-  if (!skipOnboarding && (!userProfile || !userProfile.perfilCompletado)) {
+  if (!skipOnboarding && userProfile && userProfile.perfilCompletado !== true) {
     return (
       <FichaProfesional 
         currentUser={currentUser}
@@ -1380,6 +1392,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             </div>
             <button 
               onClick={async () => {
+                localStorage.removeItem('appSessionId');
                 await logout();
                 setCurrentUser(null);
                 setUserProfile(null);

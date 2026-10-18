@@ -20,6 +20,8 @@ const Logo: React.FC<{ darkTheme?: boolean }> = ({ darkTheme = false }) => (
 );
 
 import { motion, AnimatePresence } from 'motion/react';
+import { auth } from '../services/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 const CarouselMockup = () => {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -259,6 +261,15 @@ export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [isAnnual, setIsAnnual] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(auth?.currentUser || null);
+
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setCurrentUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const toggleFaq = (index: number) => {
     setOpenFaq(openFaq === index ? null : index);
@@ -285,7 +296,7 @@ export const LandingPage: React.FC = () => {
               onClick={() => navigate('/consola')}
               className="px-6 py-2.5 bg-white text-slate-900 text-base font-bold rounded-xl hover:bg-slate-100 transition-all shadow-md flex items-center gap-2"
             >
-              Ir a Consola
+              {currentUser ? 'Ir a mi Consola' : 'Ir a Consola'}
             </button>
           </div>
         </nav>
@@ -307,14 +318,15 @@ export const LandingPage: React.FC = () => {
           
           <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
             <a 
-              href="/consola?mode=register"
+              href={currentUser ? "/consola" : "/consola?mode=register"}
               onClick={(e) => {
                 e.preventDefault();
-                navigate('/consola?mode=register');
+                navigate(currentUser ? '/consola' : '/consola?mode=register');
               }}
-              className="w-full box-border sm:w-auto px-8 py-4 bg-blue-600 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer"
+              className="w-full box-border sm:w-auto px-8 py-4 bg-blue-600 text-white text-sm font-bold uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer gap-2 group"
             >
-              Comenzar Prueba Gratuita
+              <span>{currentUser ? 'Ir a mi Consola' : 'Comenzar Prueba Gratuita'}</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </a>
             <a 
               href="#casos-de-uso"

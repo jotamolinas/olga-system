@@ -1646,191 +1646,346 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         </div>
       </div>
 
-      {panelView === 'list' || panelView === 'list_anulados' ? (
-        /* LIST VIEW OF CREATED PROMISSORY NOTES */
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-md">
-          <div className="pb-6 border-b border-slate-50 mb-6">
-            <h2 className="text-2xl font-bold font-serif text-slate-800">Caja Registradora de Pagarés</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Documentos generados y autorizados administrativamente. Haga clic sobre cualquiera para abrir la Certificación de Firmas e Impresión Oficial.
-            </p>
-          </div>
+      {panelView === 'list' || panelView === 'list_anulados' ? (() => {
+        /* Función auxiliar de clasificación y pesaje por estado de pagaré */
+        const getPagareStatusDetails = (pag: Pagare) => {
+          let badgeStatus: 'vencido' | 'proximo' | 'al_dia' | 'pagado' | 'anulado' | null = null;
+          let nextDueDate: Date | null = null;
+          let diasDiferencia: number | null = null;
+          let cuotasPendientesCount = 0;
+          let totalCuotasCount = pag.cronograma?.length || 0;
 
-          {pagares.length === 0 ? (
-            <div className="py-24 text-center bg-slate-50 border border-dashed rounded-3xl border-slate-200">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <p className="font-bold text-slate-600 text-base">No hay pagarés activos registrados.</p>
-              <p className="text-xs text-slate-400 mt-1">Cree un nuevo pagaré y proceda a configurar su cronograma.</p>
-              <button
-                onClick={() => {
-                  handleClearForm();
-                }}
-                className="mt-6 px-6 py-3 bg-[#FF3131] hover:bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all"
-              >
-                Comenzar Redacción
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {(panelView === 'list' ? pagares.filter(p => p.status !== 'anulado') : pagares.filter(p => p.status === 'anulado')).map((pag) => {
-                const acreedor = personas.find(p => p.id === pag.acreedor_id);
-                const deudor = personas.find(p => p.id === pag.deudor_id);
-                let badgeStatus: 'vencido' | 'proximo' | 'al_dia' | 'pagado' | null = null;
-                let nextDueDate: Date | null = null;
+          if (pag.status === 'anulado' || (pag as any).estado === 'Anulado') {
+            return {
+              badgeStatus: 'anulado' as const,
+              nextDueDate: null,
+              diasDiferencia: null,
+              cuotasPendientesCount: 0,
+              totalCuotasCount,
+              weight: 5
+            };
+          }
 
-                if (pag.cronograma && pag.cronograma.length > 0) {
-                  const today = new Date();
-                  today.setHours(0,0,0,0);
-                  
-                  const pendingCuotas = pag.cronograma.filter(c => c.estado !== 'cobrado' && !c.pagado);
-                  
-                  if (pendingCuotas.length === 0) {
-                    badgeStatus = 'pagado';
-                  } else {
-                    let hasVencido = false;
-                    let hasProximo = false;
-                    
-                    pendingCuotas.sort((a, b) => new Date(a.fecha_pag).getTime() - new Date(b.fecha_pag).getTime());
-                    
-                    const nextC = pendingCuotas[0];
-                    const cDate = new Date(nextC.fecha_pag);
-                    const parts = nextC.fecha_pag.split('-');
-                    if (parts.length === 3) {
-                      cDate.setFullYear(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                    }
-                    cDate.setHours(0,0,0,0);
-                    nextDueDate = cDate;
+          if (pag.cronograma && pag.cronograma.length > 0) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
-                    for (const c of pendingCuotas) {
-                      const cDateLoop = new Date(c.fecha_pag);
-                      const partsL = c.fecha_pag.split('-');
-                      if (partsL.length === 3) {
-                        cDateLoop.setFullYear(parseInt(partsL[0]), parseInt(partsL[1]) - 1, parseInt(partsL[2]));
-                      }
-                      cDateLoop.setHours(0,0,0,0);
-                      const diffDays = Math.ceil((cDateLoop.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                      
-                      if (diffDays < 0) {
-                        hasVencido = true;
-                      } else if (diffDays <= 5) {
-                        hasProximo = true;
-                      }
-                    }
+            const pendingCuotas = pag.cronograma.filter((c: any) => c.estado !== 'cobrado' && !c.pagado);
+            cuotasPendientesCount = pendingCuotas.length;
 
-                    if (hasVencido) badgeStatus = 'vencido';
-                    else if (hasProximo) badgeStatus = 'proximo';
-                    else badgeStatus = 'al_dia';
-                  }
+            if (pendingCuotas.length === 0) {
+              badgeStatus = 'pagado';
+            } else {
+              let hasVencido = false;
+              let hasProximo = false;
+              let minDiff = 999999;
+
+              const sortedPending = [...pendingCuotas].sort((a: any, b: any) => new Date(a.fecha_pag).getTime() - new Date(b.fecha_pag).getTime());
+
+              const nextC = sortedPending[0];
+              const cDate = new Date(nextC.fecha_pag);
+              const parts = nextC.fecha_pag.split('-');
+              if (parts.length === 3) {
+                cDate.setFullYear(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+              }
+              cDate.setHours(0, 0, 0, 0);
+              nextDueDate = cDate;
+
+              for (const c of sortedPending) {
+                const cDateLoop = new Date(c.fecha_pag);
+                const partsL = c.fecha_pag.split('-');
+                if (partsL.length === 3) {
+                  cDateLoop.setFullYear(parseInt(partsL[0]), parseInt(partsL[1]) - 1, parseInt(partsL[2]));
+                }
+                cDateLoop.setHours(0, 0, 0, 0);
+                const diffDays = Math.ceil((cDateLoop.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                if (diffDays < minDiff) {
+                  minDiff = diffDays;
                 }
 
-                return (
-                  <div
-                    key={pag.id}
-                    onClick={() => handleAbrirPagare(pag)}
-                    className={`p-6 rounded-3xl border transition-all cursor-pointer group shadow-sm hover:shadow-xl relative flex flex-col justify-between ${
-                      badgeStatus === 'vencido' 
-                        ? 'bg-red-50 border-red-400 hover:border-red-500' 
-                        : badgeStatus === 'proximo'
-                          ? 'bg-amber-50 border-amber-400 hover:border-amber-500'
-                          : (badgeStatus === 'al_dia' || badgeStatus === 'pagado')
-                            ? 'bg-emerald-50 border-emerald-400 hover:border-emerald-500'
-                            : 'bg-slate-50 border-slate-200/50 hover:border-[#FF3131]'
-                    }`}
-                  >
-                    {badgeStatus === 'vencido' && (
-                      <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border border-white flex items-center gap-1 animate-pulse">
-                        <AlertTriangle className="w-3 h-3" />
-                        Vencido
-                      </div>
-                    )}
-                    {badgeStatus === 'proximo' && (
-                      <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border border-white flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        Próximo
-                      </div>
-                    )}
-                    {badgeStatus === 'al_dia' && (
-                      <div className="absolute -top-3 -right-3 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border border-white flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        Al Día
-                      </div>
-                    )}
-                    {badgeStatus === 'pagado' && (
-                      <div className="absolute -top-3 -right-3 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border border-white flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        Pagado
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#FF3131]">
-                          Nro. Correlativo: {pag.correlativo}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const pendingIndex = pag.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
-                            if (pendingIndex !== -1 && pag.cronograma) {
-                              return (
-                                <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-200 tracking-widest uppercase">
-                                  Cuota Vigente: {pag.cronograma[pendingIndex].numero_cuota} de {pag.cronograma.length}
-                                </span>
-                              );
-                            }
-                            return null;
-                          })()}
-                          <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-white text-slate-600 border border-slate-200">
-                            {getTipoNegociacionLabel(pag.tipo_negociacion)}
-                          </span>
-                        </div>
-                      </div>
+                if (diffDays < 0) {
+                  hasVencido = true;
+                } else if (diffDays <= 5) {
+                  hasProximo = true;
+                }
+              }
 
-                      <h3 className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors">
-                        {getMonedaSimbolo(pag.moneda)} {formatCurrencyValue(pag.valor_total || (pag as any).monto || 0, pag.moneda)}
-                      </h3>
+              diasDiferencia = minDiff;
 
-                      <div className="grid grid-cols-2 gap-4 mt-6 text-xs text-slate-600">
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Acreedor</p>
-                          <p className="font-bold text-slate-800 truncate">{pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || "Buscando datos..."}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Deudor Principal</p>
-                          <p className="font-bold text-slate-800 truncate">{pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || "Buscando datos..."}</p>
-                        </div>
-                      </div>
+              if (hasVencido) badgeStatus = 'vencido';
+              else if (hasProximo) badgeStatus = 'proximo';
+              else badgeStatus = 'al_dia';
+            }
+          } else if (pag.status === 'cobrado' || (pag as any).estado === 'Cobrado') {
+            badgeStatus = 'pagado';
+          } else {
+            badgeStatus = 'al_dia';
+          }
 
-                      <div className="mt-4 pt-4 border-t border-slate-200/40 text-xs text-slate-500 space-y-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <p className="flex items-center gap-2">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Emisión: {new Date(pag.created_at).toLocaleDateString()}</span>
-                          </p>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable:</span>
-                            <span className="font-bold text-slate-800 text-[11px]">{pag.creator_name || (pag as any).creatorName || 'Titular'}</span>
-                            {(pag.creator_role === 'operador' || (pag as any).creatorRole === 'operador') && (
-                              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                Operador
+          // Prioridad de ordenamiento:
+          // 1°: Vencidos (rojos) -> 1
+          // 2°: Próximos a vencer (amarillos) -> 2
+          // 3°: Al día (verdes) -> 3
+          // 4°: Pagados (esmeralda oscuro) -> 4
+          // 5°: Anulados / Otros -> 5
+          let weight = 5;
+          if (badgeStatus === 'vencido') weight = 1;
+          else if (badgeStatus === 'proximo') weight = 2;
+          else if (badgeStatus === 'al_dia') weight = 3;
+          else if (badgeStatus === 'pagado') weight = 4;
+          else if (badgeStatus === 'anulado') weight = 5;
+
+          return { badgeStatus, nextDueDate, diasDiferencia, cuotasPendientesCount, totalCuotasCount, weight };
+        };
+
+        const basePagares = panelView === 'list' 
+          ? pagares.filter(p => p.status !== 'anulado') 
+          : pagares.filter(p => p.status === 'anulado');
+
+        // Ordenamiento por prioridad de estado
+        const pagaresOrdenados = [...basePagares].sort((a, b) => {
+          const statusA = getPagareStatusDetails(a);
+          const statusB = getPagareStatusDetails(b);
+          if (statusA.weight !== statusB.weight) {
+            return statusA.weight - statusB.weight;
+          }
+          if (statusA.nextDueDate && statusB.nextDueDate) {
+            return statusA.nextDueDate.getTime() - statusB.nextDueDate.getTime();
+          }
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+
+        const countVencidos = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'vencido').length;
+        const countProximos = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'proximo').length;
+        const countAlDia = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'al_dia').length;
+        const countPagados = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'pagado').length;
+
+        return (
+          /* LIST VIEW OF CREATED PROMISSORY NOTES */
+          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-md">
+            <div className="pb-6 border-b border-slate-100 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-2">
+                  <span>Caja Registradora de Pagarés</span>
+                  {panelView === 'list_anulados' && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-sans font-bold">
+                      Papelera / Anulados
+                    </span>
+                  )}
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Documentos autorizados ordenados por urgencia de cobro. Haga clic para abrir la Certificación de Firmas e Impresión Oficial.
+                </p>
+              </div>
+
+              {/* Indicadores resumidos de estado */}
+              {basePagares.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                  {countVencidos > 0 && (
+                    <span className="px-3 py-1 rounded-full bg-red-100 text-red-700 border border-red-200 flex items-center gap-1.5 shadow-2xs animate-pulse">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>{countVencidos} Vencido{countVencidos > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                  {countProximos > 0 && (
+                    <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1.5 shadow-2xs">
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{countProximos} Próximo{countProximos > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                  {countAlDia > 0 && (
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>{countAlDia} Al Día</span>
+                    </span>
+                  )}
+                  {countPagados > 0 && (
+                    <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{countPagados} Pagado{countPagados > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                  <span className="px-3 py-1 rounded-full bg-slate-50 text-slate-500 border border-slate-200">
+                    Total: {basePagares.length}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {pagaresOrdenados.length === 0 ? (
+              <div className="py-24 text-center bg-slate-50 border border-dashed rounded-3xl border-slate-200">
+                <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <p className="font-bold text-slate-600 text-base">No hay pagarés registrados en esta vista.</p>
+                <p className="text-xs text-slate-400 mt-1">Cree un nuevo pagaré y proceda a configurar su cronograma.</p>
+                <button
+                  onClick={() => {
+                    handleClearForm();
+                  }}
+                  className="mt-6 px-6 py-3 bg-[#FF3131] hover:bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all"
+                >
+                  Comenzar Redacción
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {pagaresOrdenados.map((pag) => {
+                  const acreedor = personas.find(p => p.id === pag.acreedor_id);
+                  const deudor = personas.find(p => p.id === pag.deudor_id);
+                  const { badgeStatus, nextDueDate, cuotasPendientesCount } = getPagareStatusDetails(pag);
+
+                  return (
+                    <div
+                      key={pag.id}
+                      onClick={() => handleAbrirPagare(pag)}
+                      className={`p-6 sm:p-7 rounded-3xl border-2 transition-all cursor-pointer group shadow-sm hover:shadow-xl relative flex flex-col justify-between ${
+                        badgeStatus === 'vencido' 
+                          ? 'bg-gradient-to-b from-red-50/70 to-white border-red-300 hover:border-red-500 shadow-red-500/5' 
+                          : badgeStatus === 'proximo'
+                            ? 'bg-gradient-to-b from-amber-50/70 to-white border-amber-300 hover:border-amber-500 shadow-amber-500/5'
+                            : badgeStatus === 'al_dia'
+                              ? 'bg-gradient-to-b from-emerald-50/40 to-white border-emerald-300 hover:border-emerald-500 shadow-emerald-500/5'
+                              : badgeStatus === 'pagado'
+                                ? 'bg-gradient-to-b from-emerald-950/[0.03] to-white border-emerald-700/40 hover:border-emerald-700'
+                                : 'bg-slate-50 border-slate-200/50 hover:border-[#FF3131]'
+                      }`}
+                    >
+                      {/* Insignias de Estado Superior Derecha */}
+                      {badgeStatus === 'vencido' && (
+                        <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-red-600/30 border-2 border-white flex items-center gap-1.5 animate-pulse">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Vencido</span>
+                        </div>
+                      )}
+                      {badgeStatus === 'proximo' && (
+                        <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-amber-500/30 border-2 border-white flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>Próximo a Vencer</span>
+                        </div>
+                      )}
+                      {badgeStatus === 'al_dia' && (
+                        <div className="absolute -top-3 -right-3 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-emerald-600/30 border-2 border-white flex items-center gap-1.5">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Al Día</span>
+                        </div>
+                      )}
+                      {badgeStatus === 'pagado' && (
+                        <div className="absolute -top-3 -right-3 bg-emerald-800 text-white text-[9px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg shadow-emerald-900/40 border-2 border-white flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Pagado Total</span>
+                        </div>
+                      )}
+                      {badgeStatus === 'anulado' && (
+                        <div className="absolute -top-3 -right-3 bg-slate-600 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-lg border-2 border-white flex items-center gap-1">
+                          <span>Anulado</span>
+                        </div>
+                      )}
+
+                      <div>
+                        {/* Cabecera de tarjeta */}
+                        <div className="flex items-center justify-between gap-2 mb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-lg bg-slate-100 text-[#FF3131] border border-slate-200/80 font-mono">
+                              N° {pag.correlativo}
+                            </span>
+                            {cuotasPendientesCount > 0 && (
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-200 tracking-wider">
+                                {cuotasPendientesCount} pend.
                               </span>
                             )}
                           </div>
-                          {nextDueDate && (
-                            <p className="flex items-center gap-2 text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                              <span>Próximo Venc: {nextDueDate.toLocaleDateString()}</span>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const pendingIndex = pag.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
+                              if (pendingIndex !== -1 && pag.cronograma) {
+                                return (
+                                  <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-indigo-200 tracking-widest uppercase">
+                                    Cuota {pag.cronograma[pendingIndex].numero_cuota}/{pag.cronograma.length}
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-white text-slate-600 border border-slate-200 shadow-2xs">
+                              {getTipoNegociacionLabel(pag.tipo_negociacion)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Monto principal */}
+                        <div className="flex items-baseline justify-between mb-4">
+                          <h3 className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors">
+                            <span className="text-lg font-bold text-slate-400 mr-1.5">{getMonedaSimbolo(pag.moneda)}</span>
+                            {formatCurrencyValue(pag.valor_total || (pag as any).monto || 0, pag.moneda)}
+                          </h3>
+                          {pag.moneda && (
+                            <span className="text-[10px] font-bold font-mono uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                              {pag.moneda}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Bloques de Acreedor y Deudor */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 text-xs text-slate-600">
+                          <div className="p-3 rounded-2xl bg-white/90 border border-slate-100 shadow-2xs">
+                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                              Acreedor
+                            </p>
+                            <p className="font-bold text-slate-800 truncate" title={pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || ""}>
+                              {pag.acreedor_nombre_raw || acreedor?.nombre || (pag as any).nombreAcreedor || "Buscando datos..."}
+                            </p>
+                          </div>
+                          <div className="p-3 rounded-2xl bg-white/90 border border-slate-100 shadow-2xs">
+                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FF3131]"></span>
+                              Deudor Principal
+                            </p>
+                            <p className="font-bold text-slate-800 truncate" title={pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || ""}>
+                              {pag.deudor_nombre_raw || deudor?.nombre || (pag as any).nombreDeudor || "Buscando datos..."}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Metadatos: Emisión, Responsable y Próximo Vencimiento */}
+                        <div className="mt-4 pt-3.5 border-t border-slate-200/60 text-xs text-slate-500 space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <p className="flex items-center gap-2">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Emisión: {new Date(pag.created_at).toLocaleDateString()}</span>
+                            </p>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable:</span>
+                              <span className="font-bold text-slate-800 text-[11px]">{pag.creator_name || (pag as any).creatorName || 'Titular'}</span>
+                              {(pag.creator_role === 'operador' || (pag as any).creatorRole === 'operador') && (
+                                <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  Operador
+                                </span>
+                              )}
+                            </div>
+                            {nextDueDate && (
+                              <p className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-lg text-xs border ${
+                                badgeStatus === 'vencido' 
+                                  ? 'bg-red-100/90 text-red-700 border-red-200' 
+                                  : badgeStatus === 'proximo'
+                                    ? 'bg-amber-100/90 text-amber-800 border-amber-200'
+                                    : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                              }`}>
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>Vence: {nextDueDate.toLocaleDateString()}</span>
+                              </p>
+                            )}
+                          </div>
+                          {(userData?.tipoPerfil === 'Escribanía Pública' || pag.certificado_firmas_nro) && (
+                            <p className="flex items-center gap-2">
+                              <ShieldCheck className={pag.certificado_firmas_nro ? "w-3.5 h-3.5 text-green-600" : "w-3.5 h-3.5 text-[#FF3131]"} />
+                              <span className={`font-black px-2.5 py-0.5 rounded-md text-[10px] tracking-widest uppercase border ${pag.certificado_firmas_nro ? 'text-green-700 bg-green-50 border-green-200' : 'text-[#FF3131] bg-red-50 border-red-100'}`}>
+                                Cert. Firmas: {pag.certificado_firmas_nro ? `N° ${pag.certificado_firmas_nro}` : "NO REGISTRADO"}
+                              </span>
                             </p>
                           )}
                         </div>
-                        {(userData?.tipoPerfil === 'Escribanía Pública' || pag.certificado_firmas_nro) && (
-                          <p className="flex items-center gap-2">
-                            <ShieldCheck className={pag.certificado_firmas_nro ? "w-3.5 h-3.5 text-green-600" : "w-3.5 h-3.5 text-[#FF3131]"} />
-                            <span className={`font-black px-2.5 py-1 rounded-md text-[10px] tracking-widest uppercase border ${pag.certificado_firmas_nro ? 'text-green-700 bg-green-50 border-green-200' : 'text-[#FF3131] bg-red-50 border-red-100'}`}>
-                              Cert. Firmas: {pag.certificado_firmas_nro ? `N° ${pag.certificado_firmas_nro}` : "NO REGISTRADO"}
-                            </span>
-                          </p>
-                        )}
                       </div>
-                    </div>
 
                     <div className="mt-4 border-t border-slate-200/40 pt-4">
                       {pag.cronograma && pag.cronograma.length > 0 && (
@@ -2056,7 +2211,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
             </div>
           )}
         </div>
-      ) : (
+      );
+    })() : (
         /* CREATE / FORM VIEW FOR PROMISSORY NOTE */
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           
