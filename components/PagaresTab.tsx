@@ -1864,12 +1864,14 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     <div
                       key={pag.id}
                       onClick={() => setSelectedPagareForDetail(pag)}
-                      className={`bg-white rounded-3xl border shadow-xs hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all flex flex-col justify-between p-5 md:p-6 relative group cursor-pointer ${
+                      className={`rounded-3xl border shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between p-5 md:p-6 relative group cursor-pointer ${
                         badgeStatus === 'vencido' 
-                          ? 'border-red-200 hover:border-red-400' 
+                          ? 'bg-red-50/60 border-red-300 hover:border-red-500 hover:bg-red-50' 
                           : badgeStatus === 'proximo' 
-                            ? 'border-amber-200 hover:border-amber-400' 
-                            : 'border-slate-200/90 hover:border-[#FF3131]'
+                            ? 'bg-amber-50/60 border-amber-300 hover:border-amber-500 hover:bg-amber-50' 
+                            : badgeStatus === 'al_dia' || badgeStatus === 'pagado'
+                              ? 'bg-emerald-50/60 border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50'
+                              : 'bg-slate-50/60 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
                       } ${activePagareMenuId === pag.id ? 'z-30' : 'z-0 hover:z-10'}`}
                     >
                       <div>
