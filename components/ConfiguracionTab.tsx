@@ -656,7 +656,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-50 min-h-screen">
+    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-100 min-h-screen">
       {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
       <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">

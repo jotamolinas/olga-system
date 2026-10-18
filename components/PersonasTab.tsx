@@ -647,22 +647,21 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   }, [clienteExpediente, listaPersonas]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-slate-50 min-h-screen">
-      {/* Cabecera Notarial Enterprise */}
-      <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-slate-800 rounded-xl border border-slate-700 text-[#FF3131] shrink-0">
-            <Users className="w-6 h-6" />
+    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-slate-100 min-h-screen">
+      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-800 border border-slate-200 shrink-0">
+            <Users className="w-6 h-6 text-[#FF3131]" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold font-serif tracking-tight text-white">Directorio de Personas & Expedientes 360°</h2>
-            <p className="text-slate-300 text-xs mt-0.5">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Directorio de Personas & Expedientes 360°</h2>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
               Fichero unificado con consulta de historial crediticio, resumen de obligaciones y notas notariales.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-semibold">
+          <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-bold">
             {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente Registrado' : 'Clientes Registrados'}
           </span>
         </div>

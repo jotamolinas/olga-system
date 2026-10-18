@@ -2649,22 +2649,28 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {!mostrarEditor && (
         <>
           {/* Cabecera Principal Unificada */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Gestión de Escritos y Notaría</h2>
-                <span className="px-2.5 py-0.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg">
-                  O.L.G.A.
-                </span>
+          <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+            <div className="relative z-10 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
+                <FileText className="w-5 h-5 text-[#FF3131]" />
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                Entorno ergonómico unificado: Redacción asistida con IA (izquierda), Editor Notarial Activo (derecha) y Gestión Documental estilo Google Drive (inferior).
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-black text-white tracking-tight font-serif">Gestión de Escritos y Notaría</h2>
+                  <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
+                    O.L.G.A.
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                  Entorno ergonómico unificado: Redacción asistida con IA, Editor Notarial Activo y Gestión Documental.
+                </p>
+              </div>
             </div>
 
             {/* Resumen de Estado y Acceso Directo a Drive */}
-            <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
-              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
+              <div className="px-3 py-2 bg-slate-800/80 border border-slate-700/60 rounded-2xl text-[11px] font-bold text-slate-300 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
                 <span>{escritos.length} Documentos en Archivo</span>
               </div>
@@ -2675,7 +2681,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   const el = document.getElementById('seccion-gestion-documental');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-slate-700"
               >
                 <FolderInput className="w-3.5 h-3.5 text-[#FF3131]" />
                 <span>Ver Archivo Documental ↓</span>

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, Banknote, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
 import { consultarRUC } from '../services/dnitService';
@@ -1547,36 +1547,33 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   return (
     <div className="space-y-4 md:space-y-8 animate-message" id="pagares-tab-panel">
-      {/* HUD Tracker Hub */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 blur-[100px] rounded-full pointer-events-none"></div>
-        <div className="relative z-10 text-center md:text-left">
-          <h2 className="text-white text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
-            <ShieldCheck className="w-6 h-6 text-blue-400" />
-            Central de Documentos PJE
-          </h2>
-          <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-sm">
-            Panel principal para la gestión y redacción de pagarés oficiales para la {config.escribania.nombre}.
-          </p>
-        </div>
-        <div className="flex items-center gap-4 relative z-10 w-full box-border md:w-auto">
-          <div className="flex-1 md:flex-none bg-slate-800/80 border border-slate-700/50 rounded-3xl p-4 flex items-center justify-between md:justify-start gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-              <FileText className="w-5 h-5" />
+      {/* Cabecera Principal Unificada */}
+      <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
+              <Banknote className="w-5 h-5 text-[#FF3131]" />
             </div>
-            <div className="text-right md:text-left pr-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pagarés</p>
-              <p className="text-2xl font-black text-white leading-none">{pagares.length}</p>
+            <div>
+              <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
+                <span>Gestión de Pagarés</span>
+                <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
+                  O.L.G.A.
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                Panel principal para la gestión, redacción y control de pagarés oficiales para la {config.escribania.nombre}.
+              </p>
             </div>
           </div>
-          <div className="flex-1 md:flex-none bg-slate-800/80 border border-slate-700/50 rounded-3xl p-4 flex items-center justify-between md:justify-start gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Users className="w-5 h-5" />
-            </div>
-            <div className="text-right md:text-left pr-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Personas</p>
-              <p className="text-2xl font-black text-white leading-none">{personas.length}</p>
-            </div>
+        </div>
+
+        {/* Resumen de Estado y Acceso Directo */}
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
+          <div className="px-3 py-2 bg-slate-800/80 border border-slate-700/60 rounded-2xl text-[11px] font-bold text-slate-300 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
+            <span>{pagares.length} Pagarés Registrados</span>
           </div>
         </div>
       </div>

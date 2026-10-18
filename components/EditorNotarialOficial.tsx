@@ -70,78 +70,77 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         }
       `}</style>
 
-      {/* Barra de control superior (No imprimible) */}
-      <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50 shadow-md print:hidden">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {onVolver && (
-              <button
-                onClick={onVolver}
-                type="button"
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors"
-              >
-                ← Volver
-              </button>
-            )}
-            <div className="p-2 bg-slate-800 rounded-xl text-[#FF3131] border border-slate-700">
-              <Stamp className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-white flex items-center gap-2">
-                Lienzo Notarial de Alta Precisión
-                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-950 text-red-400 border border-red-800">
-                  Corte Suprema
-                </span>
-              </h1>
-              <p className="text-xs text-slate-400">
-                Alineación milimétrica sobre Hojas de Seguridad físicas. Cabecera preimpresa intacta.
-              </p>
-            </div>
+      {/* Cabecera Principal Unificada */}
+      <header className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+        <div className="relative z-10 flex items-center gap-3">
+          {onVolver && (
+            <button
+              onClick={onVolver}
+              type="button"
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors border border-slate-700"
+            >
+              ← Volver
+            </button>
+          )}
+          <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
+            <Stamp className="w-5 h-5 text-[#FF3131]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
+              <span>Lienzo Notarial de Alta Precisión</span>
+              <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
+                O.L.G.A.
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5 font-medium">
+              Alineación milimétrica sobre Hojas de Seguridad físicas. Cabecera preimpresa intacta.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
+          {/* 1. Selector de Tipo de Documento */}
+          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+            <label htmlFor="tipo-doc-select" className="text-xs font-bold text-slate-400">
+              Tipo:
+            </label>
+            <select
+              id="tipo-doc-select"
+              value={tipoDocumento}
+              onChange={(e) => setTipoDocumento(e.target.value as TipoDocumentoNotarial)}
+              className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+            >
+              <option value="Concuerda" className="bg-slate-900 text-white">Concuerda (Hoja de Seguridad)</option>
+              <option value="Certificación de Firmas" className="bg-slate-900 text-white">Certificación de Firmas</option>
+              <option value="Legalización" className="bg-slate-900 text-white">Legalización (Actuación Notarial)</option>
+            </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* 1. Selector de Tipo de Documento */}
-            <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-              <label htmlFor="tipo-doc-select" className="text-xs font-bold text-slate-400">
-                Tipo:
-              </label>
-              <select
-                id="tipo-doc-select"
-                value={tipoDocumento}
-                onChange={(e) => setTipoDocumento(e.target.value as TipoDocumentoNotarial)}
-                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
-              >
-                <option value="Concuerda" className="bg-slate-900 text-white">Concuerda (Hoja de Seguridad)</option>
-                <option value="Certificación de Firmas" className="bg-slate-900 text-white">Certificación de Firmas</option>
-                <option value="Legalización" className="bg-slate-900 text-white">Legalización (Actuación Notarial)</option>
-              </select>
-            </div>
+          {/* 2. Botón Ocultar/Ver Guía de Fondo */}
+          <button
+            type="button"
+            onClick={() => setMostrarGuia(!mostrarGuia)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+              mostrarGuia 
+                ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+            }`}
+            title="Alternar visibilidad del membrete de guía de fondo"
+          >
+            {mostrarGuia ? <Eye className="w-4 h-4 text-blue-400" /> : <EyeOff className="w-4 h-4" />}
+            <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
+          </button>
 
-            {/* 2. Botón Ocultar/Ver Guía de Fondo */}
-            <button
-              type="button"
-              onClick={() => setMostrarGuia(!mostrarGuia)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
-                mostrarGuia 
-                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-              }`}
-              title="Alternar visibilidad del membrete de guía de fondo"
-            >
-              {mostrarGuia ? <Eye className="w-4 h-4 text-blue-400" /> : <EyeOff className="w-4 h-4" />}
-              <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
-            </button>
-
-            {/* 3. Botón Imprimir Hoja */}
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-5 py-2 bg-[#FF3131] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-red-600/20 transition-all hover:scale-105 active:scale-95"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Imprimir Hoja</span>
-            </button>
-          </div>
+          {/* 3. Botón Imprimir Hoja */}
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-5 py-2 bg-[#FF3131] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-red-600/20 transition-all hover:scale-105 active:scale-95"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir Hoja</span>
+          </button>
         </div>
       </header>
 

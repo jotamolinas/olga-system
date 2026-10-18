@@ -64,6 +64,7 @@ import ReactMarkdown from 'react-markdown';
 import { 
   CreditCard,
   FileText,
+  Banknote,
   Users,
   Settings,
   MessageSquare,
@@ -1307,7 +1308,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       )}
 
       {/* Sidebar Navigation Drawer (Collapsible) */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-slate-900 text-white flex flex-col p-6 shadow-2xl shrink-0 overflow-y-auto transition-transform duration-300 ease-in-out print:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-[100] w-80 bg-slate-900 text-white flex flex-col pt-8 pb-6 px-6 shadow-2xl shrink-0 overflow-y-auto transition-transform duration-300 ease-in-out print:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
         {/* Brand identity */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-6">
@@ -1476,8 +1477,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             }}
             className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'pagares' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
           >
-            <FileText className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Gestión Pagarés</span>
+            <Banknote className="w-5 h-5" />
+            <span className="text-xs font-black uppercase tracking-wider">Gestión de Pagarés</span>
           </button>
 
           <button
@@ -1509,7 +1510,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             }}
             className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'lienzo' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
           >
-            <Stamp className="w-5 h-5 text-amber-400" />
+            <Stamp className="w-5 h-5" />
             <span className="text-xs font-black uppercase tracking-wider">Lienzo Notarial</span>
           </button>
 
