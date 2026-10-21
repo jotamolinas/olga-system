@@ -157,7 +157,6 @@ export function construirConstitucionSA(
   const mes = meses[now.getMonth()];
   const anio = String(now.getFullYear());
 
-  const incisosLetras = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
   const partesComparecientes: string[] = [];
 
   // Bucle dinámico según la cantidad de socios solicitada (N)
@@ -166,76 +165,94 @@ export function construirConstitucionSA(
     const isLast = i === numSocios;
     const prefijo = numSocios === 1 ? '' : (isFirst ? 'por una parte' : (isLast ? 'y por la otra' : 'por otra parte'));
 
-    // Bloque notarial estricto con espacios vacíos (_______) sin pre-carga de usuario
-    const bloqueSocio = `Don/Doña _______, de nacionalidad _______, mayor de edad, estado civil _______, profesión _______, domiciliado/a en _______, titular de la Cédula de Identidad Civil Nº _______`;
+    // Bloque notarial estricto con campos dinámicos únicamente para datos personales
+    const bloqueSocio = `Don/Doña _______, de nacionalidad _______, de estado civil _______, con Cédula de Identidad Civil Nº _______, de profesión _______, domiciliado/a en _______`;
 
     partesComparecientes.push(prefijo ? `${prefijo}, ${bloqueSocio}` : bloqueSocio);
   }
 
-  const parrafoComparecientes = `comparecen ante mí: ${partesComparecientes.join('; ')}; personas hábiles y civilmente capaces para este acto, a quienes doy fe de conocer, y dicen:`;
+  const parrafoComparecientes = `COMPARECEN: ${partesComparecientes.join('; ')}; personas mayores de edad, hábiles, quienes declaran haber cumplido con las Leyes de carácter personal, y acreditan sus identidades conforme a los documentos mencionados más arriba.-`;
 
   const lineasSuscripcion: string[] = [];
   for (let i = 1; i <= numSocios; i++) {
-    const letra = incisosLetras[i - 1] || `${i}`;
-    lineasSuscripcion.push(`   ${letra}) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);`);
+    lineasSuscripcion.push(`   ${i}°) El socio Nº ${i} _______ suscribe e integra _______ Acciones ordinarias, totalizando la suma de GUARANÍES _______ (Gs. _______), en efectivo;`);
   }
 
-  const articuloQuinto = `ARTÍCULO 5º (EMISIÓN Y SUSCRIPCIÓN): El Capital Social inicial queda totalmente emitido, suscripto e integrado por los comparecientes en las siguientes proporciones:
-${lineasSuscripcion.join('\n')}
-totalizando el cien por ciento (100%) del capital emitido y suscripto en este acto de constitución.`;
-
   const directoresTransitorios: string[] = [
-    `- PRESIDENTE DEL DIRECTORIO: Don/Doña _______;`,
-    `- DIRECTOR TITULAR: Don/Doña _______;`
+    `   - PRESIDENTE: Don/Doña _______;`,
+    `   - VICEPRESIDENTE: Don/Doña _______;`
   ];
   if (numSocios >= 3) {
     for (let s = 3; s <= numSocios; s++) {
-      directoresTransitorios.push(`- DIRECTOR TITULAR: Don/Doña _______;`);
+      directoresTransitorios.push(`   - DIRECTOR TITULAR: Don/Doña _______;`);
     }
   }
-  directoresTransitorios.push(`- SÍNDICO TITULAR: Don/Doña _______;`);
+  directoresTransitorios.push(
+    `   - SINDICO TITULAR: Don/Doña _______, de nacionalidad _______, de estado civil _______, con Cédula de Identidad Civil Nº _______, domiciliado/a en _______;`,
+    `   - SINDICO SUPLENTE: Don/Doña _______, de nacionalidad _______, de estado civil _______, con Cédula de Identidad Civil Nº _______, domiciliado/a en _______.-`
+  );
 
-  return `ESCRITURA NÚMERO ______.- CONSTITUCIÓN DE SOCIEDAD ANÓNIMA DENOMINADA "____________________ S.A.".-
+  const firmasSocios = Array.from({ length: numSocios }, () => `_______`).join('.- ');
 
-En la ciudad de Asunción, Capital de la República del Paraguay, a los ${dia} días del mes de ${mes} del año ${anio}, ante mí, Notario y Escribano Público Titular del Registro Notarial Nº ______, ${parrafoComparecientes}
-Que han resuelto constituir una Sociedad Anónima de conformidad con las disposiciones del Código Civil de la República del Paraguay y leyes complementarias vigentes, la cual se regirá por los siguientes Estatutos Sociales:
+  return `CONSTITUCION DE LA FIRMA: "_______" SOCIEDAD ANONIMA.- ESCRITURA PUBLICA NUMERO: _______.- En la ciudad de _______, Capital del Departamento de _______, República del Paraguay, a los ${dia} días del mes de ${mes} del Año ${anio}; Ante mí: _______, NOTARIO Y ESCRIBANO PUBLICO, con Registro Nº _______, con asiento en ésta Ciudad Departamental, ${parrafoComparecientes}
+Y los comparecientes, DICEN: Que han resuelto constituir una SOCIEDAD ANONIMA la que ajustará su desenvolvimiento a los Estatutos cuyas cláusulas son las siguientes:
 
-========================= ESTATUTOS SOCIALES =========================
+TITULO I.- DE LA DENOMINACION, DOMICILIO, DURACION Y OBJETO.-
+ARTICULO 1º: DE LA DENOMINACION Y DOMICILIO: Queda constituida una Sociedad Anónima con la denominación de "_______" SOCIEDAD ANONIMA, que se regirá por el presente Estatuto y por las Disposiciones Legales reglamentarias vigentes en el país.-
+ARTICULO 2º: La Sociedad constituye domicilio legal en la ciudad de _______, Departamento de _______, República del Paraguay, pudiendo establecer Agencias, Sucursales y cualquier otro tipo de Representación dentro o fuera de la República, las cuales se considerarán domiciliadas en el lugar donde se encuentren, a los efectos del cumplimiento de las obligaciones allí contraídas.-
+ARTICULO 3º: DURACION.- La duración de la Sociedad queda fijada en noventa y nueve (99) años, contados a partir de la fecha de inscripción en el Registro Público de Comercio y en el Registro de Personas Jurídicas y Asociaciones, pudiendo ser prorrogado por otro Período.-
+ARTICULO 4º: DEL OBJETO: La Sociedad tiene por objeto dedicarse por cuenta propia, de terceros o asociada a terceros, en cualquier punto de la República o del extranjero, a efectuar las siguientes operaciones: a) COMERCIALES: Compra, venta, acopio, importación, exportación, consignación y distribución, ejercicio de representaciones, comisiones y mandatos, intermediaciones, instalación de depósito, almacenes de ramos generales, referentes a los productos originados en la agricultura, forestación, viveros y aserraderos; todos los subproductos y derivados, elaborados, naturales o semielaborados, pudiendo extender hasta las etapas comerciales e industriales de los mismos, tales como las semillas, cereales, oleaginosas, hojas, etc.; la importación y exportación de todo tipo de mercaderías, productos agropecuarios, forestales, industriales, máquinas y elementos mecanizados de todo tipo para su propia explotación o su comercialización, fraccionamiento y distribución. Comprar y vender derechos y acciones, bonos, debentures, obligaciones y otros títulos de renta, dentro y fuera del país, solicitar privilegios a las autoridades nacionales o en el extranjero a fin de proteger o facilitar el cumplimiento de los fines propuestos; constituir nuevas Sociedades subsidiarias, efectuar fusiones o combinaciones de intereses con personas o Sociedades domiciliadas dentro o fuera del país, y constituir consorcios de todo tipo; b) INDUSTRIAS: Mediante la producción, elaboración y transformación en todas sus formas de materias primas, productos, subproductos semielaborados o manufacturados. Propender al desarrollo de la industria en general y al lucro de esta actividad mediante la asociación de capitales, y a la proyección, ampliación, desarrollo, dirección y administración de cualquier negocio lícito, sea civil o comercial; para el cumplimiento de sus fines podrá solicitar a los Poderes Públicos competentes los beneficios acordados por la Ley Nº 60/90 de Inversiones, como así también los beneficios del sector industrial, comercial o de servicios establecidos por las leyes que rigen o rijan en el futuro; c) INMOBILIARIAS: A la compra, venta, permuta o cualquier otra forma de comercialización de inmuebles, urbanos o rurales, arrendamiento, administración, loteamiento, urbanización y colonización de tierras, con sujeción a las leyes que rigen la materia; d) SERVICIOS: Mediante la prestación de toda clase de servicios a empresas particulares o públicas, nacionales o extranjeras, como ser la contratación de personal técnico o administrativo, asesoramiento, estudio de riesgo y seguros, consultoría y eventos en general; e) MAQUILA: Operaciones industriales maquiladoras o submaquiladoras, total o parcialmente, realizar procesos industriales, comerciales o de servicios incorporando mano de obra y otros recursos nacionales, destinados a la transformación de mercancías de procedencia extranjera, importadas temporalmente a dicho efecto para su reexportación posterior, en ejecución de un contrato suscripto con una empresa domiciliada en el extranjero; f) JOINT VENTURE: Mediante la cooperación o unión de empresas en forma transitoria o permanente para aportar tecnología, capital y otros recursos relacionados con el cumplimiento de su objeto societario, o para emprender una actividad económica, industrial, comercial o de investigación para el mejoramiento y el desarrollo de la entidad; g) LEASING: Mediante el contrato de arrendamiento de bienes diversos, como: maquinarias, vehículos, locales comerciales, fábricas, depósitos, establecimientos agrícolas-ganaderos, silvícolas, etc., optando o no por la compra al finalizar el contrato por valor residual para el desarrollo empresarial. Las actividades económicas que constituyen el objeto de la Sociedad, hasta aquí enumeradas no son taxativas, por lo que no excluyen ningún acto o contrato lícito de cualquier naturaleza que no siendo contrario a estos estatutos, sea de interés para la buena marcha, desenvolvimiento y crecimiento de la Sociedad. La Sociedad tendrá plena capacidad jurídica para el cumplimiento de su objeto y para realizar todo tipo de operaciones previstas en el presente contrato y en las leyes que rigen la materia, pudiendo: a) Celebrar contratos de fletamentos, construcción, compraventa de bienes raíces; b) Planificar, organizar, dirigir y controlar las actividades de la Sociedad por medio de los órganos naturales establecidos en la Ley y estos Estatutos; c) Comprar, transferir y/o locar bienes muebles, inmuebles, automotores y maquinarias o equipos para el funcionamiento de la Sociedad, aceptar hipotecas y prendas; d) Constituir, ceder, descontar o transferir toda clase de derechos reales para el cumplimiento de sus fines; e) Contratar préstamos de bancos y otras entidades financieras para su aplicación al funcionamiento de las actividades normales de la entidad; f) Efectuar depósitos en caja de ahorros, cuentas corrientes y otras operaciones bancarias y financieras; g) Ejercer toda clase de acciones judiciales en defensa de los intereses de la Sociedad; y en fin realizar cuantos actos y actividades fueren necesarios para el logro de sus fines y objetivos, siempre dentro del marco legal y estatutario.-
 
-CAPÍTULO I: DENOMINACIÓN, DOMICILIO, DURACIÓN Y OBJETO:
-ARTÍCULO 1º: DENOMINACIÓN: La sociedad se denominará "____________________ S.A.", fijando su domicilio legal en la ciudad de Asunción, República del Paraguay, pudiendo establecer sucursales, agencias o representaciones en cualquier punto del país o del extranjero.
-ARTÍCULO 2º: DURACIÓN: La duración de la sociedad será de noventa y nueve (99) años contados a partir de su correspondiente inscripción en la Dirección General de los Registros Públicos.
-ARTÍCULO 3º: OBJETO: La sociedad tendrá por objeto dedicarse por cuenta propia, de terceros o asociada a terceros a actividades comerciales, industriales, importación, exportación, prestación de servicios profesionales y técnicos, representaciones y mandatos mercantiles.
+TITULO II.- DEL CAPITAL Y LAS ACCIONES.-
+ARTICULO 5º: DEL CAPITAL SOCIAL: De conformidad con las Disposiciones del Artículo 4º de la Ley 388/94, que modifica el Artículo 1.050 del Código Civil, el Capital Social queda fijado en la suma de GUARANÍES _______ (Gs. _______), representado por _______ Acciones ordinarias y nominativas no endosables de un valor nominal de GUARANÍES _______ (Gs. _______) cada una de ellas, las cuales serán individualizadas correlativamente con números arábigos desde el 1 (uno) en adelante. Y cada Acción totalmente integrada da derecho a un (1) voto. Todas las Acciones quedan totalmente suscriptas e integradas por los accionistas en la proporción y forma que se indica más adelante.-
+ARTICULO 6º: Las acciones serán ordinarias, nominativas no endosables e indivisibles y contendrán las especificaciones previstas en el Código Civil y las que determinare el Directorio y deberán ser firmadas por el PRESIDENTE DEL DIRECTORIO y por el VICE PRESIDENTE. Cada acción ordinaria dará derecho a un (1) voto.-
+ARTICULO 7º: EMISION E INTEGRACION DE ACCIONES.- PREFERENCIAS DE LOS ACCIONISTAS ACTUALES: La emisión de las demás acciones del capital autorizado será dispuesta por la Asamblea Ordinaria, la cual podrá delegar en el Directorio la fijación de las normas para la suscripción e integración de las acciones emitidas y la implementación de las nuevas emisiones, siempre de conformidad a las resoluciones adoptadas por la Asamblea y atendiendo a las necesidades e intereses societarios. Dicha emisión se hará constar en Escritura Pública debiendo procederse a su inscripción en el Registro Público de Comercio. No podrá efectuarse una nueva emisión de acciones sin que la anterior haya sido totalmente suscripta e integrada. En toda nueva emisión de acciones serán preferidas las acciones actuales, en proporción a las que posean al tiempo de la emisión. Corresponderá al Directorio establecer el procedimiento para asegurar este derecho de preferencia. Mientras las acciones no se hallaren totalmente pagadas se otorgarán certificados provisionales nominativos, canjeables una vez que dichas acciones se encuentren totalmente abonadas.-
+ARTICULO 8º: TRANSFERENCIA DE ACCIONES.- En caso de que los accionistas deseen transferir sus acciones, deberán ofertarlas en primer término a los otros accionistas de la empresa. El interesado deberá comunicar fehacientemente por nota al Directorio de la Sociedad su intención de vender, con indicación de las acciones afectadas, valor de venta, condiciones de pago y nombre y dirección del eventual adquirente. El Directorio dentro de las 48 horas comunicará por nota a los demás accionistas la oferta realizada y éstos podrán hacer uso del derecho de preferencia dentro de los sesenta (60) días siguientes. Vencido este plazo, dentro de los cinco (5) días siguientes, las acciones que no fueren adquiridas serán distribuidas a prorrata entre los otros accionistas que las solicitaren. Si vencido este último plazo aún quedaren acciones sin ser compradas, el propietario podrá venderlas a la persona que conforme a la nota presentada sea la interesada. Ningún accionista podrá vender sus acciones a una persona distinta a la indicada en su nota dirigida al Directorio de la Sociedad.-
+ARTICULO 9º: COTIZACION DE LAS ACCIONES.- La sociedad podrá, en cualquier momento en que lo decida el Directorio, previa conformidad de la Asamblea Extraordinaria, cumpliendo con los requisitos y modalidades establecidas en las disposiciones legales que regulen el mercado de capitales, cotizar sus acciones u otros títulos valores y papeles de comercio, en la Bolsa de Valores y Productos de Asunción, en cuyo caso deberá la misma llevar el agregado de Emisora de Capital Abierto. Asimismo, por Resolución de la Asamblea Extraordinaria, y en la medida en que se reúnan las condiciones para ello, la Sociedad podrá hacer lo propio en los mercados bursátiles del exterior.-
 
-CAPÍTULO II: CAPITAL SOCIAL Y ACCIONES:
-ARTÍCULO 4º: El Capital Social autorizado se fija en la suma de GUARANÍES ____________________ (Gs. ____________), representado por ______ acciones nominativas ordinarias de valor nominal de GUARANÍES ____________________ (Gs. ____________) cada una, con derecho a un voto por acción.
+TITULO IV.- OBLIGACIONES O DEBENTURES.-
+ARTICULO 10º: DEBENTURES Y OTROS VALORES.- Queda facultado el Directorio, previa Resolución de la Asamblea Extraordinaria a emitir obligaciones u otros títulos valores y papeles de comercio, nominativos o al portador, dentro o fuera del país, sin más limitaciones que las consignadas en el Código Civil y en las leyes especiales, pudiendo realizar cuantas más gestiones y contratos considere y fueren necesarios para el efecto. Los poderes concedidos al Directorio por este artículo, incluyen la facultad de contratar la emisión de las obligaciones en moneda nacional o extranjera, pudiendo realizar las emisiones con garantía real o especial y con todas las demás condiciones que crea convenientes.-
 
-${articuloQuinto}
+TITULO V.- DIRECCION, ADMINISTRACION Y FISCALIZACION.-
+ARTICULO 11º: DIRECCION SOCIAL: Corresponde al Directorio la dirección y administración de la Sociedad. El Directorio estará integrado por un Presidente, un Vice Presidente y Directores Titulares designados por la Asamblea. Los miembros del Directorio durarán dos (2) años en sus funciones, pudiendo ser reelectos sin limitación alguna. Los mismos permanecerán en sus cargos hasta la realización de la Asamblea que designe a sus reemplazantes.-
+ARTICULO 12º: SESIONES DEL DIRECTORIO.- El Directorio sesionará válidamente con la presencia de la mayoría de los Miembros Titulares y sus decisiones serán adoptadas por simple mayoría de los presentes. En el supuesto de empate, corresponderá al Presidente el voto decisorio. Las resoluciones tomadas se consignarán al final de cada sesión en el Libro de Actas del Directorio y las actas serán firmadas por todos los presentes.-
+ARTICULO 13º: FRECUENCIA DE LAS SESIONES DEL DIRECTORIO.- El Directorio se reunirá regularmente en el domicilio social, convocado por el Presidente, con la frecuencia que la atención de los negocios sociales lo requiera, o cuando lo solicitaren un (1) miembro del Directorio o el Síndico, quienes lo harán por escrito, expresando el motivo de la convocatoria. En este último caso, el Presidente convocará a reunión dentro de un plazo de dos (2) días y no mayor de ocho (8) días a contar desde la fecha de la solicitud, mediante comunicación escrita a través de medios fehacientes o telemáticos y, en caso de urgencia, mediante comunicación telefónica.-
+ARTICULO 14º: COMPATIBILIDAD DEL CARGO DE DIRECTOR CON OTRAS FUNCIONES.- Es compatible el cargo de Director con el desempeño de cualquier otra función rentada de la Sociedad, así como también con el de otros cargos privados y públicos no prohibidos por las leyes, ni incompatibles con los fines sociales. El Directorio delegará funciones ejecutivas o trabajos concretos en un comité ejecutivo o en uno o más gerentes o apoderados, cuya designación podrá recaer o no en los integrantes de dicho cuerpo, con distribución de los cargos y funciones de administración, asignando a cada área un representante por cada veinte por ciento (20%) del paquete accionario.-
+ARTICULO 15º: REMUNERACION DE LOS DIRECTORES Y EL SINDICO.- Los miembros Titulares y Suplentes en funciones y el Síndico gozarán de una asignación mensual que la Asamblea General Ordinaria de Accionistas fijare anualmente, sin perjuicio de otras remuneraciones adicionales o complementarias que pueden ser establecidas al final de cada ejercicio.-
+ARTICULO 16º: FISCALIZACION DE LA SOCIEDAD.- La fiscalización de la Sociedad será ejercida por un Síndico designado en su caso por la Asamblea anualmente, cuyas atribuciones serán las que el Código Civil determine. Asimismo, ésta designará un Síndico Suplente que reemplazará al Titular en caso de ausencia, renuncia, fallecimiento e inhabilidad.-
 
-CAPÍTULO III: DE LA ADMINISTRACIÓN Y REPRESENTACIÓN:
-ARTÍCULO 6º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un (1) ejercicio comercial, pudiendo ser reelectos indefinidamente.
+TITULO VI.- DEL PRESIDENTE.-
+ARTICULO 17º: ATRIBUCIONES DEL PRESIDENTE.- El Presidente del Directorio競tendrá las siguientes atribuciones: a) Ejercer la representación legal de la Sociedad en la forma prevista en estos estatutos; b) Convocar al Directorio y las Asambleas y presidir las reuniones de Directorio; c) Cumplir y hacer cumplir estos estatutos y las resoluciones de las Asambleas y del Directorio.-
+ARTICULO 18º: SUSTITUCION DEL PRESIDENTE.- En caso de renuncia, ausencia, fallecimiento o cualquier otro impedimento del Presidente, lo reemplazará el Vice-Presidente con las mismas atribuciones y facultades.-
 
-CAPÍTULO IV: DE LA FISCALIZACIÓN:
-ARTÍCULO 7º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea General Ordinaria de conformidad con las disposiciones del Código Civil paraguayo.
+TITULO VII.- DEBERES Y ATRIBUCIONES DEL DIRECTORIO.- USO DE LA FIRMA.-
+ARTICULO 19º: FUNCIONES Y FACULTADES DEL DIRECTORIO.- El Directorio tiene amplias facultades para dirigir y administrar la Sociedad, en todo y en cualquier acto y contrato, sea civil, comercial, administrativo, financiero, bancario y/o judicial, que esté dentro del objeto de la Sociedad, directa o indirectamente, o tienda a su cumplimiento, gozando a tal fin de las más amplias facultades legales, incluso las que requieran poder especial, con excepción de las atribuciones personalizadas, las reservas a la Asamblea, a los Accionistas y/o el Síndico. La firma social será ejercida por el Presidente y Vice-Presidente en forma Conjunta o indistintamente. El Directorio establecerá las condiciones y alcances para la contratación de créditos financieros y asunción de garantías hipotecarias y prendarias, en resolución tomada por mayoría de votos presentes. El Directorio, por mayoría absoluta, designará uno o más apoderados, que tendrán el uso de la firma social, con las facultades establecidas en los poderes respectivos, los cuales serán pasados en Escritura Pública e inscriptos en el Registro Público respectivo. Es de competencia del Directorio realizar, entre los que son autorizados, los siguientes actos: a) Administrar y dirigir los negocios sociales; b) Resolver los casos no previstos en los estatutos, dando la intervención al Síndico; c) Disponer la forma de pago de las acciones que se emiten con posterioridad al acto de constitución de la Sociedad; d) Convocar a Asambleas Ordinarias y Extraordinarias; e) Presentar anualmente la memoria del ejercicio, el balance, el inventario y la cuenta de ganancias y pérdidas; f) Nombrar o remover al gerente general, a los gerentes y apoderados y a los demás empleados, y celebrar con los mismos contratos de trabajo individuales o colectivos, fijar sus sueldos y sus deberes y atribuciones; g) Realizar en nombre de la Sociedad cuantas operaciones y gestiones fuesen necesarias, para la obtención del objeto social, estando investido a tal efecto de los más amplios poderes, y para ello podrá adquirir por compra u otra forma legal, bienes muebles, inmuebles y/o semovientes, venderlos, arrendarlos, transferirlos y gravarlos con cualquier clase de garantías, dar y tomar préstamos, garantizarlos o no con derechos reales, dar y tomar avales o fianzas, siempre y cuando no sea en favor de terceros ni en negocios extraños a los intereses de la Sociedad, aceptar, constituir, transferir y extinguir hipotecas, y todo otro derecho real, adquirir o ceder créditos, comprar y vender mercaderías y productos, derechos, títulos y todo tipo de papeles de comercio, negociar todo género de concesiones, dar y recibir depósitos con o sin interés, en moneda nacional y/o extranjera, permutar, dar, recibir en pago cualquier clase de bienes, cobrar, percibir, efectuar pagos y transacciones, aún las que no sean ordinarias de la administración, celebrar contratos de locación y rescindirlos, conferir poderes generales y especiales para todo tipo de representación de la Sociedad, inclusive para aquellos actos enumerados taxativamente en el Capítulo VII, Del Mandato, del Código Civil, y revocarlos, formular denuncias y entablar querellas en nombre de la Sociedad, registrar, adquirir, transferir y rescindir marcas de fábrica y de comercio, patentes, licencias, franquicias y todo otro tipo de concesión de empresas del país o del extranjero, efectuar toda clase de operaciones financieras con toda clase de bancos y demás instituciones financieras, públicas o privadas, del país o del extranjero, pudiendo solicitar y obtener créditos, descuentos, realizar depósitos, operar en cuentas corrientes, girar contra los fondos depositados o en descubierto, con la correspondiente autorización de la entidad bancaria del caso, extraer parcial o totalmente lo depositado en nombre de la Sociedad, librar y aceptar letras de cambio, cheques, vales, giros, cartas de crédito, pagarés y demás documentos de créditos, endosarlos, negociarlos, etc., para todo cual podrá suscribir cuantos instrumentos públicos y privados fueren menester. La enunciación que antecede no es limitativa ni taxativa, sino simplemente enunciativa, pues la Sociedad podrá hacer toda clase de negocios que resuelvan los socios y que sean permitidos por las leyes, que relacionen directa o indirectamente con su objeto.-
 
-CAPÍTULO V: DE LAS ASAMBLEAS:
-ARTÍCULO 8º (CLASES DE ASAMBLEAS): Las Asambleas de Accionistas serán Ordinarias y Extraordinarias. Serán convocadas por el Directorio, o a pedido del Síndico o por accionistas que representen por lo menos el cinco por ciento (5%) del capital integrado. La Asamblea General Ordinaria se reunirá anualmente dentro de los cuatro (4) meses posteriores al cierre del ejercicio social para considerar la memoria del Directorio, balance general, estado de resultados, destino de utilidades y elección de autoridades.
-ARTÍCULO 9º (QUÓRUM Y MAYORÍAS): La Asamblea Ordinaria sesionará en primera convocatoria con la presencia de accionistas que representen la mayoría de las acciones con derecho a voto. Las resoluciones se adoptarán por mayoría absoluta de los votos presentes. Las Asambleas Extraordinarias se regirán por el quórum y mayorías calificados conforme al Código Civil.
+TITULO VIII.- DE LAS ASAMBLEAS.-
+ARTICULO 20º: ASAMBLEAS ORDINARIAS.- La Asamblea General Ordinaria se reunirá dentro de los cuatro (4) meses siguientes al cierre del ejercicio anual o cuando fuere necesario o conveniente a los intereses sociales. Son atribuciones de las Asambleas Ordinarias: a) La consideración de la memoria anual, balance general, cuentas de ganancias y pérdidas e informe del Síndico; b) Elección de los miembros del Directorio y de los Síndicos y fijación de sus remuneraciones y gratificaciones; c) Constitución de fondos de reserva y distribución de utilidades; d) Cualquier otro punto incluido en el orden del día.-
+ARTICULO 21º: ASAMBLEAS EXTRAORDINARIAS.- Las Asambleas Extraordinarias se reunirán cuando el Directorio o el Síndico lo consideren necesario o lo soliciten accionistas que cuando menos representen el veinte por ciento (20%) de capital integrado. En este último caso deberá realizarse la Asamblea dentro de los treinta (30) días de su petición.-
+ARTICULO 22º: QUORUM ASAMBLEARIO.- Las Asambleas Ordinarias se considerarán válidamente constituidas con la asistencia de accionistas que representen por lo menos la mitad más una de las acciones con derecho a voto. Las Extraordinarias lo harán con la asistencia de accionistas que representen el sesenta por ciento (60%) de las acciones con derecho a voto. Podrán realizarse la primera y la segunda convocatorias simultáneamente, y en este caso, la Asamblea, en segunda convocatoria, podrá celebrarse el mismo día, una hora después de la fijación para la primera. Las resoluciones adoptadas por la Asamblea, en segunda convocatoria, serán válidas cualquiera sea el número de acciones representadas en ellas, en el caso de las Ordinarias y con los accionistas que representen cuando menos el treinta por ciento (30%) de las acciones con derecho a voto, en el de las Extraordinarias. Las decisiones de las Asambleas se adoptarán por mayoría absoluta, es decir, la mitad más una de las acciones integradas, excepto en los casos previstos en el Código Civil, en el que la mayoría requerida será la establecida en dicho cuerpo legal. Las convocatorias para las Asambleas, tanto ordinarias como extraordinarias, se harán por avisos publicados en un diario de gran circulación por cinco (5) días consecutivos con diez (10) días de anticipación por lo menos o por tres (3) días por lo menos, según se trate de primera o segunda convocatoria.-
+ARTICULO 23º: PARTICIPACION EN LAS ASAMBLEAS.- Los accionistas podrán concurrir personalmente o hacerse representar en las Asambleas, por mandatarios socios o extraños, bastando a tal efecto una simple carta poder con firma autenticada o registrada en la Sociedad, dirigida al Presidente.-
+ARTICULO 24º: DEPOSITO DE ACCIONES.- Para tomar parte de las deliberaciones de las Asambleas, los accionistas deberán depositar sus acciones en la caja social con tres (3) días hábiles de anticipación por lo menos, o presentar un recibo o certificado expedido por un banco del país o del extranjero que acredite hallarse depositadas en él las acciones. Dicha certificación bancaria deberá adjuntar fotocopia autenticada, en anverso y reverso, de las acciones depositadas. Los accionistas recibirán en cambio un boleto de entrada en el cual constará el número de votos a que tienen derecho.-
 
-CAPÍTULO VI: DEL EJERCICIO SOCIAL:
-ARTÍCULO 10º (EJERCICIO SOCIAL): El ejercicio social cerrará el treinta y uno (31) de diciembre de cada año, fecha en la que se confeccionará el Inventario General, Balance General y Cuadro Demostrativo de Pérdidas y Ganancias conforme a las normas contables y leyes tributarias vigentes.
-ARTÍCULO 11º (DISTRIBUCIÓN DE UTILIDADES): De las utilidades líquidas y realizadas que resulten de cada ejercicio, se destinará obligatoriamente: a) Un cinco por ciento (5%) para el Fondo de Reserva Legal, hasta alcanzar el veinte por ciento (20%) del Capital Social; b) La remuneración del Directorio y Síndicos aprobada por la Asamblea; c) El remanente tendrá el destino que determine la Asamblea General de Accionistas.
+TITULO IX.- BALANCE, RESERVA Y DISTRIBUCION DE UTILIDADES.-
+ARTICULO 25º: EJERCICIO SOCIAL PREPARACION Y PUBLICIDAD DE ESTADOS CONTABLES.- El ejercicio comienza el 1 de enero y termina el 31 de diciembre de cada año. Cerrando el ejercicio anual, se confeccionará el Inventario, el Balance General y la Cuenta de Ganancias y Pérdidas, conforme a las normas técnicas de la materia, que juntamente con la Memoria del Presidente e Informe del Síndico, deberán ser puestos a disposición de los accionistas en el domicilio social, por lo menos quince (15) días antes de la fecha de la Asamblea.-
+ARTICULO 26º: DISTRIBUCION DE UTILIDADES.- Las utilidades líquidas de cada ejercicio, serán distribuidas de la siguiente forma: a) Cinco por ciento (5%) al fondo de reserva legal, hasta alcanzar el veinte por ciento (20%) del capital social suscripto; b) Hasta el diez por ciento (10%) podrá destinarse a gratificaciones o remuneraciones especiales a los empleados y funcionarios de la Sociedad; c) El remanente se distribuirá entre los accionistas en concepto de dividendos, si la Asamblea no resolviese destinar una parte o la totalidad, para crear otras reservas ordinarias o extraordinarias.-
+ARTICULO 27º: PAGO DE LOS DIVIDENDOS.- Los dividendos serán abonados en el plazo, forma y condiciones que resuelva la Asamblea o en su caso, conforme lo disponga el Directorio.-
 
-CAPÍTULO VII: DE LA DISOLUCIÓN Y LIQUIDACIÓN:
-ARTÍCULO 12º (DISOLUCIÓN): La sociedad se disolverá por cualquiera de las causales previstas en el Artículo 1003 y concordantes del Código Civil de la República del Paraguay.
-ARTÍCULO 13º (LIQUIDACIÓN): La liquidación de la sociedad será practicada por el Directorio en ejercicio o por los liquidadores designados por la Asamblea General de Accionistas bajo la fiscalización del Síndico actuante, procediéndose a la cancelación del pasivo social y a la distribución del remanente entre los accionistas en proporción al capital integrado.
+TITULO X.- DE LA LIQUIDACION.-
+ARTICULO 28º: FORMALIDADES Y EFECTOS DE LA DISOLUCION.- En caso de disolución de la Sociedad por haber ocurrido uno de los supuestos previstos en el Código Civil, por resolución de la Asamblea Extraordinaria u otra causa, se procederá a su liquidación por el Directorio bajo la vigilancia del Síndico, procediéndose conforme lo resolviere la Asamblea y las disposiciones del Código Civil.-
 
-===================== DISPOSICIONES TRANSITORIAS =====================
-PRIMERA: DESIGNACIÓN DEL PRIMER DIRECTORIO Y SINDICATURA: De conformidad con los presentes Estatutos Sociales, los comparecientes resuelven por unanimidad designar para integrar los órganos de administración y fiscalización del primer ejercicio social a las siguientes personas:
+TITULO XI.- DISPOSICIONES ESPECIALES Y TRANSITORIAS.-
+ARTICULO 29º: CAPITAL SOCIAL EMITIDO E INTEGRADO.- Quedan emitidas la totalidad de las Acciones del Capital Social, de la siguiente forma:
+${lineasSuscripcion.join('\n')}
+totalizando el cien por ciento (100%) del capital emitido y suscripto en este acto de constitución.-
+ARTICULO 30º: Queda designado el Primer Directorio de la Sociedad como sigue:
 ${directoresTransitorios.join('\n')}
-quienes encontrándose presentes aceptan expresamente los cargos conferidos, fijan domicilio especial a los efectos sociales en la sede de la sociedad y prestan juramento de ley para su fiel y leal desempeño.
+ARTICULO 31º: La Escribana autorizante queda autorizada para gestionar la aprobación e inscripción del presente Estatuto y a realizar las gestiones pertinentes para la habilitación de la Sociedad, inclusive con facultad para aceptar las modificaciones exigidas por las autoridades competentes, siempre que no importe mayor responsabilidad a los socios, firmando los instrumentos necesarios al efecto, solicitar inscripciones, etc.-
 
-Leída y ratificada la presente escritura, la firman los comparecientes en señal de plena conformidad, ante mí, el Notario autorizante que doy fe.`;
+Bajo tales cláusulas dan por celebrado el presente contrato de Sociedad Anónima, a cuyo fiel cumplimiento se obligan las partes conforme a derecho.-
+Leída que fue por el autorizante, se ratifican y firman los comparecientes, por ante mí, de todo lo cual y de haber recibido personalmente sus declaraciones de voluntad, doy fe.- FIRMADOS: ${firmasSocios}.- ANTE MI: _______.- SIGUE EN LA HOJA DE SEGURIDAD ACTUACION NOTARIAL DE LA SERIE _______ Nº: _______ CON...///`;
 }
 
 // Modelos y Plantillas Notariales Oficiales
@@ -260,55 +277,7 @@ export const PLANTILLAS_NOTARIALES: PlantillaNotarial[] = [
     nombre: 'Constitución de S.A.',
     categoriaSugerida: 'Contratos Privados',
     descripcion: 'Estatutos y formalización de Sociedad Anónima (C.C. Paraguayo).',
-    contenido: `ESCRITURA NÚMERO ______.- CONSTITUCIÓN DE SOCIEDAD ANÓNIMA DENOMINADA "____________________ S.A.".-
-
-En la ciudad de Asunción, Capital de la República del Paraguay, a los _____ días del mes de ____________ del año dos mil veintiséis, ante mí, Notario y Escribano Público Titular del Registro Notarial Nº ______, comparecen los señores:
-1) Don/Doña ____________________, de nacionalidad paraguaya, mayor de edad, estado civil __________, domiciliado/a en ____________________, titular de la Cédula de Identidad Civil Nº ____________; y
-2) Don/Doña ____________________, de nacionalidad paraguaya, mayor de edad, estado civil __________, domiciliado/a en ____________________, titular de la Cédula de Identidad Civil Nº ____________;
-personas hábiles y civilmente capaces para este acto, a quienes doy fe de conocer, y dicen:
-Que han resuelto constituir una Sociedad Anónima de conformidad con las disposiciones del Código Civil de la República del Paraguay y leyes complementarias vigentes, la cual se regirá por los siguientes Estatutos Sociales:
-
-========================= ESTATUTOS SOCIALES =========================
-
-CAPÍTULO I: DENOMINACIÓN, DOMICILIO, DURACIÓN Y OBJETO:
-ARTÍCULO 1º: DENOMINACIÓN: La sociedad se denominará "____________________ S.A.", fijando su domicilio legal en la ciudad de Asunción, República del Paraguay, pudiendo establecer sucursales, agencias o representaciones en cualquier punto del país o del extranjero.
-ARTÍCULO 2º: DURACIÓN: La duración de la sociedad será de noventa y nueve (99) años contados a partir de su correspondiente inscripción en la Dirección General de los Registros Públicos.
-ARTÍCULO 3º: OBJETO: La sociedad tendrá por objeto dedicarse por cuenta propia, de terceros o asociada a terceros a actividades comerciales, industriales, importación, exportación, prestación de servicios profesionales y técnicos, representaciones y mandatos mercantiles.
-
-CAPÍTULO II: CAPITAL SOCIAL Y ACCIONES:
-ARTÍCULO 4º: El Capital Social autorizado se fija en la suma de GUARANÍES ____________________ (Gs. ____________), representado por ______ acciones nominativas ordinarias de valor nominal de GUARANÍES ____________________ (Gs. ____________) cada una, con derecho a un voto por acción.
-
-ARTÍCULO 5º (EMISIÓN Y SUSCRIPCIÓN): El Capital Social inicial queda totalmente emitido, suscripto e integrado por los comparecientes en las siguientes proporciones:
-   a) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);
-   b) _______ suscribe _______ acciones ordinarias, representativas de GUARANÍES _______ (Gs. _______);
-totalizando el cien por ciento (100%) del capital emitido y suscripto en este acto de constitución.
-
-CAPÍTULO III: DE LA ADMINISTRACIÓN Y REPRESENTACIÓN:
-ARTÍCULO 6º: La dirección y administración de la sociedad estará a cargo de un Directorio compuesto por un (1) Presidente y Directores Titulares y Suplentes, elegidos por la Asamblea General Ordinaria por el período de un (1) ejercicio comercial, pudiendo ser reelectos indefinidamente.
-
-CAPÍTULO IV: DE LA FISCALIZACIÓN:
-ARTÍCULO 7º: La fiscalización de la gestión social estará a cargo de un Síndico Titular y un Síndico Suplente designados anualmente por la Asamblea General Ordinaria de conformidad con las disposiciones del Código Civil paraguayo.
-
-CAPÍTULO V: DE LAS ASAMBLEAS:
-ARTÍCULO 8º (CLASES DE ASAMBLEAS): Las Asambleas de Accionistas serán Ordinarias y Extraordinarias. Serán convocadas por el Directorio, o a pedido del Síndico o por accionistas que representen por lo menos el cinco por ciento (5%) del capital integrado. La Asamblea General Ordinaria se reunirá anualmente dentro de los cuatro (4) meses posteriores al cierre del ejercicio social para considerar la memoria del Directorio, balance general, estado de resultados, destino de utilidades y elección de autoridades.
-ARTÍCULO 9º (QUÓRUM Y MAYORÍAS): La Asamblea Ordinaria sesionará en primera convocatoria con la presencia de accionistas que representen la mayoría de las acciones con derecho a voto. Las resoluciones se adoptarán por mayoría absoluta de los votos presentes. Las Asambleas Extraordinarias se regirán por el quórum y mayorías calificados conforme al Código Civil.
-
-CAPÍTULO VI: DEL EJERCICIO SOCIAL:
-ARTÍCULO 10º (EJERCICIO SOCIAL): El ejercicio social cerrará el treinta y uno (31) de diciembre de cada año, fecha en la que se confeccionará el Inventario General, Balance General y Cuadro Demostrativo de Pérdidas y Ganancias conforme a las normas contables y leyes tributarias vigentes.
-ARTÍCULO 11º (DISTRIBUCIÓN DE UTILIDADES): De las utilidades líquidas y realizadas que resulten de cada ejercicio, se destinará obligatoriamente: a) Un cinco por ciento (5%) para el Fondo de Reserva Legal, hasta alcanzar el veinte por ciento (20%) del Capital Social; b) La remuneración del Directorio y Síndicos aprobada por la Asamblea; c) El remanente tendrá el destino que determine la Asamblea General de Accionistas.
-
-CAPÍTULO VII: DE LA DISOLUCIÓN Y LIQUIDACIÓN:
-ARTÍCULO 12º (DISOLUCIÓN): La sociedad se disolverá por cualquiera de las causales previstas en el Artículo 1003 y concordantes del Código Civil de la República del Paraguay.
-ARTÍCULO 13º (LIQUIDACIÓN): La liquidación de la sociedad será practicada por el Directorio en ejercicio o por los liquidadores designados por la Asamblea General de Accionistas bajo la fiscalización del Síndico actuante, procediéndose a la cancelación del pasivo social y a la distribución del remanente entre los accionistas en proporción al capital integrado.
-
-===================== DISPOSICIONES TRANSITORIAS =====================
-PRIMERA: DESIGNACIÓN DEL PRIMER DIRECTORIO Y SINDICATURA: De conformidad con los presentes Estatutos Sociales, los comparecientes resuelven por unanimidad designar para integrar los órganos de administración y fiscalización del primer ejercicio social a las siguientes personas:
-- PRESIDENTE DEL DIRECTORIO: Don/Doña _______;
-- DIRECTOR TITULAR: Don/Doña _______;
-- SÍNDICO TITULAR: Don/Doña _______;
-quienes encontrándose presentes aceptan expresamente los cargos conferidos, fijan domicilio especial a los efectos sociales en la sede de la sociedad y prestan juramento de ley para su fiel y leal desempeño.
-
-Leída y ratificada la presente escritura, la firman los comparecientes en señal de plena conformidad, ante mí, el Notario autorizante que doy fe.`
+    contenido: construirConstitucionSA(2)
   },
   {
     id: 'contrato_compraventa',
@@ -474,7 +443,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [showSplitScreen, setShowSplitScreen] = useState<boolean>(false);
 
   // Estado del Redactor de Escritos
-  const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
+  const [textoLateral, setTextoLateral] = useState<string>('PARA REGISTROS PÚBLICOS - PROTOCOLO NOTARIAL');
   const [editorText, setEditorText] = useState<string>('');
   const [documentTitle, setDocumentTitle] = useState<string>('Escrito en Blanco');
   const [selectedCategoryForSave, setSelectedCategoryForSave] = useState<string>('Contratos Privados');
@@ -544,6 +513,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
   const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
   const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
+  const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -1019,8 +989,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       candidates.push({
         pos: posNominal,
         instruccion: 'Insertar Valor Nominal por Acción',
-        ayuda: 'Valor nominal individual asignado a cada acción en Guaraníes.',
-        placeholder: 'Ej. 500.000 / QUINIENTOS MIL'
+        ayuda: 'Valor nominal individual asignado a cada acción en Guaraníes. Puede ingresar el número con puntos separadores de miles.',
+        placeholder: 'Ej. 500.000'
       });
     }
 
@@ -1030,8 +1000,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       candidates.push({
         pos: posMontoSuscripto,
         instruccion: 'Insertar Monto Suscripto en Guaraníes',
-        ayuda: 'Monto en Guaraníes correspondiente a las acciones suscriptas.',
-        placeholder: 'Ej. 250000000'
+        ayuda: 'Monto en Guaraníes correspondiente a las acciones suscriptas. Puede ingresar el número con puntos separadores de miles.',
+        placeholder: 'Ej. 250.000.000'
       });
     }
 
@@ -1041,7 +1011,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       candidates.push({
         pos: posGs,
         instruccion: 'Insertar Monto en Guaraníes (Cifras)',
-        ayuda: 'Monto numérico en Guaraníes.',
+        ayuda: 'Monto numérico en Guaraníes. Puede ingresar el número con puntos separadores de miles.',
         placeholder: 'Ej. 50.000.000'
       });
     }
@@ -1054,9 +1024,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         pos: posMonto,
         instruccion: isMonetaryBlock ? 'Insertar Monto o Capital Social (Bloque Completo)' : 'Insertar Monto o Precio',
         ayuda: isMonetaryBlock
-          ? 'Ingrese el monto en números (ej. 50000000). El sistema formateará y reemplazará automáticamente el bloque completo por: GUARANÍES CINCUENTA MILLONES (Gs. 50.000.000).'
-          : 'Monto en Guaraníes. Si escribe números, se formatearán y convertirán automáticamente a letras.',
-        placeholder: isMonetaryBlock ? 'Ej. 50000000' : 'Ej. 50000000 / CINCUENTA MILLONES'
+          ? 'Ingrese el monto en números (ej. 50.000.000). El sistema formateará y reemplazará automáticamente el bloque completo por: GUARANÍES CINCUENTA MILLONES (Gs. 50.000.000). Puede ingresar el número con puntos separadores de miles.'
+          : 'Monto en Guaraníes. Si escribe números, se formatearán y convertirán automáticamente a letras. Puede ingresar el número con puntos separadores de miles.',
+        placeholder: isMonetaryBlock ? 'Ej. 50.000.000' : 'Ej. 50.000.000 / CINCUENTA MILLONES'
       });
     }
 
@@ -1167,6 +1137,47 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         instruccion: 'Insertar Año de Otorgamiento',
         ayuda: 'Año de otorgamiento del instrumento notarial.',
         placeholder: 'Ej. 2026 / dos mil veintiséis'
+      });
+    }
+
+    // CAMPOS DE CIERRE DE ESCRITURA MATRIZ (FIRMADOS, ANTE MÍ, SERIE, NÚMERO DE HOJA)
+    const posFirmados = getLastIndex(/(?:firmados\s*[:\.]?|firmado\s*[:\.]?)/i);
+    if (posFirmados !== -1) {
+      candidates.push({
+        pos: posFirmados,
+        instruccion: 'Insertar Nombres de los Firmantes',
+        ayuda: 'Nombres de los comparecientes que suscriben la escritura.',
+        placeholder: 'Ej. JUAN PÉREZ Y MARÍA GÓMEZ'
+      });
+    }
+
+    const posAnteMi = getLastIndex(/(?:ante\s+mí\s*[:\.]?|ante\s+mi\s*[:\.]?)/i);
+    if (posAnteMi !== -1) {
+      candidates.push({
+        pos: posAnteMi,
+        instruccion: 'Insertar Nombre del Escribano',
+        ayuda: 'Nombre completo del Notario autorizante.',
+        placeholder: 'Ej. ROGELIA ZARZA'
+      });
+    }
+
+    const posSerie = getLastIndex(/(?:serie\s*["«']?|serie\b)/i);
+    if (posSerie !== -1) {
+      candidates.push({
+        pos: posSerie,
+        instruccion: 'Insertar Serie de Hoja de Seguridad',
+        ayuda: 'Letras correspondientes a la serie del papel notarial.',
+        placeholder: 'Ej. CQ'
+      });
+    }
+
+    const posNumHoja = getLastIndex(/(?:n[º°o]\s*[:\.]?|número\s*[:\.]?)/i);
+    if (posNumHoja !== -1 && windowText.includes('serie')) {
+      candidates.push({
+        pos: posNumHoja,
+        instruccion: 'Insertar Número de Hoja',
+        ayuda: 'Numeración oficial de la hoja de seguridad.',
+        placeholder: 'Ej. 9488422'
       });
     }
 
@@ -1338,7 +1349,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     // 3. REGLA 2: AUTOCOMPLETADO SILENCIOSO - COMPARECIENTES EN SUSCRIPCIÓN
-    // Si en la suscripción se pide el nombre del socio (ej. "a) _______ suscribe"):
+    // Si en la suscripción se pide el nombre del socio (ej. "El socio Nº 1 _______ suscribe"):
     const isSuscripcionCompareciente =
       plainAfter.startsWith('suscribe') ||
       plainAfter.startsWith('suscriben');
@@ -1348,9 +1359,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       Array.isArray(memoriaActual.comparecientes) &&
       memoriaActual.comparecientes.length > 0
     ) {
+      // Extraer el número del socio buscando la última mención de "socio" antes del espacio en blanco
+      const lastSocioIdx = plainBefore.toLowerCase().lastIndexOf('socio');
+      const socioSnippet = lastSocioIdx !== -1 ? plainBefore.substring(lastSocioIdx) : plainBefore;
+      const matchSocioNum = socioSnippet.match(/socio\s+(?:n[º°o]\s*)?(\d+)/i) || plainBefore.match(/(\d+)[º°o]?\)\s*el\s+socio/i);
       const incisoMatch = plainBefore.match(/([a-z]|\d+)\)\s*$/i);
-      let socioIndex = 0;
-      if (incisoMatch) {
+      let socioIndex = -1;
+
+      if (matchSocioNum) {
+        socioIndex = parseInt(matchSocioNum[1], 10) - 1;
+      } else if (incisoMatch) {
         const letra = incisoMatch[1].toLowerCase();
         const alphabet = 'abcdefghijklmnopqrstuvwxyz';
         const foundIdx = alphabet.indexOf(letra);
@@ -1573,7 +1591,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setHistorialTextos(prev => [...prev, htmlBase]);
 
     // 1. MOTOR INTERCEPTOR DE NÚMEROS A LETRAS
-    const soloDigitos = valorOriginal.replace(/\./g, '').replace(/,/g, '').trim();
+    const soloDigitos = valorOriginal.replace(/\./g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
     const esNumeroPuro = /^\d+$/.test(soloDigitos) && soloDigitos.length > 0;
 
     let textoFinal = '';
@@ -1626,7 +1644,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       (instruccionActual.includes('Compareciente') || instruccionActual.includes('Nombre')) &&
       !instruccionActual.includes('Presidente') &&
       !instruccionActual.includes('Director') &&
-      !instruccionActual.includes('Síndico')
+      !instruccionActual.includes('Síndico') &&
+      !instruccionActual.includes('Escribano') &&
+      !instruccionActual.includes('Firmantes')
     ) {
       const socioUpper = valorOriginal.toUpperCase().trim();
       const socios = [...(nuevaMemoria.comparecientes || [])];
@@ -2135,7 +2155,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Imprimir / Descargar como PDF con los estilos de la hoja notarial (Legal/Oficio y márgenes paraguayos)
+  // Motor de Impresión Oficial Notarial (Hoja de Seguridad / Hoja Verde - Flujo Continuo Nativo)
   const handleImprimirPDF = () => {
     const rawContent = editorContentRef.current?.innerHTML || editorText;
     const content = rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
@@ -2145,13 +2165,54 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     const title = documentTitle.trim() || 'Escrito Notarial';
-    const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
-    const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
-    const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-    const isApproved = String(userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO';
-    const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || isApproved || isWhitelisted;
-    const isWatermarkRequired = !isPaidPlan;
 
+    // 1. Limpieza y Normalización de Párrafos
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+
+    const blockElements = Array.from(tempDiv.querySelectorAll('p, div, li, h1, h2, h3, h4'));
+    let rawParagraphs: string[] = [];
+
+    if (blockElements.length > 0) {
+      blockElements.forEach(el => {
+        const isContainerWithBlocks = (el.tagName.toLowerCase() === 'div' || el.tagName.toLowerCase() === 'section') && el.querySelector('p, div, li');
+        if (isContainerWithBlocks) return;
+
+        const inner = el.innerHTML.trim();
+        if (/<br\s*\/?>/i.test(inner)) {
+          const subParts = inner.split(/<br\s*\/?>/i);
+          subParts.forEach(sp => {
+            const trimmed = sp.trim();
+            if (trimmed) rawParagraphs.push(trimmed);
+          });
+        } else if (inner) {
+          rawParagraphs.push(inner);
+        }
+      });
+    }
+
+    if (rawParagraphs.length === 0) {
+      rawParagraphs = content
+        .split(/(?:<br\s*\/?>\s*)+|\n+/i)
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+    }
+
+    // Filtrar párrafos válidos con texto real
+    const cleanParagraphs: string[] = [];
+    rawParagraphs.forEach(p => {
+      const plainText = p.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
+      if (plainText.length > 0) {
+        cleanParagraphs.push(p.startsWith('<p') ? p : `<p>${p}</p>`);
+      }
+    });
+
+    if (cleanParagraphs.length === 0) {
+      alert('El documento no contiene texto válido para imprimir.');
+      return;
+    }
+
+    // 2. Arquitectura CSS Nativa de Impresión: Flujo continuo con @page :left y @page :right
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -2159,90 +2220,97 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   <title>${title}</title>
   <style>
     @page {
-      size: legal portrait;
-      margin: 0;
+      size: 216mm 330mm portrait;
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 45mm;
+      margin-right: 15mm;
     }
+    @page :left {
+      size: 216mm 330mm portrait;
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 15mm;
+      margin-right: 45mm; /* Lomo en páginas pares / reverso */
+    }
+    @page :right {
+      size: 216mm 330mm portrait;
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 45mm; /* Lomo en páginas impares / anverso */
+      margin-right: 15mm;
+    }
+
     *, *::before, *::after {
       box-sizing: border-box;
     }
+
     html, body {
       margin: 0;
       padding: 0;
       background: #ffffff;
-      color: #0f172a;
-      font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+      color: #000000;
+      font-family: "Times New Roman", Times, serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .hoja-notarial-print {
+
+    .documento-notarial {
       width: 100%;
-      max-width: 850px;
-      margin: 0 auto;
-      padding-top: 180px;
-      padding-bottom: 100px;
-      padding-left: 140px;
-      padding-right: 60px;
-      min-height: 1100px;
-      box-sizing: border-box;
-      font-size: 18px;
-      line-height: 1.75;
+      height: auto;
+      overflow: visible;
+      font-family: "Times New Roman", Times, serif;
+      font-size: 14pt;
+      line-height: 10.2mm;
+      text-align: justify;
+      text-justify: inter-word;
+      color: #000000;
+    }
+
+    p {
+      margin: 0 !important;
+      padding: 0 !important;
+      font-family: "Times New Roman", Times, serif;
+      font-size: 14pt;
+      line-height: 10.2mm !important;
+      text-align: justify;
+      text-justify: inter-word;
+      color: #000000;
+    }
+
+    ul, ol {
+      margin: 0;
+      padding-left: 1.5rem;
+    }
+
+    li {
+      margin: 0 !important;
+      line-height: 10.2mm !important;
       text-align: justify;
     }
-    ul {
-      list-style-type: disc !important;
-      padding-left: 2rem !important;
-      margin-top: 0.5rem;
-      margin-bottom: 0.5rem;
+
+    /* Aislamiento Total: Supresión de cualquier membrete, cabecera o guía */
+    header, .header, .membrete, .logo, .renglones-container, .texto-lateral-izq, .guia-linea, .watermark {
+      display: none !important;
+      visibility: hidden !important;
     }
-    ol {
-      list-style-type: decimal !important;
-      padding-left: 2rem !important;
-      margin-top: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-    li {
-      display: list-item !important;
-      margin-bottom: 0.25rem;
-    }
-    p {
-      margin-bottom: 0.75rem;
-    }
+
     @media print {
       body {
-        margin: 0;
-        padding: 0;
+        margin: 0 !important;
+        padding: 0 !important;
       }
-      .hoja-notarial-print {
-        padding-top: 180px;
-        padding-bottom: 100px;
-        padding-left: 140px;
-        padding-right: 60px;
+      .documento-notarial {
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
       }
-      ${isWatermarkRequired ? `
-      .watermark {
-        display: block !important;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(-45deg);
-        font-size: 80px;
-        color: rgba(255, 0, 0, 0.15);
-        font-weight: bold;
-        text-transform: uppercase;
-        z-index: 9999;
-        pointer-events: none;
-        text-align: center;
-        width: 100%;
-        line-height: 1.2;
-      }
-      ` : ''}
     }
   </style>
 </head>
 <body>
-  ${isWatermarkRequired ? '<div class="watermark">VERSIÓN DE PRUEBA - SÓLO PARA USO NO COMERCIAL</div>' : ''}
-  <div class="hoja-notarial-print">
-    ${content}
+  <div class="documento-notarial">
+    ${cleanParagraphs.join('')}
   </div>
 </body>
 </html>`;
@@ -2256,14 +2324,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         win.focus();
         setTimeout(() => {
           win.print();
-        }, 400);
+        }, 500);
         return;
       }
     } catch (e) {
       console.warn('window.open no disponible, usando fallback con iframe:', e);
     }
 
-    // Fallback con iframe invisible en caso de que window.open sea bloqueado por el navegador/iframe
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -2285,7 +2352,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             iframe.parentNode.removeChild(iframe);
           }
         }, 1200);
-      }, 400);
+      }, 500);
     }
   };
 
@@ -2690,67 +2757,67 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           </div>
 
           {/* 1. PANEL SUPERIOR: DOS COLUMNAS */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 items-stretch">
 
-        {/* ----------------------------------------------------------------------- */}
-        {/* PANEL SUPERIOR - IZQUIERDA (lg:col-span-6): BANNER COMPACTO IA          */}
-        {/* ----------------------------------------------------------------------- */}
-        <div className="lg:col-span-6 bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-inner shrink-0">
-                  <Sparkles className="w-5 h-5 text-[#FF3131]" />
+            {/* ----------------------------------------------------------------------- */}
+            {/* PANEL SUPERIOR - IZQUIERDA: BANNER COMPACTO IA                          */}
+            {/* ----------------------------------------------------------------------- */}
+            <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4 h-full">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-inner shrink-0">
+                      <Sparkles className="w-5 h-5 text-[#FF3131]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
+                        REDACCIÓN ASISTIDA CON INTELIGENCIA ARTIFICIAL
+                      </h3>
+                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
+                        O.L.G.A. IA / ORÁCULO
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
-                    REDACCIÓN ASISTIDA CON INTELIGENCIA ARTIFICIAL
-                  </h3>
-                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
-                    O.L.G.A. IA / ORÁCULO
-                  </span>
-                </div>
+
+                <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                  Solicita contratos, estipulaciones o cláusulas conforme a las leyes paraguayas y adjunta antecedentes.
+                </p>
+
+                {/* Aviso si ya hay un borrador generado esperando en memoria */}
+                {aiDraftProposal && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-2 text-xs font-bold text-amber-800 animate-in fade-in">
+                    <span className="flex items-center gap-1.5 truncate">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+                      <span>Borrador listo para revisión ({aiDraftProposal.trim().split(/\s+/).filter(Boolean).length} pal.)</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAiModalOpen(true)}
+                      className="text-xs font-black text-slate-900 underline hover:text-[#FF3131] shrink-0 cursor-pointer"
+                    >
+                      Abrir Borrador →
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              Solicita contratos, estipulaciones o cláusulas conforme a las leyes paraguayas y adjunta antecedentes.
-            </p>
-
-            {/* Aviso si ya hay un borrador generado esperando en memoria */}
-            {aiDraftProposal && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-2 text-xs font-bold text-amber-800 animate-in fade-in">
-                <span className="flex items-center gap-1.5 truncate">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
-                  <span>Borrador listo para revisión ({aiDraftProposal.trim().split(/\s+/).filter(Boolean).length} pal.)</span>
-                </span>
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => setIsAiModalOpen(true)}
-                  className="text-xs font-black text-slate-900 underline hover:text-[#FF3131] shrink-0 cursor-pointer"
+                  className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 group cursor-pointer border border-slate-800 active:scale-[0.99]"
                 >
-                  Abrir Borrador →
+                  <Sparkles className="w-4 h-4 text-[#FF3131] group-hover:scale-110 transition-transform" />
+                  <span>GENERAR BORRADOR CON IA</span>
                 </button>
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setIsAiModalOpen(true)}
-              className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 group cursor-pointer border border-slate-800 active:scale-[0.99]"
-            >
-              <Sparkles className="w-4 h-4 text-[#FF3131] group-hover:scale-110 transition-transform" />
-              <span>GENERAR BORRADOR CON IA</span>
-            </button>
-          </div>
-        </div>
-
-        {/* ----------------------------------------------------------------------- */}
-        {/* PANEL SUPERIOR - DERECHA (lg:col-span-6): SELECTOR DE PLANTILLAS        */}
-        {/* ----------------------------------------------------------------------- */}
-        <div className="lg:col-span-6 bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+            {/* ----------------------------------------------------------------------- */}
+            {/* PANEL SUPERIOR - DERECHA: SELECTOR DE PLANTILLAS                        */}
+            {/* ----------------------------------------------------------------------- */}
+            <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4 h-full">
           <div className="space-y-3">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -3191,14 +3258,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     min-height: 1100px !important;
                     background-color: #ffffff !important;
                     color: #0f172a !important;
-                    padding-top: 180px !important;
-                    padding-bottom: 100px !important;
-                    padding-left: 140px !important;
-                    padding-right: 60px !important;
-                    font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif !important;
+                    padding-top: 200px !important;
+                    padding-bottom: 95px !important;
+                    padding-left: 170px !important;
+                    padding-right: 55px !important;
+                    font-family: "Times New Roman", Times, serif !important;
                     font-size: 18px !important;
-                    line-height: 1.75 !important;
+                    line-height: 10.4mm !important;
                     text-align: justify !important;
+                    text-justify: inter-word !important;
                     box-sizing: border-box !important;
                   }
                   #editor-notarial-activo * {
@@ -3206,10 +3274,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     font-family: inherit;
                   }
                   #editor-notarial-activo p {
-                    margin-top: 0;
-                    margin-bottom: 1rem;
+                    margin-top: 0 !important;
+                    margin-bottom: 0 !important;
+                    min-height: 10.4mm !important;
                     text-align: justify !important;
-                    line-height: 1.75 !important;
+                    text-justify: inter-word !important;
+                    line-height: 10.4mm !important;
                   }
                   #editor-notarial-activo ul,
                   .editor-notarial-papel ul {
@@ -4038,7 +4108,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               type="text"
               autoFocus={true}
               value={autofillInput}
-              onChange={(e) => setAutofillInput(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                const soloNums = val.replace(/\./g, '').trim();
+                // Si el valor contiene solo números (ignorando puntos)
+                if (/^\d+$/.test(soloNums)) {
+                  // Separar los miles con puntos (.) usando formato de Paraguay
+                  const numParsed = parseInt(soloNums, 10);
+                  if (!isNaN(numParsed)) {
+                    setAutofillInput(numParsed.toLocaleString('es-PY'));
+                    return;
+                  }
+                }
+                // Si el usuario escribe letras o texto mixto, deja el valor tal cual
+                setAutofillInput(val);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
