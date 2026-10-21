@@ -208,30 +208,33 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     const clone = lienzoEl.cloneNode(true) as HTMLElement;
     clone.style.transform = 'none';
 
-    // 1. Mostrar texto espejo y ocultar textareas
+    // 1. Mostrar texto espejo y ocultar textareas UI
     clone.querySelectorAll('textarea').forEach((ta) => ta.remove());
     clone.querySelectorAll('.print\\:block, [class*="print:block"]').forEach((mirror) => {
       mirror.classList.remove('hidden');
       (mirror as HTMLElement).style.display = 'block';
     });
 
-    // 2. Limpiar páginas vacías y borrar lomo a partir de la pág 2
-    const paginas = Array.from(clone.querySelectorAll('.hoja-notarial'));
-    paginas.forEach((pag, index) => {
+    // 2. Limpiar completamente los elementos de UI y lomos viejos del DOM clonado
+    clone.querySelectorAll('.texto-vertical-sello, .lomo-impresion, .guia-impresion, .renglones-container').forEach(el => el.remove());
+
+    // 3. Limpiar páginas vacías de React
+    const paginas = clone.querySelectorAll('.hoja-notarial');
+    paginas.forEach((pag) => {
       const divEspejo = pag.querySelector('.print\\:block') || pag.querySelector('[class*="print:block"]');
       const textoEspejo = divEspejo && divEspejo.textContent ? divEspejo.textContent.trim() : '';
-      
       if (textoEspejo === '') {
         pag.remove();
-      } else {
-        if (index > 0) {
-          pag.querySelectorAll('.texto-vertical-sello, .lomo-impresion').forEach((el) => el.remove());
-        }
       }
     });
 
     const contenidoHtml = clone.innerHTML;
     const titulo = `Documento Notarial - ${tipoDocumento}`;
+
+    // 4. Inyectar el Lomo Vertical solo si es el Protocolo (Página 1)
+    const lomoHtml = tipoDocumento === 'Sellado Notarial - Protocolo' 
+      ? `<div class="texto-vertical-unico"><span>${protocoloTextoVertical}</span></div>` 
+      : '';
 
     const htmlImpresion = `<!DOCTYPE html>
 <html lang="es">
@@ -239,7 +242,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   <meta charset="utf-8">
   <title>${titulo}</title>
   <style>
-    /* 1. MÁRGENES NATIVOS (El navegador controla el papel) */
+    /* 1. MÁRGENES FIJOS ESTILO WORD/DOCS */
     @page {
       size: 216mm 330mm portrait;
       margin-top: 55mm !important;
@@ -247,10 +250,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     }
     @page :left {
       margin-left: 15mm !important;
-      margin-right: 45mm !important; /* Lomo reverso */
+      margin-right: 45mm !important;
     }
     @page :right {
-      margin-left: 45mm !important; /* Lomo anverso */
+      margin-left: 45mm !important;
       margin-right: 15mm !important;
     }
 
@@ -262,31 +265,17 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       print-color-adjust: exact;
     }
 
-    *, *::before, *::after {
-      box-sizing: border-box !important;
-    }
-
-    /* 2. FLUJO CONTINUO (Contenedores transparentes sin altura fija) */
-    .hoja-notarial, .print-container, .documento-notarial, .hoja-notarial > div.z-20 {
+    /* 2. CONTENEDOR MAESTRO */
+    .print-container {
       position: relative !important;
       width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
       margin: 0 !important;
-      padding: 0 !important; /* Padding se anula, @page asume los márgenes */
-      overflow: visible !important;
-      page-break-after: auto !important;
-      break-after: auto !important;
-      border: none !important;
-      box-shadow: none !important;
+      padding: 0 !important;
     }
 
-    /* 3. TRUCO DE OFFSET NEGATIVO PARA EL LOMO */
-    /* El padre empieza en X=45mm, Y=55mm dictado por el @page. */
-    /* Top: 0 (queda en 55mm) | Left: -30mm (le resta 30mm a los 45mm iniciales, dejándolo en 15mm exactos del borde del papel) */
-    .texto-vertical-sello,
-    .lomo-impresion {
+    /* 3. TEXTO VERTICAL COMO DIV EN LA PAGINA 1 */
+    /* Como el contenedor empieza a los 45mm (margen de página), le restamos 30mm para que quede a 15mm físicos del borde */
+    .texto-vertical-unico {
       position: absolute !important;
       top: 0 !important; 
       left: -30mm !important; 
@@ -304,12 +293,26 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       font-weight: 900 !important;
       letter-spacing: 2px !important;
       text-transform: uppercase !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      pointer-events: none !important;
     }
 
-    /* 4. FORMATO DE TEXTO DEL CONTRATO */
+    /* 4. FLUJO LIBRE Y NORMAL PARA EL CONTRATO */
+    /* Aplastamos las cajas de React para que el texto fluya como agua */
+    .hoja-notarial, .hoja-notarial > div.z-20 {
+      position: static !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important; /* Los márgenes los pone el @page */
+      border: none !important;
+      box-shadow: none !important;
+      overflow: visible !important;
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+
+    /* 5. FORMATO DE TEXTO */
     .print\\:block, [class*="print:block"] {
       font-family: "Times New Roman", Times, serif !important;
       font-size: 15px !important;
@@ -317,29 +320,20 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       text-align: justify !important;
       white-space: pre-wrap !important;
       width: 100% !important;
-      height: auto !important;
       color: #000000 !important;
       margin: 0 !important;
       padding: 0 !important;
-      display: block !important;
-    }
-
-    /* Párrafos fluidos (evita que se partan a la mitad) */
-    p, li, div.renglon {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      page-break-after: auto !important;
-      break-after: auto !important;
     }
 
     /* Ocultar UI */
-    .guia-impresion, .renglones-container, .print\\:hidden, textarea { 
-      display: none !important; 
-    }
+    .print\\:hidden { display: none !important; }
   </style>
 </head>
 <body>
-  ${contenidoHtml}
+  <div class="print-container">
+    ${lomoHtml}
+    ${contenidoHtml}
+  </div>
   <script>
     window.onload = () => {
       window.focus();
@@ -355,14 +349,6 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         ventanaImpresion.document.open();
         ventanaImpresion.document.write(htmlImpresion);
         ventanaImpresion.document.close();
-        ventanaImpresion.focus();
-        setTimeout(() => {
-          try {
-            ventanaImpresion.print();
-          } catch (e) {
-            console.warn('Fallback a impresión directa.', e);
-          }
-        }, 300);
         return;
       }
     } catch (e) {
