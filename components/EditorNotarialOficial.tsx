@@ -206,7 +206,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     }
 
     const clone = lienzoEl.cloneNode(true) as HTMLElement;
-    clone.style.transform = 'none'; // Quitar el offset de calibración para la vista de impresión
+    clone.style.transform = 'none';
 
     // 1. Mostrar texto espejo y ocultar textareas
     clone.querySelectorAll('textarea').forEach((ta) => ta.remove());
@@ -215,33 +215,18 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       (mirror as HTMLElement).style.display = 'block';
     });
 
-    // 2. Limpiar páginas vacías (si el espejo no tiene texto)
-    const paginas = clone.querySelectorAll('.hoja-notarial');
-    paginas.forEach((pag) => {
+    // 2. Limpiar páginas vacías y borrar lomo a partir de la pág 2
+    const paginas = Array.from(clone.querySelectorAll('.hoja-notarial'));
+    paginas.forEach((pag, index) => {
       const divEspejo = pag.querySelector('.print\\:block') || pag.querySelector('[class*="print:block"]');
       const textoEspejo = divEspejo && divEspejo.textContent ? divEspejo.textContent.trim() : '';
+      
       if (textoEspejo === '') {
         pag.remove();
-      }
-    });
-
-    // 3. Liberar el salto de página forzado y permitir flujo natural
-    const paginasFinales = clone.querySelectorAll('.hoja-notarial');
-    paginasFinales.forEach((pag, index) => {
-      const htmlPag = pag as HTMLElement;
-      // Quitamos el salto forzado y dejamos que el navegador fluya naturalmente
-      htmlPag.style.pageBreakAfter = 'auto';
-      htmlPag.style.breakAfter = 'auto';
-      htmlPag.style.height = 'auto';
-      htmlPag.style.minHeight = '0';
-      htmlPag.style.maxHeight = 'none';
-      htmlPag.style.padding = '0';
-      htmlPag.style.margin = '0';
-      htmlPag.style.position = 'relative'; 
-
-      // Asegurar renderizado único del texto vertical
-      if (index > 0) {
-        htmlPag.querySelectorAll('.texto-vertical-sello, .lomo-impresion').forEach((el) => el.remove());
+      } else {
+        if (index > 0) {
+          pag.querySelectorAll('.texto-vertical-sello, .lomo-impresion').forEach((el) => el.remove());
+        }
       }
     });
 
@@ -254,103 +239,57 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   <meta charset="utf-8">
   <title>${titulo}</title>
   <style>
-    /* 1. MÁRGENES NATIVOS @PAGE: Flujo natural continuo con alternancia milimétrica */
+    /* 1. MÁRGENES NATIVOS (El navegador controla el papel) */
     @page {
       size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 45mm;
-      margin-right: 15mm;
+      margin-top: 55mm !important;
+      margin-bottom: 25mm !important;
     }
     @page :left {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 15mm;
-      margin-right: 45mm; /* Reverso: margen ancho para lomo a la derecha */
+      margin-left: 15mm !important;
+      margin-right: 45mm !important; /* Lomo reverso */
     }
     @page :right {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 45mm; /* Anverso: margen ancho para lomo a la izquierda */
-      margin-right: 15mm;
-    }
-
-    *, *::before, *::after {
-      box-sizing: border-box !important;
+      margin-left: 45mm !important; /* Lomo anverso */
+      margin-right: 15mm !important;
     }
 
     html, body {
       margin: 0 !important;
       padding: 0 !important;
       background: #ffffff !important;
-      color: #000000 !important;
-      font-family: "Times New Roman", Times, serif !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
 
-    /* 2. CONTENEDORES MAESTROS: Flujo vertical continuo sin cortes artificiales */
-    .print-container,
-    #lienzo-notarial,
-    .documento-notarial,
-    .contenedor-maestro-impresion {
-      display: block !important;
-      width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: transparent !important;
-      position: relative !important;
-      overflow: visible !important;
+    *, *::before, *::after {
+      box-sizing: border-box !important;
     }
 
-    .hoja-notarial {
+    /* 2. FLUJO CONTINUO (Contenedores transparentes sin altura fija) */
+    .hoja-notarial, .print-container, .documento-notarial, .hoja-notarial > div.z-20 {
       position: relative !important;
       width: 100% !important;
       height: auto !important;
       min-height: 0 !important;
       max-height: none !important;
-      overflow: visible !important;
-      padding: 0 !important;
       margin: 0 !important;
-      background: transparent !important;
+      padding: 0 !important; /* Padding se anula, @page asume los márgenes */
+      overflow: visible !important;
       page-break-after: auto !important;
       break-after: auto !important;
-      page-break-inside: auto !important;
-      break-inside: auto !important;
+      border: none !important;
+      box-shadow: none !important;
     }
 
-    .pagina-anverso,
-    .pagina-reverso {
-      padding: 0 !important;
-      margin: 0 !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      width: 100% !important;
-    }
-
-    /* Neutralizar posicionamiento absoluto de capas internas de React */
-    .hoja-notarial > div:not(.texto-vertical-sello):not(.lomo-impresion) {
-      position: static !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      overflow: visible !important;
-    }
-
-    /* 3. OFFSET NEGATIVO: Anclaje milimétrico del lomo en el margen izquierdo físico */
+    /* 3. TRUCO DE OFFSET NEGATIVO PARA EL LOMO */
+    /* El padre empieza en X=45mm, Y=55mm dictado por el @page. */
+    /* Top: 0 (queda en 55mm) | Left: -30mm (le resta 30mm a los 45mm iniciales, dejándolo en 15mm exactos del borde del papel) */
     .texto-vertical-sello,
     .lomo-impresion {
       position: absolute !important;
-      top: 0 !important;
-      left: -30mm !important; /* Offset negativo: compensa los 45mm de @page y se sitúa a 15mm del borde de la hoja */
+      top: 0 !important; 
+      left: -30mm !important; 
       width: 15mm !important;
       height: 250mm !important;
       display: flex !important;
@@ -370,40 +309,37 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       pointer-events: none !important;
     }
 
-    /* Ocultar lomo en páginas 2 en adelante por CSS como blindaje secundario */
-    .hoja-notarial:not(:first-child) .texto-vertical-sello,
-    .hoja-notarial:not(:first-child) .lomo-impresion {
-      display: none !important;
-      visibility: hidden !important;
-    }
-
-    /* 4. FORMATO DE TEXTO DEL CONTRATO (TIMES NEW ROMAN, INTERLINEADO 10.2mm) */
+    /* 4. FORMATO DE TEXTO DEL CONTRATO */
     .print\\:block, [class*="print:block"] {
-      display: block !important;
       font-family: "Times New Roman", Times, serif !important;
       font-size: 15px !important;
       line-height: 10.2mm !important;
       text-align: justify !important;
-      text-justify: inter-word !important;
       white-space: pre-wrap !important;
       width: 100% !important;
       height: auto !important;
       color: #000000 !important;
       margin: 0 !important;
       padding: 0 !important;
+      display: block !important;
     }
 
-    /* Ocultar guías, renglones y elementos innecesarios */
+    /* Párrafos fluidos (evita que se partan a la mitad) */
+    p, li, div.renglon {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+
+    /* Ocultar UI */
     .guia-impresion, .renglones-container, .print\\:hidden, textarea { 
       display: none !important; 
-      visibility: hidden !important;
     }
   </style>
 </head>
 <body>
-  <div class="print-container contenedor-maestro-impresion documento-notarial">
-    ${contenidoHtml}
-  </div>
+  ${contenidoHtml}
   <script>
     window.onload = () => {
       window.focus();
@@ -424,9 +360,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           try {
             ventanaImpresion.print();
           } catch (e) {
-            console.error('Error invoking print:', e);
+            console.warn('Fallback a impresión directa.', e);
           }
-        }, 500);
+        }, 300);
         return;
       }
     } catch (e) {
