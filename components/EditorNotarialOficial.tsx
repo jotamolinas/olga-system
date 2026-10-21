@@ -225,6 +225,26 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       }
     });
 
+    // 3. Liberar el salto de página forzado y permitir flujo natural
+    const paginasFinales = clone.querySelectorAll('.hoja-notarial');
+    paginasFinales.forEach((pag, index) => {
+      const htmlPag = pag as HTMLElement;
+      // Quitamos el salto forzado y dejamos que el navegador fluya naturalmente
+      htmlPag.style.pageBreakAfter = 'auto';
+      htmlPag.style.breakAfter = 'auto';
+      htmlPag.style.height = 'auto';
+      htmlPag.style.minHeight = '0';
+      htmlPag.style.maxHeight = 'none';
+      htmlPag.style.padding = '0';
+      htmlPag.style.margin = '0';
+      htmlPag.style.position = 'relative'; 
+
+      // Asegurar renderizado único del texto vertical
+      if (index > 0) {
+        htmlPag.querySelectorAll('.texto-vertical-sello, .lomo-impresion').forEach((el) => el.remove());
+      }
+    });
+
     const contenidoHtml = clone.innerHTML;
     const titulo = `Documento Notarial - ${tipoDocumento}`;
 
@@ -234,59 +254,103 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   <meta charset="utf-8">
   <title>${titulo}</title>
   <style>
-    /* 1. RESET DE NAVEGADOR: Cero márgenes, nosotros controlamos el papel */
+    /* 1. MÁRGENES NATIVOS @PAGE: Flujo natural continuo con alternancia milimétrica */
     @page {
       size: 216mm 330mm portrait;
-      margin: 0 !important; 
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 45mm;
+      margin-right: 15mm;
     }
-
-    html, body {
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+    @page :left {
+      size: 216mm 330mm portrait;
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 15mm;
+      margin-right: 45mm; /* Reverso: margen ancho para lomo a la derecha */
+    }
+    @page :right {
+      size: 216mm 330mm portrait;
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 45mm; /* Anverso: margen ancho para lomo a la izquierda */
+      margin-right: 15mm;
     }
 
     *, *::before, *::after {
       box-sizing: border-box !important;
     }
 
-    /* 2. CAJAS RÍGIDAS: Imprimir exactamente el bloque de 330mm que armó React */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-family: "Times New Roman", Times, serif !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* 2. CONTENEDORES MAESTROS: Flujo vertical continuo sin cortes artificiales */
+    .print-container,
+    #lienzo-notarial,
+    .documento-notarial,
+    .contenedor-maestro-impresion {
+      display: block !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: transparent !important;
+      position: relative !important;
+      overflow: visible !important;
+    }
+
     .hoja-notarial {
       position: relative !important;
-      width: 216mm !important;
-      height: 329mm !important; /* 1mm menos de 330mm para evitar desbordes y hojas extra */
-      max-height: 329mm !important;
-      overflow: hidden !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      padding: 0 !important;
       margin: 0 !important;
-      background: #ffffff !important;
-      display: block !important;
-      page-break-after: always !important;
-      break-after: page !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
+      background: transparent !important;
+      page-break-after: auto !important;
+      break-after: auto !important;
+      page-break-inside: auto !important;
+      break-inside: auto !important;
     }
 
-    .hoja-notarial:last-child {
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-    }
-
-    /* 3. MÁRGENES FÍSICOS: Aplicados como Padding Interno para mantener la caja intacta */
-    .pagina-anverso {
-      padding: 55mm 15mm 25mm 45mm !important; /* Top, Right, Bottom, Left */
-    }
+    .pagina-anverso,
     .pagina-reverso {
-      padding: 55mm 45mm 25mm 15mm !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      width: 100% !important;
     }
 
-    /* 4. TEXTO VERTICAL: Absoluto a su hoja, flotando perfectamente a la izquierda */
+    /* Neutralizar posicionamiento absoluto de capas internas de React */
+    .hoja-notarial > div:not(.texto-vertical-sello):not(.lomo-impresion) {
+      position: static !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    /* 3. OFFSET NEGATIVO: Anclaje milimétrico del lomo en el margen izquierdo físico */
     .texto-vertical-sello,
     .lomo-impresion {
       position: absolute !important;
-      top: 55mm !important;
-      left: 15mm !important;
+      top: 0 !important;
+      left: -30mm !important; /* Offset negativo: compensa los 45mm de @page y se sitúa a 15mm del borde de la hoja */
       width: 15mm !important;
       height: 250mm !important;
       display: flex !important;
@@ -306,33 +370,40 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       pointer-events: none !important;
     }
 
-    /* Ocultar texto vertical en las páginas posteriores a la 1 */
+    /* Ocultar lomo en páginas 2 en adelante por CSS como blindaje secundario */
     .hoja-notarial:not(:first-child) .texto-vertical-sello,
     .hoja-notarial:not(:first-child) .lomo-impresion {
       display: none !important;
+      visibility: hidden !important;
     }
 
-    /* 5. FORMATO DE TEXTO DEL CONTRATO */
+    /* 4. FORMATO DE TEXTO DEL CONTRATO (TIMES NEW ROMAN, INTERLINEADO 10.2mm) */
     .print\\:block, [class*="print:block"] {
+      display: block !important;
       font-family: "Times New Roman", Times, serif !important;
       font-size: 15px !important;
       line-height: 10.2mm !important;
       text-align: justify !important;
+      text-justify: inter-word !important;
       white-space: pre-wrap !important;
       width: 100% !important;
       height: auto !important;
       color: #000000 !important;
       margin: 0 !important;
+      padding: 0 !important;
     }
 
-    /* Ocultar elementos de UI */
-    .guia-impresion, .renglones-container, .print\\:hidden { 
+    /* Ocultar guías, renglones y elementos innecesarios */
+    .guia-impresion, .renglones-container, .print\\:hidden, textarea { 
       display: none !important; 
+      visibility: hidden !important;
     }
   </style>
 </head>
 <body>
-  ${contenidoHtml}
+  <div class="print-container contenedor-maestro-impresion documento-notarial">
+    ${contenidoHtml}
+  </div>
   <script>
     window.onload = () => {
       window.focus();
@@ -348,6 +419,14 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         ventanaImpresion.document.open();
         ventanaImpresion.document.write(htmlImpresion);
         ventanaImpresion.document.close();
+        ventanaImpresion.focus();
+        setTimeout(() => {
+          try {
+            ventanaImpresion.print();
+          } catch (e) {
+            console.error('Error invoking print:', e);
+          }
+        }, 500);
         return;
       }
     } catch (e) {
