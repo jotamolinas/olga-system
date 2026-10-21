@@ -101,7 +101,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [anioLeg, setAnioLeg] = useState<string>('2026');
 
   // PLANTILLA 0: Protocolo
-  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('');
+  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
   const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>(['']);
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
@@ -206,42 +206,22 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     }
 
     const clone = lienzoEl.cloneNode(true) as HTMLElement;
+    clone.style.transform = 'none'; // Quitar el offset de calibración para la vista de impresión
 
-    // Limpieza de páginas vacías (para evitar hojas en blanco fantasma)
-    const paginas = clone.querySelectorAll('.pagina-anverso, .pagina-reverso');
-    paginas.forEach((pag) => {
-      // Si es un contenedor interno, no procesar como página independiente
-      if (pag.parentElement?.closest('.pagina-anverso, .pagina-reverso')) {
-        return;
-      }
-      const textarea = pag.querySelector('textarea');
-      const texto = textarea ? textarea.value.trim() : '';
-      const divEspejo = pag.querySelector('.print\\:block') || pag.querySelector('[class*="print:block"]');
-      const textoEspejo = divEspejo && divEspejo.textContent ? divEspejo.textContent.trim() : '';
-      
-      // Si la página no tiene texto real escrito, la borramos del DOM clonado
-      if (texto === '' && textoEspejo === '') {
-        pag.remove();
-      }
+    // 1. Mostrar texto espejo y ocultar textareas
+    clone.querySelectorAll('textarea').forEach((ta) => ta.remove());
+    clone.querySelectorAll('.print\\:block, [class*="print:block"]').forEach((mirror) => {
+      mirror.classList.remove('hidden');
+      (mirror as HTMLElement).style.display = 'block';
     });
 
-    // Reparar el salto de página doble (evita hoja en blanco en medio)
-    const paginasFinales = Array.from(clone.querySelectorAll('.pagina-anverso, .pagina-reverso')).filter(
-      (pag) => !pag.parentElement?.closest('.pagina-anverso, .pagina-reverso')
-    );
-    paginasFinales.forEach((pag, index) => {
-      const htmlPag = pag as HTMLElement;
-      // Quitamos el salto forzado que viene heredado de React inline
-      htmlPag.style.pageBreakAfter = '';
-      htmlPag.style.breakAfter = '';
-      
-      // Le reasignamos el salto lógico: a todas sí, a la última no
-      if (index === paginasFinales.length - 1) {
-        htmlPag.style.pageBreakAfter = 'avoid';
-        htmlPag.style.breakAfter = 'avoid';
-      } else {
-        htmlPag.style.pageBreakAfter = 'always';
-        htmlPag.style.breakAfter = 'page';
+    // 2. Limpiar páginas vacías (si el espejo no tiene texto)
+    const paginas = clone.querySelectorAll('.hoja-notarial');
+    paginas.forEach((pag) => {
+      const divEspejo = pag.querySelector('.print\\:block') || pag.querySelector('[class*="print:block"]');
+      const textoEspejo = divEspejo && divEspejo.textContent ? divEspejo.textContent.trim() : '';
+      if (textoEspejo === '') {
+        pag.remove();
       }
     });
 
@@ -254,54 +234,105 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   <meta charset="utf-8">
   <title>${titulo}</title>
   <style>
-    @page { size: 216mm 330mm portrait; margin: 0; }
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; font-family: "Times New Roman", Times, serif; }
-    .print-container { width: 216mm; margin: 0 auto; }
-    .print\\:hidden { display: none !important; }
-    .print\\:block { display: block !important; }
-    .print\\:visible { visibility: visible !important; }
-    .pagina-anverso { padding-left: 45mm !important; padding-right: 15mm !important; }
-    .pagina-reverso { padding-left: 15mm !important; padding-right: 45mm !important; }
-    .lomo-impresion { position: absolute !important; left: 15mm !important; top: 55mm !important; bottom: 25mm !important; width: 15mm !important; display: flex !important; align-items: center !important; justify-content: center !important; }
-    
-    /* Anular gaps y márgenes del contenedor en impresión */
-    .print-container {
-      display: block !important;
-      gap: 0 !important;
-      padding: 0 !important;
-      margin: 0 !important;
+    /* 1. RESET DE NAVEGADOR: Cero márgenes, nosotros controlamos el papel */
+    @page {
+      size: 216mm 330mm portrait;
+      margin: 0 !important; 
     }
 
-    /* Evitar que contenedores vacíos o elementos ocultos generen páginas de relleno */
-    .pagina-anverso:empty, .pagina-reverso:empty {
-      display: none !important;
-    }
-    
-    /* Cada hoja mide exactamente 330mm y fuerza el salto limpio sin sumar gaps */
-    .pagina-anverso, .pagina-reverso {
-      height: 330mm !important;
-      min-height: 330mm !important;
-      max-height: 330mm !important;
+    html, body {
       margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box !important;
+    }
+
+    /* 2. CAJAS RÍGIDAS: Imprimir exactamente el bloque de 330mm que armó React */
+    .hoja-notarial {
+      position: relative !important;
+      width: 216mm !important;
+      height: 329mm !important; /* 1mm menos de 330mm para evitar desbordes y hojas extra */
+      max-height: 329mm !important;
+      overflow: hidden !important;
+      margin: 0 !important;
+      background: #ffffff !important;
+      display: block !important;
       page-break-after: always !important;
       break-after: page !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
-    
-    /* La última página nunca debe forzar un salto extra al final */
-    .pagina-anverso:last-child, .pagina-reverso:last-child {
+
+    .hoja-notarial:last-child {
       page-break-after: avoid !important;
       break-after: avoid !important;
     }
-    div[style*="height: 330mm"] { height: 330mm !important; position: relative !important; overflow: hidden !important; }
+
+    /* 3. MÁRGENES FÍSICOS: Aplicados como Padding Interno para mantener la caja intacta */
+    .pagina-anverso {
+      padding: 55mm 15mm 25mm 45mm !important; /* Top, Right, Bottom, Left */
+    }
+    .pagina-reverso {
+      padding: 55mm 45mm 25mm 15mm !important;
+    }
+
+    /* 4. TEXTO VERTICAL: Absoluto a su hoja, flotando perfectamente a la izquierda */
+    .texto-vertical-sello,
+    .lomo-impresion {
+      position: absolute !important;
+      top: 55mm !important;
+      left: 15mm !important;
+      width: 15mm !important;
+      height: 250mm !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      writing-mode: vertical-rl !important;
+      transform: rotate(180deg) !important;
+      z-index: 100 !important;
+      color: #000000 !important;
+      font-family: sans-serif !important;
+      font-size: 9px !important;
+      font-weight: 900 !important;
+      letter-spacing: 2px !important;
+      text-transform: uppercase !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      pointer-events: none !important;
+    }
+
+    /* Ocultar texto vertical en las páginas posteriores a la 1 */
+    .hoja-notarial:not(:first-child) .texto-vertical-sello,
+    .hoja-notarial:not(:first-child) .lomo-impresion {
+      display: none !important;
+    }
+
+    /* 5. FORMATO DE TEXTO DEL CONTRATO */
+    .print\\:block, [class*="print:block"] {
+      font-family: "Times New Roman", Times, serif !important;
+      font-size: 15px !important;
+      line-height: 10.2mm !important;
+      text-align: justify !important;
+      white-space: pre-wrap !important;
+      width: 100% !important;
+      height: auto !important;
+      color: #000000 !important;
+      margin: 0 !important;
+    }
+
+    /* Ocultar elementos de UI */
+    .guia-impresion, .renglones-container, .print\\:hidden { 
+      display: none !important; 
+    }
   </style>
 </head>
 <body>
-  <div class="print-container">
-    ${contenidoHtml}
-  </div>
+  ${contenidoHtml}
   <script>
     window.onload = () => {
       window.focus();
@@ -333,8 +364,123 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       <style>{`
         .pagina-anverso { padding-left: 45mm; padding-right: 15mm; }
         .pagina-reverso { padding-left: 15mm; padding-right: 45mm; }
-        .lomo-impresion { position: absolute !important; left: 15mm !important; top: 55mm !important; bottom: 25mm !important; width: 15mm !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+        .lomo-impresion, .texto-vertical-sello { position: absolute !important; left: 15mm !important; top: 55mm !important; bottom: 25mm !important; width: 15mm !important; height: 250mm !important; display: flex !important; align-items: center !important; justify-content: center !important; writing-mode: vertical-rl !important; transform: rotate(180deg) !important; z-index: 100 !important; pointer-events: none !important; }
         @media print {
+          @page {
+            size: 216mm 330mm portrait;
+            margin-top: 55mm !important;
+            margin-bottom: 25mm !important;
+          }
+          @page :left {
+            margin-left: 15mm !important;
+            margin-right: 45mm !important; /* Lomo en páginas pares/reverso */
+          }
+          @page :right {
+            margin-left: 45mm !important; /* Lomo en páginas impares/anverso */
+            margin-right: 15mm !important;
+          }
+
+          /* Box Sizing Estricto */
+          *, *::before, *::after,
+          #lienzo-notarial,
+          .print-container,
+          .documento-notarial,
+          .contenedor-maestro-impresion,
+          .pagina-notarial,
+          .pagina-anverso,
+          .pagina-reverso,
+          .hoja-notarial {
+            box-sizing: border-box !important;
+          }
+
+          body * { visibility: hidden !important; }
+          #lienzo-notarial, #lienzo-notarial * { visibility: visible !important; }
+
+          /* Punto de referencia relativo: El contenedor maestro permite anclar el texto vertical */
+          #lienzo-notarial,
+          .documento-notarial,
+          .contenedor-maestro-impresion,
+          .hoja-notarial,
+          .pagina-anverso,
+          .pagina-reverso {
+            position: relative !important;
+          }
+
+          /* Controlar el Sello Vertical Exclusivamente desde CSS con FIXED */
+          .texto-vertical-sello,
+          .lomo-impresion {
+            /* Usar FIXED garantiza anclaje exacto al borde físico de la hoja, ignorando si el contenedor padre es auto */
+            position: fixed !important;
+            top: 55mm !important;
+            left: 15mm !important;
+            height: 250mm !important;
+            width: 15mm !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            writing-mode: vertical-rl !important;
+            transform: rotate(180deg) !important;
+            z-index: 100 !important;
+            color: #64748b !important;
+            font-family: sans-serif !important;
+            font-size: 9px !important;
+            font-weight: 900 !important;
+            letter-spacing: 2px !important;
+            text-transform: uppercase !important;
+            pointer-events: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            float: none !important;
+          }
+
+          /* Asegurar renderizado único: Solo visible en la primera página */
+          .hoja-notarial:not(:first-child) .texto-vertical-sello,
+          .hoja-notarial:not(:first-child) .lomo-impresion,
+          .pagina-reverso .texto-vertical-sello,
+          .pagina-reverso .lomo-impresion {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          /* Cero Alturas Fijas en Impresión: Contenedores fluidos para flujo vertical nativo (sin afectar el texto vertical) */
+          #lienzo-notarial,
+          .print-container,
+          .documento-notarial,
+          .contenedor-maestro-impresion,
+          .pagina-notarial,
+          .pagina-anverso,
+          .pagina-reverso,
+          .hoja-notarial,
+          div[style*="height"]:not(.texto-vertical-sello):not(.lomo-impresion):not(.texto-vertical-contenido),
+          div[style*="min-height"]:not(.texto-vertical-sello):not(.lomo-impresion):not(.texto-vertical-contenido) {
+            position: relative !important;
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            transform: none !important;
+          }
+
+          .pagina-anverso div:not(.texto-vertical-sello):not(.lomo-impresion):not(.texto-vertical-contenido),
+          .pagina-reverso div:not(.texto-vertical-sello):not(.lomo-impresion):not(.texto-vertical-contenido),
+          .hoja-notarial div:not(.texto-vertical-sello):not(.lomo-impresion):not(.texto-vertical-contenido) {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+          }
+
           /* Anular gaps y márgenes del contenedor en impresión */
           .print-container {
             display: block !important;
@@ -344,54 +490,55 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           }
 
           /* Evitar que contenedores vacíos o elementos ocultos generen páginas de relleno */
-          .pagina-anverso:empty, .pagina-reverso:empty {
+          .pagina-anverso:empty, .pagina-reverso:empty, .hoja-notarial:empty {
             display: none !important;
           }
-          
-          /* Cada hoja mide exactamente 330mm y fuerza el salto limpio sin sumar gaps */
-          .pagina-anverso, .pagina-reverso {
-            height: 330mm !important;
-            min-height: 330mm !important;
-            max-height: 330mm !important;
-            margin: 0 !important;
+
+          /* Salto limpio entre carillas: a las páginas no finales sí, a la última no */
+          .pagina-anverso:not(:last-child),
+          .pagina-reverso:not(:last-child),
+          .hoja-notarial:not(:last-child) {
             page-break-after: always !important;
             break-after: page !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
-          
-          /* La última página nunca debe forzar un salto extra al final */
-          .pagina-anverso:last-child, .pagina-reverso:last-child {
+          .pagina-anverso:last-child,
+          .pagina-reverso:last-child,
+          .hoja-notarial:last-child {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
 
-          textarea, div {
-            overflow: visible !important;
-            height: auto !important;
-            max-height: none !important;
+          /* Párrafos Fluidos: evitar cortes a mitad de renglón sin forzar saltos rígidos */
+          p,
+          .linea-renglon,
+          .renglon-impresion,
+          .linea-texto,
+          li,
+          div.renglon,
+          [class*="linea-"],
+          [class*="renglon-"] {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
-          .pagina-anverso { padding-left: 45mm !important; padding-right: 15mm !important; }
-          .pagina-reverso { padding-left: 15mm !important; padding-right: 45mm !important; }
-          .lomo-impresion { position: absolute !important; left: 15mm !important; top: 55mm !important; bottom: 25mm !important; width: 15mm !important; display: flex !important; align-items: center !important; justify-content: center !important; }
-          body * { visibility: hidden !important; }
-          #lienzo-notarial, #lienzo-notarial * { visibility: visible !important; }
-          #lienzo-notarial { 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            width: 216mm !important;
-            height: auto !important;
-            min-height: 330mm !important;
-            box-shadow: none !important;
-            background: #ffffff !important;
-            color: #000000 !important;
+
+          textarea {
+            display: none !important;
           }
+          .print\\:hidden, [class*="print:hidden"] {
+            display: none !important;
+          }
+          .print\\:block, [class*="print:block"] {
+            display: block !important;
+          }
+
           .renglones-container,
           .texto-lateral-izq,
           .guia-impresion {
+            display: none !important;
             visibility: hidden !important;
           }
           .guia-linea {
@@ -405,7 +552,6 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             box-shadow: none !important;
             padding: 0 !important;
           }
-          @page { size: 216mm 330mm portrait; margin: 0; }
         }
 
         .pagina-notarial {
@@ -1007,7 +1153,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   return (
                     <div 
                       key={index} 
-                      className={`relative bg-white text-black shrink-0 print:shadow-none print:m-0 shadow-2xl ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
+                      className={`hoja-notarial pagina-virtual relative bg-white text-black shrink-0 print:shadow-none print:m-0 print:!h-auto print:!min-h-0 print:!max-h-none print:!overflow-visible shadow-2xl ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
                       style={{ width: '216mm', height: '330mm', pageBreakAfter: esUltima ? 'avoid' : 'always' }}
                     >
                       {/* CAPA 0: GRILLA (Invisible al imprimir) */}
@@ -1022,14 +1168,14 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                         ))}
                       </div>
 
-                      {/* CAPA 1: TEXTO VERTICAL (Lomo, solo en Anverso) */}
-                      {isAnverso && (
+                      {/* CAPA 1: TEXTO VERTICAL (Lomo, ÚNICAMENTE en la Primera Página) */}
+                      {index === 0 && (
                         <div 
-                          className="lomo-impresion pointer-events-none z-10 print:visible"
-                          style={{ position: 'absolute', left: '15mm', top: '55mm', bottom: '25mm', width: '15mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          className="texto-vertical-sello lomo-impresion pointer-events-none z-10 print:visible"
+                          style={{ position: 'absolute', left: '15mm', top: '55mm', bottom: '25mm', width: '15mm', height: '250mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <span
-                            className="text-[10px] font-bold tracking-[2px] whitespace-nowrap text-slate-400 print:text-black"
+                            className="texto-vertical-contenido text-[10px] font-bold tracking-[2px] whitespace-nowrap text-slate-400 print:text-black"
                             style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
                           >
                             {protocoloTextoVertical}
@@ -1039,7 +1185,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
 
                       {/* CAPA 2: EDITOR (y espejo de impresión) */}
                       <div 
-                        className={`absolute inset-0 z-20 ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
+                        className={`absolute inset-0 z-20 print:!static print:!p-0 print:!h-auto print:!overflow-visible ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
                         style={{ 
                           position: 'absolute', 
                           top: 0, 
@@ -1061,7 +1207,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                         />
                         {/* ESPEJO PARA IMPRESIÓN */}
                         <div 
-                          className="hidden print:block w-full h-full text-black font-serif font-bold text-justify whitespace-pre-wrap"
+                          className="hidden print:block w-full text-black font-serif font-bold text-justify whitespace-pre-wrap print:!h-auto print:!overflow-visible"
                           style={{ lineHeight: '10.2mm', fontSize: '15px' }}
                         >
                           {textoPagina}
