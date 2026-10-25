@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @media print {
+    @page {
+        size: 216mm 330mm portrait;
+        margin: 15mm;
+    }
+
     #main-content-viewport {
         /* Make sure viewport and its contents can expand for printing */
         overflow: visible !important;

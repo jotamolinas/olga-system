@@ -20,17 +20,32 @@ import {
   Calendar,
   Loader2,
   Copy,
-  Mail
+  Mail,
+  Sun,
+  Moon
 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDocs, query, where, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDocs, query, where, setDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare } from '../types';
+import {
+  MembreteEscribaniaConfig,
+  cargarMembreteUsuario,
+  guardarMembreteUsuario,
+  MEMBRETE_DEFAULT,
+} from '../types/presupuesto';
 
 export interface ConfiguracionInstitucionalData {
   nombreInstitucion: string;
+  nombreNotario?: string;
   ruc: string;
   registroNotarial: string;
+  direccion?: string;
+  telefono?: string;
+  email?: string;
+  timbradoNumero?: string;
+  timbradoVigenciaInicio?: string;
+  timbradoVigenciaFin?: string;
   logoUrl: string | null;
   logo_institucional?: string | null;
   notificacionesVencimiento: boolean;
@@ -270,11 +285,38 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   };
 
   const initialValues = loadStoredConfig();
+  const userKey = currentUser?.uid || currentUser?.email || userData?.uid || 'default';
+  const membreteUsuario = cargarMembreteUsuario(userKey);
 
-  // Estados Perfil Institucional
-  const [nombreInstitucion, setNombreInstitucion] = useState(initialValues.nombreInstitucion);
-  const [ruc, setRuc] = useState(initialValues.ruc);
-  const [registroNotarial, setRegistroNotarial] = useState(initialValues.registroNotarial);
+  // Estados Perfil Institucional y Membrete Notarial (Configuración Multi-usuario)
+  const [nombreNotario, setNombreNotario] = useState(
+    membreteUsuario.nombreNotario || userData?.nombreTitular || userData?.nombreCompleto || 'Esc. Sandra Molinas'
+  );
+  const [nombreInstitucion, setNombreInstitucion] = useState(
+    membreteUsuario.nombreEscribania || initialValues.nombreInstitucion
+  );
+  const [ruc, setRuc] = useState(membreteUsuario.ruc || initialValues.ruc);
+  const [registroNotarial, setRegistroNotarial] = useState(
+    membreteUsuario.registroNotarial || initialValues.registroNotarial
+  );
+  const [direccion, setDireccion] = useState(
+    membreteUsuario.direccion || userData?.direccion || 'Avda. Carlos Antonio López 450, Asunción'
+  );
+  const [telefono, setTelefono] = useState(
+    membreteUsuario.telefono || userData?.telefono || '+595 21 445 000'
+  );
+  const [email, setEmail] = useState(
+    membreteUsuario.email || currentUser?.email || 'contacto@escribaniamolinas.com.py'
+  );
+  const [timbradoNumero, setTimbradoNumero] = useState(
+    membreteUsuario.timbradoNumero || '16894321'
+  );
+  const [timbradoVigenciaInicio, setTimbradoVigenciaInicio] = useState(
+    membreteUsuario.timbradoVigenciaInicio || '2026-01-01'
+  );
+  const [timbradoVigenciaFin, setTimbradoVigenciaFin] = useState(
+    membreteUsuario.timbradoVigenciaFin || '2026-12-31'
+  );
   const [logoPreview, setLogoPreview] = useState<string | null>(firestoreLogo);
 
   // Sincronización reactiva del logo directamente desde Firestore (userData)
@@ -290,6 +332,37 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [notificacionesVencimiento, setNotificacionesVencimiento] = useState(initialValues.notificacionesVencimiento);
   const [multasMoraAutomatica, setMultasMoraAutomatica] = useState(initialValues.multasMoraAutomatica);
   const [numeracionCorrelativa, setNumeracionCorrelativa] = useState(initialValues.numeracionCorrelativa);
+
+  // Estado del Tema Visual Global (Fondo Blanco vs Modo Oscuro)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      const storedTheme = localStorage.getItem('olga_theme');
+      if (storedTheme) return storedTheme === 'dark';
+      const storedFondo = localStorage.getItem('olga_facturacion_fondo_blanco');
+      if (storedFondo !== null) return !JSON.parse(storedFondo);
+    } catch {}
+    return false; // Por defecto Fondo Blanco
+  });
+
+  const handleToggleTema = (dark: boolean) => {
+    setIsDarkMode(dark);
+    try {
+      localStorage.setItem('olga_theme', dark ? 'dark' : 'light');
+      localStorage.setItem('olga_facturacion_fondo_blanco', JSON.stringify(!dark));
+      if (dark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      window.dispatchEvent(
+        new CustomEvent('olga_theme_changed', {
+          detail: { isDark: dark, modoFondoBlanco: !dark },
+        })
+      );
+    } catch (e) {
+      console.warn('Error guardando preferencia de tema:', e);
+    }
+  };
 
   // Estados Seguridad y Accesos
   const [autenticacion2FA, setAutenticacion2FA] = useState(initialValues.autenticacion2FA);
@@ -448,8 +521,15 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   ) => {
     const dataToSave: ConfiguracionInstitucionalData = {
       nombreInstitucion: overrides?.nombreInstitucion ?? nombreInstitucion,
+      nombreNotario: overrides?.nombreNotario ?? nombreNotario,
       ruc: overrides?.ruc ?? ruc,
       registroNotarial: overrides?.registroNotarial ?? registroNotarial,
+      direccion: overrides?.direccion ?? direccion,
+      telefono: overrides?.telefono ?? telefono,
+      email: overrides?.email ?? email,
+      timbradoNumero: overrides?.timbradoNumero ?? timbradoNumero,
+      timbradoVigenciaInicio: overrides?.timbradoVigenciaInicio ?? timbradoVigenciaInicio,
+      timbradoVigenciaFin: overrides?.timbradoVigenciaFin ?? timbradoVigenciaFin,
       logoUrl: null, // ELIMINADO de localStorage para prevenir fugas de estado entre sesiones
       notificacionesVencimiento: overrides?.notificacionesVencimiento ?? notificacionesVencimiento,
       multasMoraAutomatica: overrides?.multasMoraAutomatica ?? multasMoraAutomatica,
@@ -481,45 +561,71 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }, 4000);
   };
 
- const handleGuardarPerfil = async (e: React.FormEvent) => {
+  const handleGuardarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 1. Guardar membrete multi-usuario aislado por ID en localStorage
+    const nuevoMembrete: MembreteEscribaniaConfig = {
+      nombreNotario,
+      registroNotarial,
+      nombreEscribania: nombreInstitucion,
+      direccion,
+      telefono,
+      email,
+      ruc,
+      timbradoNumero,
+      timbradoVigenciaInicio,
+      timbradoVigenciaFin,
+      logoUrl: logoPreview || null,
+    };
+    guardarMembreteUsuario(nuevoMembrete, userKey);
+
+    // 2. Persistir en Firestore estrictamente con updateDoc y mutación parcial
     if (effectiveWorkspaceId) {
+      const userRef = doc(db, 'users', effectiveWorkspaceId);
       try {
-        const userRef = doc(db, 'users', effectiveWorkspaceId);
-        
-        // 1. Validar la estructura actual del documento para no pisar metadatos
-        const { getDoc, serverTimestamp } = await import('firebase/firestore');
-        const userSnap = await getDoc(userRef);
-        
-        // 2. Preparamos la data del formulario
-        const dataToUpdate: any = {
-          nombreInstitucion,
+
+        // Mutación Parcial Exclusiva: solo las propiedades correspondientes al membrete
+        await updateDoc(userRef, {
           razonSocial: nombreInstitucion,
-          ruc,
+          nombreInstitucion,
+          nombreTitular: nombreNotario,
           registroNotarial,
-          logo_institucional: logoPreview || null,
-          perfilCompletado: true
-        };
-
-        // 3. FALLBACK DE CONTINGENCIA (Parche 9.2)
-        // Si el usuario no tiene los datos base del plan trial, los inyectamos aquí.
-        if (!userSnap.data()?.fecha_creacion) {
-          dataToUpdate.fecha_creacion = serverTimestamp();
-          dataToUpdate.planActual = 'trial';
-          dataToUpdate.role = 'titular';
-          dataToUpdate.estado_cuenta = 'activa';
+          ruc,
+          direccion,
+          telefono,
+          correo: email,
+          email,
+          timbradoNumero,
+          timbradoVigenciaInicio,
+          timbradoVigenciaFin,
+          logo_institucional: logoPreview || null
+        });
+      } catch (err: any) {
+        // En caso de no existir el documento, se inicializa sin alterar campos de plan o roles
+        if (err?.code === 'not-found') {
+          await setDoc(userRef, {
+            razonSocial: nombreInstitucion,
+            nombreInstitucion,
+            nombreTitular: nombreNotario,
+            registroNotarial,
+            ruc,
+            direccion,
+            telefono,
+            correo: email,
+            email,
+            timbradoNumero,
+            timbradoVigenciaInicio,
+            timbradoVigenciaFin,
+            logo_institucional: logoPreview || null
+          }, { merge: true });
+        } else {
+          console.error('Error guardando membrete institucional en Firestore:', err);
         }
-
-        // 4. Guardado seguro usando merge: true
-        await setDoc(userRef, dataToUpdate, { merge: true });
-
-      } catch (err) {
-        console.error('Error guardando perfil institucional en Firestore:', err);
       }
     }
 
-    guardarYNotificar(undefined, '¡Perfil Institucional guardado exitosamente en la nube!');
+    guardarYNotificar(undefined, '¡Membrete institucional y configuración guardados exitosamente!');
   };
 
   // Fase 2: Lógica de Invitación Segura de Operadores (Soporte Email / Celular PY)
@@ -789,55 +895,172 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             </div>
           </div>
 
-          {/* Campos de texto limpios */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-1">
-              <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
-                Nombre de la Escribanía / Empresa *
-              </label>
-              <input
-                type="text"
-                value={nombreInstitucion}
-                onChange={(e) => setNombreInstitucion(e.target.value)}
-                placeholder="Ej. Escribanía Pública López"
-                className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
-              />
+          {/* Campos de Membrete Notarial y Datos Fiscales */}
+          <div className="space-y-5">
+            {/* Grupo 1: Datos Notariales Principales */}
+            <div>
+              <h5 className="text-[11px] font-black uppercase text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Building className="w-3.5 h-3.5 text-[#FF3131]" />
+                Identificación Notarial e Institucional
+              </h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    Notario / Escribano Titular *
+                  </label>
+                  <input
+                    type="text"
+                    value={nombreNotario}
+                    onChange={(e) => setNombreNotario(e.target.value)}
+                    placeholder="Ej. Esc. Sandra Molinas"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    N° de Registro Notarial *
+                  </label>
+                  <input
+                    type="text"
+                    value={registroNotarial}
+                    onChange={(e) => setRegistroNotarial(e.target.value)}
+                    placeholder="Ej. Reg. Nº 1.292"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    Firma / Nombre de Escribanía *
+                  </label>
+                  <input
+                    type="text"
+                    value={nombreInstitucion}
+                    onChange={(e) => setNombreInstitucion(e.target.value)}
+                    placeholder="Ej. Escribanía Molinas & Asociados"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="md:col-span-1">
-              <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
-                RUC *
-              </label>
-              <input
-                type="text"
-                value={ruc}
-                onChange={(e) => setRuc(e.target.value)}
-                placeholder="Ej. 80012345-6"
-                className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
-              />
+            {/* Grupo 2: Ubicación y Contacto */}
+            <div>
+              <h5 className="text-[11px] font-black uppercase text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-blue-500" />
+                Ubicación y Canales de Contacto
+              </h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    Dirección Comercial / Sede *
+                  </label>
+                  <input
+                    type="text"
+                    value={direccion}
+                    onChange={(e) => setDireccion(e.target.value)}
+                    placeholder="Ej. Avda. Carlos A. López 450, Asunción"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    Teléfono / Celular *
+                  </label>
+                  <input
+                    type="text"
+                    value={telefono}
+                    onChange={(e) => setTelefono(e.target.value)}
+                    placeholder="Ej. +595 21 445 000 / 0981 123 456"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    Correo Electrónico Notarial *
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Ej. notaria@olgatech.com.py"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="md:col-span-1">
-              <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
-                N° de Registro Notarial *
-              </label>
-              <input
-                type="text"
-                value={registroNotarial}
-                onChange={(e) => setRegistroNotarial(e.target.value)}
-                placeholder="Ej. Registro N° 120"
-                className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
-              />
+            {/* Grupo 3: Datos de Facturación y Timbrado Fiscal */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h5 className="text-[11px] font-black uppercase text-slate-700 tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                RUC de la Escribanía y Timbrado Fiscal SET/DNIT
+              </h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    RUC de la Escribanía *
+                  </label>
+                  <input
+                    type="text"
+                    value={ruc}
+                    onChange={(e) => setRuc(e.target.value)}
+                    placeholder="Ej. 80012345-6"
+                    className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    N° de Timbrado Oficial *
+                  </label>
+                  <input
+                    type="text"
+                    value={timbradoNumero}
+                    onChange={(e) => setTimbradoNumero(e.target.value)}
+                    placeholder="Ej. 16894321"
+                    className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                  />
+                </div>
+
+                <div className="md:col-span-1 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                      Inicio Vigencia
+                    </label>
+                    <input
+                      type="date"
+                      value={timbradoVigenciaInicio}
+                      onChange={(e) => setTimbradoVigenciaInicio(e.target.value)}
+                      className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                      Fin Vigencia
+                    </label>
+                    <input
+                      type="date"
+                      value={timbradoVigenciaFin}
+                      onChange={(e) => setTimbradoVigenciaFin(e.target.value)}
+                      className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              className="px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md flex items-center gap-2"
+              className="px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md flex items-center gap-2 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>Guardar Perfil Institucional</span>
+              <span>Guardar Membrete Institucional</span>
             </button>
           </div>
         </form>
@@ -857,6 +1080,43 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
         </div>
 
         <div className="divide-y divide-slate-100">
+          {/* Toggle Tema Visual: Fondo Blanco vs Modo Oscuro */}
+          <div className="py-4 flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <span>Tema Visual del Sistema</span>
+                <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border ${
+                  isDarkMode 
+                    ? 'bg-slate-900 text-amber-400 border-slate-700' 
+                    : 'bg-amber-50 text-amber-900 border-amber-200'
+                }`}>
+                  {isDarkMode ? 'Modo Oscuro' : 'Fondo Blanco'}
+                </span>
+              </span>
+              <p className="text-xs text-slate-500">
+                Alterna entre la vista notarial en fondo blanco y el modo oscuro en toda la plataforma.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isDarkMode}
+              onClick={() => handleToggleTema(!isDarkMode)}
+              className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none items-center shadow-inner ${
+                isDarkMode ? 'bg-slate-900' : 'bg-amber-400'
+              }`}
+              title={isDarkMode ? 'Cambiar a Fondo Blanco' : 'Cambiar a Modo Oscuro'}
+            >
+              <span
+                className={`pointer-events-none flex items-center justify-center h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  isDarkMode ? 'translate-x-7 text-slate-900' : 'translate-x-0 text-amber-600'
+                }`}
+              >
+                {isDarkMode ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+              </span>
+            </button>
+          </div>
+
           {/* Toggle 1 */}
           <div className="py-4 flex items-center justify-between gap-4">
             <div className="space-y-0.5">

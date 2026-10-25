@@ -111,7 +111,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
-        if (tipoPersona === 'física') {
+        // En Paraguay, las personas jurídicas inician con prefijo '800'
+        const rucLimpio = ruc.replace(/\D/g, '');
+        const esJuridica = rucLimpio.startsWith('800');
+        setTipoPersona(esJuridica ? 'jurídica' : 'física');
+
+        if (!esJuridica) {
           const raw = res.nombre_o_razon_social.trim();
           const parts = raw.split(/\s+/);
           if (parts.length >= 2) {
@@ -120,9 +125,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             setApellido(parts.slice(mid).join(' '));
           } else {
             setNombre(raw);
+            setApellido('');
           }
         } else {
           setNombre(res.nombre_o_razon_social);
+          setApellido('');
         }
         if (res.direccion) setDomicilio(res.direccion);
         if (res.telefono) setTelefono(res.telefono);
@@ -436,14 +443,26 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setSuccessMsg('');
 
     // Validación Básica
-    if (!nombre.trim()) {
+    let nombreFinal = nombre.trim();
+    let apellidoFinal = apellido.trim();
+
+    if (!nombreFinal) {
       setErrorMsg(tipoPersona === 'física' ? 'El Nombre es obligatorio.' : 'La Razón Social es obligatoria.');
       return;
     }
 
-    if (tipoPersona === 'física' && !apellido.trim()) {
-      setErrorMsg('El Apellido es obligatorio para personas físicas.');
-      return;
+    if (tipoPersona === 'física' && !apellidoFinal) {
+      const partes = nombreFinal.split(/\s+/);
+      if (partes.length >= 2) {
+        const mid = Math.ceil(partes.length / 2);
+        nombreFinal = partes.slice(0, mid).join(' ');
+        apellidoFinal = partes.slice(mid).join(' ');
+        setNombre(nombreFinal);
+        setApellido(apellidoFinal);
+      } else {
+        setErrorMsg('El Apellido es obligatorio para personas físicas.');
+        return;
+      }
     }
 
     if (!nroDocumento.trim()) {
@@ -461,15 +480,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-    // Validar representante legal para personas jurídicas
-    if (tipoPersona === 'jurídica' && !representanteId) {
-      setErrorMsg('Es obligatorio designar un Representante Legal (Persona Física) para toda Persona Jurídica.');
-      return;
-    }
+    // Representación legal notarial: Se inicializa de forma neutra ("No aplica" para Física, "Sin Asignar" para Jurídica salvo asignación manual)
+    const representanteLegalValor = tipoPersona === 'física' 
+      ? 'No aplica' 
+      : (representanteId ? 'Asignado' : 'Sin Asignar');
 
     const activeUser = (currentUser || auth?.currentUser) as any;
-    const creatorName = activeUser?.nombre || activeUser?.displayName || activeUser?.email?.split('@')[0] || 'Usuario';
-    const creatorRole = activeUser?.role || activeUser?.rol || 'titular';
 
     // 1. SI ES EDICIÓN: El ID ya existe y debe preservarse de forma intacta
     if (editingId) {
@@ -478,21 +494,27 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         ...(personaExistente || {}),
         id: editingId, // Preservar exactamente el ID original
         tipo_persona: tipoPersona,
-        nombre: nombre.trim(),
-        apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
-        tipo_documento: tipoPersona === 'física' ? 'CI' : 'RUC',
+        nombre: nombreFinal,
+        apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
+        tipo_documento: tipoPersona === 'física' ? (nroDocumento.includes('-') ? 'RUC' : 'CI') : 'RUC',
         nro_documento: nroDocumento.trim(),
         telefono: telefono.trim(),
         email: email.trim(),
         domicilio: domicilio.trim(),
-        representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
-        origen: tipoPersona === 'jurídica' ? 'DNIT' : (personaExistente?.origen || 'MANUAL'),
+        representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
+        representanteLegal: representanteLegalValor,
+        responsable: personaExistente?.responsable && personaExistente.responsable !== 'MONKEY BUSINESS IA' && personaExistente.responsable !== 'Titular' 
+          ? personaExistente.responsable 
+          : null,
+        origen: personaExistente?.origen || (tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL'),
         notas_notariales: personaExistente?.notas_notariales,
         userId: personaExistente?.userId || workspaceId || activeUser?.uid || '',
         creator_id: personaExistente?.creator_id || activeUser?.uid,
         createdBy: personaExistente?.createdBy || activeUser?.uid,
-        creator_name: personaExistente?.creator_name || creatorName,
-        creator_role: personaExistente?.creator_role || creatorRole
+        creator_name: personaExistente?.creator_name && personaExistente.creator_name !== 'MONKEY BUSINESS IA' && personaExistente.creator_name !== 'Titular'
+          ? personaExistente.creator_name
+          : undefined,
+        creator_role: personaExistente?.creator_role
       };
 
       // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
@@ -515,25 +537,27 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-    // 2. SI ES CREACIÓN NUEVA (editingId no existe)
+    // 2. SI ES CREACIÓN NUEVA (editingId no existe): Inicialización neutra de datos
     const nuevoId = `p-${Date.now()}`;
     const registroNuevo: Persona = {
       id: nuevoId,
       tipo_persona: tipoPersona,
-      nombre: nombre.trim(),
-      apellido: tipoPersona === 'física' ? apellido.trim() : undefined,
-      tipo_documento: tipoPersona === 'física' ? 'CI' : 'RUC',
+      nombre: nombreFinal,
+      apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
+      tipo_documento: tipoPersona === 'física' ? (nroDocumento.includes('-') ? 'RUC' : 'CI') : 'RUC',
       nro_documento: nroDocumento.trim(),
       telefono: telefono.trim(),
       email: email.trim(),
       domicilio: domicilio.trim(),
-      representante_id: tipoPersona === 'jurídica' ? representanteId : undefined,
+      representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
+      representanteLegal: representanteLegalValor,
+      responsable: null,
       origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
       userId: workspaceId || activeUser?.uid || '',
       creator_id: activeUser?.uid,
       createdBy: activeUser?.uid,
-      creator_name: creatorName,
-      creator_role: creatorRole
+      creator_name: undefined,
+      creator_role: undefined
     };
 
     if (onAddPersona) {
@@ -697,43 +721,73 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Selector de Tipo de Persona */}
-            <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1.5 tracking-wider">
-                Tipo de Persona *
-              </label>
-              <div className="grid grid-cols-2 sm:w-64 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTipoPersona('física');
-                    setErrorMsg('');
-                  }}
-                  className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all ${
-                    tipoPersona === 'física'
-                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>Física</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTipoPersona('jurídica');
-                    setErrorMsg('');
-                  }}
-                  className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all ${
-                    tipoPersona === 'jurídica'
-                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Building className="w-3.5 h-3.5" />
-                  <span>Jurídica</span>
-                </button>
+            {/* Selector de Tipo de Persona / Entidad (Editable manualmente para FÍSICA o JURÍDICA) */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label htmlFor="tipoPersona" className="block text-[11px] font-bold uppercase text-slate-700 tracking-wider">
+                  Tipo de Entidad / Persona *
+                </label>
+                {editingId && (
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
+                    Edición manual habilitada
+                  </span>
+                )}
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                {/* Selector Dropdown (<select>) */}
+                <div>
+                  <select
+                    id="tipoPersona"
+                    name="tipoPersona"
+                    value={tipoPersona}
+                    onChange={(e) => {
+                      const nuevoTipo = e.target.value as TipoPersona;
+                      setTipoPersona(nuevoTipo);
+                      setErrorMsg('');
+                    }}
+                    className="w-full bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="física">FÍSICA</option>
+                    <option value="jurídica">JURÍDICA</option>
+                  </select>
+                </div>
+
+                {/* Botones de Selección / Radio */}
+                <div className="flex items-center gap-4 px-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-slate-900">
+                    <input
+                      type="radio"
+                      name="tipoPersonaRadio"
+                      value="física"
+                      checked={tipoPersona === 'física'}
+                      onChange={() => {
+                        setTipoPersona('física');
+                        setErrorMsg('');
+                      }}
+                      className="w-4 h-4 text-[#FF3131] focus:ring-[#FF3131] cursor-pointer"
+                    />
+                    <span>FÍSICA</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-slate-900">
+                    <input
+                      type="radio"
+                      name="tipoPersonaRadio"
+                      value="jurídica"
+                      checked={tipoPersona === 'jurídica'}
+                      onChange={() => {
+                        setTipoPersona('jurídica');
+                        setErrorMsg('');
+                      }}
+                      className="w-4 h-4 text-[#FF3131] focus:ring-[#FF3131] cursor-pointer"
+                    />
+                    <span>JURÍDICA</span>
+                  </label>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Permite sobrescribir manualmente cualquier clasificación del DNIT (Física vs Jurídica).
+              </p>
             </div>
 
             {/* Campos condicionales */}
@@ -1193,22 +1247,19 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                               </span>
                             )
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">No aplica (Física)</span>
+                            <span className="text-slate-400 italic text-[11px]">No aplica</span>
                           )}
                         </td>
 
-                        {/* Responsable / Creado Por */}
+                        {/* Responsable */}
                         <td className="py-3 px-3 text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-800 text-[11px] truncate max-w-[120px]" title={p.creator_name || 'Titular'}>
-                              {p.creator_name || (p as any).creatorName || 'Titular'}
+                          {p.responsable && p.responsable !== 'MONKEY BUSINESS IA' && p.responsable !== 'Titular' ? (
+                            <span className="font-bold text-slate-800 text-[11px] truncate max-w-[120px] block" title={p.responsable}>
+                              {p.responsable}
                             </span>
-                            {(p.creator_role === 'operador' || (p as any).creatorRole === 'operador') && (
-                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
-                                Operador
-                              </span>
-                            )}
-                          </div>
+                          ) : (
+                            <span className="text-slate-400 font-bold text-xs">-</span>
+                          )}
                         </td>
 
                         {/* Acciones */}
@@ -1275,14 +1326,29 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setClienteExpediente(null)}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
-                title="Cerrar Expediente"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const personaAEditar = clienteExpediente;
+                    setClienteExpediente(null);
+                    handleEditPersona(personaAEditar);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Editar datos del cliente en el formulario"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#FF3131]" />
+                  <span>Editar Cliente</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClienteExpediente(null)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  title="Cerrar Expediente"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Contenido con Scroll del Expediente */}

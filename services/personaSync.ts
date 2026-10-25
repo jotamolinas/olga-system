@@ -117,9 +117,11 @@ export function sincronizarOAutoRegistrarPersona(
     return { persona: existente, esNueva: false };
   }
 
-  // Determinar si es persona jurídica o física basado en el documento y nombre
+  // Determinar si es persona jurídica o física según normativa paraguaya:
+  // En Paraguay, las personas jurídicas poseen RUC que inicia con el prefijo '800'
+  const rucLimpio = docLimpio.replace(/\D/g, '');
   const tieneGuion = docLimpio.includes('-');
-  const esJuridica = tieneGuion || firmante.origen === 'DNIT' || /(S\.?A\.?|S\.?R\.?L\.?|S\.?A\.?E\.?C\.?A\.?|EMPRESA|GRUPO|CONSTRUCTORA|IMPORTADORA)/i.test(nombreLimpio);
+  const esJuridica = rucLimpio.startsWith('800') || /(S\.?A\.?|S\.?R\.?L\.?|S\.?A\.?E\.?C\.?A\.?|EMPRESA|GRUPO|CONSTRUCTORA|IMPORTADORA)/i.test(nombreLimpio);
   const tipoPersona: TipoPersona = esJuridica ? 'jurídica' : 'física';
   const tipoDocumento: TipoDocumento = (tieneGuion || esJuridica) ? 'RUC' : 'CI';
 
@@ -148,6 +150,9 @@ export function sincronizarOAutoRegistrarPersona(
     domicilio: (firmante.domicilio || '').trim(),
     telefono: '',
     email: '',
+    representante_id: undefined,
+    representanteLegal: tipoPersona === 'física' ? 'No aplica' : 'Sin Asignar',
+    responsable: null,
     origen: firmante.origen || (tipoDocumento === 'RUC' ? 'DNIT' : 'MANUAL'),
     notas_notariales: `Auto-registrado desde Gestión de Pagarés (${firmante.rol.toUpperCase()}) el ${new Date().toLocaleDateString('es-PY')}.`
   };

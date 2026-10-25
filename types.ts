@@ -14,6 +14,8 @@ export interface Persona {
   email: string;
   domicilio: string;
   representante_id?: string; // ID de otra persona (física) que actúa como representante legal
+  representanteLegal?: string; // "No aplica" (Física) o "Sin Asignar" / "Asignado" (Jurídica)
+  responsable?: string | null; // Responsable asignado explícitamente o null
   userId?: string;
   creator_id?: string;
   createdBy?: string;

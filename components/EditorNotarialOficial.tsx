@@ -13,8 +13,11 @@ import {
   Save,
   Check
 } from 'lucide-react';
-
-export type TipoDocumentoNotarial = 'Concuerda' | 'Certificación de Firmas' | 'Legalización' | 'Sellado Notarial - Protocolo';
+export type TipoDocumentoNotarial = 
+  | 'Concuerda' 
+  | 'Certificación de Firmas' 
+  | 'Legalización' 
+  | 'Sellado Notarial - Protocolo';
 
 export interface ConfiguracionHojaNotarial {
   offsetX: number;
@@ -215,6 +218,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
   const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>(['']);
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+
 
   const handleTextareaChange = (index: number, e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const texto = e.target.value;
@@ -2035,6 +2039,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 })}
             </div>
           )}
+
+
         </div>
       </div>
     </div>

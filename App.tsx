@@ -38,6 +38,7 @@ import { ConfiguracionTab } from './components/ConfiguracionTab';
 import { NotificationBell } from './components/NotificationBell';
 import { RegistroOperador } from './components/RegistroOperador';
 import { EditorNotarialOficial } from './components/EditorNotarialOficial';
+import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -530,7 +531,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion'>(forceAdmin ? 'monitor' : 'tablero');
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -968,16 +969,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       return false;
     }
 
-    const creatorName = currentUser?.nombre || userProfile?.nombre || userProfile?.razonSocial || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuario';
-    const creatorRole = currentUser?.role || userProfile?.rol || userProfile?.role || 'titular';
-
     const per: Persona = {
       ...newPersona,
+      responsable: (newPersona.responsable && newPersona.responsable !== 'MONKEY BUSINESS IA') ? newPersona.responsable : null,
+      representanteLegal: newPersona.representanteLegal || (newPersona.tipo_persona === 'física' ? 'No aplica' : (newPersona.representante_id ? 'Asignado' : 'Sin Asignar')),
       userId: workspaceId,            // El propietario legal de los datos (Titular)
       creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
       createdBy: currentUser?.uid,
-      creator_name: newPersona.creator_name || creatorName,
-      creator_role: newPersona.creator_role || creatorRole
+      creator_name: undefined,
+      creator_role: undefined
     };
     const updated = [...personas, per];
     setPersonas(updated);
@@ -1514,6 +1514,17 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             <span className="text-xs font-black uppercase tracking-wider">Lienzo Notarial</span>
           </button>
 
+          <button
+            onClick={() => {
+              setActiveTab('facturacion');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'facturacion' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
+          >
+            <Banknote className="w-5 h-5" />
+            <span className="text-xs font-black uppercase tracking-wider">Presupuestos / Factura</span>
+          </button>
+
           {role === 'admin' && (
             <>
               <button
@@ -1666,7 +1677,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       <main className="flex-grow flex flex-col h-full overflow-hidden relative" id="main-content-viewport">
         
         {/* Dynamic header display */}
-        <header className="bg-white/80 border-b border-slate-100 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
+        <header className="bg-white/80 border-b border-slate-100 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md print:hidden">
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button */}
             <button
@@ -1714,122 +1725,54 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     );
   }
 
-  const rawPlan = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'VACIO';
-  const currentPlan = String(rawPlan).trim().toLowerCase();
-  const estadoPagoVal = String(userProfile?.estadoPago || userData?.estadoPago || '').toUpperCase();
-  const estadoPlataformaVal = String(userProfile?.estadoPlataforma || userData?.estadoPlataforma || '').toUpperCase();
-  const isAprobado = estadoPagoVal === 'APROBADO' || estadoPlataformaVal === 'APROBADO';
-  
-  if (currentPlan.includes('pro')) {
-    return (
-      <div className="flex items-center shrink-0 flex-shrink-0">
-        <span className="bg-blue-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
-          PLAN PRO
-        </span>
-      </div>
-    );
-  }
-  if (currentPlan.includes('empresa')) {
-    return (
-      <div className="flex items-center shrink-0 flex-shrink-0">
-        <span 
-          onClick={() => setShowEmpresaBenefits(true)}
-          className="cursor-pointer bg-gradient-to-r from-gray-900 via-black to-gray-800 text-white font-extrabold px-3 py-1 rounded-md border border-gray-600 shadow-[0_0_12px_rgba(255,255,255,0.2)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
-        >
-          PLAN EMPRESA
-        </span>
-      </div>
-    );
-  }
-  if (currentPlan.includes('full')) {
+  // Dinamismo Multiusuario: Lectura directa del plan desde el estado global del usuario logueado o perfil
+  const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || 'PLAN FULL';
+  const planTexto = String(planRaw).trim().toUpperCase();
+  const nombrePlan = planTexto.startsWith('PLAN ') ? planTexto : `PLAN ${planTexto}`;
+  const planLower = planTexto.toLowerCase();
+
+  if (planLower.includes('full')) {
     return (
       <div className="flex items-center shrink-0 flex-shrink-0">
         <span 
           onClick={() => setShowBenefits(true)}
           className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
-          PLAN FULL
+          {nombrePlan}
         </span>
       </div>
     );
   }
-  if (currentPlan.includes('basico') || currentPlan.includes('básico') || isAprobado) {
-    const badgeText = currentPlan.includes('empresa') 
-      ? 'PLAN EMPRESA' 
-      : currentPlan.includes('full') 
-      ? 'PLAN FULL' 
-      : currentPlan.includes('pro') 
-      ? 'PLAN PRO' 
-      : (userProfile?.planActual || userData?.planActual || 'PLAN BÁSICO').toUpperCase();
+
+  if (planLower.includes('empresa')) {
     return (
       <div className="flex items-center shrink-0 flex-shrink-0">
-        <span className="bg-emerald-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
-          {badgeText.includes('PLAN') ? badgeText : `PLAN ${badgeText}`}
+        <span 
+          onClick={() => setShowEmpresaBenefits(true)}
+          className="cursor-pointer bg-gradient-to-r from-gray-900 via-black to-gray-800 text-white font-extrabold px-3 py-1 rounded-md border border-gray-600 shadow-[0_0_12px_rgba(255,255,255,0.2)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
+        >
+          {nombrePlan}
         </span>
       </div>
     );
   }
-  // Fase 9: Cálculo real y dinámico comparando la fecha actual contra fecha_creacion en Firestore
-  const rawCreation = userProfile?.fecha_creacion || userData?.fecha_creacion || userProfile?.fechaCreacion || userData?.fechaCreacion || userProfile?.created_at;
-  let dynamicDays = 5;
-  let isExpiredTrial = isTrialExpired || !pruebaActiva || diasRestantes <= 0;
 
-  if (rawCreation) {
-    let creationDate = new Date();
-    if (typeof rawCreation.toDate === 'function') {
-      creationDate = rawCreation.toDate();
-    } else if (rawCreation.seconds) {
-      creationDate = new Date(rawCreation.seconds * 1000);
-    } else {
-      creationDate = new Date(rawCreation);
-    }
-    const diffDaysPassed = (Date.now() - creationDate.getTime()) / (1000 * 60 * 60 * 24);
-    dynamicDays = Math.max(0, Math.ceil(5 - diffDaysPassed));
-    if (diffDaysPassed > 5 || dynamicDays <= 0) {
-      isExpiredTrial = true;
-      dynamicDays = 0;
-    }
-  } else {
-    dynamicDays = userProfile?.diasRestantes ?? userData?.diasRestantes ?? diasRestantes ?? 5;
-    if (dynamicDays <= 0) {
-      isExpiredTrial = true;
-      dynamicDays = 0;
-    }
+  if (planLower.includes('pro')) {
+    return (
+      <div className="flex items-center shrink-0 flex-shrink-0">
+        <span className="bg-blue-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
+          {nombrePlan}
+        </span>
+      </div>
+    );
   }
 
-  const diasMostrar = isExpiredTrial ? 0 : (dynamicDays > 5 ? 5 : (dynamicDays < 0 ? 0 : dynamicDays));
-  const iaUsadas = userProfile?.usoIA || userData?.usoIA || userProfile?.consultasUsadas || userData?.consultasUsadas || 0;
-  const escritosUsados = typeof olgaDocsCount !== 'undefined' ? olgaDocsCount : (userProfile?.escritosUsados || userData?.escritosUsados || 0);
-
-  const detalleLimites = isExpiredTrial
-    ? `Límites de prueba: Periodo finalizado (> 5 días). Escritos (${escritosUsados}/5) - Consultas IA (${iaUsadas}/5)`
-    : `Límites de prueba: Escritos (${escritosUsados}/5) - Consultas IA (${iaUsadas}/5)`;
-
+  // Plan Básico u otro plan personalizado dinámico registrado en el usuario
   return (
     <div className="flex items-center shrink-0 flex-shrink-0">
-      <div className="relative group/trial flex items-center">
-        <div 
-          className={`${isExpiredTrial ? 'bg-red-50 text-red-700 border-red-300' : 'bg-amber-100 text-amber-900 border-amber-300'} border px-3 py-1 rounded-full text-[10px] sm:text-xs font-black shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-default`}
-          title={detalleLimites}
-        >
-          <span>PRUEBA GRATUITA: {isExpiredTrial ? '0 DÍAS' : `${diasMostrar} DÍAS`}</span>
-          <span 
-            className={`${isExpiredTrial ? 'text-red-600 hover:text-red-900' : 'text-amber-700 hover:text-amber-950'} transition-colors inline-flex items-center cursor-help`}
-            aria-label="Detalles de límites de prueba"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-          </span>
-        </div>
-
-        {/* Tooltip flotante enriquecido al hover */}
-        <div className="absolute right-0 top-full mt-1.5 hidden group-hover/trial:flex flex-col z-50 bg-slate-900 text-white text-[11px] font-medium py-1.5 px-3 rounded-xl shadow-xl border border-slate-700 whitespace-nowrap animate-in fade-in zoom-in-95 pointer-events-none">
-          <span className="font-bold text-amber-400">Límites de prueba:</span>
-          <span className="text-slate-200">Escritos ({escritosUsados}/5) - Consultas IA ({iaUsadas}/5)</span>
-          {isExpiredTrial && (
-            <span className="text-red-400 text-[10px] mt-0.5 font-bold">Acceso bloqueado: periodo de 5 días expirado</span>
-          )}
-        </div>
-      </div>
+      <span className="bg-emerald-600 text-white px-2.5 py-1 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm whitespace-nowrap">
+        {nombrePlan}
+      </span>
     </div>
   );
 })()}
@@ -1868,8 +1811,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </header>
 
         {/* Scrollable container for tab body content */}
-        <div className={`flex-grow overflow-y-auto ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col' : 'p-4 md:p-8'}`}>
-          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : 'pb-24'}`}>
+        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col' : 'p-4 md:p-8'}`}>
+          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : 'pb-24'}`}>
             
             {(() => {
               const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
@@ -2000,6 +1943,20 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
             {activeTab === 'lienzo' && (
               <EditorNotarialOficial onVolver={() => setActiveTab('escritos')} />
+            )}
+
+            {activeTab === 'facturacion' && (
+              <ModuloPresupuestos 
+                onVolver={() => setActiveTab('lienzo')}
+                userId={currentUser?.uid || currentUser?.email || 'default'}
+                userProfile={userProfile || userData}
+                onIrAConfiguracion={() => setActiveTab('cuenta')}
+                escribaniaNombre={workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
+                registroNotarial={customBranding.registroNotarial || userData?.matricula || config.escribania.nro_registro}
+                rucEscribania={customBranding.ruc || userData?.ruc || '80012345-6'}
+                direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
+                telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
+              />
             )}
             
             {activeTab === 'cuenta' && (
@@ -2290,7 +2247,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </div>
 
         {/* Dynamic bottom bar info */}
-        <footer className={`bg-slate-900 p-4 border-t border-slate-800 text-white/40 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
+        <footer className={`bg-slate-900 p-4 border-t border-slate-800 text-white/40 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
           SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL IHARA & ASOCIADOS
         </footer>
       </main>
