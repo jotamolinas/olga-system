@@ -1,0 +1,15 @@
+# robots.txt para O.L.G.A. - Plataforma Notarial y Legal-Tech
+# https://olgatech.com.py
+
+User-agent: *
+Allow: /
+Allow: /login
+
+# Rutas privadas, administrativas y sensibles bloqueadas
+Disallow: /editor/
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /auth/
+
+# Mapa de sitio oficial
+Sitemap: https://olgatech.com.py/sitemap.xml
