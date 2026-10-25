@@ -6,10 +6,76 @@ import {
   ShieldCheck, 
   Stamp,
   Sliders,
-  Sparkles
+  Sparkles,
+  Type,
+  MoveVertical,
+  MoveHorizontal,
+  Save,
+  Check
 } from 'lucide-react';
 
 export type TipoDocumentoNotarial = 'Concuerda' | 'Certificación de Firmas' | 'Legalización' | 'Sellado Notarial - Protocolo';
+
+export interface ConfiguracionHojaNotarial {
+  offsetX: number;
+  offsetY: number;
+  fontSizeGlobal: string;
+  fontFamilyGlobal: string;
+  interlineadoGlobal: number;
+  margenHorizontal: number;
+}
+
+export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
+  offsetX: 0,
+  offsetY: 0,
+  fontSizeGlobal: '15px',
+  fontFamilyGlobal: 'Arial, Helvetica, sans-serif',
+  interlineadoGlobal: 10.2,
+  margenHorizontal: 0,
+};
+
+export const getConfigKey = (tipo: TipoDocumentoNotarial): string => {
+  switch (tipo) {
+    case 'Sellado Notarial - Protocolo':
+      return 'olga_config_protocolo';
+    case 'Certificación de Firmas':
+      return 'olga_config_certificacion';
+    case 'Concuerda':
+      return 'olga_config_concuerda';
+    case 'Legalización':
+      return 'olga_config_legalizacion';
+    default:
+      return 'olga_config_general';
+  }
+};
+
+export const cargarConfiguracionHoja = (tipo: TipoDocumentoNotarial): ConfiguracionHojaNotarial => {
+  try {
+    const raw = localStorage.getItem(getConfigKey(tipo));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        offsetX: typeof parsed.offsetX === 'number' ? parsed.offsetX : 0,
+        offsetY: typeof parsed.offsetY === 'number' ? parsed.offsetY : 0,
+        fontSizeGlobal: parsed.fontSizeGlobal || '15px',
+        fontFamilyGlobal: parsed.fontFamilyGlobal || 'Arial, Helvetica, sans-serif',
+        interlineadoGlobal: typeof parsed.interlineadoGlobal === 'number' ? parsed.interlineadoGlobal : 10.2,
+        margenHorizontal: typeof parsed.margenHorizontal === 'number' ? parsed.margenHorizontal : 0,
+      };
+    }
+    // Retrocompatibilidad con offsets previos si existen
+    const legacyX = localStorage.getItem(`olga_print_offset_x_${tipo}`);
+    const legacyY = localStorage.getItem(`olga_print_offset_y_${tipo}`);
+    return {
+      ...CONFIG_POR_DEFECTO,
+      offsetX: legacyX ? parseFloat(legacyX) : 0,
+      offsetY: legacyY ? parseFloat(legacyY) : 0,
+    };
+  } catch (e) {
+    console.error('Error cargando configuración notarial:', e);
+    return { ...CONFIG_POR_DEFECTO };
+  }
+};
 
 interface EditorNotarialOficialProps {
   onVolver?: () => void;
@@ -20,23 +86,67 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [mostrarGuia, setMostrarGuia] = useState<boolean>(true);
   const [rellenoGuiones, setRellenoGuiones] = useState<boolean>(true);
 
-  // Calibrador fino de impresora (Offset X e Y en mm) guardado en localStorage por tipoDocumento
-  const [offsetX, setOffsetX] = useState<number>(() => {
-    const saved = localStorage.getItem(`olga_print_offset_x_${tipoDocumento}`);
-    return saved ? parseFloat(saved) : 0;
-  });
-  const [offsetY, setOffsetY] = useState<number>(() => {
-    const saved = localStorage.getItem(`olga_print_offset_y_${tipoDocumento}`);
-    return saved ? parseFloat(saved) : 0;
-  });
+  // Carga inicial independiente para la plantilla activa por defecto ('Concuerda')
+  const initialConfig = cargarConfiguracionHoja('Concuerda');
+  const [offsetX, setOffsetX] = useState<number>(initialConfig.offsetX);
+  const [offsetY, setOffsetY] = useState<number>(initialConfig.offsetY);
+  const [fontSizeGlobal, setFontSizeGlobal] = useState<string>(initialConfig.fontSizeGlobal);
+  const [fontFamilyGlobal, setFontFamilyGlobal] = useState<string>(initialConfig.fontFamilyGlobal);
+  const [interlineadoGlobal, setInterlineadoGlobal] = useState<number>(initialConfig.interlineadoGlobal);
+  const [margenHorizontal, setMargenHorizontal] = useState<number>(initialConfig.margenHorizontal);
+  const [guardadoFeedback, setGuardadoFeedback] = useState<boolean>(false);
 
-  useEffect(() => {
-    localStorage.setItem(`olga_print_offset_x_${tipoDocumento}`, offsetX.toString());
-  }, [offsetX, tipoDocumento]);
+  // Función para guardar en localStorage de forma aislada e independiente según el tipo de hoja
+  const guardarConfiguracionActual = (
+    tipoDestino: TipoDocumentoNotarial = tipoDocumento,
+    valoresSobrescritos?: Partial<ConfiguracionHojaNotarial>
+  ) => {
+    const configToSave: ConfiguracionHojaNotarial = {
+      offsetX: valoresSobrescritos?.offsetX !== undefined ? valoresSobrescritos.offsetX : offsetX,
+      offsetY: valoresSobrescritos?.offsetY !== undefined ? valoresSobrescritos.offsetY : offsetY,
+      fontSizeGlobal: valoresSobrescritos?.fontSizeGlobal !== undefined ? valoresSobrescritos.fontSizeGlobal : fontSizeGlobal,
+      fontFamilyGlobal: valoresSobrescritos?.fontFamilyGlobal !== undefined ? valoresSobrescritos.fontFamilyGlobal : fontFamilyGlobal,
+      interlineadoGlobal: valoresSobrescritos?.interlineadoGlobal !== undefined ? valoresSobrescritos.interlineadoGlobal : interlineadoGlobal,
+      margenHorizontal: valoresSobrescritos?.margenHorizontal !== undefined ? valoresSobrescritos.margenHorizontal : margenHorizontal,
+    };
+    try {
+      localStorage.setItem(getConfigKey(tipoDestino), JSON.stringify(configToSave));
+      // Guardar también retrocompatibilidad
+      localStorage.setItem(`olga_print_offset_x_${tipoDestino}`, configToSave.offsetX.toString());
+      localStorage.setItem(`olga_print_offset_y_${tipoDestino}`, configToSave.offsetY.toString());
+    } catch (e) {
+      console.error('Error guardando configuración notarial:', e);
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem(`olga_print_offset_y_${tipoDocumento}`, offsetY.toString());
-  }, [offsetY, tipoDocumento]);
+  // Cambio de plantilla con persistencia automática de la anterior y carga de la nueva
+  const handleCambiarTipoDocumento = (nuevoTipo: TipoDocumentoNotarial) => {
+    if (nuevoTipo === tipoDocumento) return;
+
+    // 1. Guardar la configuración actual de la plantilla saliente
+    guardarConfiguracionActual(tipoDocumento);
+
+    // 2. Cargar la configuración independiente de la nueva plantilla entrante
+    const configEntrante = cargarConfiguracionHoja(nuevoTipo);
+    setOffsetX(configEntrante.offsetX);
+    setOffsetY(configEntrante.offsetY);
+    setFontSizeGlobal(configEntrante.fontSizeGlobal);
+    setFontFamilyGlobal(configEntrante.fontFamilyGlobal);
+    setInterlineadoGlobal(configEntrante.interlineadoGlobal);
+    setMargenHorizontal(configEntrante.margenHorizontal);
+
+    // 3. Cambiar el tipo de documento activo
+    setTipoDocumento(nuevoTipo);
+  };
+
+  // Guardar configuración manual con feedback visual en el botón
+  const handleGuardarConfiguracion = () => {
+    guardarConfiguracionActual(tipoDocumento);
+    setGuardadoFeedback(true);
+    setTimeout(() => {
+      setGuardadoFeedback(false);
+    }, 2000);
+  };
 
   // PLANTILLA 1: Certificación de Firmas (Art. 152 Ley 879)
   const [firmasT1, setFirmasT1] = useState<string>('TITULAR.-');
@@ -75,30 +185,31 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [anioCert, setAnioCert] = useState<string>('2026');
 
   // PLANTILLA 2: Concuerda
-  const [matrizNro, setMatrizNro] = useState<string>('79.-----------------');
-  const [folioConcuerda, setFolioConcuerda] = useState<string>('493 Y SGTES.');
-  const [ divisionConcuerda, setDivisionConcuerda] = useState<string>('COMERCIAL');
-  const [seccionConcuerda, setSeccionConcuerda] = useState<string>('A');
-  const [registroConcuerda, setRegistroConcuerda] = useState<string>('1.292');
-  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('ITAKYRY');
-  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('RICARDO GABRIEL MARTINEZ VARELA');
-  const [caracterConcuerda, setCaracterConcuerda] = useState<string>('TITULAR');
-  const [copiaConcuerda, setCopiaConcuerda] = useState<string>('PRIMERA');
-  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('ADEMIR LUIZ COLOSSI.-');
-  const [cierreConcuerda, setCierreConcuerda] = useState<string>('*****************');
-  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('ONCE');
-  const [mesConcuerda, setMesConcuerda] = useState<string>('MAYO');
-  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('DOS MIL VEINTISÉIS.-');
+  const [matrizNro, setMatrizNro] = useState<string>('');
+  const [folioConcuerda, setFolioConcuerda] = useState<string>('');
+  const [divisionConcuerda, setDivisionConcuerda] = useState<string>('');
+  const [seccionConcuerda, setSeccionConcuerda] = useState<string>('');
+  const [registroConcuerda, setRegistroConcuerda] = useState<string>('');
+  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('');
+  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('');
+  const [caracterConcuerda, setCaracterConcuerda] = useState<string>('');
+  const [copiaConcuerda, setCopiaConcuerda] = useState<string>('');
+  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('');
+  const [lineaAdicionalConcuerda, setLineaAdicionalConcuerda] = useState<string>('');
+  const [cierreConcuerda, setCierreConcuerda] = useState<string>('');
+  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('');
+  const [mesConcuerda, setMesConcuerda] = useState<string>('');
+  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('');
 
   // PLANTILLA 3: Legalización
-  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('RICARDO GABRIEL MARTINEZ VARELA');
-  const [lineaAdicionalLeg, setLineaAdicionalLeg] = useState<string>('--------------------------------------------------------------------------------');
-  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('79');
-  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('10 de Mayo de 2026');
-  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('PJD-2022 Nº 4.589.123');
-  const [diaLeg, setDiaLeg] = useState<string>('15');
-  const [mesLeg, setMesLeg] = useState<string>('Mayo');
-  const [anioLeg, setAnioLeg] = useState<string>('2026');
+  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('');
+  const [lineaAdicionalLeg, setLineaAdicionalLeg] = useState<string>('');
+  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('');
+  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('');
+  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('');
+  const [diaLeg, setDiaLeg] = useState<string>('');
+  const [mesLeg, setMesLeg] = useState<string>('');
+  const [anioLeg, setAnioLeg] = useState<string>('');
 
   // PLANTILLA 0: Protocolo
   const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
@@ -198,166 +309,331 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     }
   };
 
+  const imprimirConIframe = (html: string) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(html);
+      iframeDoc.close();
+      iframe.contentWindow?.focus();
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }, 1500);
+      }, 500);
+    } else {
+      window.print();
+    }
+  };
+
   const handlePrint = () => {
     const lienzoEl = document.getElementById('lienzo-notarial');
-    if (!lienzoEl) {
-      window.print();
-      return;
-    }
+    if (!lienzoEl) { window.print(); return; }
 
     const clone = lienzoEl.cloneNode(true) as HTMLElement;
     clone.style.transform = 'none';
 
-    // 1. Mostrar texto espejo y ocultar textareas UI
+    // 1. Mostrar texto espejo y ocultar UI interactiva
     clone.querySelectorAll('textarea').forEach((ta) => ta.remove());
     clone.querySelectorAll('.print\\:block, [class*="print:block"]').forEach((mirror) => {
       mirror.classList.remove('hidden');
       (mirror as HTMLElement).style.display = 'block';
     });
+    clone.querySelectorAll('.guia-impresion, .print\\:hidden, .renglones-container').forEach((el) => el.remove());
 
-    // 2. Limpiar completamente los elementos de UI y lomos viejos del DOM clonado
-    clone.querySelectorAll('.texto-vertical-sello, .lomo-impresion, .guia-impresion, .renglones-container').forEach(el => el.remove());
+    // 2. Limpieza de estilos inline inyectados por React en .z-20
+    clone.querySelectorAll('.z-20').forEach((el) => {
+      const hEl = el as HTMLElement;
+      hEl.style.padding = '';
+      hEl.style.margin = '';
+      hEl.style.width = '';
+      hEl.style.height = '';
+      hEl.style.position = '';
+      hEl.style.paddingTop = '';
+      hEl.style.paddingBottom = '';
+      hEl.style.paddingLeft = '';
+      hEl.style.paddingRight = '';
+      hEl.style.top = '';
+      hEl.style.bottom = '';
+      hEl.style.left = '';
+      hEl.style.right = '';
+      hEl.classList.remove('print:!p-0', 'print:!static', 'print:!h-auto', 'print:!overflow-visible');
+    });
 
-    // 3. Limpiar páginas vacías de React
-    const paginas = clone.querySelectorAll('.hoja-notarial');
+    // 3. Limpieza del DOM clonado y Aislamiento de Hojas
+    const paginas = Array.from(clone.querySelectorAll('.hoja-notarial'));
+    const paginasValidas: HTMLElement[] = [];
+
     paginas.forEach((pag) => {
       const divEspejo = pag.querySelector('.print\\:block') || pag.querySelector('[class*="print:block"]');
-      const textoEspejo = divEspejo && divEspejo.textContent ? divEspejo.textContent.trim() : '';
-      if (textoEspejo === '') {
+      if (!divEspejo || (divEspejo.textContent || '').trim() === '') {
         pag.remove();
+      } else {
+        paginasValidas.push(pag as HTMLElement);
       }
     });
 
-    const contenidoHtml = clone.innerHTML;
-    const titulo = `Documento Notarial - ${tipoDocumento}`;
+    // Aislamiento del Lomo:
+    if (paginasValidas.length > 0) {
+      // Eliminar lomos en hojas posteriores (index > 0)
+      paginasValidas.forEach((pag, idx) => {
+        if (idx > 0) {
+          pag.querySelectorAll('.texto-vertical-sello, .lomo-impresion, .nuevo-lomo-grid, .caja-fija-lomo').forEach((el) => el.remove());
+        }
+      });
 
-    // 4. Inyectar el Lomo Vertical solo si es el Protocolo (Página 1)
-    const lomoHtml = tipoDocumento === 'Sellado Notarial - Protocolo' 
-      ? `<div class="texto-vertical-unico"><span>${protocoloTextoVertical}</span></div>` 
-      : '';
+      // En la primera hoja (index === 0)
+      if (tipoDocumento === 'Sellado Notarial - Protocolo') {
+        const pagina1 = paginasValidas[0];
+        let lomo = pagina1.querySelector('.caja-fija-lomo, .nuevo-lomo-grid, .texto-vertical-sello, .lomo-impresion') as HTMLElement;
+
+        if (!lomo) {
+          lomo = document.createElement('div');
+          pagina1.insertBefore(lomo, pagina1.firstChild);
+        } else if (pagina1.firstChild !== lomo) {
+          pagina1.insertBefore(lomo, pagina1.firstChild);
+        }
+
+        lomo.className = 'caja-fija-lomo';
+        lomo.removeAttribute('style');
+        lomo.innerHTML = `<span>${protocoloTextoVertical}</span>`;
+      }
+    }
+
+    // Para plantillas de una sola hoja (Certificación, Concuerda, Legalización)
+    if (tipoDocumento !== 'Sellado Notarial - Protocolo') {
+      clone.classList.add('plantilla-unica-hoja');
+      clone.classList.remove('shadow-2xl');
+      clone.style.width = '216mm';
+      clone.style.height = '330mm';
+      clone.style.maxHeight = '330mm';
+      clone.style.overflow = 'hidden';
+      clone.style.boxSizing = 'border-box';
+      clone.style.margin = '0 auto';
+    }
+
+    // Convertir todos los inputs a spans transfiriendo exactamente su className y contenido
+    clone.querySelectorAll('input').forEach((inp) => {
+      const span = document.createElement('span');
+      span.textContent = inp.value || '\u00A0';
+      span.className = inp.className;
+      inp.parentNode?.replaceChild(span, inp);
+    });
+
+    // Capturar todos los estilos y links de Tailwind presentes en el documento principal
+    const estilosTailwind = Array.from(
+      document.head.querySelectorAll('style, link[rel="stylesheet"]')
+    ).map((node) => node.outerHTML).join('\n');
+
+    const titulo = `Documento Notarial - ${tipoDocumento}`;
 
     const htmlImpresion = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>${titulo}</title>
+  ${estilosTailwind}
   <style>
-    /* 1. MÁRGENES FIJOS ESTILO WORD/DOCS */
-    @page {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm !important;
-      margin-bottom: 25mm !important;
+    /* ==========================================================================
+       CONFIGURACIÓN DE PÁGINA Y ESCALADO (92% PARA EVITAR HOJAS EN BLANCO)
+       ========================================================================== */
+    @page { 
+      margin: 0 !important; 
+      size: 216mm 330mm portrait; 
     }
-    @page :left {
-      margin-left: 15mm !important;
-      margin-right: 45mm !important;
+    
+    html, body { 
+      margin: 0 !important; 
+      padding: 0 !important; 
+      background: #ffffff !important; 
+      -webkit-print-color-adjust: exact; 
+      print-color-adjust: exact; 
+      zoom: ${tipoDocumento === 'Sellado Notarial - Protocolo' ? '0.92' : '1.0'} !important; 
     }
-    @page :right {
-      margin-left: 45mm !important;
-      margin-right: 15mm !important;
-    }
-
-    html, body {
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+    
+    * { 
+      box-sizing: border-box !important; 
     }
 
-    /* 2. CONTENEDOR MAESTRO */
-    .print-container {
+    #lienzo-notarial {
+      box-shadow: none !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* HOJAS NOTARIALES (Oficio / Legal: 216mm x 330mm) */
+    .hoja-notarial {
+      width: 216mm !important;
+      height: 330mm !important;
+      max-height: 330mm !important;
       position: relative !important;
-      width: 100% !important;
+      overflow: hidden !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: always !important;
+      break-after: page !important;
       margin: 0 !important;
       padding: 0 !important;
+      display: block !important;
+      box-sizing: border-box !important;
+      background: #ffffff !important;
+      border: none !important;
+      box-shadow: none !important;
     }
 
-    /* 3. TEXTO VERTICAL COMO DIV EN LA PAGINA 1 */
-    /* Como el contenedor empieza a los 45mm (margen de página), le restamos 30mm para que quede a 15mm físicos del borde */
-    .texto-vertical-unico {
+    .hoja-notarial:last-child {
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+    }
+
+    /* PLANTILLAS DE UNA SOLA HOJA (Certificación, Concuerda, Legalización) */
+    .plantilla-unica-hoja {
+      width: 216mm !important;
+      height: 330mm !important;
+      max-height: 330mm !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+      margin: 0 auto !important;
+      box-shadow: none !important;
+    }
+
+    /* SIMETRÍA DOBLE FAZ NOTARIAL */
+    .pagina-anverso > div.z-20 {
+      padding: 55mm 15mm 25mm 45mm !important;
+      box-sizing: border-box !important;
+    }
+
+    .pagina-reverso > div.z-20 {
+      padding: 55mm 45mm 25mm 15mm !important;
+      box-sizing: border-box !important;
+    }
+
+    /* CAJA FIJA LOMO (Texto vertical anclado a 15mm) */
+    .caja-fija-lomo {
       position: absolute !important;
-      top: 0 !important; 
-      left: -30mm !important; 
-      width: 15mm !important;
-      height: 250mm !important;
+      left: 15mm !important;
+      bottom: 25mm !important;
+      width: 250mm !important;
+      height: 15mm !important;
       display: flex !important;
       align-items: center !important;
-      justify-content: center !important;
-      writing-mode: vertical-rl !important;
-      transform: rotate(180deg) !important;
-      z-index: 100 !important;
+      justify-content: flex-start !important;
+      transform-origin: bottom left !important;
+      transform: rotate(-90deg) !important;
+      z-index: 9999 !important;
+      pointer-events: none !important;
+    }
+
+    .caja-fija-lomo span {
+      white-space: nowrap !important;
+      text-transform: uppercase !important;
       color: #000000 !important;
-      font-family: sans-serif !important;
       font-size: 9px !important;
       font-weight: 900 !important;
       letter-spacing: 2px !important;
-      text-transform: uppercase !important;
+      font-family: "Times New Roman", Times, serif !important;
     }
 
-    /* 4. FLUJO LIBRE Y NORMAL PARA EL CONTRATO */
-    /* Aplastamos las cajas de React para que el texto fluya como agua */
-    .hoja-notarial, .hoja-notarial > div.z-20 {
-      position: static !important;
-      width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      margin: 0 !important;
-      padding: 0 !important; /* Los márgenes los pone el @page */
-      border: none !important;
-      box-shadow: none !important;
-      overflow: visible !important;
-      page-break-after: auto !important;
-      break-after: auto !important;
-    }
-
-    /* 5. FORMATO DE TEXTO */
+    /* TIPOGRAFÍA NOTARIAL DE ALTA PRECISIÓN (10.2mm de interlineado) */
     .print\\:block, [class*="print:block"] {
       font-family: "Times New Roman", Times, serif !important;
       font-size: 15px !important;
       line-height: 10.2mm !important;
       text-align: justify !important;
+      text-justify: inter-word !important;
       white-space: pre-wrap !important;
-      width: 100% !important;
       color: #000000 !important;
+      display: block !important;
       margin: 0 !important;
       padding: 0 !important;
     }
 
-    /* Ocultar UI */
-    .print\\:hidden { display: none !important; }
+    /* CAMPOS DE FORMULARIO CONVERTIDOS A SPAN */
+    .input-impresion {
+      display: inline-block !important;
+    }
+
+    /* OCULTAR ELEMENTOS NO IMPRIMIBLES */
+    .guia-impresion, .print\\:hidden, textarea, .renglones-container { 
+      display: none !important; 
+    }
   </style>
 </head>
 <body>
-  <div class="print-container">
-    ${lomoHtml}
-    ${contenidoHtml}
-  </div>
+  ${clone.outerHTML}
   <script>
     window.onload = () => {
       window.focus();
-      setTimeout(() => { window.print(); }, 300);
+      setTimeout(() => { window.print(); }, 250);
     };
   </script>
 </body>
 </html>`;
 
     try {
-      const ventanaImpresion = window.open('', '_blank');
-      if (ventanaImpresion) {
-        ventanaImpresion.document.open();
-        ventanaImpresion.document.write(htmlImpresion);
-        ventanaImpresion.document.close();
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(htmlImpresion);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+          try {
+            win.print();
+          } catch (e) {
+            console.warn('Fallback a iframe tras error en popup:', e);
+            imprimirConIframe(htmlImpresion);
+          }
+        }, 300);
         return;
       }
     } catch (e) {
-      console.warn('Fallback a impresión directa.', e);
+      console.warn('Popup bloqueado, utilizando iframe oculto:', e);
     }
-    window.print();
+
+    imprimirConIframe(htmlImpresion);
   };
 
   const guionesSeguridad = '------------------------------------------------------------------------';
+
+  // Función para saltar al siguiente input o al botón de imprimir al presionar Enter
+  const handleEnterKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const container = document.getElementById('lienzo-notarial');
+      if (!container) return;
+      
+      const inputs = Array.from(container.querySelectorAll('input.input-impresion:not([readOnly])')) as HTMLInputElement[];
+      const index = inputs.indexOf(e.currentTarget);
+      
+      if (index > -1) {
+        if (index < inputs.length - 1) {
+          // Si hay más inputs, salta al siguiente
+          inputs[index + 1].focus();
+        } else {
+          // Si es el último input, salta al botón de imprimir
+          const btnImprimir = document.getElementById('btn-imprimir-hoja');
+          if (btnImprimir) {
+            btnImprimir.focus();
+          }
+        }
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-900/95 text-slate-100 flex flex-col font-sans">
@@ -647,7 +923,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           </div>
           <div>
             <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
-              <span>Gemelo Digital Notarial</span>
+              <span>Sección Notarial</span>
               <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
                 O.L.G.A.
               </span>
@@ -658,16 +934,16 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
+        <div className="flex items-center gap-3 self-start md:self-auto relative z-10">
           {/* Selector de Tipo de Documento */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+          <div className="flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
             <label htmlFor="tipo-doc-select" className="text-xs font-bold text-slate-400">
               Plantilla:
             </label>
             <select
               id="tipo-doc-select"
               value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as TipoDocumentoNotarial)}
+              onChange={(e) => handleCambiarTipoDocumento(e.target.value as TipoDocumentoNotarial)}
               className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
             >
               <option value="Sellado Notarial - Protocolo" className="bg-slate-900 text-white">0. Sellado Notarial - Protocolo</option>
@@ -676,80 +952,274 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               <option value="Legalización" className="bg-slate-900 text-white">3. Legalización Notarial</option>
             </select>
           </div>
-
-          {/* Botón Guía Visual */}
-          <button
-            type="button"
-            onClick={() => setMostrarGuia(!mostrarGuia)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
-              mostrarGuia 
-                ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-            }`}
-          >
-            {mostrarGuia ? <Eye className="w-4 h-4 text-blue-400" /> : <EyeOff className="w-4 h-4" />}
-            <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
-          </button>
-
-          {/* Botón Imprimir Hoja */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-5 py-2 bg-[#FF3131] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-red-600/20 transition-all hover:scale-105 active:scale-95"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Imprimir Hoja</span>
-          </button>
         </div>
       </header>
 
-      {/* Calibrador Fino de Impresora y Switch de Seguridad (No imprimible) */}
-      <div className="bg-slate-800/90 border-y border-slate-700/80 px-6 py-3 text-xs text-slate-300 print:hidden flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-            <Sliders className="w-4 h-4" />
-            <span>Calibrador Impresora:</span>
-          </div>
-          <div className="flex items-center gap-1 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
-            <span>Offset X:</span>
-            <button onClick={() => setOffsetX(offsetX - 1)} className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">-1mm</button>
-            <span className="w-8 text-center font-mono font-bold text-amber-300">{offsetX}mm</span>
-            <button onClick={() => setOffsetX(offsetX + 1)} className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">+1mm</button>
-          </div>
-          <div className="flex items-center gap-1 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
-            <span>Offset Y:</span>
-            <button onClick={() => setOffsetY(offsetY - 1)} className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">-1mm</button>
-            <span className="w-8 text-center font-mono font-bold text-amber-300">{offsetY}mm</span>
-            <button onClick={() => setOffsetY(offsetY + 1)} className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">+1mm</button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
-            <input 
-              type="checkbox" 
-              checked={rellenoGuiones} 
-              onChange={(e) => setRellenoGuiones(e.target.checked)}
-              className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
+      {/* Opciones Auxiliares de Formato (No imprimible) */}
+      <div className="bg-slate-800/80 border-y border-slate-700/80 px-6 py-2.5 text-xs text-slate-300 print:hidden flex flex-wrap items-center justify-between gap-4">
+        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
+          <input 
+            type="checkbox" 
+            checked={rellenoGuiones} 
+            onChange={(e) => setRellenoGuiones(e.target.checked)}
+            className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
+          />
+          <span>Autorrellenar líneas vacías con guiones (----)</span>
+        </label>
+        {tipoDocumento === 'Sellado Notarial - Protocolo' && (
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold text-[10px]">Texto Lomo:</span>
+            <input
+              type="text"
+              value={protocoloTextoVertical}
+              onChange={(e) => setProtocoloTextoVertical(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-white text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
             />
-            <span>Autorrellenar líneas vacías con guiones (----)</span>
-          </label>
-          {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-            <div className="flex items-center gap-2 ml-4 border-l border-slate-700 pl-4">
-              <span className="text-amber-400 font-bold text-[10px]">Texto Lomo:</span>
-              <input
-                type="text"
-                value={protocoloTextoVertical}
-                onChange={(e) => setProtocoloTextoVertical(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-white text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 216mm x 330mm) */}
-      <div className="flex-1 flex items-start justify-center p-4 md:p-8 overflow-auto bg-slate-950">
+      <div className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-950">
+        {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Espaciado, Guía, Guardar e Imprimir) */}
+        <div className="mb-4 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200 shadow-xl print:hidden w-full max-w-7xl">
+          {/* Bloque Izquierdo: Calibración, Tipografía y Espaciados */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Calibrador de Impresora (Offset X / Y) */}
+            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/70">
+              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1" title="Calibrador milimétrico de impresora">
+                <Sliders className="w-3.5 h-3.5" />
+                Offset:
+              </span>
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
+                <span className="text-[10px] text-slate-400">X:</span>
+                <button 
+                  type="button"
+                  onClick={() => setOffsetX(offsetX - 1)} 
+                  title="Restar 1mm horizontal"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                >
+                  -
+                </button>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetX}mm</span>
+                <button 
+                  type="button"
+                  onClick={() => setOffsetX(offsetX + 1)} 
+                  title="Sumar 1mm horizontal"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
+                <span className="text-[10px] text-slate-400">Y:</span>
+                <button 
+                  type="button"
+                  onClick={() => setOffsetY(offsetY - 1)} 
+                  title="Restar 1mm vertical"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                >
+                  -
+                </button>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetY}mm</span>
+                <button 
+                  type="button"
+                  onClick={() => setOffsetY(offsetY + 1)} 
+                  title="Sumar 1mm vertical"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Separador */}
+            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
+
+            {/* Tipografía (Fuente, Tamaño, A-/A+) */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Type className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Fuente</span>
+              </span>
+              <select
+                value={fontFamilyGlobal}
+                onChange={(e) => setFontFamilyGlobal(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+              >
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value='"Times New Roman", Times, serif'>Times New Roman</option>
+                <option value='"Courier New", Courier, monospace'>Courier New</option>
+                <option value="Georgia, serif">Georgia</option>
+              </select>
+
+              <select
+                value={fontSizeGlobal}
+                onChange={(e) => setFontSizeGlobal(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+              >
+                <option value="12px">12 px</option>
+                <option value="13px">13 px</option>
+                <option value="14px">14 px</option>
+                <option value="15px">15 px</option>
+                <option value="16px">16 px</option>
+                <option value="18px">18 px</option>
+                <option value="20px">20 px</option>
+              </select>
+
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
+                    const idx = sizes.indexOf(fontSizeGlobal);
+                    if (idx > 0) setFontSizeGlobal(sizes[idx - 1]);
+                  }}
+                  title="Reducir tamaño (A-)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  A-
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
+                    const idx = sizes.indexOf(fontSizeGlobal);
+                    if (idx !== -1 && idx < sizes.length - 1) setFontSizeGlobal(sizes[idx + 1]);
+                  }}
+                  title="Aumentar tamaño (A+)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  A+
+                </button>
+              </div>
+            </div>
+
+            {/* Separador */}
+            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
+
+            {/* Espaciado vertical (Interlineado) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
+                <MoveVertical className="w-3.5 h-3.5 text-sky-400" />
+                Líneas:
+              </span>
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setInterlineadoGlobal((prev) => Math.max(8.0, Number((prev - 0.2).toFixed(1))))}
+                  title="Reducir interlineado (-0.2mm)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  -
+                </button>
+                <span className="w-12 text-center font-mono text-[11px] text-sky-300 font-bold">
+                  {interlineadoGlobal.toFixed(1)}mm
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setInterlineadoGlobal((prev) => Math.min(16.0, Number((prev + 0.2).toFixed(1))))}
+                  title="Aumentar interlineado (+0.2mm)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Margen horizontal (Indentación In/Out) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
+                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+                Margen H:
+              </span>
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setMargenHorizontal((prev) => Math.max(-25, prev - 1))}
+                  title="Desplazar a la izquierda (-1mm)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  ◄
+                </button>
+                <span className="w-11 text-center font-mono text-[11px] text-emerald-300 font-bold">
+                  {margenHorizontal > 0 ? `+${margenHorizontal}` : margenHorizontal}mm
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMargenHorizontal((prev) => Math.min(25, prev + 1))}
+                  title="Desplazar a la derecha (+1mm)"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                >
+                  ►
+                </button>
+              </div>
+              {margenHorizontal !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMargenHorizontal(0)}
+                  title="Restablecer margen a 0mm"
+                  className="text-[10px] text-slate-400 hover:text-amber-400 underline ml-0.5"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bloque Derecho: Acciones (Guía, Guardar e Imprimir) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Botón Guía Visual */}
+            <button
+              type="button"
+              onClick={() => setMostrarGuia(!mostrarGuia)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                mostrarGuia 
+                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+              }`}
+            >
+              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
+            </button>
+
+            {/* Botón Guardar Configuración */}
+            <button
+              type="button"
+              onClick={handleGuardarConfiguracion}
+              title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                guardadoFeedback
+                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-emerald-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-amber-500/40 hover:border-amber-400 hover:text-amber-300'
+              }`}
+            >
+              {guardadoFeedback ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>¡Guardado!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Guardar Config.</span>
+                </>
+              )}
+            </button>
+
+            {/* Botón Imprimir Hoja */}
+            <button
+              id="btn-imprimir-hoja"
+              type="button"
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-1.5 bg-[#FF3131] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-red-600/20 transition-all hover:scale-105 active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Imprimir Hoja</span>
+            </button>
+          </div>
+        </div>
+
         <div 
           id="lienzo-notarial"
           style={{
@@ -760,6 +1230,55 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           }}
           className={`${tipoDocumento === 'Sellado Notarial - Protocolo' ? 'relative flex flex-col items-center p-0' : 'bg-white text-black shadow-2xl relative p-12 flex flex-col justify-between'} box-border font-serif text-[13px] leading-relaxed selection:bg-red-100`}
         >
+          {/* ESTILOS TIPOGRÁFICOS Y DE CALIBRACIÓN GLOBALES PARA LAS 4 PLANTILLAS */}
+          <style>{`
+            .input-impresion,
+            #lienzo-notarial input,
+            #lienzo-notarial textarea,
+            #lienzo-notarial .print\\:block {
+              font-family: ${fontFamilyGlobal} !important;
+              font-size: ${fontSizeGlobal} !important;
+            }
+
+            /* Ajuste dinámico de interlineado (Espaciado Vertical) */
+            #lienzo-notarial textarea,
+            #lienzo-notarial .print\\:block,
+            .linea-renglon,
+            .contenido-pagina,
+            .ajuste-interlineado-datos {
+              line-height: ${interlineadoGlobal}mm !important;
+            }
+
+            /* Ajuste dinámico de margen horizontal (Indentación In/Out) */
+            .ajuste-horizontal-datos,
+            .capa-datos-concuerda {
+              transform: translateX(${margenHorizontal}mm) !important;
+            }
+
+            @media print {
+              .input-impresion,
+              #lienzo-notarial input,
+              #lienzo-notarial textarea,
+              #lienzo-notarial .print\\:block,
+              .print\\:block {
+                font-family: ${fontFamilyGlobal} !important;
+                font-size: ${fontSizeGlobal} !important;
+              }
+
+              #lienzo-notarial textarea,
+              #lienzo-notarial .print\\:block,
+              .linea-renglon,
+              .contenido-pagina,
+              .ajuste-interlineado-datos {
+                line-height: ${interlineadoGlobal}mm !important;
+              }
+
+              .ajuste-horizontal-datos,
+              .capa-datos-concuerda {
+                transform: translateX(${margenHorizontal}mm) !important;
+              }
+            }
+          `}</style>
           {/* MARCO EXTERIOR GUÍA (Solo visible en pantalla si mostrarGuia es true y no es Protocolo) */}
           {tipoDocumento !== 'Sellado Notarial - Protocolo' && (
             <div className={`absolute inset-4 border border-dashed border-slate-300 pointer-events-none transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}></div>
@@ -769,306 +1288,557 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 1: CERTIFICACIÓN DE FIRMAS                                     */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Certificación de Firmas' && (
-            <div className="flex flex-col h-full justify-between relative">
+            <div className="relative h-full w-full">
               {/* CABECERA GUÍA Y ESTRUCTURAL */}
               <div>
-                <div className={`flex items-start justify-between border-b-2 border-black pb-4 mb-6 transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
+                <div className={`flex items-start justify-between border-b-2 border-black pb-4 mb-[4mm] transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion print:opacity-0 print:border-none print:border-transparent`}>
                   <div>
-                    <h2 className="font-black text-base uppercase tracking-wider">CORTE SUPREMA DE JUSTICIA</h2>
-                    <p className="text-xs font-bold text-slate-700">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-xs font-bold mt-1 text-[#FF3131]">CERTIFICACIÓN DE FIRMAS (Art. 152 - Ley 879) (Hoja Anexa)</p>
+                    <h2 className="font-black text-base uppercase tracking-wider whitespace-nowrap print:text-transparent">CORTE SUPREMA DE JUSTICIA</h2>
+                    <p className="text-xs font-bold text-slate-700 whitespace-nowrap print:text-transparent">REPÚBLICA DEL PARAGUAY</p>
+                    <p className="text-xs font-bold mt-1 text-[#FF3131] whitespace-nowrap print:text-transparent">CERTIFICACIÓN DE FIRMAS (Art. 152 - Ley 879) (Hoja Anexa)</p>
                   </div>
-                  <div className="border border-black p-2 text-center w-24 h-24 flex flex-col items-center justify-center bg-slate-50">
-                    <span className="text-[10px] font-mono font-bold">QR PJE</span>
-                    <span className="text-[8px] text-slate-500">SEC-2026</span>
+                  <div className="border border-black p-2 text-center w-24 h-24 flex flex-col items-center justify-center bg-slate-50 shrink-0 print:opacity-0 print:border-none print:border-transparent">
+                    <span className="text-[10px] font-mono font-bold whitespace-nowrap print:text-transparent">QR PJE</span>
+                    <span className="text-[8px] text-slate-500 whitespace-nowrap print:text-transparent">SEC-2026</span>
                   </div>
                 </div>
 
-                {/* TEXTOS Y CAMPOS DEL CUERPO */}
-                <div className="space-y-4 text-justify font-sans text-[12.5px]">
-                  {/* Línea 1 y 2 de presentación */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>En mi carácter de Escribano Público</span>
+                {/* TEXTOS Y CAMPOS DEL CUERPO CON ESPACIADO MILIMÉTRICO */}
+                <div className="ajuste-horizontal-datos ajuste-interlineado-datos space-y-[4mm] text-justify font-sans text-[12.5px]">
+                  {/* Presentación: Renglón 1 */}
+                  <div className="flex items-end w-full gap-2">
+                    <span className="whitespace-nowrap print:text-transparent">En mi carácter de Escribano Público</span>
                     <input 
                       type="text" 
                       value={firmasT1} 
                       onChange={(e) => setFirmasT1(e.target.value)}
-                      className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 w-36 input-impresion"
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 flex-1 min-w-0 input-impresion"
                       placeholder="TITULAR.-"
                     />
-                    <span>del Registro Notarial Nº</span>
+                    <span className="whitespace-nowrap print:text-transparent">del Registro Notarial Nº</span>
                     <input 
                       type="text" 
                       value={firmasT2} 
                       onChange={(e) => setFirmasT2(e.target.value)}
-                      className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 w-28 input-impresion"
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 w-28 text-center input-impresion"
                       placeholder="1.292.-"
                     />
-                    <span>con asiento en</span>
+                  </div>
+
+                  {/* Presentación: Renglón 2 */}
+                  <div className="flex items-end w-full gap-2">
+                    <span className="whitespace-nowrap print:text-transparent">con asiento en</span>
                     <input 
                       type="text" 
                       value={firmasT3} 
                       onChange={(e) => setFirmasT3(e.target.value)}
-                      className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 w-40 input-impresion"
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black focus:outline-none focus:border-red-500 flex-1 min-w-0 input-impresion"
                       placeholder="ITAKYRY.-"
                     />
                   </div>
-                  <div>
-                    y en uso de las atribuciones que me acuerda la legislación vigente:
+
+                  {/* Presentación: Renglón 3 */}
+                  <div className="flex items-end w-full">
+                    <span className="whitespace-nowrap print:text-transparent">y en uso de las atribuciones que me acuerda la legislación vigente:</span>
                   </div>
 
-                  <div className="text-center font-serif font-black text-lg tracking-widest my-4">
-                    C E R T I F I C O
+                  {/* CERTIFICO */}
+                  <div className="text-center font-serif font-black text-lg tracking-widest my-[4mm]">
+                    <span className="whitespace-nowrap print:text-transparent">C E R T I F I C O</span>
                   </div>
 
-                  {/* DESBORDE INTELIGENTE EN 3 TRAMOS PARA EL PUNTO PRIMERO */}
-                  <div className="space-y-2 bg-slate-50/80 p-3 rounded-xl border border-slate-200 guia-impresion">
-                    <p className="text-[11px] font-bold text-slate-500">Configuración Desborde Inteligente Punto PRIMERO:</p>
+                  {/* DESBORDE INTELIGENTE EN 3 TRAMOS PARA EL PUNTO PRIMERO (Guía en pantalla) */}
+                  <div className="space-y-2 bg-slate-50/80 p-3 rounded-xl border border-slate-200 guia-impresion mb-[3mm] print:hidden">
+                    <p className="text-[11px] font-bold text-slate-500 whitespace-nowrap">Configuración Desborde Inteligente Punto PRIMERO:</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-slate-600 block">Tramo 1 (Máx ~24 car.):</label>
+                        <label className="text-[10px] text-slate-600 block whitespace-nowrap">Tramo 1 (Máx ~24 car.):</label>
                         <input type="text" value={tramoPrimero1} onChange={(e) => setTramoPrimero1(e.target.value)} className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white font-mono" />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-600 block">Tramo 2 (Máx ~38 car.):</label>
+                        <label className="text-[10px] text-slate-600 block whitespace-nowrap">Tramo 2 (Máx ~38 car.):</label>
                         <input type="text" value={tramoPrimero2} onChange={(e) => setTramoPrimero2(e.target.value)} className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white font-mono" />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="text-[10px] text-slate-600 block">Tramo 3 (Excedente / Línea media):</label>
+                        <label className="text-[10px] text-slate-600 block whitespace-nowrap">Tramo 3 (Excedente / Línea media):</label>
                         <input type="text" value={tramoPrimero3} onChange={(e) => setTramoPrimero3(e.target.value)} className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white font-mono" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-1 pt-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-bold">PRIMERO:</span>
-                      <span>Que las firmas que obran en el documento anexo inserto en</span>
-                      <input type="text" value={tramoPrimero1} readOnly className="border-b border-dotted border-slate-400 px-1 font-mono font-bold text-black w-64 bg-transparent input-impresion" />
+                  {/* PUNTO PRIMERO (Renglones Rígidos y Líneas Elásticas) */}
+                  <div className="space-y-[2.5mm]">
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="font-bold whitespace-nowrap print:text-transparent">PRIMERO:</span>
+                      <span className="whitespace-nowrap print:text-transparent">Que las firmas que obran en el documento anexo inserto en</span>
+                      <input 
+                        type="text" 
+                        value={tramoPrimero1} 
+                        readOnly 
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-1 font-mono font-bold text-black flex-1 min-w-0 bg-transparent input-impresion" 
+                      />
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <input type="text" value={tramoPrimero2} readOnly className="border-b border-dotted border-slate-400 px-1 font-mono font-bold text-black w-72 bg-transparent input-impresion" />
-                      <span>han sido puestas en mi presencia por:</span>
+                    <div className="flex items-end w-full gap-1.5">
+                      <input 
+                        type="text" 
+                        value={tramoPrimero2} 
+                        readOnly 
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-1 font-mono font-bold text-black flex-1 min-w-0 bg-transparent input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">han sido puestas en mi presencia por:</span>
                     </div>
                     {tramoPrimero3 && (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <input type="text" value={tramoPrimero3} readOnly className="border-b border-dotted border-slate-400 px-1 font-mono font-bold text-black w-full bg-transparent input-impresion" />
+                      <div className="flex items-end w-full gap-1.5">
+                        <input 
+                          type="text" 
+                          value={tramoPrimero3} 
+                          readOnly 
+                          className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-1 font-mono font-bold text-black flex-1 min-w-0 bg-transparent input-impresion" 
+                        />
                       </div>
                     )}
                   </div>
 
-                  {/* INCISOS a), b), c), d) CON AUTORRELLENADO DE SEGURIDAD */}
-                  <div className="space-y-3 pt-2">
+                  {/* INCISOS a), b), c), d) CON RENGLONES RÍGIDOS Y AUTORRELLENADO */}
+                  <div className="space-y-[3mm]">
                     {/* Inciso a */}
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold">a)</span>
-                        <input type="text" value={incisoANombre} onChange={(e) => setIncisoANombre(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-[200px] input-impresion" placeholder="Nombre completo" />
-                        <span>documento</span>
-                        <input type="text" value={incisoADoc} onChange={(e) => setIncisoADoc(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-40 input-impresion" placeholder="C.I. / RUC" />
+                    <div className="space-y-[1.5mm]">
+                      <div className="flex items-end w-full gap-2">
+                        <span className="font-bold whitespace-nowrap print:text-transparent">a)</span>
+                        <input 
+                          type="text" 
+                          value={incisoANombre} 
+                          onChange={(e) => setIncisoANombre(e.target.value)} 
+                          onKeyDown={handleEnterKey}
+                          className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                          placeholder="Nombre completo" 
+                        />
+                        <span className="whitespace-nowrap print:text-transparent">documento</span>
+                        <input 
+                          type="text" 
+                          value={incisoADoc} 
+                          onChange={(e) => setIncisoADoc(e.target.value)} 
+                          onKeyDown={handleEnterKey}
+                          className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-[28%] max-w-[150px] min-w-[100px] input-impresion" 
+                          placeholder="C.I. / RUC" 
+                        />
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pl-5">
-                        <span>con domicilio en</span>
-                        <input type="text" value={incisoADom} onChange={(e) => setIncisoADom(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" placeholder="Domicilio exacto" />
+                      <div className="flex items-end w-full gap-2 pl-5">
+                        <span className="whitespace-nowrap print:text-transparent">con domicilio en</span>
+                        <input 
+                          type="text" 
+                          value={incisoADom} 
+                          onChange={(e) => setIncisoADom(e.target.value)} 
+                          onKeyDown={handleEnterKey}
+                          className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                          placeholder="Domicilio exacto" 
+                        />
                       </div>
                     </div>
 
                     {/* Inciso b */}
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold">b)</span>
+                    <div className="space-y-[1.5mm]">
+                      <div className="flex items-end w-full gap-2">
+                        <span className="font-bold whitespace-nowrap print:text-transparent">b)</span>
                         {incisoBNombre || !rellenoGuiones ? (
-                          <input type="text" value={incisoBNombre} onChange={(e) => setIncisoBNombre(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-[200px] input-impresion" placeholder="Nombre completo (opcional)" />
+                          <input 
+                            type="text" 
+                            value={incisoBNombre} 
+                            onChange={(e) => setIncisoBNombre(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Nombre completo (opcional)" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
-                        <span>documento</span>
+                        <span className="whitespace-nowrap print:text-transparent">documento</span>
                         {incisoBDoc || !rellenoGuiones ? (
-                          <input type="text" value={incisoBDoc} onChange={(e) => setIncisoBDoc(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-40 input-impresion" placeholder="C.I. / RUC" />
+                          <input 
+                            type="text" 
+                            value={incisoBDoc} 
+                            onChange={(e) => setIncisoBDoc(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-[28%] max-w-[150px] min-w-[100px] input-impresion" 
+                            placeholder="C.I. / RUC" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">--------------------</span>
+                          <span className="font-mono text-slate-500 tracking-widest w-[28%] max-w-[150px] min-w-[100px] overflow-hidden whitespace-nowrap">--------------------</span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pl-5">
-                        <span>con domicilio en</span>
+                      <div className="flex items-end w-full gap-2 pl-5">
+                        <span className="whitespace-nowrap print:text-transparent">con domicilio en</span>
                         {incisoBDom || !rellenoGuiones ? (
-                          <input type="text" value={incisoBDom} onChange={(e) => setIncisoBDom(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" placeholder="Domicilio exacto" />
+                          <input 
+                            type="text" 
+                            value={incisoBDom} 
+                            onChange={(e) => setIncisoBDom(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Domicilio exacto" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
                       </div>
                     </div>
 
                     {/* Inciso c */}
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold">c)</span>
+                    <div className="space-y-[1.5mm]">
+                      <div className="flex items-end w-full gap-2">
+                        <span className="font-bold whitespace-nowrap print:text-transparent">c)</span>
                         {incisoCNombre || !rellenoGuiones ? (
-                          <input type="text" value={incisoCNombre} onChange={(e) => setIncisoCNombre(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-[200px] input-impresion" placeholder="Nombre completo (opcional)" />
+                          <input 
+                            type="text" 
+                            value={incisoCNombre} 
+                            onChange={(e) => setIncisoCNombre(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Nombre completo (opcional)" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
-                        <span>documento</span>
+                        <span className="whitespace-nowrap print:text-transparent">documento</span>
                         {incisoCDoc || !rellenoGuiones ? (
-                          <input type="text" value={incisoCDoc} onChange={(e) => setIncisoCDoc(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-40 input-impresion" placeholder="C.I. / RUC" />
+                          <input 
+                            type="text" 
+                            value={incisoCDoc} 
+                            onChange={(e) => setIncisoCDoc(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-[28%] max-w-[150px] min-w-[100px] input-impresion" 
+                            placeholder="C.I. / RUC" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">--------------------</span>
+                          <span className="font-mono text-slate-500 tracking-widest w-[28%] max-w-[150px] min-w-[100px] overflow-hidden whitespace-nowrap">--------------------</span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pl-5">
-                        <span>con domicilio en</span>
+                      <div className="flex items-end w-full gap-2 pl-5">
+                        <span className="whitespace-nowrap print:text-transparent">con domicilio en</span>
                         {incisoCDom || !rellenoGuiones ? (
-                          <input type="text" value={incisoCDom} onChange={(e) => setIncisoCDom(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" placeholder="Domicilio exacto" />
+                          <input 
+                            type="text" 
+                            value={incisoCDom} 
+                            onChange={(e) => setIncisoCDom(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Domicilio exacto" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
                       </div>
                     </div>
 
                     {/* Inciso d */}
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold">d)</span>
+                    <div className="space-y-[1.5mm]">
+                      <div className="flex items-end w-full gap-2">
+                        <span className="font-bold whitespace-nowrap print:text-transparent">d)</span>
                         {incisoDNombre || !rellenoGuiones ? (
-                          <input type="text" value={incisoDNombre} onChange={(e) => setIncisoDNombre(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-[200px] input-impresion" placeholder="Nombre completo (opcional)" />
+                          <input 
+                            type="text" 
+                            value={incisoDNombre} 
+                            onChange={(e) => setIncisoDNombre(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Nombre completo (opcional)" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
-                        <span>documento</span>
+                        <span className="whitespace-nowrap print:text-transparent">documento</span>
                         {incisoDDoc || !rellenoGuiones ? (
-                          <input type="text" value={incisoDDoc} onChange={(e) => setIncisoDDoc(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-40 input-impresion" placeholder="C.I. / RUC" />
+                          <input 
+                            type="text" 
+                            value={incisoDDoc} 
+                            onChange={(e) => setIncisoDDoc(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-[28%] max-w-[150px] min-w-[100px] input-impresion" 
+                            placeholder="C.I. / RUC" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">--------------------</span>
+                          <span className="font-mono text-slate-500 tracking-widest w-[28%] max-w-[150px] min-w-[100px] overflow-hidden whitespace-nowrap">--------------------</span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pl-5">
-                        <span>con domicilio en</span>
+                      <div className="flex items-end w-full gap-2 pl-5">
+                        <span className="whitespace-nowrap print:text-transparent">con domicilio en</span>
                         {incisoDDom || !rellenoGuiones ? (
-                          <input type="text" value={incisoDDom} onChange={(e) => setIncisoDDom(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" placeholder="Domicilio exacto" />
+                          <input 
+                            type="text" 
+                            value={incisoDDom} 
+                            onChange={(e) => setIncisoDDom(e.target.value)} 
+                            onKeyDown={handleEnterKey}
+                            className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                            placeholder="Domicilio exacto" 
+                          />
                         ) : (
-                          <span className="font-mono text-slate-500 tracking-widest">{guionesSeguridad}</span>
+                          <span className="font-mono text-slate-500 tracking-widest flex-1 min-w-0 overflow-hidden whitespace-nowrap">{guionesSeguridad}</span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Punto SEGUNDO */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                    <span className="font-bold">SEGUNDO:</span>
-                    <span>Que las firmas de las mencionadas personas fueron registradas en el libro correspondiente en el folio</span>
-                    <input type="text" value={folio1} onChange={(e) => setFolio1(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-16 input-impresion" />
-                    <span>,</span>
-                    <input type="text" value={folio2} onChange={(e) => setFolio2(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-16 input-impresion" />
-                    <span>,</span>
-                    <input type="text" value={tomoLibro} onChange={(e) => setTomoLibro(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-28 input-impresion" />
-                    <span>, en donde se halla consignado el motivo de la certificación.</span>
+                  {/* Punto SEGUNDO (Renglones Rígidos) */}
+                  <div className="space-y-[2mm]">
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="font-bold whitespace-nowrap print:text-transparent">SEGUNDO:</span>
+                      <span className="whitespace-nowrap print:text-transparent">Que las firmas de las mencionadas personas fueron registradas en el libro correspondiente</span>
+                      <span className="flex-1 border-b border-dotted border-slate-300 print:border-none print:border-transparent min-w-0"></span>
+                    </div>
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="whitespace-nowrap print:text-transparent">en el folio</span>
+                      <input 
+                        type="text" 
+                        value={folio1} 
+                        onChange={(e) => setFolio1(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-16 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">,</span>
+                      <input 
+                        type="text" 
+                        value={folio2} 
+                        onChange={(e) => setFolio2(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-16 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">,</span>
+                      <input 
+                        type="text" 
+                        value={tomoLibro} 
+                        onChange={(e) => setTomoLibro(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-28 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">, en donde se halla consignado el motivo de la certificación.</span>
+                      <span className="flex-1 border-b border-dotted border-slate-300 print:border-none print:border-transparent min-w-0"></span>
+                    </div>
                   </div>
 
-                  {/* Punto TERCERO */}
-                  <div>
-                    <span className="font-bold">TERCERO:</span> Que la presente actuación no autentica la veracidad de los términos del contrato, ni juzga su forma, ni su contenido.
+                  {/* Punto TERCERO (Renglones Rígidos) */}
+                  <div className="space-y-[2mm]">
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="font-bold whitespace-nowrap print:text-transparent">TERCERO:</span>
+                      <span className="whitespace-nowrap print:text-transparent">Que la presente actuación no autentica la veracidad de los términos del contrato,</span>
+                      <span className="flex-1 border-b border-dotted border-slate-300 print:border-none print:border-transparent min-w-0"></span>
+                    </div>
+                    <div className="flex items-end w-full gap-1.5 pl-4">
+                      <span className="whitespace-nowrap print:text-transparent">ni juzga su forma, ni su contenido.</span>
+                      <span className="flex-1 border-b border-dotted border-slate-300 print:border-none print:border-transparent min-w-0"></span>
+                    </div>
                   </div>
 
-                  {/* Punto CUARTO */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                    <span className="font-bold">CUARTO:</span>
-                    <span>Que esta certificación la efectúo a requerimiento de las personas nombradas en el punto Primero, siendo las</span>
-                    <input type="text" value={horaCert} onChange={(e) => setHoraCert(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-20 input-impresion" />
-                    <span>horas del día</span>
-                    <input type="text" value={diaCert} onChange={(e) => setDiaCert(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-12 input-impresion" />
-                    <span>de</span>
-                    <input type="text" value={mesCert} onChange={(e) => setMesCert(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-24 input-impresion" />
-                    <span>del año</span>
-                    <input type="text" value={anioCert} onChange={(e) => setAnioCert(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-20 input-impresion" />
-                    <span>.-</span>
+                  {/* Punto CUARTO (Renglones Rígidos y Campos Milimétricos) */}
+                  <div className="space-y-[2mm]">
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="font-bold whitespace-nowrap print:text-transparent">CUARTO:</span>
+                      <span className="whitespace-nowrap print:text-transparent">Que esta certificación la efectúo a requerimiento de las personas nombradas en el punto Primero,</span>
+                      <span className="flex-1 border-b border-dotted border-slate-300 print:border-none print:border-transparent min-w-0"></span>
+                    </div>
+                    <div className="flex items-end w-full gap-1.5">
+                      <span className="whitespace-nowrap print:text-transparent">siendo las</span>
+                      <input 
+                        type="text" 
+                        value={horaCert} 
+                        onChange={(e) => setHoraCert(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-20 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">horas del día</span>
+                      <input 
+                        type="text" 
+                        value={diaCert} 
+                        onChange={(e) => setDiaCert(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-14 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">de</span>
+                      <input 
+                        type="text" 
+                        value={mesCert} 
+                        onChange={(e) => setMesCert(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-28 text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">del año</span>
+                      <input 
+                        type="text" 
+                        value={anioCert} 
+                        onChange={(e) => setAnioCert(e.target.value)} 
+                        onKeyDown={handleEnterKey}
+                        className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-[60px] text-center input-impresion" 
+                      />
+                      <span className="whitespace-nowrap print:text-transparent">.-</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* PIE DE FIRMA Y SELLO */}
-              <div className="pt-16 pb-8 text-center flex flex-col items-center">
-                <div className="w-64 border-b border-black mb-2"></div>
-                <p className="font-bold text-xs uppercase">Firma y Sello del Notario</p>
+              {/* PIE DE FIRMA Y SELLO ANCLADO */}
+              <div className="absolute bottom-12 left-0 w-full text-center flex flex-col items-center pointer-events-none print:opacity-0">
+                <div className="w-64 border-b border-black mb-2 print:border-none print:border-transparent"></div>
+                <p className="font-bold text-xs uppercase tracking-wider print:text-transparent">Firma y Sello del Notario</p>
               </div>
             </div>
           )}
 
           {/* ========================================================================= */}
-          {/* PLANTILLA 2: CONCUERDA (HOJA DE SEGURIDAD)                               */}
+          {/* PLANTILLA 2: CONCUERDA (COORDENADAS MATEMÁTICAS EXACTAS DEL WORD)        */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Concuerda' && (
-            <div className="flex flex-col h-full justify-between relative">
-              {/* CABECERA GUÍA */}
-              <div>
-                <div className={`flex items-start justify-between border-b-2 border-black pb-4 mb-8 transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
-                  <div>
-                    <h2 className="font-black text-base uppercase tracking-wider">CORTE SUPREMA DE JUSTICIA</h2>
-                    <p className="text-xs font-bold text-slate-700">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-xs font-bold mt-1 text-[#FF3131]">HOJA DE SEGURIDAD - ACTUACIÓN NOTARIAL (Serie PJD-2026)</p>
-                  </div>
-                  <div className="border border-black p-2 text-center w-24 h-24 flex flex-col items-center justify-center bg-slate-50">
-                    <span className="text-[10px] font-mono font-bold">QR PJE</span>
-                    <span className="text-[8px] text-slate-500">SEC-2026</span>
-                  </div>
-                </div>
+            <div className="contenedor-hoja relative h-full w-full">
+              {/* ESTILOS FORZADOS Y CLASES DE POSICIONAMIENTO PARA CONCUERDA */}
+              <style>{`
+                /* Tipografía dinámica para los campos de Concuerda */
+                .capa-datos-concuerda input,
+                .capa-datos-concuerda span,
+                .pos-matriz, .pos-folio, .pos-division, .pos-seccion,
+                .pos-registro, .pos-asiento, .pos-autorizante, .pos-caracter,
+                .pos-copia, .pos-destinatario, .pos-linea-adicional,
+                .pos-dia, .pos-mes, .pos-anio {
+                  font-size: ${fontSizeGlobal} !important;
+                  font-family: ${fontFamilyGlobal} !important;
+                }
 
-                {/* CUERPO LÍNEA POR LÍNEA */}
-                <div className="space-y-4 font-sans text-[13.5px] text-justify pt-12">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>...///... C O N C U E R D A fielmente con su escritura matriz Nº</span>
-                    <input type="text" value={matrizNro} onChange={(e) => setMatrizNro(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-48 input-impresion" />
-                  </div>
+                /* Coordenadas absolutas milimétricas para los campos de Concuerda */
+                .pos-matriz { top: 84.2mm !important; left: 140.5mm !important; width: 44.5mm !important; height: 6mm !important; }
+                .pos-folio { top: 95.2mm !important; left: 36.8mm !important; width: 55.0mm !important; height: 6mm !important; }
+                .pos-division { top: 95.2mm !important; left: 142.6mm !important; width: 44.5mm !important; height: 6mm !important; }
+                .pos-seccion { top: 105.2mm !important; left: 47.3mm !important; width: 8.5mm !important; height: 6mm !important; }
+                .pos-registro { top: 106.0mm !important; left: 108.7mm !important; width: 74.1mm !important; height: 6mm !important; }
+                .pos-asiento { top: 115.5mm !important; left: 55.8mm !important; width: 127.0mm !important; height: 6mm !important; }
+                .pos-autorizante { top: 126.2mm !important; left: 57.9mm !important; width: 124.9mm !important; height: 6mm !important; }
+                .pos-caracter { top: 137.2mm !important; left: 60.0mm !important; width: 86.8mm !important; height: 6mm !important; }
+                .pos-copia { top: 147.2mm !important; left: 49.5mm !important; width: 46.6mm !important; height: 6mm !important; }
+                .pos-destinatario { top: 147.2mm !important; left: 121.4mm !important; width: 80.4mm !important; height: 6mm !important; }
+                .pos-linea-adicional { top: 158.2mm !important; left: 30.0mm !important; width: 58.0mm !important; height: 6mm !important; }
+                .pos-dia { top: 158.2mm !important; left: 100.2mm !important; width: 59.2mm !important; height: 6mm !important; }
+                .pos-mes { top: 168.7mm !important; left: 34.5mm !important; width: 27.5mm !important; height: 6mm !important; }
+                .pos-anio { top: 168.7mm !important; left: 81.2mm !important; width: 101.5mm !important; height: 6mm !important; }
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>folio</span>
-                    <input type="text" value={folioConcuerda} onChange={(e) => setFolioConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-36 input-impresion" />
-                    <span>del Protocolo de la División</span>
-                    <input type="text" value={divisionConcuerda} onChange={(e) => setDivisionConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-40 input-impresion" />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>Sección “</span>
-                    <input type="text" value={seccionConcuerda} onChange={(e) => setSeccionConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-16 text-center input-impresion" />
-                    <span>” del Registro Notarial Nº</span>
-                    <input type="text" value={registroConcuerda} onChange={(e) => setRegistroConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-28 input-impresion" />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>con asiento en</span>
-                    <input type="text" value={asientoConcuerda} onChange={(e) => setAsientoConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-44 input-impresion" />
-                    <span>y autorizada por</span>
-                    <input type="text" value={autorizanteConcuerda} onChange={(e) => setAutorizanteConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>en el carácter de</span>
-                    <input type="text" value={caracterConcuerda} onChange={(e) => setCaracterConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-36 input-impresion" />
-                    <span>de dicho Registro, expido esta</span>
-                    <input type="text" value={copiaConcuerda} onChange={(e) => setCopiaConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-32 input-impresion" />
-                    <span>copia para</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="text" value={destinatarioConcuerda} onChange={(e) => setDestinatarioConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-72 input-impresion" />
-                    <input type="text" value={cierreConcuerda} onChange={(e) => setCierreConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-44 input-impresion" />
-                    <span>a los</span>
-                    <input type="text" value={diaLetrasConcuerda} onChange={(e) => setDiaLetrasConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-28 input-impresion" />
-                    <span>días del mes</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>de</span>
-                    <input type="text" value={mesConcuerda} onChange={(e) => setMesConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-32 input-impresion" />
-                    <span>del año.</span>
-                    <input type="text" value={anioLetrasConcuerda} onChange={(e) => setAnioLetrasConcuerda(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-56 input-impresion" />
-                  </div>
-                </div>
+                @media print {
+                  @page { size: 216mm 330mm; margin: 0; }
+                  body, html { margin: 0 !important; padding: 0 !important; }
+                  
+                  /* Forzar al contenedor a mantener su marco de referencia */
+                  .contenedor-hoja {
+                    position: relative !important;
+                    width: 216mm !important;
+                    height: 330mm !important;
+                    display: block !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                  }
+                  
+                  /* Evitar que el CSS base convierta los inputs absolutos en estáticos */
+                  .input-impresion {
+                    position: absolute !important;
+                    border: none !important;
+                    background: transparent !important;
+                    color: black !important;
+                    box-shadow: none !important;
+                    font-size: ${fontSizeGlobal} !important;
+                    font-family: ${fontFamilyGlobal} !important;
+                  }
+                }
+              `}</style>
+              
+              {/* CAPA DE GUÍA VISUAL */}
+              <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'}`}>
+                 <div className="absolute text-slate-400 text-sm font-normal tracking-widest" style={{ top: '84.2mm', left: '35mm' }}>...///... C U E R D A</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '84.2mm', left: '80mm' }}>fielmente con su escritura matriz Nº</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '95.2mm', left: '25mm' }}>folio</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '95.2mm', left: '95mm' }}>del Protocolo de la División</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '105.2mm', left: '30mm' }}>Sección “</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '105.2mm', left: '60mm' }}>” del Registro Notarial Nº</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '115.5mm', left: '30mm' }}>con asiento en</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '126.2mm', left: '30mm' }}>y autorizada por</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '137.2mm', left: '30mm' }}>en el carácter de</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '137.2mm', left: '150mm' }}>de dicho Registro,</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '147.2mm', left: '30mm' }}>expido esta</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '147.2mm', left: '100mm' }}>copia para</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '158.2mm', left: '90mm' }}>a los</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '158.2mm', left: '165mm' }}>días del mes</div>
+                 
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '168.7mm', left: '25mm' }}>de</div>
+                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '168.7mm', left: '65mm' }}>del año.</div>
               </div>
 
-              {/* PIE DE FIRMA Y SELLO */}
-              <div className="pt-24 pb-12 text-center flex flex-col items-center">
-                <div className="w-64 border-b border-black mb-2"></div>
-                <p className="font-bold text-xs uppercase">Firma y Sello del Notario</p>
+              {/* CAPA DE DATOS */}
+              <div 
+                className="capa-datos-concuerda absolute inset-0 z-10" 
+                style={{ fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
+              >
+                 
+                 <input type="text" value={matrizNro} onChange={(e) => setMatrizNro(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Matriz" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-matriz" />
+                 
+                 <input type="text" value={folioConcuerda} onChange={(e) => setFolioConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Folio" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-folio" />
+                 
+                 <input type="text" value={divisionConcuerda} onChange={(e) => setDivisionConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="División" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-division" />
+                 
+                 <input type="text" value={seccionConcuerda} onChange={(e) => setSeccionConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Secc." 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-seccion" />
+                 
+                 <input type="text" value={registroConcuerda} onChange={(e) => setRegistroConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Registro" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-registro" />
+                 
+                 <input type="text" value={asientoConcuerda} onChange={(e) => setAsientoConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Asiento" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-asiento" />
+                 
+                 <input type="text" value={autorizanteConcuerda} onChange={(e) => setAutorizanteConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Autorizada por" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-autorizante" />
+                 
+                 <input type="text" value={caracterConcuerda} onChange={(e) => setCaracterConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Carácter" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-caracter" />
+                 
+                 <input type="text" value={copiaConcuerda} onChange={(e) => setCopiaConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Copia" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-copia" />
+                 
+                 <input type="text" value={destinatarioConcuerda} onChange={(e) => setDestinatarioConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Destinatario" 
+                 maxLength={35}
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-destinatario" />
+                 
+                 {/* LÍNEA ADICIONAL CORREGIDA (Misma altura que VEINTITRES, ancho limitado) */}
+                 <input type="text" value={lineaAdicionalConcuerda} onChange={(e) => setLineaAdicionalConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="-----------------------" 
+                 maxLength={35}
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-linea-adicional" />
+
+                 <input type="text" value={diaLetrasConcuerda} onChange={(e) => setDiaLetrasConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Día" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-dia" />
+                 
+                 <input type="text" value={mesConcuerda} onChange={(e) => setMesConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Mes" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-mes" />
+                 
+                 <input type="text" value={anioLetrasConcuerda} onChange={(e) => setAnioLetrasConcuerda(e.target.value)} onKeyDown={handleEnterKey} 
+                 placeholder="Año" 
+                 className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-anio" />
+
               </div>
             </div>
           )}
@@ -1077,66 +1847,130 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 3: LEGALIZACIÓN                                                */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Legalización' && (
-            <div className="flex flex-col h-full justify-between relative">
-              {/* CABECERA GUÍA */}
+            <div className="relative h-full w-full">
+              {/* CABECERA GUÍA Y ESTRUCTURAL */}
               <div>
-                <div className={`flex items-start justify-between border-b-2 border-black pb-4 mb-8 transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
+                <div className={`flex items-start justify-between border-b-2 border-black pb-4 mb-[4mm] transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion print:opacity-0 print:border-none print:border-transparent`}>
                   <div>
-                    <h2 className="font-black text-base uppercase tracking-wider">CORTE SUPREMA DE JUSTICIA</h2>
-                    <p className="text-xs font-bold text-slate-700">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-xs font-bold mt-1 text-[#FF3131]">LEGALIZACIÓN - ACTUACIÓN NOTARIAL (Serie PJH-2022)</p>
+                    <h2 className="font-black text-base uppercase tracking-wider whitespace-nowrap print:text-transparent">CORTE SUPREMA DE JUSTICIA</h2>
+                    <p className="text-xs font-bold text-slate-700 whitespace-nowrap print:text-transparent">REPÚBLICA DEL PARAGUAY</p>
+                    <p className="text-xs font-bold mt-1 text-[#FF3131] whitespace-nowrap print:text-transparent">LEGALIZACIÓN - ACTUACIÓN NOTARIAL (Serie PJH-2022)</p>
                   </div>
-                  <div className="border border-black p-2 text-center w-24 h-24 flex flex-col items-center justify-center bg-slate-50">
-                    <span className="text-[10px] font-mono font-bold">QR PJE</span>
-                    <span className="text-[8px] text-slate-500">SEC-2022</span>
+                  <div className="border border-black p-2 text-center w-24 h-24 flex flex-col items-center justify-center bg-slate-50 shrink-0 print:opacity-0 print:border-none print:border-transparent">
+                    <span className="text-[10px] font-mono font-bold whitespace-nowrap print:text-transparent">QR PJE</span>
+                    <span className="text-[8px] text-slate-500 whitespace-nowrap print:text-transparent">SEC-2022</span>
                   </div>
                 </div>
 
-                {/* CUERPO LÍNEA POR LÍNEA */}
-                <div className="space-y-6 font-sans text-[13.5px] text-justify pt-12">
-                  <div>
-                    La CORTE SUPREMA DE JUSTICIA, legaliza la firma y sello del/la Notario/a
+                {/* TEXTOS Y CAMPOS DEL CUERPO (Renglones Rígidos y Líneas Elásticas) */}
+                <div className="ajuste-horizontal-datos ajuste-interlineado-datos space-y-[9mm] text-justify font-sans text-[13px] pt-8">
+                  {/* Renglón 1: Declaración de la Corte */}
+                  <div className="flex items-end w-full">
+                    <span className="whitespace-nowrap font-medium print:text-transparent">La CORTE SUPREMA DE JUSTICIA, legaliza la firma y</span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="text" value={nombreNotarioLeg} onChange={(e) => setNombreNotarioLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" />
+                  {/* Renglón 2: Notario */}
+                  <div className="flex items-end w-full gap-2">
+                    <span className="whitespace-nowrap print:text-transparent">sello del/la Notario/a</span>
+                    <input 
+                      type="text" 
+                      value={nombreNotarioLeg} 
+                      onChange={(e) => setNombreNotarioLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                      placeholder="RICARDO GABRIEL MARTINEZ VARELA"
+                    />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="text" value={lineaAdicionalLeg} onChange={(e) => setLineaAdicionalLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" />
+                  {/* Renglón 3: Línea Adicional de Seguridad */}
+                  <div className="flex items-end w-full">
+                    <input 
+                      type="text" 
+                      value={lineaAdicionalLeg} 
+                      onChange={(e) => setLineaAdicionalLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                      placeholder="--------------------------------------------------------------------------------"
+                    />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>obrante en el testimonio de la escritura Nº</span>
-                    <input type="text" value={escrituraNroLeg} onChange={(e) => setEscrituraNroLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-24 input-impresion" />
-                    <span>de fecha</span>
+                  {/* Renglón 4: Escritura y Fecha */}
+                  <div className="flex items-end w-full gap-2">
+                    <span className="whitespace-nowrap print:text-transparent">obrante en el testimonio de la escritura Nº</span>
+                    <input 
+                      type="text" 
+                      value={escrituraNroLeg} 
+                      onChange={(e) => setEscrituraNroLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 text-center input-impresion" 
+                      placeholder="79"
+                    />
+                    <span className="whitespace-nowrap print:text-transparent">de fecha.</span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="text" value={fechaEscrituraLeg} onChange={(e) => setFechaEscrituraLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-56 input-impresion" />
-                    <span>con hoja de seguridad Nº</span>
-                    <input type="text" value={hojaSeguridadNroLeg} onChange={(e) => setHojaSeguridadNroLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black flex-1 input-impresion" />
+                  {/* Renglón 5: Fecha Escritura y Hoja de Seguridad */}
+                  <div className="flex items-end w-full gap-2">
+                    <input 
+                      type="text" 
+                      value={fechaEscrituraLeg} 
+                      onChange={(e) => setFechaEscrituraLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-[30%] text-center input-impresion" 
+                      placeholder="10 de Mayo de 2026"
+                    />
+                    <span className="whitespace-nowrap print:text-transparent">con hoja de seguridad Nº</span>
+                    <input 
+                      type="text" 
+                      value={hojaSeguridadNroLeg} 
+                      onChange={(e) => setHojaSeguridadNroLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 input-impresion" 
+                      placeholder="PJD-2022 Nº 4.589.123"
+                    />
                   </div>
 
-                  <div>
-                    La presente Legalización se realiza sobre un documento de uso notarial expedido a nombre del/la Notario/a solicitante.
+                  {/* Renglón 6: Cláusula de Validez Parte 1 */}
+                  <div className="flex items-end w-full">
+                    <span className="whitespace-nowrap print:text-transparent">La presente Legalización se realiza sobre un documento de uso notarial expedido a</span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-4">
-                    <span>Asunción,</span>
-                    <input type="text" value={diaLeg} onChange={(e) => setDiaLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-16 input-impresion" />
-                    <span>de</span>
-                    <input type="text" value={mesLeg} onChange={(e) => setMesLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-28 input-impresion" />
-                    <span>de</span>
-                    <input type="text" value={anioLeg} onChange={(e) => setAnioLeg(e.target.value)} className="border-b border-dotted border-slate-400 px-2 py-0.5 font-mono font-bold text-black w-20 input-impresion" />
+                  {/* Renglón 7: Cláusula de Validez Parte 2 */}
+                  <div className="flex items-end w-full">
+                    <span className="whitespace-nowrap print:text-transparent">nombre del/la Notario/a solicitante.</span>
+                  </div>
+
+                  {/* Renglón 8: Lugar y Fecha de Legalización */}
+                  <div className="flex items-end w-full gap-2 pt-2">
+                    <span className="whitespace-nowrap print:text-transparent">Asunción,</span>
+                    <input 
+                      type="text" 
+                      value={diaLeg} 
+                      onChange={(e) => setDiaLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-16 text-center input-impresion" 
+                      placeholder="15"
+                    />
+                    <span className="whitespace-nowrap print:text-transparent">de</span>
+                    <input 
+                      type="text" 
+                      value={mesLeg} 
+                      onChange={(e) => setMesLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black w-32 text-center input-impresion" 
+                      placeholder="Mayo"
+                    />
+                    <span className="whitespace-nowrap print:text-transparent">de</span>
+                    <input 
+                      type="text" 
+                      value={anioLeg} 
+                      onChange={(e) => setAnioLeg(e.target.value)} 
+                      onKeyDown={handleEnterKey}
+                      className="border-b border-dotted border-slate-400 print:border-none print:border-transparent px-2 py-0.5 font-mono font-bold text-black flex-1 min-w-0 text-center input-impresion" 
+                      placeholder="2026"
+                    />
+                    <span className="whitespace-nowrap print:text-transparent">.-</span>
                   </div>
                 </div>
-              </div>
-
-              {/* PIE DE FIRMA Y SELLO */}
-              <div className="pt-24 pb-12 text-center flex flex-col items-center">
-                <div className="w-64 border-b border-black mb-2"></div>
-                <p className="font-bold text-xs uppercase">Firma y Sello del Secretario General</p>
               </div>
             </div>
           )}
@@ -1186,7 +2020,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
 
                       {/* CAPA 2: EDITOR (y espejo de impresión) */}
                       <div 
-                        className={`absolute inset-0 z-20 print:!static print:!p-0 print:!h-auto print:!overflow-visible ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
+                        className={`ajuste-horizontal-datos absolute inset-0 z-20 print:!static print:!p-0 print:!h-auto print:!overflow-visible ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
                         style={{ 
                           position: 'absolute', 
                           top: 0, 
@@ -1203,13 +2037,13 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                           onChange={(e) => handleTextareaChange(index, e)}
                           onKeyDown={(e) => handleKeyDown(index, e)}
                           placeholder={`Redacte aquí la ${isAnverso ? 'cara frontal (Anverso)' : 'cara trasera (Reverso)'}...`}
-                          className="w-full h-full bg-transparent text-black font-serif font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
-                          style={{ lineHeight: '10.2mm', fontSize: '15px' }}
+                          className="w-full h-full bg-transparent text-black font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
+                          style={{ lineHeight: `${interlineadoGlobal}mm`, fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
                         />
                         {/* ESPEJO PARA IMPRESIÓN */}
                         <div 
-                          className="hidden print:block w-full text-black font-serif font-bold text-justify whitespace-pre-wrap print:!h-auto print:!overflow-visible"
-                          style={{ lineHeight: '10.2mm', fontSize: '15px' }}
+                          className="hidden print:block w-full text-black font-bold text-justify whitespace-pre-wrap print:!h-auto print:!overflow-visible"
+                          style={{ lineHeight: `${interlineadoGlobal}mm`, fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
                         >
                           {textoPagina}
                         </div>
