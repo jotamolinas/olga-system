@@ -666,7 +666,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   };
 
   return (
-    <div id="contenedor-principal-notarial" className="min-h-screen bg-slate-900/95 text-slate-100 flex flex-col font-sans print:min-h-0 print:bg-white print:block print:m-0 print:p-0">
+    <div id="contenedor-principal-notarial" className="min-h-screen bg-white text-slate-900 flex flex-col font-sans print:min-h-0 print:bg-white print:block print:m-0 print:p-0">
       {/* Estilos de Paginación Estricta de 25 líneas con Simetría Doble Faz (Anverso/Reverso) */}
       <style>{`
         .lomo-impresion, .texto-vertical-sello {
@@ -998,8 +998,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       </header>
 
       {/* Opciones Auxiliares de Formato (No imprimible) */}
-      <div className="opciones-auxiliares-notarial bg-slate-800/80 border-y border-slate-700/80 px-6 py-2.5 text-xs text-slate-300 print:hidden flex flex-wrap items-center justify-between gap-4">
-        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
+      <div className="opciones-auxiliares-notarial bg-slate-200/60 border-y border-slate-300/80 px-6 py-2.5 text-xs text-slate-700 print:hidden flex flex-wrap items-center justify-between gap-4">
+        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
           <input 
             type="checkbox" 
             checked={rellenoGuiones} 
@@ -1010,65 +1010,65 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         </label>
         {tipoDocumento === 'Sellado Notarial - Protocolo' && (
           <div className="flex items-center gap-2">
-            <span className="text-amber-400 font-bold text-[10px]">Texto Lomo:</span>
+            <span className="text-slate-700 font-bold text-[10px]">Texto Lomo:</span>
             <input
               type="text"
               value={protocoloTextoVertical}
               onChange={(e) => setProtocoloTextoVertical(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-white text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
+              className="bg-white border border-slate-300 text-slate-800 text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
             />
           </div>
         )}
       </div>
 
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 215.9mm x 355.6mm) */}
-      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-950 print:p-0 print:m-0 print:block print:bg-white">
+      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-100 border-t border-slate-200 print:p-0 print:m-0 print:block print:bg-white">
         {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Espaciado, Guía, Guardar e Imprimir) */}
-        <div className="barra-controles-notarial mb-4 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200 shadow-xl print:hidden w-full max-w-7xl">
+        <div className="barra-controles-notarial mb-4 bg-slate-200/80 border border-slate-300/90 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800 shadow-sm print:hidden w-full max-w-7xl">
           {/* Bloque Izquierdo: Calibración, Tipografía y Espaciados */}
           <div className="flex flex-wrap items-center gap-3">
             {/* Calibrador de Impresora (Offset X / Y) */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/70">
-              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1" title="Calibrador milimétrico de impresora">
-                <Sliders className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1.5 bg-white/90 px-2.5 py-1 rounded-xl border border-slate-300 shadow-xs">
+              <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1" title="Calibrador milimétrico de impresora">
+                <Sliders className="w-3.5 h-3.5 text-amber-600" />
                 Offset:
               </span>
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400">X:</span>
+              <div className="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-semibold">X:</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetX(offsetX - 1)} 
                   title="Restar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
                 >
                   -
                 </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetX}mm</span>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-700 font-bold">{offsetX}mm</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetX(offsetX + 1)} 
                   title="Sumar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
                 >
                   +
                 </button>
               </div>
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400">Y:</span>
+              <div className="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-semibold">Y:</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetY(offsetY - 1)} 
                   title="Restar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
                 >
                   -
                 </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetY}mm</span>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-700 font-bold">{offsetY}mm</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetY(offsetY + 1)} 
                   title="Sumar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
+                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
                 >
                   +
                 </button>
@@ -1076,18 +1076,18 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             </div>
 
             {/* Separador */}
-            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
+            <div className="h-4 w-px bg-slate-300 hidden lg:block"></div>
 
             {/* Tipografía (Fuente, Tamaño, A-/A+) */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                <Type className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                <Type className="w-3.5 h-3.5 text-amber-600" />
                 <span className="hidden sm:inline">Fuente</span>
               </span>
               <select
                 value={fontFamilyGlobal}
                 onChange={(e) => setFontFamilyGlobal(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
               >
                 <option value="Arial, Helvetica, sans-serif">Arial</option>
                 <option value='"Times New Roman", Times, serif'>Times New Roman</option>
@@ -1098,7 +1098,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               <select
                 value={fontSizeGlobal}
                 onChange={(e) => setFontSizeGlobal(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
               >
                 <option value="12px">12 px</option>
                 <option value="13px">13 px</option>
@@ -1109,7 +1109,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 <option value="20px">20 px</option>
               </select>
 
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
                 <button
                   type="button"
                   onClick={() => {
@@ -1118,7 +1118,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                     if (idx > 0) setFontSizeGlobal(sizes[idx - 1]);
                   }}
                   title="Reducir tamaño (A-)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   A-
                 </button>
@@ -1130,7 +1130,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                     if (idx !== -1 && idx < sizes.length - 1) setFontSizeGlobal(sizes[idx + 1]);
                   }}
                   title="Aumentar tamaño (A+)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   A+
                 </button>
@@ -1138,31 +1138,31 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             </div>
 
             {/* Separador */}
-            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
+            <div className="h-4 w-px bg-slate-300 hidden lg:block"></div>
 
             {/* Espaciado vertical (Interlineado) */}
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
-                <MoveVertical className="w-3.5 h-3.5 text-sky-400" />
+              <span className="text-slate-700 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
+                <MoveVertical className="w-3.5 h-3.5 text-sky-600" />
                 Líneas:
               </span>
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
                 <button
                   type="button"
-                  onClick={() => setInterlineadoGlobal((prev) => Math.max(8.0, Number((prev - 0.2).toFixed(1))))}
+                  onClick={() => setInterlineadoGlobal((prev) => Math.max(6.0, Number((prev - 0.2).toFixed(1))))}
                   title="Reducir interlineado (-0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   -
                 </button>
-                <span className="w-12 text-center font-mono text-[11px] text-sky-300 font-bold">
-                  {interlineadoGlobal.toFixed(1)}mm
+                <span className="w-12 text-center font-mono text-[11px] text-sky-700 font-bold">
+                  {interlineadoGlobal}mm
                 </span>
                 <button
                   type="button"
                   onClick={() => setInterlineadoGlobal((prev) => Math.min(16.0, Number((prev + 0.2).toFixed(1))))}
                   title="Aumentar interlineado (+0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   +
                 </button>
@@ -1171,27 +1171,27 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
 
             {/* Margen horizontal (Indentación In/Out) */}
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
-                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-slate-700 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
+                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-600" />
                 Margen H:
               </span>
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
                 <button
                   type="button"
                   onClick={() => setMargenHorizontal((prev) => Math.max(-25, prev - 1))}
                   title="Desplazar a la izquierda (-1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   ◄
                 </button>
-                <span className="w-11 text-center font-mono text-[11px] text-emerald-300 font-bold">
+                <span className="w-11 text-center font-mono text-[11px] text-emerald-700 font-bold">
                   {margenHorizontal > 0 ? `+${margenHorizontal}` : margenHorizontal}mm
                 </span>
                 <button
                   type="button"
                   onClick={() => setMargenHorizontal((prev) => Math.min(25, prev + 1))}
                   title="Desplazar a la derecha (+1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
                 >
                   ►
                 </button>
@@ -1201,7 +1201,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   type="button"
                   onClick={() => setMargenHorizontal(0)}
                   title="Restablecer margen a 0mm"
-                  className="text-[10px] text-slate-400 hover:text-amber-400 underline ml-0.5"
+                  className="text-[10px] text-slate-500 hover:text-amber-600 underline ml-0.5"
                 >
                   Reset
                 </button>
@@ -1215,13 +1215,13 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             <button
               type="button"
               onClick={() => setMostrarGuia(!mostrarGuia)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-xs ${
                 mostrarGuia 
-                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                  ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100' 
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
               }`}
             >
-              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-600" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
               <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
             </button>
 
@@ -1230,20 +1230,20 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               type="button"
               onClick={handleGuardarConfiguracion}
               title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-xs ${
                 guardadoFeedback
-                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-emerald-500/20'
-                  : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-amber-500/40 hover:border-amber-400 hover:text-amber-300'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                  : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400'
               }`}
             >
               {guardadoFeedback ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
                   <span>¡Guardado!</span>
                 </>
               ) : (
                 <>
-                  <Save className="w-3.5 h-3.5 text-amber-400" />
+                  <Save className="w-3.5 h-3.5 text-amber-600" />
                   <span>Guardar Config.</span>
                 </>
               )}
@@ -2170,7 +2170,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 0: SELLADO NOTARIAL - PROTOCOLO (25 RENGLONES Y TEXTO VERTICAL)   */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-            <div id="contenedor-paginas-protocolo" className="flex flex-col gap-12 print:gap-0 print:py-0 print:m-0 print:p-0 print:bg-white items-center bg-slate-900 py-12">
+            <div id="contenedor-paginas-protocolo" className="flex flex-col gap-12 print:gap-0 print:py-0 print:m-0 print:p-0 print:bg-white items-center bg-slate-100 py-8">
               {protocoloPaginas
                 .filter((textoPagina, i) => i === 0 || (textoPagina && textoPagina.trim() !== ''))
                 .map((textoPagina, index, arr) => {
