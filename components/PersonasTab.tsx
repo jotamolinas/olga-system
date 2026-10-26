@@ -110,14 +110,20 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setFeedbackDnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && res.nombre_o_razon_social) {
+      if (res && (res.nombre_o_razon_social || res.nombre)) {
+        const nombreFinal = res.nombre || res.nombre_o_razon_social;
+        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
+
+        // Garantizar el formato oficial XXXXXXX-X en el input de documento
+        setNroDocumento(rucFinal);
+
         // En Paraguay, las personas jurídicas inician con prefijo '800'
-        const rucLimpio = ruc.replace(/\D/g, '');
+        const rucLimpio = rucFinal.replace(/\D/g, '');
         const esJuridica = rucLimpio.startsWith('800');
         setTipoPersona(esJuridica ? 'jurídica' : 'física');
 
         if (!esJuridica) {
-          const raw = res.nombre_o_razon_social.trim();
+          const raw = nombreFinal.trim();
           const parts = raw.split(/\s+/);
           if (parts.length >= 2) {
             const mid = Math.ceil(parts.length / 2);
@@ -128,12 +134,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             setApellido('');
           }
         } else {
-          setNombre(res.nombre_o_razon_social);
+          setNombre(nombreFinal);
           setApellido('');
         }
         if (res.direccion) setDomicilio(res.direccion);
         if (res.telefono) setTelefono(res.telefono);
-        setFeedbackDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
         setTimeout(() => setFeedbackDnit(null), 4000);
       } else {
         setFeedbackDnit('No encontrado en DNIT. Puede completar los datos manualmente.');

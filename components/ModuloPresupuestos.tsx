@@ -48,7 +48,7 @@ import {
   MEMBRETE_DEFAULT,
 } from '../types/presupuesto';
 import { Persona, TipoPersona } from '../types';
-import { consultarRUC } from '../services/dnitService';
+import { consultarRUC, formatearRUCConDV } from '../services/dnitService';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
 
@@ -358,10 +358,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         ? `${persona.nombre} ${persona.apellido}`.trim()
         : persona.nombre;
 
+    const rucFormateado = formatearRUCConDV(persona.nro_documento || '');
+
     setEncabezado((prev) => ({
       ...prev,
       clienteNombre: nombreCompleto,
-      clienteRucCI: persona.nro_documento || prev.clienteRucCI,
+      clienteRucCI: rucFormateado || persona.nro_documento || prev.clienteRucCI,
       clienteDireccion: persona.domicilio || prev.clienteDireccion,
       clienteTelefono: persona.telefono || prev.clienteTelefono,
       clienteEmail: persona.email || prev.clienteEmail,
@@ -378,10 +380,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   // Consulta directa al servicio DNIT para autocompletar Razón Social y Dirección
   const handleConsultarDNIT = async () => {
     const doc = (encabezado.clienteRucCI || '').trim();
-    if (!doc || doc.length < 4) {
+    if (!doc || doc.length < 3) {
       setFeedbackDnit({
         tipo: 'warning',
-        mensaje: 'Ingrese un RUC o Cédula válido (mínimo 4 caracteres) para consultar ante el DNIT / SET.',
+        mensaje: 'Ingrese un RUC o Cédula válido (mínimo 3 caracteres) para consultar ante el DNIT / SET.',
       });
       setTimeout(() => setFeedbackDnit(null), 4000);
       return;
@@ -391,26 +393,28 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setFeedbackDnit(null);
     try {
       const res = await consultarRUC(doc);
-      if (res && res.nombre_o_razon_social) {
+      if (res && (res.nombre_o_razon_social || res.nombre)) {
+        const nombreFinal = res.nombre || res.nombre_o_razon_social;
+        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
+
         setEncabezado((prev) => ({
           ...prev,
-          clienteNombre: res.nombre_o_razon_social,
-          clienteRucCI: res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero,
+          clienteNombre: nombreFinal,
+          clienteRucCI: rucFinal,
           clienteDireccion: res.direccion || prev.clienteDireccion,
           clienteTelefono: res.telefono || prev.clienteTelefono,
         }));
         setOrigenCliente(res.origen === 'FICHERO' ? 'FICHERO' : 'DNIT');
         setFeedbackDnit({
           tipo: 'success',
-          mensaje: `Contribuyente verificado (${res.origen === 'FICHERO' ? 'Fichero Local' : 'Padrón Oficial DNIT / SET'}): ${res.nombre_o_razon_social}`,
+          mensaje: `Contribuyente verificado (${res.origen === 'FICHERO' ? 'Fichero Local' : 'Padrón Oficial DNIT / SET'}): ${nombreFinal} [${rucFinal}]`,
         });
         setTimeout(() => setFeedbackDnit(null), 4500);
 
         // Autoguardado silencioso instantáneo en el Fichero de Personas
-        const docFormateado = res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero;
         autoguardarClienteSilencioso({
-          nombre: res.nombre_o_razon_social,
-          doc: docFormateado,
+          nombre: nombreFinal,
+          doc: rucFinal,
           direccion: res.direccion,
           telefono: res.telefono,
           origen: res.origen === 'FICHERO' ? 'FICHERO' : 'DNIT',
