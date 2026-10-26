@@ -152,6 +152,71 @@
           "type": "number"
         }
       }
+    },
+    {
+      "name": "presupuestos",
+      "description": "Presupuestos y facturas notariales emitidas con liquidación tributaria.",
+      "security_rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      },
+      "schema": {
+        "userId": {
+          "type": "string"
+        },
+        "tipoComprobante": {
+          "type": "string"
+        },
+        "numeroComprobante": {
+          "type": "string"
+        },
+        "montoTotal": {
+          "type": "number"
+        }
+      }
+    },
+    {
+      "name": "plantillas_presupuesto",
+      "description": "Plantillas personalizadas de honorarios, aranceles y tasas del escribano.",
+      "security_rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      },
+      "schema": {
+        "userId": {
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string"
+        },
+        "tasas": {
+          "type": "array"
+        },
+        "servicios": {
+          "type": "array"
+        },
+        "montoEstimadoTotal": {
+          "type": "number",
+          "optional": true
+        }
+      }
+    },
+    {
+      "name": "usuarios",
+      "description": "Perfiles y subcolecciones de usuarios, incluyendo precios y tarifas personalizadas.",
+      "security_rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      },
+      "schema": {
+        "userId": {
+          "type": "string"
+        },
+        "mis_precios": {
+          "type": "object",
+          "optional": true
+        }
+      }
     }
   ]
 }
