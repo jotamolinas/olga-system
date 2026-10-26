@@ -270,14 +270,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setFeedbackAcreedorDnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-        setAcreedorNombreRaw(nombreFinal);
-        setAcreedorDocumentoRaw(rucFinal);
+      if (res && res.nombre_o_razon_social) {
+        setAcreedorNombreRaw(res.nombre_o_razon_social);
         if (res.direccion) setAcreedorDomicilioRaw(res.direccion);
         setAcreedorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackAcreedorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
+        setFeedbackAcreedorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackAcreedorDnit(null), 4000);
       } else {
         setFeedbackAcreedorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
@@ -299,7 +296,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       return;
     }
     const ruc = (rucInput !== undefined ? rucInput : deudorDocumentoRaw).trim();
-    if (!ruc || ruc.length < 3) {
+    if (!ruc || ruc.length < 4) {
       setFeedbackDeudorDnit('Ingrese un número de documento para consultar.');
       setTimeout(() => setFeedbackDeudorDnit(null), 3000);
       return;
@@ -308,14 +305,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setFeedbackDeudorDnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-        setDeudorNombreRaw(nombreFinal);
-        setDeudorDocumentoRaw(rucFinal);
+      if (res && res.nombre_o_razon_social) {
+        setDeudorNombreRaw(res.nombre_o_razon_social);
         if (res.direccion) setDeudorDomicilioRaw(res.direccion);
         setDeudorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackDeudorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
+        setFeedbackDeudorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackDeudorDnit(null), 4000);
       } else {
         setFeedbackDeudorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
@@ -337,7 +331,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       return;
     }
     const ruc = codeudor1DocumentoRaw.trim();
-    if (!ruc || ruc.length < 3) {
+    if (!ruc || ruc.length < 4) {
       setFeedbackCodeudor1Dnit('Ingrese un número de documento para consultar.');
       setTimeout(() => setFeedbackCodeudor1Dnit(null), 3000);
       return;
@@ -346,14 +340,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setFeedbackCodeudor1Dnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-        setCodeudor1NombreRaw(nombreFinal);
-        setCodeudor1DocumentoRaw(rucFinal);
+      if (res && res.nombre_o_razon_social) {
+        setCodeudor1NombreRaw(res.nombre_o_razon_social);
         if (res.direccion) setCodeudor1DomicilioRaw(res.direccion);
         setCodeudor1Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackCodeudor1Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
+        setFeedbackCodeudor1Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor1Dnit(null), 4000);
       } else {
         setFeedbackCodeudor1Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
@@ -375,7 +366,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       return;
     }
     const ruc = codeudor2DocumentoRaw.trim();
-    if (!ruc || ruc.length < 3) {
+    if (!ruc || ruc.length < 4) {
       setFeedbackCodeudor2Dnit('Ingrese un número de documento para consultar.');
       setTimeout(() => setFeedbackCodeudor2Dnit(null), 3000);
       return;
@@ -384,14 +375,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setFeedbackCodeudor2Dnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-        setCodeudor2NombreRaw(nombreFinal);
-        setCodeudor2DocumentoRaw(rucFinal);
+      if (res && res.nombre_o_razon_social) {
+        setCodeudor2NombreRaw(res.nombre_o_razon_social);
         if (res.direccion) setCodeudor2DomicilioRaw(res.direccion);
         setCodeudor2Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackCodeudor2Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
+        setFeedbackCodeudor2Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor2Dnit(null), 4000);
       } else {
         setFeedbackCodeudor2Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
@@ -494,13 +482,9 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setFeedbackQuickDnit(null);
     try {
       const res = await consultarRUC(ruc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-        setQuickNroDoc(rucFinal);
-
+      if (res && res.nombre_o_razon_social) {
         if (quickTipoPersona === 'física') {
-          const raw = nombreFinal.trim();
+          const raw = res.nombre_o_razon_social.trim();
           const parts = raw.split(/\s+/);
           if (parts.length >= 2) {
             const mid = Math.ceil(parts.length / 2);
@@ -510,11 +494,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
             setQuickNombre(raw);
           }
         } else {
-          setQuickNombre(nombreFinal);
+          setQuickNombre(res.nombre_o_razon_social);
         }
         if (res.direccion) setQuickDom(res.direccion);
         if (res.telefono) setQuickTel(res.telefono);
-        setFeedbackQuickDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'} (${rucFinal})`);
+        setFeedbackQuickDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackQuickDnit(null), 4000);
       } else {
         setFeedbackQuickDnit('No encontrado en DNIT. Complete manualmente.');
