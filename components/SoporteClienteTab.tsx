@@ -7,9 +7,10 @@ import { User } from 'firebase/auth';
 interface SoporteClienteTabProps {
   currentUser: User | null;
   userData: any;
+  esPlanFull?: boolean;
 }
 
-export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUser, userData }) => {
+export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUser, userData, esPlanFull = false }) => {
   const [asunto, setAsunto] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,7 +20,6 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!asunto.trim() || !mensaje.trim() || !currentUser) return;
-
     setIsSubmitting(true);
     setError('');
 
@@ -47,14 +47,35 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm animate-fade-in w-full box-border max-w-3xl mx-auto mt-8">
-      <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-100">
-        <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-          <LifeBuoy className="w-7 h-7" />
+    <div className={`rounded-3xl p-6 md:p-8 animate-fade-in w-full box-border max-w-3xl mx-auto mt-8 transition-all ${
+      esPlanFull
+        ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]'
+        : 'bg-slate-900 text-white shadow-xl border border-slate-800'
+    }`}>
+      <div className={`flex items-center gap-4 mb-8 pb-6 border-b ${
+        esPlanFull ? 'border-amber-100' : 'border-slate-800'
+      }`}>
+        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
+          esPlanFull
+            ? 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+            : 'bg-slate-800 border border-slate-700 text-slate-300'
+        }`}>
+          <LifeBuoy className={`w-7 h-7 ${esPlanFull ? 'text-amber-600' : 'text-slate-300'}`} />
         </div>
         <div>
-          <h2 className="text-xl font-bold font-serif text-slate-800">Buzón de Consultas</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <div className="flex items-center gap-2">
+            <h2 className={`text-xl font-bold font-serif ${esPlanFull ? 'text-slate-900' : 'text-white'}`}>
+              Buzón de Consultas
+            </h2>
+            <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
+              esPlanFull
+                ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_10px_rgba(245,158,11,0.3)]'
+                : 'bg-red-600 text-white'
+            }`}>
+              O.L.G.A.
+            </span>
+          </div>
+          <p className={`text-sm mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
             Comunícate directamente con el administrador para resolver dudas, reportar problemas o solicitar asistencia técnica.
           </p>
         </div>
@@ -69,62 +90,77 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
           </p>
           <button 
             onClick={() => setIsSuccess(false)}
-            className="mt-6 px-6 py-2.5 bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-emerald-200 transition-colors"
+            className="mt-6 px-6 py-2.5 bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-emerald-200 transition-colors cursor-pointer"
           >
             Enviar otra consulta
           </button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Asunto
-            </label>
-            <input 
-              type="text"
-              placeholder="Ej. Problema con mi plan, Duda sobre un pagaré..."
-              value={asunto}
-              onChange={(e) => setAsunto(e.target.value)}
-              className="w-full box-border bg-slate-50 border border-slate-200 text-slate-800 text-sm p-4 rounded-2xl outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-              required
-              disabled={isSubmitting}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Mensaje Detallado
-            </label>
-            <textarea
-              placeholder="Describe detalladamente tu consulta o problema..."
-              value={mensaje}
-              onChange={(e) => setMensaje(e.target.value)}
-              className="w-full box-border bg-slate-50 border border-slate-200 text-slate-800 text-sm p-4 rounded-2xl outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all min-h-[160px] resize-y"
-              required
-              disabled={isSubmitting}
-            ></textarea>
-          </div>
-
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-100">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-bold">
               {error}
             </div>
           )}
 
-          <div className="pt-4 flex justify-end">
+          <div>
+            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
+              esPlanFull ? 'text-slate-600' : 'text-slate-300'
+            }`}>
+              Asunto / Motivo de la Consulta
+            </label>
+            <input 
+              type="text"
+              value={asunto}
+              onChange={(e) => setAsunto(e.target.value)}
+              placeholder="Ej: Consulta sobre timbrado, duda legal sobre pagaré, etc."
+              required
+              className={`w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors focus:outline-none ${
+                esPlanFull
+                  ? 'bg-slate-50 border border-slate-200 text-slate-800 focus:border-amber-400'
+                  : 'bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
+              esPlanFull ? 'text-slate-600' : 'text-slate-300'
+            }`}>
+              Mensaje Detallado
+            </label>
+            <textarea
+              rows={5}
+              value={mensaje}
+              onChange={(e) => setMensaje(e.target.value)}
+              placeholder="Describe detalladamente tu situación o requerimiento..."
+              required
+              className={`w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors resize-none focus:outline-none ${
+                esPlanFull
+                  ? 'bg-slate-50 border border-slate-200 text-slate-800 focus:border-amber-400'
+                  : 'bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500'
+              }`}
+            />
+          </div>
+
+          <div className="flex justify-end pt-2">
             <button
               type="submit"
-              disabled={isSubmitting || !asunto.trim() || !mensaje.trim()}
-              className="px-8 py-4 bg-[#FF3131] text-white text-sm font-bold uppercase tracking-widest rounded-2xl hover:bg-red-600 transition-all shadow-lg shadow-red-500/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting}
+              className={`w-full sm:w-auto px-8 py-3.5 font-semibold text-sm uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
+                esPlanFull
+                  ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)] border border-amber-400/30'
+                  : 'bg-red-600 hover:bg-red-700 text-white shadow-md'
+              }`}
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
                   Enviando...
                 </>
               ) : (
                 <>
-                  <Send className="w-5 h-5" />
+                  <Send className="w-5 h-5 text-white" />
                   Enviar Consulta
                 </>
               )}

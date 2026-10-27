@@ -39,6 +39,7 @@ import { NotificationBell } from './components/NotificationBell';
 import { RegistroOperador } from './components/RegistroOperador';
 import { EditorNotarialOficial } from './components/EditorNotarialOficial';
 import { ModuloPresupuestos } from './components/ModuloPresupuestos';
+import { Sidebar } from './components/Sidebar';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -104,11 +105,18 @@ import {
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
   <div className={`flex flex-col ${large ? 'items-center' : 'items-start'} gap-1.5`}>
     <svg width={large ? "110" : (mini ? "28" : "44")} height={large ? "64" : (mini ? "18" : "28")} viewBox="0 0 115 65" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-sm">
-      <path d="M2 55H21V28H35V55H49V2H63V55H77V13H91V55H113" stroke="#FF3131" strokeWidth="6" strokeLinejoin="miter" strokeLinecap="butt"/>
+      <defs>
+        <linearGradient id="olgaGoldLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F59E0B" />
+          <stop offset="50%" stopColor="#FBBF24" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+      </defs>
+      <path d="M2 55H21V28H35V55H49V2H63V55H77V13H91V55H113" stroke="url(#olgaGoldLogoGrad)" strokeWidth="6" strokeLinejoin="miter" strokeLinecap="butt"/>
     </svg>
     {!mini && (
       <div className={`flex flex-col ${large ? 'items-center' : 'items-start'}`}>
-        <span className={`font-bold tracking-widest leading-none whitespace-nowrap ${large ? 'text-2xl mt-1.5' : 'text-xs'} ${light ? 'text-white' : 'text-slate-900'}`} style={{ fontFamily: '"Courier Prime", monospace' }}>O.L.G.A</span>
+        <span className={`font-bold tracking-widest leading-none whitespace-nowrap ${large ? 'text-2xl mt-1.5' : 'text-xs'} bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded shadow-xs`} style={{ fontFamily: '"Courier Prime", monospace' }}>O.L.G.A</span>
         <span className={`font-bold tracking-[0.05em] leading-tight mt-1 text-center ${large ? 'text-[8px] max-w-[200px]' : 'text-[6px] max-w-[130px]'} ${light ? 'text-slate-400' : 'text-slate-500'}`} style={{ fontFamily: '"Courier Prime", monospace' }}>
           ORGANIZACIÓN • LEGALIZACIÓN<br/>GESTIÓN • ADMINISTRACIÓN
         </span>
@@ -387,6 +395,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   const isAdmin = forceAdmin && isActualAdminUser;
 
+  const planUsuario = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'basico').toLowerCase().trim();
+  const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full');
+
   useEffect(() => {
     if (isAdmin) {
       setRole('admin');
@@ -397,6 +408,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Mobile menu open/collapsed state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Estado de anclaje de la barra lateral vertical inteligente (Glow UI / Chrome style)
+  const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('olga_sidebar_pinned') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [showBenefits, setShowBenefits] = useState(false);
   const [showEmpresaBenefits, setShowEmpresaBenefits] = useState(false);
   
@@ -843,30 +862,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   useEffect(() => {
     localStorage.setItem('ihara_config', JSON.stringify(config));
   }, [config]);
-
-  // Sincronización global del Modo Dark (olga_theme) con el nodo raíz
-  useEffect(() => {
-    const syncTheme = (e?: any) => {
-      try {
-        const isDark =
-          e?.detail?.isDark !== undefined
-            ? Boolean(e.detail.isDark)
-            : localStorage.getItem('olga_theme') === 'dark';
-        if (isDark) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      } catch {}
-    };
-    syncTheme();
-    window.addEventListener('olga_theme_changed', syncTheme);
-    window.addEventListener('storage', syncTheme);
-    return () => {
-      window.removeEventListener('olga_theme_changed', syncTheme);
-      window.removeEventListener('storage', syncTheme);
-    };
-  }, []);
 
   // One-time migration for old local storage data
   useEffect(() => {
@@ -1326,411 +1321,75 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const visiblePagares = pagares;
 
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-pattern dark:bg-[#0B0F17] text-slate-800 dark:text-slate-100 transition-colors duration-200 print:block print:h-auto print:overflow-visible print:bg-white" id="main-panel-container">
-      
-      {/* Backdrop overlay for mobile & desktop menu */}
-      {isMobileMenuOpen && (
-        <div 
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 transition-all duration-300 print:hidden"
-        />
-      )}
-
-      {/* Sidebar Navigation Drawer (Collapsible) */}
-      <aside className={`fixed inset-y-0 left-0 z-[100] w-80 bg-slate-900 dark:bg-[#121824]/95 dark:backdrop-blur-xl dark:border-r dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] text-white flex flex-col pt-8 pb-6 px-6 shadow-2xl shrink-0 overflow-y-auto transition-transform duration-300 ease-in-out print:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        
-        {/* Brand identity */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-6">
-          <Logo light />
-          <div className="flex items-center gap-2">
-            <span className="bg-[#FF3131] text-white py-1 px-2.5 rounded-xl flex items-center justify-center font-black text-[9px] uppercase tracking-widest leading-none">
-              HQ Panel
-            </span>
-            {/* Close button */}
-            <button
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors"
-              title="Cerrar menú"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* User Profile Section */}
-        <div className="mt-6 bg-slate-800/60 p-4 rounded-3xl border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase font-black tracking-widest text-[#FF3131]">Identidad Verificada</p>
-            {(() => {
-              const plan = userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '';
-              if (plan.includes('full')) {
-                return (
-                  <span
-                    onClick={() => setShowBenefits(true)}
-                    className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-2 py-1 rounded text-[10px] shadow-[0_0_10px_rgba(234,179,8,0.5)] dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] cursor-pointer transition-transform hover:scale-105 inline-block"
-                  >
-                    PLAN FULL
-                  </span>
-                );
-              }
-              return activePlan === 'Pro' ? (
-              <span className="md:hidden bg-slate-900 text-slate-100 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border border-slate-700">
-                Nivel PRO
-              </span>
-            ) : activePlan === 'Intermedio' ? (
-              <span className="md:hidden bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border border-blue-200">
-                Intermedio
-              </span>
-            ) : pruebaActiva ? (
-              <div className="md:hidden flex items-center gap-1">
-                <span className="bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border border-amber-500/20">
-                  Prueba: {diasRestantes} {diasRestantes === 1 ? 'día' : 'días'}
-                </span>
-                <span className="bg-blue-500/10 text-blue-600 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border border-blue-500/20 flex items-center gap-1">
-                  <FileText className="w-2.5 h-2.5" /> {olgaDocsCount}/5
-                </span>
-              </div>
-            ) : (
-              <span className="md:hidden bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border border-red-200">
-                Expirada
-              </span>
-            );
-            })()}
-          </div>
-          
-          <div className="flex items-center gap-3 bg-slate-950/50 p-2.5 rounded-2xl border border-slate-800 relative group">
-            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-slate-700">
-              {logoInstitucional ? (
-                <img src={logoInstitucional} alt="Logo Notaría" className="w-full h-full object-cover" />
-              ) : (
-                <Building className="w-5 h-5 text-slate-400" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate">
-                {isOperador 
-                  ? (currentUser?.displayName || currentUser?.email || 'Operador Notarial')
-                  : (workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Usuario')
-                }
-              </p>
-              <p className="text-[9px] text-slate-400 truncate uppercase tracking-wider mt-0.5 font-bold">
-                {isOperador 
-                  ? (workspaceName ? `Escribanía ${workspaceName}` : 'Operador Notarial')
-                  : (customBranding.registroNotarial || (role === 'admin' ? 'Administrador' : 'Profesional Titular'))
-                }
-              </p>
-            </div>
-            <button 
-              onClick={async () => {
-                localStorage.removeItem('appSessionId');
-                await logout();
-                setCurrentUser(null);
-                setUserProfile(null);
-                setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
-              }}
-              className="p-2 bg-slate-800 hover:bg-[#FF3131] text-slate-400 hover:text-white rounded-xl transition-colors shrink-0"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-
-
-          {(role === 'admin' || isAdmin) && (
-            <div className="pt-2 border-t border-slate-700/50">
-              <div className="grid grid-cols-2 gap-1.5 mt-2">
-                <button
-                  onClick={() => setRole('admin')}
-                  className={`py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 ${role === 'admin' ? 'bg-[#FF3131] text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300'}`}
-                  title="Acceso total para configurar parámetros de escribanía"
-                >
-                  <UserCheck className="w-3 h-3" />
-                  Admin
-                </button>
-                <button
-                  onClick={() => {
-                    setRole('usuario');
-                    if (activeTab === 'config' || activeTab === 'knowledge' || activeTab === 'monitor' || activeTab === 'pagos') setActiveTab('pagares');
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 ${role === 'usuario' ? 'bg-[#FF3131] text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-slate-300'}`}
-                  title="Acceso restringido para redactar y consultar"
-                >
-                  <Building className="w-3 h-3" />
-                  Usuario
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {!isStandalone && (
-          <div className="mt-6 shrink-0">
-            {installMessage && (
-              <div className="mb-2 p-3 bg-blue-900/40 border border-blue-500/30 rounded-xl">
-                <p className="text-[10px] text-blue-200 leading-tight">
-                  <span className="font-bold text-blue-400">Atención:</span> {installMessage}
-                </p>
-              </div>
-            )}
-            <button
-              onClick={handleInstallClick}
-              className="w-full box-border text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5"
-            >
-              <Download className="w-5 h-5" />
-              <div className="flex flex-col">
-                <span className="text-xs font-black uppercase tracking-wider">Instalar App</span>
-                <span className="text-[9px] text-blue-100 font-medium">Usa O.L.G.A. nativamente</span>
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Tab navigations */}
-        <nav className="mt-6 flex-grow space-y-2">
-          <button
-            onClick={() => {
-              setActiveTab('tablero');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'tablero' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Activity className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Tablero</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveTab('pagares');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'pagares' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Banknote className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Gestión de Pagarés</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('personas');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'personas' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Users className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Fichero Personas</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('escritos');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'escritos' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <FileText className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Gestión Escritos</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('lienzo');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'lienzo' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Stamp className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Lienzo Notarial</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('facturacion');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'facturacion' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Banknote className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Presupuestos / Factura</span>
-          </button>
-
-          {role === 'admin' && (
-            <>
-              <button
-                onClick={() => {
-                  setActiveTab('config');
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'config' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-              >
-                <Settings className="w-5 h-5" />
-                <span className="text-xs font-black uppercase tracking-wider">Configuración</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setActiveTab('knowledge');
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'knowledge' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-              >
-                <Database className="w-5 h-5 text-emerald-400" />
-                <span className="text-xs font-black uppercase tracking-wider">Entrenamiento IA</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setActiveTab('monitor');
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'monitor' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-              >
-                <Activity className="w-5 h-5 text-indigo-400" />
-                <span className="text-xs font-black uppercase tracking-wider">Monitor Central</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('pagos');
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'pagos' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-              >
-                <CreditCard className="w-5 h-5 text-emerald-400" />
-                <span className="text-xs font-black uppercase tracking-wider">Gestión Cobros</span>
-              </button>
-            </>
-          )}
-
-          <button
-            onClick={() => {
-              setActiveTab('chat');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'chat' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            {(role === 'admin' || (userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '').includes('full')) ? <Sparkles className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
-            <span className="text-xs font-black uppercase tracking-wider">{(role === 'admin' || (userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '').includes('full')) ? 'El Oráculo' : 'Asistente O.L.G.A.'}</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveTab('cuenta');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'cuenta' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <Settings className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">Configuración</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveTab('soporte');
-              setIsMobileMenuOpen(false);
-            }}
-            className={`w-full text-left p-3.5 rounded-2xl flex items-center gap-3.5 transition-all hover-lift ${activeTab === 'soporte' ? 'bg-[#FF3131] text-white shadow-lg shadow-red-600/10 font-bold' : 'bg-transparent text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'}`}
-          >
-            <LifeBuoy className="w-5 h-5" />
-            <span className="text-xs font-black uppercase tracking-wider">{role === 'admin' ? 'Buzón de Consultas' : 'Soporte'}</span>
-          </button>
-        </nav>
-
-        {/* Upgrade Banner in sidebar (Oculto para operadores) */}
-        {currentUser?.role !== 'operador' && !isOperador && (() => {
-          const plan = userData?.planActual?.toLowerCase() || userData?.plan?.toLowerCase() || userProfile?.planActual?.toLowerCase() || userProfile?.plan?.toLowerCase() || '';
-
-          if (plan.includes('full')) {
-            return null;
-          }
-
-          if (plan.includes('empresa')) {
-            return null;
-          }
-
-          if (plan.includes('pro')) {
-            return (
-              <div className="mt-4 bg-purple-900/30 rounded-2xl p-4 border border-purple-500 text-center relative overflow-hidden shadow-lg shrink-0">
-                <div className="absolute -top-10 -right-10 w-24 h-24 bg-purple-500/20 blur-xl rounded-full"></div>
-                <Target className="w-6 h-6 text-purple-400 mx-auto mb-2 relative z-10" />
-                <h4 className="text-purple-400 font-bold text-xs mb-1 relative z-10">Sube a Plan Empresa</h4>
-                <p className="text-purple-200/70 text-[9px] mb-3 leading-relaxed relative z-10">
-                  Ideal para estudios jurídicos y equipos
-                </p>
-                <button
-                  onClick={() => {
-                    setActiveTab('planes');
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full box-border bg-purple-600 text-white text-[10px] font-bold py-2 rounded-xl transition-colors shadow-sm relative z-10 tracking-widest uppercase"
-                >
-                  Ver Planes
-                </button>
-              </div>
-            );
-          }
-
-          return (
-            <div className="mt-4 bg-blue-900/30 rounded-2xl p-4 border border-blue-500 text-center relative overflow-hidden shadow-lg shrink-0">
-              <div className="absolute -top-10 -right-10 w-24 h-24 bg-blue-500/20 blur-xl rounded-full"></div>
-              <Target className="w-6 h-6 text-blue-400 mx-auto mb-2 relative z-10" />
-              <h4 className="text-blue-400 font-bold text-xs mb-1 relative z-10">Desbloquea Plan Pro</h4>
-              <p className="text-blue-200/70 text-[9px] mb-3 leading-relaxed relative z-10">
-                Automatiza actas y emite dictámenes oficiales
-              </p>
-              <button
-                onClick={() => {
-                  setActiveTab('planes');
-                  setIsMobileMenuOpen(false);
-                }}
-                className="w-full box-border bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold py-2 rounded-xl transition-colors shadow-sm relative z-10 tracking-widest uppercase"
-              >
-                Ver Planes
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Corporate seal logo foot */}
-        <div className="pt-6 border-t border-slate-800 mt-auto text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 text-[9px] text-slate-500 font-bold tracking-[0.2em] uppercase">
-            <HeartHandshake className="w-3.5 h-3.5 text-[#FF3131]" />
-            <span>ESTABLECIDO EN 1994</span>
-          </div>
-          <p className="text-[8px] text-slate-600">Registro Notarizado de Soluciones Financieras</p>
-          <p className="text-[9px] font-mono text-slate-500/50 mt-2 cursor-text select-all">UID: {currentUser?.uid} {currentUser?.email ? ` | ${currentUser.email}` : ''}</p>
-        </div>
-      </aside>
+    <div 
+      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-[#F6F7F9] text-slate-800 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+        !isSidebarPinned ? 'md:pl-[72px]' : ''
+      }`} 
+      id="main-panel-container"
+    >
+      {/* Sidebar de Navegación Vertical Inteligente Glow UI */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
+        isPinned={isSidebarPinned}
+        setIsPinned={setIsSidebarPinned}
+        role={role}
+        setRole={setRole}
+        isAdmin={isAdmin}
+        isOperador={isOperador}
+        currentUser={currentUser}
+        userProfile={userProfile}
+        userData={userData}
+        customBranding={customBranding}
+        workspaceName={workspaceName}
+        config={config}
+        activePlan={activePlan}
+        esPlanFull={esPlanFull}
+        logoInstitucional={logoInstitucional}
+        setShowBenefits={setShowBenefits}
+        onLogout={async () => {
+          localStorage.removeItem('appSessionId');
+          await logout();
+          setCurrentUser(null);
+          setUserProfile(null);
+          setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
+        }}
+        isStandalone={isStandalone}
+        installMessage={installMessage}
+        handleInstallClick={handleInstallClick}
+      />
 
       {/* Main Content Workspace viewport */}
-      <main className="flex-grow flex flex-col h-full overflow-hidden relative dark:bg-[#0B0F17]" id="main-content-viewport">
+      <main className="flex-grow flex flex-col h-full overflow-hidden relative" id="main-content-viewport">
         
         {/* Dynamic header display */}
-        <header className="bg-white/80 dark:bg-[#121824]/90 dark:backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md transition-colors print:hidden">
+        <header className="bg-white/90 border-b border-slate-200/70 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)] print:hidden">
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
-            {/* Hamburger menu button */}
+            {/* Hamburger menu button (solo en pantallas móviles) */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-xl shrink-0 transition-colors border border-slate-200 dark:border-slate-700"
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl shrink-0 transition-colors border border-slate-200 md:hidden cursor-pointer"
               title="Abrir menú"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200 dark:border-slate-700">
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-gradient-to-tr from-orange-500 via-amber-500 to-orange-400 border border-orange-200/60 shadow-[0_4px_12px_rgba(249,115,22,0.25)]">
               {logoInstitucional ? (
                 <img src={logoInstitucional} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <Building className="w-5 h-5 text-white" />
+                <span className="text-white font-serif font-black text-sm">O</span>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none truncate">
+              <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
                   : (customBranding.nombreInstitucion || userData?.razonSocial || workspaceName || config.escribania.nombre)
                 }
               </h1>
-              <p className="text-[8px] md:text-[10px] text-slate-400 dark:text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
+              <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
                 {isOperador 
                   ? `Operador Notarial • ${workspaceName || 'Escribanía Titular'}`
                   : `${customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular ${userData?.matricula || config.escribania.nro_registro}`
@@ -1747,7 +1406,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return (
       <div className="flex items-center shrink-0 flex-shrink-0">
         <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-          <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
+          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
           <span>OPERADOR NOTARIAL</span>
         </span>
       </div>
@@ -1765,7 +1424,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       <div className="flex items-center shrink-0 flex-shrink-0">
         <span 
           onClick={() => setShowBenefits(true)}
-          className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
+          className="cursor-pointer bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-bold px-3 py-1 rounded-full shadow-[0_4px_14px_rgba(251,191,36,0.35)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
           {nombrePlan}
         </span>
@@ -1814,9 +1473,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             })() && (
               <button 
                 onClick={() => setActiveTab('planes')}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md hover:scale-105 shrink-0 flex-shrink-0 transition-transform cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:scale-105 shrink-0 flex-shrink-0 transition-transform cursor-pointer"
               >
-                <Target className="w-3 h-3 animate-pulse text-blue-100" />
+                <Target className="w-3 h-3 animate-pulse text-amber-100" />
                 <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">Obtener Planes</span>
               </button>
             )}
@@ -1944,6 +1603,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 isAdmin={role === 'admin'}
                 userData={userProfile || userData}
                 isSoftBlocked={isSoftBlocked}
+                esPlanFull={esPlanFull}
               />
             )}
 
@@ -1958,6 +1618,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 currentUser={currentUser}
                 userData={userProfile || userData}
                 isSoftBlocked={isSoftBlocked}
+                esPlanFull={esPlanFull}
               />
             )}
 
@@ -1967,11 +1628,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 userProfile={userProfile || userData}
                 personas={personas}
                 onOpenDocument={handleOpenDocumentModal} 
+                esPlanFull={esPlanFull}
               />
             )}
 
             {activeTab === 'lienzo' && (
-              <EditorNotarialOficial onVolver={() => setActiveTab('escritos')} />
+              <EditorNotarialOficial 
+                onVolver={() => setActiveTab('escritos')} 
+                esPlanFull={esPlanFull}
+              />
             )}
 
             {activeTab === 'facturacion' && (
@@ -1985,6 +1650,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 rucEscribania={customBranding.ruc || userData?.ruc || '80012345-6'}
                 direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
                 telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
+                esPlanFull={esPlanFull}
               />
             )}
             
@@ -1995,6 +1661,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 userPlan={userProfile?.planActual || userProfile?.plan || activePlan}
                 userData={userProfile || userData}
                 currentUser={currentUser}
+                esPlanFull={esPlanFull}
               />
             )}
 
@@ -2003,7 +1670,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 config={config}
                 onUpdateConfig={handleUpdateConfig}
                 isAdmin={role === 'admin'}
-                
+                esPlanFull={esPlanFull}
               />
             )}
 
@@ -2026,11 +1693,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
 
             {activeTab === 'soporte' && role === 'admin' && (
-              <BuzonAdminTab />
+              <BuzonAdminTab esPlanFull={esPlanFull} />
             )}
 
             {activeTab === 'soporte' && role !== 'admin' && (
-              <SoporteClienteTab currentUser={currentUser} userData={userProfile} />
+              <SoporteClienteTab currentUser={currentUser} userData={userProfile} esPlanFull={esPlanFull} />
             )}
 
             {activeTab === 'chat' && (() => {
@@ -2041,30 +1708,59 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
               return (
                 /* Conversational assistance with O.L.G.A. IA */
-                <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-4 md:p-8 md:rounded-[2.5rem] border-0 md:border md:border-slate-100 shadow-none md:shadow-md flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message" id="chat-assistant-container">
-                  <div className="border-b border-slate-50 dark:border-slate-800/80 pb-4 shrink-0">
+                <div className={`p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message ${
+                  esPlanFull 
+                    ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+                    : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
+                }`} id="chat-assistant-container">
+                  <div className={`pb-4 shrink-0 border-b ${esPlanFull ? 'border-amber-100' : 'border-slate-800'}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <h2 className="text-2xl font-bold font-serif text-slate-800 dark:text-slate-100 flex items-center gap-2.5">
-                          {esPlanFull ? <Sparkles className="w-6 h-6 text-[#FF3131]" /> : <MessageSquare className="w-6 h-6 text-[#FF3131]" />}
-                          {esPlanFull ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Asistente Jurídico y Tributario'}
-                        </h2>
-                        <p className="text-xs text-slate-400 dark:text-slate-400 mt-1">
-                          {esPlanFull 
-                            ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
-                            : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
-                        </p>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                          esPlanFull 
+                            ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
+                            : 'bg-slate-800 border border-slate-700 text-slate-300'
+                        }`}>
+                          {esPlanFull ? <Sparkles className="w-6 h-6 text-amber-600" /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className={`${esPlanFull ? 'text-slate-900' : 'text-white'} font-serif font-bold text-2xl tracking-tight`}>
+                              {esPlanFull ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Asistente Jurídico y Tributario'}
+                            </h2>
+                            <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow-xs ${
+                              esPlanFull 
+                                ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950' 
+                                : 'bg-red-600 text-white'
+                            }`}>
+                              O.L.G.A.
+                            </span>
+                          </div>
+                          <p className={`text-xs mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {esPlanFull 
+                              ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
+                              : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
+                          </p>
+                        </div>
                       </div>
 
                       {/* Estado de acceso / Plan badge */}
                       <div className="shrink-0 flex items-center gap-2">
                         {tienePlanPago ? (
-                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${esPlanFull ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] dark:border-amber-400' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'}`}>
-                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500 dark:bg-slate-950' : 'bg-emerald-500'}`}></div>
-                            {esPlanFull ? 'Plan Full / Oráculo Habilitado' : 'Plan Básico Activo'}
+                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
+                            esPlanFull 
+                              ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}>
+                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500' : 'bg-emerald-400'}`}></div>
+                            {esPlanFull ? 'Plan Full / Oráculo Habilitado' : 'Plan Estándar Activo'}
                           </div>
                         ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
-                          <div className="mt-1 inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 shadow-sm">
+                          <div className={`mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
+                            esPlanFull 
+                              ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}>
                             <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
                             Prueba Gratuita: {userData?.usoIA || 0}/{userData?.limiteIA || 20} consultas usadas - Vence en {
                               userData?.fechaVencimientoDemo ? 
@@ -2078,13 +1774,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                   </div>
 
                   {/* Dialog Messages viewport */}
-                  <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 dark:bg-[#0B0F17]/90 rounded-3xl border border-slate-100 dark:border-slate-800/80">
+                  <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
                     {chatMessages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 dark:bg-[#FF3131] text-white rounded-tr-none' : 'bg-white dark:bg-[#121824] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
+                        <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
                           {msg.role === 'model' ? (
                             <div className="flex flex-col gap-2 relative group w-full box-border">
-                              <div id={`model-msg-${i}`} className="markdown-body prose prose-slate dark:prose-invert max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 dark:prose-strong:text-slate-100 border-b border-transparent group-hover:border-slate-50 dark:group-hover:border-slate-800 pb-2">
+                              <div id={`model-msg-${i}`} className="markdown-body prose prose-slate max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 border-b border-transparent group-hover:border-slate-50 pb-2">
                                 <ReactMarkdown>{msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text}</ReactMarkdown>
                               </div>
                               <div className="flex items-center gap-2 self-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2129,9 +1825,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                     {chatLoading && (
                       <div className="flex justify-start items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl w-fit">
                         <div className="flex gap-1">
-                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce"></div>
-                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-75"></div>
-                          <div className="w-1.5 h-1.5 bg-[#FF3131] rounded-full animate-bounce delay-150"></div>
+                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce"></div>
+                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-75"></div>
+                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-150"></div>
                         </div>
                         <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">O.L.G.A. procesando...</span>
                       </div>
@@ -2140,10 +1836,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
                   {/* Question Input form bar */}
                   {tieneAccesoChat ? (
-                    <div className="flex flex-col gap-1 bg-slate-100 dark:bg-[#0B0F17] dark:border dark:border-slate-800/80 p-2 md:rounded-2xl shrink-0">
+                    <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
                       {/* Oracle Admin / Full Plan Chips */}
                       {esPlanFull && (
-                        <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60 dark:border-slate-800">
+                        <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
                           <button
                             type="button"
                             onClick={() => handleSendChatMessage('Actúa como auditor legal. Analiza este documento y enumera cualquier cláusula abusiva, usura o renuncia ilegal de derechos según el Código Civil Paraguayo.')}
@@ -2236,13 +1932,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                             }
                           }}
                           placeholder={esPlanFull ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta jurídica al Asistente O.L.G.A...."}
-                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500"
+                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
                         />
                         <button
                           onClick={() => handleSendChatMessage()}
-                          className="w-10 h-10 flex-shrink-0 flex items-center justify-center bg-slate-900 text-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.1)] hover:bg-[#FF3131] hover:scale-105 transition-all"
+                          className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-xl transition-all cursor-pointer flex-shrink-0 ${
+                            esPlanFull 
+                              ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)]' 
+                              : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                          }`}
+                          title="ENVIAR CONSULTA"
                         >
                           <Send className="w-4 h-4 ml-0.5" />
+                          <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">ENVIAR CONSULTA</span>
                         </button>
                       </div>
                     </div>
@@ -2258,7 +1960,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                       {currentUser?.role !== 'operador' && !isOperador && (
                         <button 
                           onClick={() => setActiveTab('planes')}
-                          className="bg-[#FF3131] hover:bg-red-600 shadow-lg shadow-red-600/20 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
+                          className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl shadow-[0_4px_15px_rgba(245,158,11,0.35)] py-2.5 px-6 text-xs uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
                         >
                           Ver Planes y Precios
                         </button>
@@ -2276,8 +1978,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </div>
 
         {/* Dynamic bottom bar info */}
-        <footer className={`bg-slate-900 p-4 border-t border-slate-800 text-white/40 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
-          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL IHARA & ASOCIADOS
+        <footer className={`bg-white/90 border-t border-slate-200/80 text-slate-400 p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
+          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL
         </footer>
       </main>
 
@@ -2343,7 +2045,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-[#FF3131] text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-red-600 transition-colors"
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold uppercase tracking-wider rounded-xl shadow-[0_4px_15px_rgba(245,158,11,0.35)] transition-all cursor-pointer"
                 >
                   Confirmar
                 </button>
@@ -2396,15 +2098,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             {/* Modal de Beneficios Plan Full */}
       {showBenefits && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 dark:bg-[#121824]/95 dark:backdrop-blur-xl border border-yellow-500 dark:border-amber-500/80 dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] rounded-2xl p-6 w-full box-border max-w-sm shadow-2xl relative">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-yellow-500 dark:text-amber-400 text-lg font-black flex items-center gap-2">
-                <Star className="w-5 h-5" /> Beneficios Plan Full
-              </h3>
-              <span className="px-2.5 py-0.5 rounded text-[10px] bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 font-bold shadow-[0_0_20px_rgba(245,158,11,0.35)]">
-                FULL
-              </span>
-            </div>
+          <div className="bg-slate-900 border border-yellow-500 rounded-xl p-6 w-full box-border max-w-sm shadow-2xl relative">
+            <h3 className="text-yellow-500 text-lg font-black mb-4 flex items-center gap-2">
+              <Star className="w-5 h-5" /> Beneficios Plan Full
+            </h3>
             <ul className="space-y-3 mb-6 text-sm text-slate-200">
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Consultas IA: Ilimitadas

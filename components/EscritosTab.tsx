@@ -36,6 +36,7 @@ interface EscritosTabProps {
   userProfile?: any;
   personas?: any[];
   onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string) => void;
+  esPlanFull?: boolean;
 }
 
 // =========================================================================
@@ -429,11 +430,14 @@ const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 
-export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument }) => {
+export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
   const { workspaceId } = useWorkspace(currentUser, userProfile);
   // Estado de prueba gratuita / billing
   const { pruebaActiva, diasRestantes, isTrialExpired } = useTrialStatus(currentUser);
+
+  const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
+  const esFull = esPlanFull !== undefined ? esPlanFull : (currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full'));
 
   // Modo de navegación: Redacción activa vs Archivo de Documentos
   const [activeSubTab, setActiveSubTab] = useState<'redaccion' | 'archivo'>('redaccion');
@@ -2716,20 +2720,40 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {!mostrarEditor && (
         <>
           {/* Cabecera Principal Unificada */}
-          <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+          <div className={`${
+            esFull 
+              ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+              : 'bg-slate-900 border border-slate-800 shadow-xl'
+          } rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden`}>
+            {esFull && (
+              <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
+            )}
             <div className="relative z-10 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
-                <FileText className="w-5 h-5 text-[#FF3131]" />
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                esFull 
+                  ? 'bg-amber-50 text-amber-600 border border-amber-200/70' 
+                  : 'bg-slate-800 text-slate-300 border border-slate-700/80'
+              }`}>
+                <FileText className={`w-6 h-6 ${esFull ? 'text-amber-600' : 'text-slate-300'}`} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-black text-white tracking-tight font-serif">Gestión de Escritos y Notaría</h2>
-                  <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
+                  <h2 className={`${
+                    esFull ? 'text-slate-900' : 'text-white'
+                  } font-serif font-bold text-2xl tracking-tight`}>
+                    Gestión de Escritos y Notaría
+                  </h2>
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full shadow-xs ${
+                    esFull 
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold' 
+                      : 'bg-red-600 text-white font-bold'
+                  }`}>
                     O.L.G.A.
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                <p className={`${
+                  esFull ? 'text-slate-500' : 'text-slate-400'
+                } text-sm mt-1 font-medium`}>
                   Entorno ergonómico unificado: Redacción asistida con IA, Editor Notarial Activo y Gestión Documental.
                 </p>
               </div>
@@ -2737,8 +2761,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
             {/* Resumen de Estado y Acceso Directo a Drive */}
             <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
-              <div className="px-3 py-2 bg-slate-800/80 border border-slate-700/60 rounded-2xl text-[11px] font-bold text-slate-300 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
+              <div className={`${
+                esFull 
+                  ? 'bg-amber-50/80 text-amber-900 border border-amber-300/60' 
+                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+              } rounded-xl px-3.5 py-1.5 text-xs font-semibold flex items-center gap-2`}>
+                <span className={`w-2 h-2 rounded-full ${esFull ? 'bg-amber-500' : 'bg-emerald-400'}`}></span>
                 <span>{escritos.length} Documentos en Archivo</span>
               </div>
 
@@ -2748,9 +2776,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   const el = document.getElementById('seccion-gestion-documental');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-slate-700"
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer border ${
+                  esFull 
+                    ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/80 hover:border-amber-300' 
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
               >
-                <FolderInput className="w-3.5 h-3.5 text-[#FF3131]" />
+                <FolderInput className={`w-3.5 h-3.5 ${esFull ? 'text-amber-600' : 'text-slate-300'}`} />
                 <span>Ver Archivo Documental ↓</span>
               </button>
             </div>
@@ -2806,9 +2838,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 <button
                   type="button"
                   onClick={() => setIsAiModalOpen(true)}
-                  className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 group cursor-pointer border border-slate-800 active:scale-[0.99]"
+                  className={`w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md font-semibold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group cursor-pointer active:scale-[0.99] ${
+                    esFull 
+                      ? 'text-amber-300 border border-amber-500/30 shadow-[0_4px_14px_rgba(245,158,11,0.15)]' 
+                      : 'text-white border border-slate-700'
+                  }`}
                 >
-                  <Sparkles className="w-4 h-4 text-[#FF3131] group-hover:scale-110 transition-transform" />
+                  <Sparkles className={`w-4 h-4 group-hover:scale-110 transition-transform ${esFull ? 'text-amber-400' : 'text-white'}`} />
                   <span>GENERAR BORRADOR CON IA</span>
                 </button>
               </div>
@@ -2879,7 +2915,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             <button
               type="button"
               onClick={handleNuevoEscrito}
-              className="flex-1 py-3.5 px-4 bg-[#FF3131] hover:bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+              className={`flex-1 py-3.5 px-4 font-semibold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer ${
+                esFull
+                  ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)] border border-amber-400/30'
+                  : 'bg-[#FF3131] hover:bg-[#d62828] text-white shadow-md'
+              }`}
             >
               <Plus className="w-4 h-4 text-white" />
               <span>+ Nuevo Escrito</span>

@@ -48,6 +48,7 @@ interface PersonasTabProps {
   isSoftBlocked?: boolean;
   initialEditingId?: string | null;
   onClose?: () => void;
+  esPlanFull?: boolean;
 }
 
 const STORAGE_KEY = 'olga_directorio_personas';
@@ -64,7 +65,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   userData,
   isSoftBlocked = false,
   initialEditingId = null,
-  onClose
+  onClose,
+  esPlanFull
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
   const { workspaceId } = useWorkspace(currentUser || auth?.currentUser);
@@ -73,6 +75,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   const { diasRestantes, pruebaActiva, isTrialExpired, userData: liveUserData } = useTrialStatus(auth?.currentUser);
   const activeUserData = liveUserData || userData;
   const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
+  const isFull = esPlanFull !== undefined ? esPlanFull : (rawPlan.includes('full') || (isAdmin && rawPlan.includes('full')));
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
   const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
   const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
@@ -671,45 +674,69 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   }, [clienteExpediente, listaPersonas]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-slate-100 dark:bg-[#0B0F17] min-h-screen transition-colors duration-200">
-      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6">
+    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-transparent">
+      {/* Encabezado del Módulo: Glow UI Dorado para Plan Full / Bloque Oscuro Institucional para Planes Estándar */}
+      <div className={`p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6 transition-all ${
+        isFull 
+          ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
+      }`}>
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shrink-0">
-            <Users className="w-6 h-6 text-[#FF3131]" />
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+            isFull 
+              ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
+              : 'bg-slate-800 border border-slate-700 text-slate-300'
+          }`}>
+            <Users className={`w-6 h-6 ${isFull ? 'text-amber-600' : 'text-slate-300'}`} />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Directorio de Personas & Expedientes 360°</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+            <div className="flex items-center gap-2">
+              <h2 className={`font-serif font-bold text-2xl tracking-tight ${isFull ? 'text-slate-900' : 'text-white'}`}>
+                Directorio de Personas & Expedientes 360°
+              </h2>
+              <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
+                isFull 
+                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-xs' 
+                  : 'bg-red-600 text-white'
+              }`}>
+                O.L.G.A.
+              </span>
+            </div>
+            <p className={`text-sm mt-1 font-medium ${isFull ? 'text-slate-500' : 'text-slate-400'}`}>
               Fichero unificado con consulta de historial crediticio, resumen de obligaciones y notas notariales.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold">
+          <span className={`px-3.5 py-1.5 rounded-full text-xs font-bold border ${
+            isFull 
+              ? 'bg-amber-50 text-amber-900 border-amber-300/60' 
+              : 'bg-slate-800 text-slate-300 border-slate-700'
+          }`}>
             {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente Registrado' : 'Clientes Registrados'}
           </span>
         </div>
       </div>
 
       {/* Cartel Reglamentario Notarial */}
-      <div className="p-4 bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
+      <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
         <ShieldCheck className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          <strong className="text-slate-900 dark:text-slate-100 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
-          La identificación de comparecientes y representantes legales incorporados en este directorio constituye un borrador de datos preparatorios. Requiere la certificación de identidad, verificación de personería y sello del <strong className="dark:text-slate-200">Escribano Titular</strong> para poseer validez legal administrativa.
+        <div className="text-xs text-slate-600 leading-relaxed">
+          <strong className="text-slate-900 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
+          La identificación de comparecientes y representantes legales incorporados en este directorio constituye un borrador de datos preparatorios. Requiere la certificación de identidad, verificación de personería y sello del <strong>Escribano Titular</strong> para poseer validez legal administrativa.
         </div>
       </div>
 
       <div className="flex flex-col gap-6">
         
         {/* Formulario de Registro / Edición (ARRIBA) */}
-        <div id="formulario-persona" className="w-full bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-          <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between">
+        <div id="formulario-persona" className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              <h3 className="text-base font-bold text-slate-900">
                 {editingId ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500">
                 {editingId ? 'Modifique los datos del interviniente y guarde los cambios.' : 'Complete los datos del cliente o consulte el DNIT para autocompletar la información oficial.'}
               </p>
             </div>
@@ -722,9 +749,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Selector de Tipo de Persona / Entidad (Editable manualmente para FÍSICA o JURÍDICA) */}
-            <div className="bg-slate-50 dark:bg-[#0B0F17]/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <label htmlFor="tipoPersona" className="block text-[11px] font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
+                <label htmlFor="tipoPersona" className="block text-[11px] font-bold uppercase text-slate-700 tracking-wider">
                   Tipo de Entidad / Persona *
                 </label>
                 {editingId && (
@@ -746,7 +773,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       setTipoPersona(nuevoTipo);
                       setErrorMsg('');
                     }}
-                    className="w-full bg-white dark:bg-[#121824] border border-slate-300 dark:border-slate-700 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors cursor-pointer shadow-xs"
+                    className="w-full bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none transition-colors cursor-pointer shadow-xs"
                   >
                     <option value="física">FÍSICA</option>
                     <option value="jurídica">JURÍDICA</option>
@@ -755,7 +782,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
                 {/* Botones de Selección / Radio */}
                 <div className="flex items-center gap-4 px-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-slate-900">
                     <input
                       type="radio"
                       name="tipoPersonaRadio"
@@ -769,7 +796,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     />
                     <span>FÍSICA</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-slate-900">
                     <input
                       type="radio"
                       name="tipoPersonaRadio"
@@ -785,7 +812,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   </label>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+              <p className="text-[10px] text-slate-500">
                 Permite sobrescribir manualmente cualquier clasificación del DNIT (Física vs Jurídica).
               </p>
             </div>
@@ -795,7 +822,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* Nombre */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                     Nombre(s) *
                   </label>
                   <input
@@ -803,13 +830,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
                     placeholder="Ej. Juan Carlos"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
                   />
                 </div>
 
                 {/* Apellido */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                     Apellido(s) *
                   </label>
                   <input
@@ -817,13 +844,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     value={apellido}
                     onChange={(e) => setApellido(e.target.value)}
                     placeholder="Ej. Pérez Gómez"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
                   />
                 </div>
 
                 {/* C.I. / R.U.C. con DNIT */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                     Nro. Documento (CI / RUC) *
                   </label>
                   <div className="relative">
@@ -838,7 +865,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                         }
                       }}
                       placeholder="Ej. 1.234.567 o 1234567-8"
-                      className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
                     />
                     <button
                       type="button"
@@ -987,7 +1014,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             {/* Teléfono, Email y Domicilio */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                   Teléfono
                 </label>
                 <input
@@ -995,11 +1022,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={telefono}
                   onChange={(e) => setTelefono(e.target.value)}
                   placeholder="+595 981 ..."
-                  className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                   Email
                 </label>
                 <input
@@ -1007,11 +1034,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="correo@..."
-                  className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1 tracking-wider">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
                   Domicilio / Dirección Notarial
                 </label>
                 <input
@@ -1019,7 +1046,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={domicilio}
                   onChange={(e) => setDomicilio(e.target.value)}
                   placeholder="Dirección real, legal o comercial..."
-                  className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1061,13 +1088,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         </div>
 
         {/* Directorio Enterprise con Buscador y Filtros (ABAJO - Ancho Completo) */}
-        <div className="w-full bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              <h3 className="text-base font-bold text-slate-900">
                 Directorio Enterprise ({listaFiltrada.length})
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Haz clic en cualquier cliente para ver su Expediente 360°</p>
+              <p className="text-[11px] text-slate-500">Haz clic en cualquier cliente para ver su Expediente 360°</p>
             </div>
             
             {/* Buscador Local Reactivo */}
@@ -1077,7 +1104,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 placeholder="Buscar por nombre, CI, RUC..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 outline-none transition-colors"
               />
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               {searchTerm && (
@@ -1100,8 +1127,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               onClick={() => setFiltroTipo('todos')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                 filtroTipo === 'todos' 
-                  ? 'bg-slate-900 dark:bg-[#FF3131] text-white' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-slate-900 text-white' 
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               Todos ({listaPersonas.length})
@@ -1111,8 +1138,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               onClick={() => setFiltroTipo('física')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                 filtroTipo === 'física' 
-                  ? 'bg-slate-900 dark:bg-[#FF3131] text-white' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-slate-900 text-white' 
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               Físicas ({conteoFisicas})
@@ -1122,8 +1149,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               onClick={() => setFiltroTipo('jurídica')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                 filtroTipo === 'jurídica' 
-                  ? 'bg-slate-900 dark:bg-[#FF3131] text-white' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-slate-900 text-white' 
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               Jurídicas ({conteoJuridicas})
@@ -1134,7 +1161,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                <tr className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
                   <th className="py-3 px-3">Cliente / Interviniente</th>
                   <th className="py-3 px-3">Tipo / Documento</th>
                   <th className="py-3 px-3">Contacto</th>
@@ -1143,12 +1170,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+              <tbody className="divide-y divide-slate-100 text-xs">
                 {listaFiltrada.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-slate-400">
-                      <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                      <p className="font-bold text-sm text-slate-600 dark:text-slate-300">No se encontraron registros coincidentes.</p>
+                      <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                      <p className="font-bold text-sm text-slate-600">No se encontraron registros coincidentes.</p>
                       <p className="text-xs text-slate-400 mt-0.5">
                         {searchTerm ? 'Intenta modificar el término de búsqueda o limpiar filtros.' : 'Registra el primer cliente con el formulario.'}
                       </p>
@@ -1168,13 +1195,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       <tr 
                         key={p.id} 
                         onClick={() => handleAbrirExpediente(p)}
-                        className={`hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${editingId === p.id ? 'bg-red-50/40 dark:bg-red-950/20' : ''}`}
+                        className={`hover:bg-slate-100/70 transition-colors cursor-pointer group ${editingId === p.id ? 'bg-red-50/40' : ''}`}
                         title="Haz clic para abrir el Expediente 360°"
                       >
                         {/* Nombre / Interviniente */}
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700 group-hover:border-[#FF3131] transition-colors">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200 group-hover:border-[#FF3131] transition-colors">
                               {p.tipo_persona === 'física' ? (
                                 <User className="w-4 h-4" />
                               ) : (
@@ -1183,12 +1210,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                             </div>
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <span className="font-bold text-slate-900 dark:text-slate-100 leading-tight group-hover:text-[#FF3131] transition-colors">
+                                <span className="font-bold text-slate-900 leading-tight group-hover:text-[#FF3131] transition-colors">
                                   {nombreCompleto}
                                 </span>
                               </div>
                               {p.domicilio && (
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[180px] block" title={p.domicilio}>
+                                <span className="text-[10px] text-slate-500 truncate max-w-[180px] block" title={p.domicilio}>
                                   {p.domicilio}
                                 </span>
                               )}
@@ -1200,18 +1227,18 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                         <td className="py-3 px-3">
                           <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider mb-0.5 ${
                             p.tipo_persona === 'física' 
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700' 
-                              : 'bg-slate-800 dark:bg-amber-500/20 text-white dark:text-amber-300 dark:border dark:border-amber-500/30'
+                              ? 'bg-slate-100 text-slate-800 border border-slate-200' 
+                              : 'bg-slate-800 text-white'
                           }`}>
                             {p.tipo_persona}
                           </span>
-                          <span className="text-slate-800 dark:text-slate-200 font-mono font-bold block text-[11px]">
+                          <span className="text-slate-800 font-mono font-bold block text-[11px]">
                             {p.tipo_documento}: {p.nro_documento}
                           </span>
                         </td>
 
                         {/* Contacto */}
-                        <td className="py-3 px-3 text-[11px] text-slate-600 dark:text-slate-400">
+                        <td className="py-3 px-3 text-[11px] text-slate-600">
                           {p.telefono && (
                             <div className="flex items-center gap-1">
                               <Phone className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1234,15 +1261,15 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                           {p.tipo_persona === 'jurídica' ? (
                             repLegal ? (
                               <div>
-                                <span className="font-bold text-slate-900 dark:text-slate-100 block leading-tight">
+                                <span className="font-bold text-slate-900 block leading-tight">
                                   {repLegal.nombre} {repLegal.apellido || ''}
                                 </span>
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                <span className="text-[10px] text-slate-500 font-mono">
                                   CI: {repLegal.nro_documento}
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900 px-2 py-0.5 rounded inline-block">
+                              <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded inline-block">
                                 Sin Asignar
                               </span>
                             )
@@ -1254,7 +1281,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                         {/* Responsable */}
                         <td className="py-3 px-3 text-xs">
                           {p.responsable && p.responsable !== 'MONKEY BUSINESS IA' && p.responsable !== 'Titular' ? (
-                            <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] truncate max-w-[120px] block" title={p.responsable}>
+                            <span className="font-bold text-slate-800 text-[11px] truncate max-w-[120px] block" title={p.responsable}>
                               {p.responsable}
                             </span>
                           ) : (
@@ -1268,7 +1295,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                             <button
                               type="button"
                               onClick={() => handleAbrirExpediente(p)}
-                              className="px-2.5 py-1.5 text-xs font-bold rounded-lg text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
+                              className="px-2.5 py-1.5 text-xs font-bold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center gap-1"
                               title="Ver Expediente 360°"
                             >
                               <Eye className="w-3.5 h-3.5 text-[#FF3131]" />
@@ -1277,7 +1304,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                             <button
                               type="button"
                               onClick={() => handleEditPersona(p)}
-                              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                               title="Editar registro"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -1285,7 +1312,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDeletePersona(p.id)}
-                              className="p-1.5 text-slate-400 hover:text-[#FF3131] hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-[#FF3131] hover:bg-red-50 rounded-lg transition-colors"
                               title="Eliminar registro"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1306,7 +1333,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       {/* ================= MODAL EXPEDIENTE 360° DEL CLIENTE ================= */}
       {clienteExpediente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-[#121824]/95 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
             
             {/* Cabecera del Modal Expediente */}
             <div className="p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">

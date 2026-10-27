@@ -77,6 +77,7 @@ interface ConfiguracionTabProps {
   userPlan?: string;
   userData?: any;
   currentUser?: any;
+  esPlanFull?: boolean;
 }
 
 const PLAN_LIMITS = {
@@ -236,8 +237,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   pagares = [],
   userPlan,
   userData,
-  currentUser
+  currentUser,
+  esPlanFull
 }) => {
+  const planNormalizado = String(userPlan || userData?.planActual || userData?.plan || '').toLowerCase();
+  const isFull = esPlanFull !== undefined ? esPlanFull : planNormalizado.includes('full');
   // FASE 3: Identificación de Workspace para persistencia en la nube
   const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
   const effectiveWorkspaceId = workspaceId || userData?.tenant_id || userData?.uid || currentUser?.uid;
@@ -789,23 +793,48 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-100 dark:bg-[#0B0F17] min-h-screen transition-colors duration-200">
-      {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
-      <div className="bg-slate-900 dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-slate-800 rounded-xl border border-slate-700 text-[#FF3131] shrink-0">
-            <Settings className="w-6 h-6" />
+            {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
+      <div className={`p-6 rounded-3xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden transition-all ${
+        isFull 
+          ? 'bg-white border border-amber-200/70 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
+      }`}>
+        {isFull && (
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
+        )}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+            isFull 
+              ? 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.15)]' 
+              : 'bg-slate-800 border border-slate-700 text-slate-300'
+          }`}>
+            <Settings className={`w-6 h-6 ${isFull ? 'text-amber-600' : 'text-slate-300'}`} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold font-serif tracking-tight text-white dark:text-slate-100">Configuración del Sistema</h2>
-            <p className="text-slate-300 dark:text-slate-400 text-xs mt-0.5">
+            <div className="flex items-center gap-2">
+              <h2 className={`font-serif font-bold text-2xl tracking-tight ${isFull ? 'text-slate-900' : 'text-white'}`}>
+                Configuración del Sistema
+              </h2>
+              <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
+                isFull 
+                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_10px_rgba(245,158,11,0.3)]' 
+                  : 'bg-red-600 text-white'
+              }`}>
+                O.L.G.A.
+              </span>
+            </div>
+            <p className={`text-sm mt-1 font-medium ${isFull ? 'text-slate-500' : 'text-slate-400'}`}>
               Parámetros institucionales, sincronización en tiempo real y directivas de seguridad.
             </p>
           </div>
         </div>
-
         {/* Panel de Acciones Superiores */}
-        <div className="flex items-center gap-3 self-end md:self-auto">
-          <span className="px-3 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold">
+        <div className="relative z-10 flex items-center gap-3 self-end md:self-auto">
+          <span className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold border ${
+            isFull 
+              ? 'bg-amber-50/80 text-amber-900 border-amber-300/60' 
+              : 'bg-slate-800 text-slate-300 border-slate-700'
+          }`}>
             {pagaresEfectivos.length} Pagarés Monitoreados
           </span>
         </div>
@@ -902,9 +931,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm"
+                  className={`px-4 py-2.5 rounded-xl font-semibold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                    isFull
+                      ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 shadow-[0_4px_14px_rgba(0,0,0,0.1)]'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-sm'
+                  }`}
                 >
-                  <Upload className="w-3.5 h-3.5 text-[#FF3131]" />
+                  <Upload className={`w-3.5 h-3.5 ${isFull ? 'text-amber-400' : 'text-slate-300'}`} />
                   <span>Subir Logo</span>
                 </button>
                 {logoPreview && (

@@ -64,6 +64,7 @@ interface ModuloPresupuestosProps {
   rucEscribania?: string;
   direccionEscribania?: string;
   telefonoEscribania?: string;
+  esPlanFull?: boolean;
 }
 
 export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
@@ -76,7 +77,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   rucEscribania = '80012345-6',
   direccionEscribania = 'Asunción, República del Paraguay',
   telefonoEscribania = '+595 21 000-000',
+  esPlanFull,
 }) => {
+  const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
+  const esFull = esPlanFull !== undefined ? esPlanFull : planUsuario.includes('full');
+
   // Estado dinámico del Membrete Institucional (Multi-usuario)
   const [membrete, setMembrete] = useState<MembreteEscribaniaConfig>(() => {
     const cargado = cargarMembreteUsuario(userId);
@@ -649,28 +654,30 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   };
 
   return (
-    <div className={`min-h-full flex flex-col font-sans rounded-3xl overflow-hidden border shadow-2xl transition-colors duration-200 dark:bg-[#0B0F17] dark:text-slate-100 dark:border-slate-800/80 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
+    <div className={`min-h-full flex flex-col font-sans rounded-3xl overflow-hidden border shadow-2xl transition-colors duration-200 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
       modoFondoBlanco 
         ? 'bg-slate-100 text-slate-800 border-slate-300' 
-        : 'bg-[#0B0F17] text-slate-100 border-slate-800'
+        : 'bg-[#F6F7F9] text-slate-800 border-slate-200/80'
     }`}>
       {/* Cabecera Principal del Módulo (oculta al imprimir) */}
-      <header className={`p-6 md:p-8 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border-slate-800/80 dark:text-slate-100 print:hidden ${
-        modoFondoBlanco
-          ? 'bg-white border-slate-200 text-slate-900'
-          : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100'
-      }`}>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+      <header className={`${
+        esFull 
+          ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+          : 'bg-slate-900 border border-slate-800 shadow-2xl'
+      } rounded-3xl p-6 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden`}>
+        {esFull && (
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
+        )}
 
         <div className="relative z-10 flex items-center gap-4">
           {onVolver && (
             <button
               onClick={onVolver}
               type="button"
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors border flex items-center gap-2 cursor-pointer ${
-                modoFondoBlanco
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border flex items-center gap-2 cursor-pointer shadow-xs ${
+                esFull 
+                  ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200' 
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
             >
               <ArrowLeft className="w-4 h-4" />
@@ -678,20 +685,32 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             </button>
           )}
 
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-inner">
-            <Banknote className="w-6 h-6 text-amber-500" />
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+            esFull 
+              ? 'bg-amber-50 text-amber-600 border border-amber-200/70' 
+              : 'bg-slate-800 text-slate-300 border border-slate-700/80'
+          }`}>
+            <Banknote className="w-6 h-6" />
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl md:text-2xl font-black tracking-tight font-serif dark:text-slate-100 ${modoFondoBlanco ? 'text-slate-900' : 'text-slate-100'}`}>
+              <h1 className={`${
+                esFull ? 'text-slate-900' : 'text-white'
+              } font-serif font-bold text-2xl tracking-tight`}>
                 Presupuestos y Facturación Notarial
               </h1>
-              <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-700 dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] border border-amber-500/30 text-[9px] font-black uppercase tracking-widest rounded-lg">
-                Ley 879
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full shadow-xs ${
+                esFull 
+                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold' 
+                  : 'bg-red-600 text-white font-bold'
+              }`}>
+                O.L.G.A.
               </span>
             </div>
-            <p className={`text-xs mt-1 font-medium dark:text-slate-400 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`${
+              esFull ? 'text-slate-500' : 'text-slate-400'
+            } text-sm mt-1 font-medium`}>
               Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.
             </p>
           </div>
@@ -702,10 +721,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           <button
             type="button"
             onClick={handleRestaurarDefecto}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
-              modoFondoBlanco
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
+            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer ${
+              esFull 
+                ? 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
             }`}
             title="Restablecer valores"
           >
@@ -717,21 +736,21 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             type="button"
             onClick={handleGuardarPresupuesto}
             disabled={guardandoFirestore}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-60 ${
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer shadow-[0_4px_14px_rgba(0,0,0,0.1)] disabled:opacity-60 ${
               guardadoExito
                 ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/30'
-                : modoFondoBlanco
-                ? 'bg-slate-800 hover:bg-slate-900 text-white border-slate-700'
-                : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600'
+                : esFull
+                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
             }`}
             title="Guardar en base de datos Firestore y respaldo local"
           >
             {guardandoFirestore ? (
-              <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+              <Loader2 className={`w-4 h-4 animate-spin ${esFull ? 'text-amber-300' : 'text-slate-200'}`} />
             ) : guardadoExito ? (
               <Check className="w-4 h-4 text-white" />
             ) : (
-              <Save className="w-4 h-4 text-emerald-400" />
+              <Save className={`w-4 h-4 ${esFull ? 'text-amber-400' : 'text-slate-300'}`} />
             )}
             <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
           </button>
@@ -739,32 +758,30 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           <button
             type="button"
             onClick={handleImprimir}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
+            className={`px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              esFull 
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)]' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md'
+            }`}
           >
-            <Printer className="w-4 h-4 text-slate-950" />
-            <span>Imprimir {encabezado.tipoComprobante}</span>
+            <Printer className="w-4 h-4 text-white" />
+            <span>IMPRIMIR PRESUPUESTO</span>
           </button>
         </div>
       </header>
 
       {/* Barra de Filtros y Subsecciones (oculta al imprimir) */}
-      <div className={`px-6 py-3 border-b flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden ${
-        modoFondoBlanco
-          ? 'bg-white border-slate-200 text-slate-800'
-          : 'bg-slate-950/60 border-slate-800 text-slate-200'
-      }`}>
+      <div className="px-6 py-3 border-b border-slate-200/80 bg-slate-50/80 flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden">
         <div className="flex items-center gap-2">
           {(['todo', 'tasas', 'servicios', 'resumen'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setPestañaActiva(tab)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer ${
                 pestañaActiva === tab
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                  : modoFondoBlanco
-                  ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 border border-slate-200'
-                  : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  ? 'bg-amber-50 text-amber-900 border border-amber-300/80 shadow-[0_2px_12px_rgba(245,158,11,0.15)] font-semibold'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-xs font-medium'
               }`}
             >
               {tab === 'todo' && 'Vista Completa'}
@@ -777,13 +794,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
         {/* Totales rápidos en la barra */}
         <div className="flex items-center gap-4 text-xs font-mono">
-          <div className={`${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} hidden sm:block`}>
-            Tasas: <strong className={modoFondoBlanco ? 'text-slate-800' : 'text-slate-200'}>Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</strong>
+          <div className="text-slate-500 hidden sm:block">
+            Tasas: <strong className="text-slate-800">Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</strong>
           </div>
-          <div className={`${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} hidden sm:block`}>
-            Servicios: <strong className={modoFondoBlanco ? 'text-slate-800' : 'text-slate-200'}>Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</strong>
+          <div className="text-slate-500 hidden sm:block">
+            Servicios: <strong className="text-slate-800">Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</strong>
           </div>
-          <div className="bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-xl text-amber-600 dark:text-amber-400 font-bold">
+          <div className="bg-amber-50 border border-amber-300/70 px-3 py-1 rounded-xl text-amber-900 font-bold shadow-xs">
             Total: Gs. {liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}
           </div>
         </div>

@@ -78,25 +78,3 @@
     display: list-item !important;
     margin-bottom: 0.25rem !important;
 }
-
-/* Estética Nocturna "Glow UI" Oscuro (Excluye Lienzo Notarial y hojas de impresión) */
-@media screen {
-    html.dark {
-        color-scheme: dark;
-    }
-
-    html.dark #main-panel-container,
-    html.dark #main-content-viewport {
-        background-color: #0B0F17;
-        color: #f1f5f9;
-    }
-
-    /* Mantener el Lienzo Notarial y hojas físicas intactos en blanco puro */
-    html.dark #lienzo-notarial .contenedor-hoja,
-    html.dark #lienzo-notarial .hoja-notarial,
-    html.dark .editor-notarial-papel {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        color-scheme: light !important;
-    }
-}

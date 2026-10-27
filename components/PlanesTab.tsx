@@ -93,7 +93,7 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
             return (
             <div 
               key={plan.id}
-              className={`rounded-3xl p-6 flex flex-col relative transition-all duration-300 hover:-translate-y-2 ${isFull ? 'bg-gradient-to-br from-yellow-600 via-yellow-500 to-yellow-700 border-2 border-yellow-400 shadow-lg shadow-yellow-600/30 text-white' : isEmpresa ? 'bg-slate-950 border-2 border-slate-800 text-white shadow-lg shadow-slate-950/40' : plan.recommended ? 'bg-gradient-to-b from-blue-900 to-slate-800 border-2 border-blue-500/50 transform md:-translate-y-6 shadow-xl shadow-blue-900/40' : 'bg-slate-800/80 backdrop-blur-sm border border-slate-700'}`}
+              className={`rounded-3xl p-6 flex flex-col relative transition-all duration-300 hover:-translate-y-2 ${isFull ? 'bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border-2 border-amber-400/80 shadow-[0_0_35px_rgba(251,191,36,0.22)] text-white' : isEmpresa ? 'bg-slate-950 border-2 border-slate-800 text-white shadow-lg shadow-slate-950/40' : plan.recommended ? 'bg-gradient-to-b from-blue-900 to-slate-800 border-2 border-blue-500/50 transform md:-translate-y-6 shadow-xl shadow-blue-900/40' : 'bg-slate-800/80 backdrop-blur-sm border border-slate-700'}`}
             >
               {plan.recommended && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-blue-400 to-blue-600 text-white text-[10px] font-black uppercase tracking-widest py-1.5 px-4 rounded-full shadow-lg flex items-center gap-1">
@@ -102,9 +102,9 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
                 </div>
               )}
               {isFull && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-yellow-900 to-yellow-950 text-yellow-400 text-[10px] font-black uppercase tracking-widest py-1.5 px-4 rounded-full shadow-lg flex items-center gap-1 border border-yellow-600">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 text-[10px] font-bold uppercase tracking-widest py-1.5 px-4 rounded-full shadow-[0_4px_14px_rgba(251,191,36,0.35)] flex items-center gap-1">
                   <Target className="w-3 h-3" />
-                  Premium
+                  Premium Full
                 </div>
               )}
               {isEmpresa && (
@@ -158,7 +158,7 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
 
               <button 
                 onClick={() => onPlanSelect(plan.name, isAnnual ? `Gs. ${plan.annualDiscountedPrice} / año` : `Gs. ${plan.monthlyPrice} / mes`)}
-                className={`w-full font-bold py-3.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${isFull ? 'bg-yellow-900 hover:bg-yellow-950 text-white shadow-md' : isEmpresa ? 'bg-slate-800 hover:bg-slate-700 text-white' : plan.recommended ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
+                className={`w-full font-bold py-3.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${isFull ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black shadow-[0_4px_14px_rgba(251,191,36,0.35)] hover:shadow-[0_6px_20px_rgba(251,191,36,0.5)]' : isEmpresa ? 'bg-slate-800 hover:bg-slate-700 text-white' : plan.recommended ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
               >
                 Seleccionar Plan
                 <ArrowRight className="w-4 h-4" />
