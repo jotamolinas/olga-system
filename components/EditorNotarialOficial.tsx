@@ -37,6 +37,9 @@ export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
   margenHorizontal: 0,
 };
 
+export const TEXTO_EJEMPLO_PROTOCOLO = 'ESCRITURA PÚBLICA (EJEMPLO): Haga clic aquí para comenzar a redactar...';
+export const TEXTO_EJEMPLO_LOMO = 'PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL';
+
 export const getConfigKey = (tipo: TipoDocumentoNotarial): string => {
   switch (tipo) {
     case 'Sellado Notarial - Protocolo':
@@ -98,7 +101,6 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const tipoInicial = resolverTipoDocumentoInicial(hojaInicial);
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoNotarial>(tipoInicial);
   const [mostrarGuia, setMostrarGuia] = useState<boolean>(true);
-  const [rellenoGuiones, setRellenoGuiones] = useState<boolean>(true);
 
   // Carga inicial independiente para la plantilla activa por defecto
   const initialConfig = cargarConfiguracionHoja(tipoInicial);
@@ -226,15 +228,26 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [anioLeg, setAnioLeg] = useState<string>('2022');
 
   // PLANTILLA 0: Protocolo
-  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
+  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('');
+  const [mostrarEjemploLomo, setMostrarEjemploLomo] = useState<boolean>(true);
   const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>([
-    'ESCRITURA PÚBLICA NÚMERO SETENTA Y NUEVE (79).- En la Ciudad de Asunción, Capital de la República del Paraguay, a los diez días del mes de mayo del año dos mil veintiséis, ante mí: RICARDO GABRIEL MARTÍNEZ VARELA, Notario y Escribano Público Titular del Registro Notarial Número Mil Doscientos Noventa y Dos (1.292), comparecen...'
+    TEXTO_EJEMPLO_PROTOCOLO
   ]);
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
+  const limpiarTextoEjemplo = (index: number) => {
+    if (protocoloPaginas[index] === TEXTO_EJEMPLO_PROTOCOLO) {
+      const nuevasPaginas = [...protocoloPaginas];
+      nuevasPaginas[index] = '';
+      setProtocoloPaginas(nuevasPaginas);
+    }
+  };
 
   const handleTextareaChange = (index: number, e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const texto = e.target.value;
+    let texto = e.target.value;
+    if (texto.includes(TEXTO_EJEMPLO_PROTOCOLO)) {
+      texto = texto.replace(TEXTO_EJEMPLO_PROTOCOLO, '');
+    }
     const nuevasPaginas = [...protocoloPaginas];
     
     // Límite de seguridad: Cuántos caracteres entran aproximadamente en 25 renglones
@@ -414,17 +427,22 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       if (tipoDocumento === 'Sellado Notarial - Protocolo') {
         const pagina1 = paginasValidas[0];
         let lomo = pagina1.querySelector('.caja-fija-lomo, .nuevo-lomo-grid, .texto-vertical-sello, .lomo-impresion') as HTMLElement;
+        const textoParaImprimir = (!mostrarEjemploLomo && protocoloTextoVertical.trim()) ? protocoloTextoVertical : '';
 
-        if (!lomo) {
-          lomo = document.createElement('div');
-          pagina1.insertBefore(lomo, pagina1.firstChild);
-        } else if (pagina1.firstChild !== lomo) {
-          pagina1.insertBefore(lomo, pagina1.firstChild);
+        if (!textoParaImprimir) {
+          if (lomo) lomo.remove();
+        } else {
+          if (!lomo) {
+            lomo = document.createElement('div');
+            pagina1.insertBefore(lomo, pagina1.firstChild);
+          } else if (pagina1.firstChild !== lomo) {
+            pagina1.insertBefore(lomo, pagina1.firstChild);
+          }
+
+          lomo.className = 'caja-fija-lomo';
+          lomo.removeAttribute('style');
+          lomo.innerHTML = `<span>${textoParaImprimir}</span>`;
         }
-
-        lomo.className = 'caja-fija-lomo';
-        lomo.removeAttribute('style');
-        lomo.innerHTML = `<span>${protocoloTextoVertical}</span>`;
       }
     }
 
@@ -1002,29 +1020,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         </div>
       </header>
 
-      {/* Opciones Auxiliares de Formato (No imprimible) */}
-      <div className="opciones-auxiliares-notarial bg-slate-200/60 border-y border-slate-300/80 px-6 py-2.5 text-xs text-slate-700 print:hidden flex flex-wrap items-center justify-between gap-4">
-        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
-          <input 
-            type="checkbox" 
-            checked={rellenoGuiones} 
-            onChange={(e) => setRellenoGuiones(e.target.checked)}
-            className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
-          />
-          <span>Autorrellenar líneas vacías con guiones (----)</span>
-        </label>
-        {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-          <div className="flex items-center gap-2">
-            <span className="text-slate-700 font-bold text-[10px]">Texto Lomo:</span>
-            <input
-              type="text"
-              value={protocoloTextoVertical}
-              onChange={(e) => setProtocoloTextoVertical(e.target.value)}
-              className="bg-white border border-slate-300 text-slate-800 text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
-            />
-          </div>
-        )}
-      </div>
+
 
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 215.9mm x 355.6mm) */}
       <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-100 border-t border-slate-200 print:p-0 print:m-0 print:block print:bg-white">
@@ -1254,7 +1250,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               )}
             </button>
 
-            {/* Botón Imprimir Hoja */}
+            {/* Botón Imprimir Hoja (En su posición original) */}
             <button
               id="btn-imprimir-hoja"
               type="button"
@@ -1264,6 +1260,29 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               <Printer className="w-4 h-4" />
               <span>Imprimir Hoja</span>
             </button>
+
+            {/* Campo Registros Públicos Civil y Comercial (Lomo) - Hacia la derecha */}
+            {tipoDocumento === 'Sellado Notarial - Protocolo' && (
+              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-300 shadow-xs">
+                <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
+                  Registros Públicos Civil y Comercial:
+                </span>
+                <input
+                  id="input-lomo-registro"
+                  type="text"
+                  value={protocoloTextoVertical}
+                  onChange={(e) => {
+                    setMostrarEjemploLomo(false);
+                    setProtocoloTextoVertical(e.target.value);
+                  }}
+                  onClick={() => setMostrarEjemploLomo(false)}
+                  onFocus={() => setMostrarEjemploLomo(false)}
+                  placeholder="Escriba aquí el texto..."
+                  className="bg-slate-50 border border-slate-300 text-slate-800 text-xs px-2.5 py-0.5 rounded-lg w-52 sm:w-64 outline-none focus:border-[#FF3131] font-medium"
+                  title="Texto vertical del lomo para Registros Públicos Civil y Comercial"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -1625,7 +1644,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBNombre} 
                   onChange={(e) => setIncisoBNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  placeholder="Nombre completo (opcional)" 
                   style={{ position: 'absolute', top: '169.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-nom" 
                 />
@@ -1635,7 +1654,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDoc} 
                   onChange={(e) => setIncisoBDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder="C.I. / RUC" 
                   style={{ position: 'absolute', top: '169.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-doc" 
                 />
@@ -1645,7 +1664,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDom} 
                   onChange={(e) => setIncisoBDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder="Ciudad / Domicilio" 
                   style={{ position: 'absolute', top: '180.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-dom" 
                 />
@@ -1657,7 +1676,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCNombre} 
                   onChange={(e) => setIncisoCNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  placeholder="****************************************" 
                   style={{ position: 'absolute', top: '192.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-nom" 
                 />
@@ -1667,7 +1686,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDoc} 
                   onChange={(e) => setIncisoCDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder="****************" 
                   style={{ position: 'absolute', top: '192.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-doc" 
                 />
@@ -1677,7 +1696,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDom} 
                   onChange={(e) => setIncisoCDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder="****************************************" 
                   style={{ position: 'absolute', top: '203.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-dom" 
                 />
@@ -1689,7 +1708,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDNombre} 
                   onChange={(e) => setIncisoDNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  placeholder="****************************************" 
                   style={{ position: 'absolute', top: '215.5mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-nom" 
                 />
@@ -1699,7 +1718,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDoc} 
                   onChange={(e) => setIncisoDDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder="****************" 
                   style={{ position: 'absolute', top: '215.5mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-doc" 
                 />
@@ -1709,7 +1728,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDom} 
                   onChange={(e) => setIncisoDDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder="****************************************" 
                   style={{ position: 'absolute', top: '225.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-dom" 
                 />
@@ -2355,15 +2374,29 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                       {/* CAPA 1: TEXTO VERTICAL (Lomo, ÚNICAMENTE en la Primera Página, de abajo hacia arriba) */}
                       {index === 0 && (
                         <div 
-                          className="texto-vertical-sello lomo-impresion pointer-events-none z-10 print:visible"
+                          onClick={() => {
+                            setMostrarEjemploLomo(false);
+                            const inputLomo = document.getElementById('input-lomo-registro');
+                            if (inputLomo) inputLomo.focus();
+                          }}
+                          className={`texto-vertical-sello lomo-impresion z-10 print:visible ${
+                            mostrarEjemploLomo ? 'cursor-pointer hover:opacity-80' : 'pointer-events-none'
+                          }`}
+                          title={mostrarEjemploLomo ? 'Haga clic para borrar el ejemplo y escribir texto de registro' : ''}
                           style={{ position: 'absolute', left: '15mm', top: '42.55mm', width: '12mm', height: '211.75mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          <span
-                            className="texto-vertical-contenido text-[7pt] font-bold tracking-[0.5mm] whitespace-nowrap text-slate-400 print:text-black"
-                            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'inline-block' }}
-                          >
-                            {protocoloTextoVertical}
-                          </span>
+                          {(protocoloTextoVertical.trim() !== '' || mostrarEjemploLomo) && (
+                            <span
+                              className={`texto-vertical-contenido text-[7pt] tracking-[0.5mm] whitespace-nowrap ${
+                                !protocoloTextoVertical.trim() && mostrarEjemploLomo
+                                  ? 'text-slate-400 italic font-normal print:hidden'
+                                  : 'text-slate-700 font-bold print:text-black'
+                              }`}
+                              style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'inline-block' }}
+                            >
+                              {protocoloTextoVertical.trim() !== '' ? protocoloTextoVertical : TEXTO_EJEMPLO_LOMO}
+                            </span>
+                          )}
                         </div>
                       )}
 
@@ -2373,8 +2406,14 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                         value={textoPagina}
                         onChange={(e) => handleTextareaChange(index, e)}
                         onKeyDown={(e) => handleKeyDown(index, e)}
+                        onClick={() => limpiarTextoEjemplo(index)}
+                        onFocus={() => limpiarTextoEjemplo(index)}
                         placeholder={`Redacte aquí la ${isAnverso ? 'cara frontal (Anverso)' : 'cara trasera (Reverso)'}...`}
-                        className="absolute z-20 bg-transparent text-black font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
+                        className={`absolute z-20 bg-transparent outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden cursor-text ${
+                          textoPagina === TEXTO_EJEMPLO_PROTOCOLO
+                            ? 'text-slate-400 italic font-normal'
+                            : 'text-black font-bold text-justify'
+                        }`}
                         style={{
                           position: 'absolute',
                           top: '42.55mm',
@@ -2406,7 +2445,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                           padding: '0mm',
                         }}
                       >
-                        {textoPagina}
+                        {textoPagina === TEXTO_EJEMPLO_PROTOCOLO ? '' : textoPagina}
                       </div>
                     </div>
                   );
