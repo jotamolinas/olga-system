@@ -97,7 +97,7 @@ const resolverTipoDocumentoInicial = (hojaInicial?: string): TipoDocumentoNotari
   return 'Sellado Notarial - Protocolo';
 };
 
-export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ onVolver, hojaInicial }) => {
+export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ hojaInicial }) => {
   const tipoInicial = resolverTipoDocumentoInicial(hojaInicial);
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoNotarial>(tipoInicial);
   const [mostrarGuia, setMostrarGuia] = useState<boolean>(true);
@@ -974,15 +974,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       <header className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="relative z-10 flex items-center gap-3">
-          {onVolver && (
-            <button
-              onClick={onVolver}
-              type="button"
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors border border-slate-700"
-            >
-              ← Volver
-            </button>
-          )}
+
           <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
             <Stamp className="w-5 h-5 text-[#FF3131]" />
           </div>

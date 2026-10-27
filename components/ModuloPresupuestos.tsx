@@ -15,7 +15,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Calculator,
-  ArrowLeft,
   Settings,
   Edit3,
   X,
@@ -729,45 +728,49 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   // Restaurar / Iniciar Nuevo Presupuesto en Blanco (Pizarra 100% Limpia)
   const handleRestaurarDefecto = () => {
-    if (window.confirm('¿Desea iniciar un nuevo presupuesto con la pizarra 100% en blanco?')) {
-      try {
-        localStorage.removeItem('olga_presupuesto_encabezado');
-        localStorage.removeItem('olga_presupuesto_tasas');
-        localStorage.removeItem('olga_presupuesto_servicios');
-        localStorage.removeItem('olga_presupuesto_observaciones');
-      } catch {}
+    try {
+      localStorage.removeItem('olga_presupuesto_encabezado');
+      localStorage.removeItem('olga_presupuesto_tasas');
+      localStorage.removeItem('olga_presupuesto_servicios');
+      localStorage.removeItem('olga_presupuesto_observaciones');
+    } catch {}
 
-      setEncabezado({
-        ...ENCABEZADO_INICIAL,
-        clienteNombre: '',
-        clienteRucCI: '',
-        clienteTelefono: '',
-        clienteDireccion: '',
-        clienteEmail: '',
-        conceptoGeneral: '',
-        timbrado: membrete.timbradoNumero || '',
-        fechaVencimientoValidez: membrete.timbradoVigenciaFin || '',
-      });
-      setTasas(ITEMS_TASAS_REEMBOLSO_BASE.map((t) => ({ ...t, activo: false, monto: 0 })));
-      setServicios(
-        ITEMS_SERVICIOS_HONORARIOS_BASE.map((s) => ({
-          ...s,
-          activo: false,
-          cantidad: 1,
-          precioUnitario: 0,
-          montoExento: 0,
-          montoIva5: 0,
-          montoIva10: 0,
-          total: 0,
-        }))
-      );
-      setPlantillaSeleccionadaId(null);
-      setOrigenCliente('MANUAL');
-      setFeedbackDnit(null);
-      setObservaciones(
-        'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
-      );
-    }
+    setEncabezado({
+      ...ENCABEZADO_INICIAL,
+      clienteNombre: '',
+      clienteRucCI: '',
+      clienteTelefono: '',
+      clienteDireccion: '',
+      clienteEmail: '',
+      conceptoGeneral: '',
+      timbrado: membrete.timbradoNumero || '',
+      fechaVencimientoValidez: membrete.timbradoVigenciaFin || '',
+    });
+    setTasas(ITEMS_TASAS_REEMBOLSO_BASE.map((t) => ({ ...t, activo: false, monto: 0, numeroComprobantePago: '' })));
+    setServicios(
+      ITEMS_SERVICIOS_HONORARIOS_BASE.map((s) => ({
+        ...s,
+        activo: false,
+        cantidad: 1,
+        precioUnitario: 0,
+        montoExento: 0,
+        montoIva5: 0,
+        montoIva10: 0,
+        total: 0,
+      }))
+    );
+    setPlantillaSeleccionadaId(null);
+    setOrigenCliente('MANUAL');
+    setFeedbackDnit(null);
+    setObservaciones(
+      'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
+    );
+
+    setFeedbackPlantilla({
+      tipo: 'info',
+      mensaje: 'Hoja en blanco lista: servicios y tasas disponibles, desmarcados y sin precios.',
+    });
+    setTimeout(() => setFeedbackPlantilla(null), 3500);
   };
 
   // Guardar cambios rápidos del membrete institucional
@@ -1068,9 +1071,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   // 4. Eliminar plantilla guardada
   const handleEliminarPlantilla = async (plantillaId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('¿Desea eliminar esta plantilla de precios de su cuenta?')) return;
-
-    const storageKey = `olga_plantillas_presupuesto_${userId || 'default'}`;
+    const effectiveUserId = auth.currentUser?.uid || userId || 'default';
+    const storageKey = `olga_plantillas_presupuesto_${effectiveUserId}`;
 
     try {
       if (!plantillaId.startsWith('plantilla-')) {
@@ -1091,6 +1093,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     if (plantillaSeleccionadaId === plantillaId) {
       setPlantillaSeleccionadaId(null);
     }
+
+    setFeedbackPlantilla({
+      tipo: 'info',
+      mensaje: 'Presupuesto eliminado de la lista.',
+    });
+    setTimeout(() => setFeedbackPlantilla(null), 3000);
   };
 
   // Función de Impresión Oficial Nativa (ejecuta window.print con estilos de Tailwind)
@@ -1100,68 +1108,63 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   };
 
   return (
-    <div className={`min-h-full flex flex-col font-sans rounded-3xl overflow-hidden border shadow-2xl transition-colors duration-200 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
-      modoFondoBlanco 
-        ? 'bg-slate-100 text-slate-800 border-slate-300' 
-        : 'bg-slate-900 text-slate-100 border-slate-800'
-    }`}>
-      {/* Cabecera Principal del Módulo (oculta al imprimir) */}
-      <header className={`p-6 md:p-8 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden transition-colors print:hidden ${
-        modoFondoBlanco
-          ? 'bg-white border-slate-200 text-slate-900'
-          : 'bg-slate-950 border-slate-800 text-white'
-      }`}>
+    <div className="space-y-6 font-sans print:space-y-0 print:p-0 print:m-0">
+      {/* Cabecera Principal Unificada en Color Oscuro (oculta al imprimir) */}
+      <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 blur-[100px] rounded-full pointer-events-none"></div>
 
         <div className="relative z-10 flex items-center gap-4">
-          {onVolver && (
-            <button
-              onClick={onVolver}
-              type="button"
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors border flex items-center gap-2 cursor-pointer ${
-                modoFondoBlanco
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-              }`}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Volver</span>
-            </button>
-          )}
-
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-inner">
-            <Banknote className="w-6 h-6 text-amber-500" />
+          <div className="w-12 h-12 rounded-2xl bg-white/10 text-amber-400 flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
+            <Banknote className="w-6 h-6 text-amber-400" />
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`text-xl md:text-2xl font-black tracking-tight font-serif ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
-                Presupuestos y Facturación Notarial
+              <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
+                <span>Presupuestos y Facturación Notarial</span>
+                <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 text-[9px] font-black uppercase tracking-widest rounded-lg">
+                  O.L.G.A.
+                </span>
+                <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-black uppercase tracking-widest rounded-lg">
+                  Ley 879
+                </span>
               </h1>
-              <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-700 border border-amber-500/30 text-[9px] font-black uppercase tracking-widest rounded-lg">
-                Ley 879
-              </span>
             </div>
-            <p className={`text-xs mt-1 font-medium ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className="text-xs text-slate-400 mt-1 font-medium">
               Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.
             </p>
           </div>
         </div>
 
+        {/* Resumen de Estado y Arancel Oficial */}
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
+          <div className="px-3.5 py-2 bg-slate-800/80 border border-slate-700/60 rounded-2xl text-[11px] font-bold text-slate-300 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>Arancel Oficial Ley 879/81</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de Tareas Notarial (oculta al imprimir) */}
+      <div className={`p-3 sm:p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3 transition-colors print:hidden ${
+        modoFondoBlanco 
+          ? 'bg-white border-slate-200 text-slate-800' 
+          : 'bg-slate-900 border-slate-800 text-slate-100'
+      }`}>
         {/* Botones de Acción Global */}
-        <div className="flex flex-wrap items-center gap-2.5 relative z-10 print:hidden">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             onClick={handleRestaurarDefecto}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
               modoFondoBlanco
                 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                 : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
             }`}
-            title="Iniciar nuevo presupuesto con la pizarra 100% en blanco"
+            title="Limpiar y dejar todos los servicios disponibles y desmarcados, sin precios"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Nuevo / Limpiar</span>
+            <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
+            <span>Limpiar / Hoja en Blanco</span>
           </button>
 
           {/* Selector / Botón: Plantillas Guardadas */}
@@ -1181,7 +1184,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             {cargandoPlantillas ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
             ) : (
-              <Bookmark className="w-3.5 h-3.5" />
+              <Bookmark className="w-3.5 h-3.5 text-amber-500" />
             )}
             <span>{cargandoPlantillas ? 'Consultando Firebase...' : 'Plantillas Guardadas'}</span>
             {plantillas.length > 0 && (
@@ -1214,6 +1217,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <span className="hidden sm:inline">Guardar como Mis Precios / Plantilla</span>
           </button>
 
+          {/* Botón: Guardar Presupuesto */}
           <button
             type="button"
             onClick={handleGuardarPresupuesto}
@@ -1236,25 +1240,28 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             )}
             <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
           </button>
+        </div>
 
+        {/* Botón: Imprimir */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleImprimir}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             <Printer className="w-4 h-4 text-slate-950" />
             <span>Imprimir {encabezado.tipoComprobante}</span>
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Barra de Filtros y Subsecciones (oculta al imprimir) */}
-      <div className={`px-6 py-3 border-b flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden ${
+      <div className={`px-4 sm:px-6 py-2.5 rounded-2xl border flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden ${
         modoFondoBlanco
           ? 'bg-white border-slate-200 text-slate-800'
-          : 'bg-slate-950/60 border-slate-800 text-slate-200'
+          : 'bg-slate-900 border-slate-800 text-slate-200'
       }`}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {(['todo', 'tasas', 'servicios', 'resumen'] as const).map((tab) => (
             <button
               key={tab}
@@ -1290,8 +1297,14 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </div>
 
-      {/* Contenido Modular con Scroll Limpio */}
-      <div className="p-6 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-220px)] print:p-0 print:m-0 print:space-y-4 print:overflow-visible print:max-h-none">
+      {/* Contenedor del Documento Notarial y Liquidación */}
+      <div className={`flex flex-col font-sans rounded-3xl overflow-hidden border shadow-xl transition-colors duration-200 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
+        modoFondoBlanco 
+          ? 'bg-slate-100 text-slate-800 border-slate-300' 
+          : 'bg-slate-900 text-slate-100 border-slate-800'
+      }`}>
+        {/* Contenido Modular con Scroll Limpio */}
+        <div className="p-6 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-280px)] print:p-0 print:m-0 print:space-y-4 print:overflow-visible print:max-h-none">
         {/* Banner de Membrete Notarial Dinámico (Configuración Multi-usuario) */}
         <div className={`border rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden transition-colors print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black print:rounded-xl ${
           modoFondoBlanco
@@ -2174,6 +2187,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </div>
       </div>
+    </div>
 
       {/* Modal de Configuración Rápida de Membrete Notarial */}
       {modalMembreteAbierto && (
@@ -2592,16 +2606,14 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {esPersonalizada && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleEliminarPlantilla(plan.id, e)}
-                            className="p-2 text-slate-500 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition-colors"
-                            title="Eliminar plantilla guardada"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => handleEliminarPlantilla(plan.id, e)}
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl border border-transparent hover:border-rose-500/30 transition-all cursor-pointer"
+                          title={`Eliminar presupuesto "${plan.nombre}"`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleCargarPlantilla(plan)}
@@ -2631,10 +2643,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   setModalCargarPlantillaAbierto(false);
                 }}
                 className="text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Comenzar con una tabla vacía/base"
+                title="Limpiar y dejar todos los servicios disponibles y desmarcados, sin precios"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Empezar presupuesto en blanco / valores base</span>
+                <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Limpiar / Hoja en Blanco</span>
               </button>
 
               <button
