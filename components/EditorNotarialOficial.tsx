@@ -168,8 +168,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [firmasT3, setFirmasT3] = useState<string>('ITAKYRY.-');
   
   // Desborde inteligente Punto Primero (Tramo 1, 2, 3)
-  const [tramoPrimero1, setTramoPrimero1] = useState<string>('CONTRATO PRIVADO');
-  const [tramoPrimero2, setTramoPrimero2] = useState<string>('DE COMPRAVENTA DE VEHÍCULO AUTOMOTOR');
+  const [tramoPrimero1, setTramoPrimero1] = useState<string>('CONTRATO PRIVADO DE');
+  const [tramoPrimero2, setTramoPrimero2] = useState<string>('VENTA DE VEHICULO AUTOMOTOR');
   const [tramoPrimero3, setTramoPrimero3] = useState<string>('y ratificado en todas sus partes ante mi presencia');
 
   // Incisos a, b, c, d
@@ -181,49 +181,49 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [incisoBDoc, setIncisoBDoc] = useState<string>('2.345.678');
   const [incisoBDom, setIncisoBDom] = useState<string>('ASUNCIÓN');
 
-  const [incisoCNombre, setIncisoCNombre] = useState<string>('');
-  const [incisoCDoc, setIncisoCDoc] = useState<string>('');
-  const [incisoCDom, setIncisoCDom] = useState<string>('');
+  const [incisoCNombre, setIncisoCNombre] = useState<string>('****************************************');
+  const [incisoCDoc, setIncisoCDoc] = useState<string>('****************');
+  const [incisoCDom, setIncisoCDom] = useState<string>('****************************************');
 
-  const [incisoDNombre, setIncisoDNombre] = useState<string>('');
-  const [incisoDDoc, setIncisoDDoc] = useState<string>('');
-  const [incisoDDom, setIncisoDDom] = useState<string>('');
+  const [incisoDNombre, setIncisoDNombre] = useState<string>('****************************************');
+  const [incisoDDoc, setIncisoDDoc] = useState<string>('****************');
+  const [incisoDDom, setIncisoDDom] = useState<string>('****************************************');
 
   // Segundo, Cuarto
   const [folio1, setFolio1] = useState<string>('45');
   const [folio2, setFolio2] = useState<string>('46');
-  const [tomoLibro, setTomoLibro] = useState<string>('Tomo III');
-  const [horaCert, setHoraCert] = useState<string>('10:30');
-  const [diaCert, setDiaCert] = useState<string>('12');
-  const [mesCert, setMesCert] = useState<string>('MAYO');
-  const [anioCert, setAnioCert] = useState<string>('DOS MIL VEINTISÉIS');
+  const [tomoLibro, setTomoLibro] = useState<string>('46-TOMO II');
+  const [horaCert, setHoraCert] = useState<string>('16:55');
+  const [diaCert, setDiaCert] = useState<string>('08');
+  const [mesCert, setMesCert] = useState<string>('OCTUBRE');
+  const [anioCert, setAnioCert] = useState<string>('DOS MIL VEINTISÉIS.-');
 
   // PLANTILLA 2: Concuerda
-  const [matrizNro, setMatrizNro] = useState<string>('79');
-  const [folioConcuerda, setFolioConcuerda] = useState<string>('145 Y VTO.');
+  const [matrizNro, setMatrizNro] = useState<string>('49.-----------------');
+  const [folioConcuerda, setFolioConcuerda] = useState<string>('137 y siguiente');
   const [divisionConcuerda, setDivisionConcuerda] = useState<string>('CIVIL');
   const [seccionConcuerda, setSeccionConcuerda] = useState<string>('B');
   const [registroConcuerda, setRegistroConcuerda] = useState<string>('1.292');
-  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('ASUNCIÓN');
-  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('RICARDO GABRIEL MARTÍNEZ VARELA');
+  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('ITAKYRY');
+  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('RICARDO GABRIEL MARTINEZ VARELA');
   const [caracterConcuerda, setCaracterConcuerda] = useState<string>('TITULAR');
   const [copiaConcuerda, setCopiaConcuerda] = useState<string>('PRIMERA');
-  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('LA PARTE INTERESADA');
-  const [lineaAdicionalConcuerda, setLineaAdicionalConcuerda] = useState<string>('');
+  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('WHILHEM OSVALDO...');
+  const [lineaAdicionalConcuerda, setLineaAdicionalConcuerda] = useState<string>('-----------------------------------------------------');
   const [cierreConcuerda, setCierreConcuerda] = useState<string>('');
-  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('QUINCE');
+  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('VEINTITRES');
   const [mesConcuerda, setMesConcuerda] = useState<string>('MAYO');
-  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('DOS MIL VEINTISÉIS');
+  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('DOS MIL VEINTICINCO.-');
 
   // PLANTILLA 3: Legalización
-  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('RICARDO GABRIEL MARTÍNEZ VARELA');
+  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('MARCELA MIRTA GÓMEZ NAVARRO');
   const [lineaAdicionalLeg, setLineaAdicionalLeg] = useState<string>('');
-  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('1.292 - ESCRITURA Nº 79');
-  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('10 DE MAYO DE 2026');
-  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('PJD-2026 Nº 4.589.123');
-  const [diaLeg, setDiaLeg] = useState<string>('15');
-  const [mesLeg, setMesLeg] = useState<string>('MAYO');
-  const [anioLeg, setAnioLeg] = useState<string>('2026');
+  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('SEIS (6).-');
+  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('15 de febrero del 2022.-');
+  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('000019301.-');
+  const [diaLeg, setDiaLeg] = useState<string>('00');
+  const [mesLeg, setMesLeg] = useState<string>('abril');
+  const [anioLeg, setAnioLeg] = useState<string>('2022');
 
   // PLANTILLA 0: Protocolo
   const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
@@ -432,19 +432,22 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     if (tipoDocumento !== 'Sellado Notarial - Protocolo') {
       clone.classList.add('plantilla-unica-hoja');
       clone.classList.remove('shadow-2xl');
-      clone.style.width = '216mm';
-      clone.style.height = '330mm';
-      clone.style.maxHeight = '330mm';
+      clone.style.width = '215.9mm';
+      clone.style.height = '355.6mm';
+      clone.style.maxHeight = '355.6mm';
       clone.style.overflow = 'hidden';
       clone.style.boxSizing = 'border-box';
       clone.style.margin = '0 auto';
     }
 
-    // Convertir todos los inputs a spans transfiriendo exactamente su className y contenido
+    // Convertir todos los inputs a spans transfiriendo exactamente su id, style, className y contenido
     clone.querySelectorAll('input').forEach((inp) => {
       const span = document.createElement('span');
       span.textContent = inp.value || '\u00A0';
+      if (inp.id) span.id = inp.id;
       span.className = inp.className;
+      const inlineStyle = inp.getAttribute('style');
+      if (inlineStyle) span.setAttribute('style', inlineStyle);
       inp.parentNode?.replaceChild(span, inp);
     });
 
@@ -594,7 +597,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
 
     /* CAMPOS DE FORMULARIO CONVERTIDOS A SPAN */
     .input-impresion {
-      display: inline-block !important;
+      position: absolute !important;
+      white-space: nowrap !important;
+      display: block !important;
     }
 
     /* OCULTAR ELEMENTOS NO IMPRIMIBLES */
@@ -1336,66 +1341,92 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 1: CERTIFICACIÓN DE FIRMAS (COORDENADAS VML EXACTAS AL MILÍMETRO) */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Certificación de Firmas' && (
-            <div className="contenedor-hoja relative w-[215.9mm] h-[355.6mm]" style={{ width: '215.9mm', height: '355.6mm' }}>
+            <div
+              id="contenedor-hoja-1"
+              className="contenedor-hoja relative w-[215.9mm] h-[355.6mm] overflow-hidden bg-white"
+              style={{ width: '215.9mm', height: '355.6mm', position: 'relative', overflow: 'hidden', background: 'white' }}
+            >
               {/* ESTILOS FORZADOS Y CLASES DE POSICIONAMIENTO PARA CERTIFICACIÓN DE FIRMAS */}
               <style>{`
-                /* Tipografía dinámica para los campos de Certificación de Firmas */
+                /* Contenedor padre de la Hoja 1 (Pantalla e Impresión) */
+                #contenedor-hoja-1,
+                .contenedor-hoja {
+                  position: relative !important;
+                  width: 215.9mm !important;
+                  height: 355.6mm !important;
+                  overflow: hidden !important;
+                  background: white !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                }
+
+                /* Reglas estrictas para todos los campos hijos de Certificación de Firmas */
                 .capa-datos-certificacion input,
-                .capa-datos-certificacion span,
-                .pos-cert-firmas-t1, .pos-cert-firmas-t2, .pos-cert-firmas-t3,
-                .pos-cert-tramo1, .pos-cert-tramo2,
-                .pos-cert-inciso-a-nom, .pos-cert-inciso-a-doc, .pos-cert-inciso-a-dom,
-                .pos-cert-inciso-b-nom, .pos-cert-inciso-b-doc, .pos-cert-inciso-b-dom,
-                .pos-cert-inciso-c-nom, .pos-cert-inciso-c-doc, .pos-cert-inciso-c-dom,
-                .pos-cert-inciso-d-nom, .pos-cert-inciso-d-doc, .pos-cert-inciso-d-dom,
-                .pos-cert-folio1, .pos-cert-folio2, .pos-cert-tomo,
-                .pos-cert-hora, .pos-cert-dia, .pos-cert-mes, .pos-cert-anio {
-                  font-size: ${fontSizeGlobal} !important;
+                .capa-datos-certificacion .campo-hoja-1 {
+                  position: absolute !important;
+                  white-space: nowrap !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                  background: transparent;
                   font-family: ${fontFamilyGlobal} !important;
+                  font-weight: bold !important;
+                  line-height: 1 !important;
+                }
+
+                .capa-datos-certificacion .campo-hoja-1:hover {
+                  background-color: rgba(254, 243, 199, 0.35);
+                  border-bottom-color: #64748b;
+                }
+
+                .capa-datos-certificacion .campo-hoja-1:focus {
+                  background-color: rgba(254, 243, 199, 0.55);
+                  border-bottom-color: #FF3131;
+                  outline: none;
                 }
 
                 /* Coordenadas absolutas milimétricas para Certificación de Firmas (215.9mm x 355.6mm) */
-                .pos-cert-firmas-t1, #titular-notaria-cf { top: 40mm; left: 100mm; width: 75.0mm; height: 6mm; }
-                .pos-cert-firmas-t2, #registro-notaria-cf { top: 46mm; left: 68mm; width: 33.0mm; height: 6mm; }
-                .pos-cert-firmas-t3, #ciudad-registro-cf { top: 46mm; left: 136mm; width: 50.0mm; height: 6mm; }
+                .pos-cert-firmas-t1, #titular-notaria-cf { top: 74.0mm !important; left: 99.2mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-firmas-t2, #registro-notaria-cf { top: 86.0mm !important; left: 69.6mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-firmas-t3, #ciudad-registro-cf { top: 86.0mm !important; left: 137.3mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
-                .pos-cert-tramo1, #tipo-contrato-cf { top: 64mm; left: 160mm; width: 35.0mm; height: 6mm; }
-                .pos-cert-tramo2, #objeto-acto-cf { top: 70mm; left: 30mm; width: 155.0mm; height: 6mm; }
+                .pos-cert-tramo1, #tipo-contrato-cf { top: 124.0mm !important; left: 160.6mm !important; font-size: 8pt !important; font-weight: bold !important; }
+                .pos-cert-tramo2, #objeto-acto-cf { top: 134.5mm !important; left: 31.5mm !important; font-size: 8pt !important; font-weight: bold !important; }
 
-                .pos-cert-inciso-a-nom, #compareciente-nombre-1 { top: 75mm; left: 36mm; width: 95.0mm; height: 6mm; }
-                .pos-cert-inciso-a-doc, #compareciente-cedula-1 { top: 75mm; left: 153mm; width: 36.0mm; height: 6mm; }
-                .pos-cert-inciso-a-dom, #compareciente-ciudad-1 { top: 81mm; left: 62mm; width: 124.0mm; height: 6mm; }
+                .pos-cert-inciso-a-nom, #compareciente-nombre-1 { top: 146.0mm !important; left: 37.8mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-a-doc, #compareciente-cedula-1 { top: 146.0mm !important; left: 154.3mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-a-dom, #compareciente-ciudad-1 { top: 157.0mm !important; left: 63.2mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
-                .pos-cert-inciso-b-nom, #compareciente-nombre-2 { top: 88mm; left: 36mm; width: 95.0mm; height: 6mm; }
-                .pos-cert-inciso-b-doc, #compareciente-cedula-2 { top: 88mm; left: 153mm; width: 36.0mm; height: 6mm; }
-                .pos-cert-inciso-b-dom, #compareciente-ciudad-2 { top: 94mm; left: 62mm; width: 124.0mm; height: 6mm; }
+                .pos-cert-inciso-b-nom, #compareciente-nombre-2 { top: 169.0mm !important; left: 37.8mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-b-doc, #compareciente-cedula-2 { top: 169.0mm !important; left: 155.3mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-b-dom, #compareciente-ciudad-2 { top: 180.0mm !important; left: 63.2mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
-                .pos-cert-inciso-c-nom { top: 101mm; left: 36mm; width: 95.0mm; height: 6mm; }
-                .pos-cert-inciso-c-doc { top: 101mm; left: 153mm; width: 36.0mm; height: 6mm; }
-                .pos-cert-inciso-c-dom { top: 107mm; left: 62mm; width: 124.0mm; height: 6mm; }
+                .pos-cert-inciso-c-nom, #compareciente-nombre-3 { top: 192.0mm !important; left: 37.8mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-c-doc, #compareciente-cedula-3 { top: 192.0mm !important; left: 155.3mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-c-dom, #compareciente-ciudad-3 { top: 203.0mm !important; left: 63.2mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
-                .pos-cert-inciso-d-nom { top: 114mm; left: 36mm; width: 95.0mm; height: 6mm; }
-                .pos-cert-inciso-d-doc { top: 114mm; left: 153mm; width: 36.0mm; height: 6mm; }
-                .pos-cert-inciso-d-dom { top: 120mm; left: 62mm; width: 124.0mm; height: 6mm; }
+                .pos-cert-inciso-d-nom, #compareciente-nombre-4 { top: 215.5mm !important; left: 37.8mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-d-doc, #compareciente-cedula-4 { top: 215.5mm !important; left: 154.3mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-inciso-d-dom, #compareciente-ciudad-4 { top: 225.0mm !important; left: 63.2mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
-                .pos-cert-folio1 { top: 128mm; left: 81mm; width: 14.0mm; height: 6mm; }
-                .pos-cert-folio2 { top: 128mm; left: 99mm; width: 14.0mm; height: 6mm; }
-                .pos-cert-tomo   { top: 128mm; left: 118mm; width: 22.0mm; height: 6mm; }
+                .pos-cert-tomo, #libro-tomo-cf { top: 248.0mm !important; left: 80.2mm !important; font-size: 8pt !important; font-weight: bold !important; }
 
-                .pos-cert-anio, #anio-letras-cierre { top: 136mm; left: 64mm; width: 60.0mm; height: 6mm; }
-                .pos-cert-hora, #hora-certificacion { top: 142.5mm; left: 83mm; width: 18.0mm; height: 6mm; }
-                .pos-cert-dia, #dia-certificacion   { top: 142.5mm; left: 123mm; width: 13.0mm; height: 6mm; }
-                .pos-cert-mes, #mes-certificacion   { top: 142.5mm; left: 146mm; width: 44.0mm; height: 6mm; }
+                .pos-cert-hora, #hora-certificacion { top: 314.5mm !important; left: 79.4mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-dia, #dia-certificacion   { top: 314.5mm !important; left: 119.8mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-mes, #mes-certificacion   { top: 314.5mm !important; left: 143.1mm !important; font-size: 12pt !important; font-weight: bold !important; }
+                .pos-cert-anio, #anio-letras-cierre { top: 321.5mm !important; left: 60.6mm !important; font-size: 12pt !important; font-weight: bold !important; }
 
                 @media print {
                   @page { size: 215.9mm 355.6mm; margin: 0mm !important; }
                   body, html { margin: 0mm !important; padding: 0mm !important; }
                   
                   /* Forzar al contenedor a mantener su marco de referencia */
+                  #contenedor-hoja-1,
                   .contenedor-hoja {
                     position: relative !important;
                     width: 215.9mm !important;
                     height: 355.6mm !important;
+                    overflow: hidden !important;
+                    background: white !important;
                     display: block !important;
                     margin: 0mm !important;
                     padding: 0mm !important;
@@ -1404,101 +1435,102 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   /* Evitar que el CSS base convierta los inputs absolutos en estáticos */
                   .input-impresion {
                     position: absolute !important;
+                    white-space: nowrap !important;
                     border: none !important;
                     background: transparent !important;
                     color: black !important;
                     box-shadow: none !important;
-                    font-size: ${fontSizeGlobal} !important;
+                    margin: 0mm !important;
+                    padding: 0mm !important;
                     font-family: ${fontFamilyGlobal} !important;
                   }
                 }
               `}</style>
 
-              {/* CAPA DE GUÍA VISUAL (Solo visible en pantalla, no se imprime en hoja oficial) */}
-              <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'}`}>
+              {/* CAPA DE GUÍA VISUAL (Solo visible en pantalla, sincronizada al milímetro con los 22 inputs) */}
+              <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
                 {/* Cabecera preimpresa */}
-                <div className="absolute flex items-start justify-between border-b-2 border-black pb-2" style={{ top: '15mm', left: '20mm', right: '20mm' }}>
+                <div className="absolute flex items-start justify-between border-b-2 border-slate-300 pb-3" style={{ top: '18mm', left: '25mm', right: '25mm' }}>
                   <div>
-                    <h2 className="font-black text-sm uppercase tracking-wider text-slate-700">CORTE SUPREMA DE JUSTICIA</h2>
-                    <p className="text-[11px] font-bold text-slate-600">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-[10px] font-bold mt-0.5 text-[#FF3131]">CERTIFICACIÓN DE FIRMAS (Art. 152 - Ley 879) (Hoja Anexa)</p>
+                    <h2 className="font-black text-sm uppercase tracking-wider text-slate-500">CORTE SUPREMA DE JUSTICIA</h2>
+                    <p className="text-[11px] font-bold text-slate-400">REPÚBLICA DEL PARAGUAY</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400">CERTIFICACIÓN DE FIRMAS (Art. 152 - Ley 879) (Hoja de Seguridad)</p>
                   </div>
-                  <div className="border border-slate-400 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50 shrink-0">
-                    <span className="text-[9px] font-mono font-bold text-slate-600">QR PJE</span>
-                    <span className="text-[8px] text-slate-500">SERIE-2026</span>
+                  <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
+                    <span className="text-[9px] font-mono font-bold text-slate-400">SELLO / QR</span>
+                    <span className="text-[8px] text-slate-400">PREIMPRESO</span>
                   </div>
                 </div>
 
-                {/* Textos guía preimpresos del cuerpo */}
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '82.0mm', left: '25.0mm' }}>En mi carácter de Escribano Público</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '82.0mm', left: '175.0mm' }}>del</div>
+                {/* Cabecera Notario: sincronizada con top: 74.0mm y top: 86.0mm */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '74.5mm', left: '25.0mm' }}>En mi carácter de Escribano Público</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '74.5mm', left: '176.0mm' }}>del</div>
 
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '93.5mm', left: '25.0mm' }}>Registro Notarial Nº</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '93.5mm', left: '101.0mm' }}>con asiento en</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '86.5mm', left: '25.0mm' }}>Registro Notarial Nº</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '86.5mm', left: '104.5mm' }}>con asiento en</div>
 
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '104.0mm', left: '25.0mm' }}>y en uso de las atribuciones que me acuerda la legislación vigente:</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '98.0mm', left: '25.0mm' }}>y en uso de las atribuciones que me acuerda la legislación vigente:</div>
 
-                <div className="absolute text-slate-400 text-[14px] font-black tracking-widest text-center" style={{ top: '114.5mm', left: '25.0mm', width: '161.0mm' }}>C E R T I F I C O</div>
+                <div className="absolute text-slate-400 text-[12pt] font-black tracking-[0.35em] text-center" style={{ top: '110.5mm', left: '25.0mm', width: '165.0mm' }}>CERTIFICO</div>
 
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '127.0mm', left: '25.0mm' }}>
+                {/* Punto PRIMERO: sincronizado con top: 124.0mm y top: 134.5mm */}
+                <div className="absolute text-slate-400 text-[10pt] font-normal whitespace-nowrap" style={{ top: '124.0mm', left: '25.0mm' }}>
                   <span className="font-bold text-slate-500">PRIMERO:</span> Que las firmas que obran en el documento anexo inserto en
                 </div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '138.0mm', left: '102.0mm' }}>han sido puestas en mi presencia por:</div>
+                <div className="absolute text-slate-400 text-[9.5pt] font-normal whitespace-nowrap" style={{ top: '134.5mm', left: '148.0mm' }}>han sido puestas en mi presencia por:</div>
 
-                {/* Inciso a */}
-                <div className="absolute text-slate-400 text-[12.5px] font-bold" style={{ top: '148.5mm', left: '25.0mm' }}>a)</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '148.5mm', left: '128.0mm' }}>documento</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '159.5mm', left: '25.0mm' }}>con domicilio en</div>
+                {/* Inciso a: sincronizado con top: 146.0mm y top: 157.0mm */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-bold whitespace-nowrap" style={{ top: '146.5mm', left: '25.0mm' }}>a)</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '146.5mm', left: '133.5mm' }}>documento</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '157.5mm', left: '25.0mm' }}>con domicilio en</div>
 
-                {/* Inciso b */}
-                <div className="absolute text-slate-400 text-[12.5px] font-bold" style={{ top: '169.5mm', left: '25.0mm' }}>b)</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '169.5mm', left: '128.0mm' }}>documento</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '180.0mm', left: '25.0mm' }}>con domicilio en</div>
+                {/* Inciso b: sincronizado con top: 169.0mm y top: 180.0mm */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-bold whitespace-nowrap" style={{ top: '169.5mm', left: '25.0mm' }}>b)</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '169.5mm', left: '133.5mm' }}>documento</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '180.5mm', left: '25.0mm' }}>con domicilio en</div>
 
-                {/* Inciso c */}
-                <div className="absolute text-slate-400 text-[12.5px] font-bold" style={{ top: '190.2mm', left: '25.0mm' }}>c)</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '190.2mm', left: '128.0mm' }}>documento</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '200.7mm', left: '25.0mm' }}>con domicilio en</div>
+                {/* Inciso c: sincronizado con top: 192.0mm y top: 203.0mm */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-bold whitespace-nowrap" style={{ top: '192.5mm', left: '25.0mm' }}>c)</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '192.5mm', left: '133.5mm' }}>documento</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '203.5mm', left: '25.0mm' }}>con domicilio en</div>
 
-                {/* Inciso d */}
-                <div className="absolute text-slate-400 text-[12.5px] font-bold" style={{ top: '210.7mm', left: '25.0mm' }}>d)</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '210.7mm', left: '128.0mm' }}>documento</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '221.2mm', left: '25.0mm' }}>con domicilio en</div>
+                {/* Inciso d: sincronizado con top: 215.5mm y top: 225.0mm */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-bold whitespace-nowrap" style={{ top: '216.0mm', left: '25.0mm' }}>d)</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '216.0mm', left: '133.5mm' }}>documento</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '225.5mm', left: '25.0mm' }}>con domicilio en</div>
 
-                {/* Punto SEGUNDO */}
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '232.0mm', left: '25.0mm' }}>
+                {/* Punto SEGUNDO: sincronizado con top: 248.0mm, left: 80.2mm */}
+                <div className="absolute text-slate-400 text-[10pt] font-normal whitespace-nowrap" style={{ top: '238.5mm', left: '25.0mm' }}>
                   <span className="font-bold text-slate-500">SEGUNDO:</span> Que las firmas de las mencionadas personas fueron registradas en el libro correspondiente
                 </div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '237.5mm', left: '25.0mm' }}>en el folio</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '237.5mm', left: '96.0mm' }}>,</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '237.5mm', left: '114.5mm' }}>,</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '237.5mm', left: '141.0mm' }}>, en donde se halla consignado el motivo de la certificación.</div>
+                <div className="absolute text-slate-400 text-[10pt] font-normal whitespace-nowrap" style={{ top: '248.0mm', left: '25.0mm' }}>bajo el folio / libro Nº</div>
+                <div className="absolute text-slate-400 text-[10pt] font-normal whitespace-nowrap" style={{ top: '248.0mm', left: '136.5mm' }}>, en donde se halla consignado el motivo de la certificación.</div>
 
                 {/* Punto TERCERO */}
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '250.0mm', left: '25.0mm', right: '25.0mm' }}>
+                <div className="absolute text-slate-400 text-[10pt] font-normal" style={{ top: '268.0mm', left: '25.0mm', right: '25.0mm' }}>
                   <span className="font-bold text-slate-500">TERCERO:</span> Que la presente actuación no autentica la veracidad de los términos del contrato, ni juzga su forma, ni su contenido.
                 </div>
 
-                {/* Punto CUARTO */}
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '264.0mm', left: '25.0mm', right: '25.0mm' }}>
-                  <span className="font-bold text-slate-500">CUARTO:</span> Que esta certificación la efectúo a requerimiento de las personas nombradas en el punto Primero, siendo las
+                {/* Punto CUARTO: sincronizado con top: 314.5mm y top: 321.5mm */}
+                <div className="absolute text-slate-400 text-[10pt] font-normal" style={{ top: '303.0mm', left: '25.0mm', right: '25.0mm' }}>
+                  <span className="font-bold text-slate-500">CUARTO:</span> Que esta certificación la efectúo a requerimiento de las personas nombradas en el punto Primero,
                 </div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '275.0mm', left: '96.0mm' }}>horas del día</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '275.0mm', left: '135.0mm' }}>de</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '285.5mm', left: '42.0mm' }}>del año.</div>
-                <div className="absolute text-slate-400 text-[12.5px] font-normal" style={{ top: '285.5mm', left: '184.0mm' }}>.-</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '315.0mm', left: '25.0mm' }}>siendo las</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '315.0mm', left: '98.5mm' }}>horas del día</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '315.0mm', left: '134.5mm' }}>de</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '322.0mm', left: '25.0mm' }}>del año</div>
 
                 {/* Pie de firma y sello */}
-                <div className="absolute text-center flex flex-col items-center" style={{ top: '302.0mm', left: '58.0mm', width: '100.0mm' }}>
-                  <div className="w-60 border-b border-slate-300 mb-1"></div>
-                  <p className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Firma y Sello del Notario</p>
+                <div className="absolute text-center flex flex-col items-center" style={{ top: '338.0mm', left: '58.0mm', width: '100.0mm' }}>
+                  <div className="w-60 border-b border-dotted border-slate-300 mb-1"></div>
+                  <p className="font-bold text-[9px] uppercase tracking-wider text-slate-400">Firma y Sello del Notario</p>
                 </div>
               </div>
 
               {/* CAPA DE DATOS (Interacción y posicionamiento milimétrico estricto) */}
               <div 
                 className="capa-datos-certificacion absolute inset-0 z-10" 
-                style={{ fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
+                style={{ position: 'absolute', top: '0mm', left: '0mm', width: '215.9mm', height: '355.6mm', fontFamily: fontFamilyGlobal }}
               >
                 {/* Cabecera: TITULAR, Registro, Ciudad Registro */}
                 <input 
@@ -1508,8 +1540,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setFirmasT1(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="TITULAR.-" 
-                  style={{ top: '40mm', left: '100mm', width: '75mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-firmas-t1" 
+                  style={{ position: 'absolute', top: '74.0mm', left: '99.2mm', width: '75mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t1" 
                 />
                 <input 
                   id="registro-notaria-cf"
@@ -1518,8 +1550,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setFirmasT2(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="1.292.-" 
-                  style={{ top: '46mm', left: '68mm', width: '33mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-firmas-t2" 
+                  style={{ position: 'absolute', top: '86.0mm', left: '69.6mm', width: '33mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t2" 
                 />
                 <input 
                   id="ciudad-registro-cf"
@@ -1528,20 +1560,20 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setFirmasT3(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="ITAKYRY.-" 
-                  style={{ top: '46mm', left: '136mm', width: '50mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-firmas-t3" 
+                  style={{ position: 'absolute', top: '86.0mm', left: '137.3mm', width: '50mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t3" 
                 />
 
-                {/* Acto: Tipo de contrato y Objeto del acto */}
+                {/* Acto: Tipo de Acto y Objeto del Acto */}
                 <input 
                   id="tipo-contrato-cf"
                   type="text" 
                   value={tramoPrimero1} 
                   onChange={(e) => setTramoPrimero1(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="CONTRATO PRIVADO" 
-                  style={{ top: '64mm', left: '160mm', width: '48mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-tramo1" 
+                  placeholder="CONTRATO PRIVADO DE" 
+                  style={{ position: 'absolute', top: '124.0mm', left: '160.6mm', width: '48mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tramo1" 
                 />
                 <input 
                   id="objeto-acto-cf"
@@ -1549,9 +1581,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={tramoPrimero2} 
                   onChange={(e) => setTramoPrimero2(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="DE COMPRAVENTA..." 
-                  style={{ top: '70mm', left: '30mm', width: '155mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-tramo2" 
+                  placeholder="VENTA DE VEHICULO..." 
+                  style={{ position: 'absolute', top: '134.5mm', left: '31.5mm', width: '114mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tramo2" 
                 />
 
                 {/* Compareciente 1 (INCISO A): Nombre, Cédula, Ciudad */}
@@ -1562,8 +1594,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setIncisoANombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="Nombre completo" 
-                  style={{ top: '75mm', left: '36mm', width: '95mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-a-nom" 
+                  style={{ position: 'absolute', top: '146.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-nom" 
                 />
                 <input 
                   id="compareciente-cedula-1"
@@ -1572,8 +1604,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setIncisoADoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="C.I. / RUC" 
-                  style={{ top: '75mm', left: '153mm', width: '36mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-a-doc" 
+                  style={{ position: 'absolute', top: '146.0mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-1"
@@ -1582,8 +1614,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onChange={(e) => setIncisoADom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
                   placeholder="Ciudad / Domicilio" 
-                  style={{ top: '81mm', left: '62mm', width: '124mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-a-dom" 
+                  style={{ position: 'absolute', top: '157.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-dom" 
                 />
 
                 {/* Compareciente 2 (INCISO B): Nombre, Cédula, Ciudad */}
@@ -1593,9 +1625,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBNombre} 
                   onChange={(e) => setIncisoBNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Nombre completo (opcional)"} 
-                  style={{ top: '88mm', left: '36mm', width: '95mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-b-nom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  style={{ position: 'absolute', top: '169.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-nom" 
                 />
                 <input 
                   id="compareciente-cedula-2"
@@ -1603,9 +1635,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDoc} 
                   onChange={(e) => setIncisoBDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------" : "C.I. / RUC"} 
-                  style={{ top: '88mm', left: '153mm', width: '36mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-b-doc" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  style={{ position: 'absolute', top: '169.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-2"
@@ -1613,21 +1645,21 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDom} 
                   onChange={(e) => setIncisoBDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Ciudad / Domicilio"} 
-                  style={{ top: '94mm', left: '62mm', width: '124mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-b-dom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  style={{ position: 'absolute', top: '180.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-dom" 
                 />
 
-                {/* INCISO C */}
+                {/* Compareciente 3 (INCISO C): Nombre, Cédula, Ciudad */}
                 <input 
                   id="compareciente-nombre-3"
                   type="text" 
                   value={incisoCNombre} 
                   onChange={(e) => setIncisoCNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Nombre completo (opcional)"} 
-                  style={{ top: '101mm', left: '36mm', width: '95mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-c-nom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  style={{ position: 'absolute', top: '192.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-nom" 
                 />
                 <input 
                   id="compareciente-cedula-3"
@@ -1635,9 +1667,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDoc} 
                   onChange={(e) => setIncisoCDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------" : "C.I. / RUC"} 
-                  style={{ top: '101mm', left: '153mm', width: '36mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-cert-inciso-c-doc" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  style={{ position: 'absolute', top: '192.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-3"
@@ -1645,21 +1677,21 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDom} 
                   onChange={(e) => setIncisoCDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Domicilio exacto"} 
-                  style={{ top: '107mm', left: '62mm', width: '124mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-c-dom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  style={{ position: 'absolute', top: '203.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-dom" 
                 />
 
-                {/* INCISO D */}
+                {/* Compareciente 4 (INCISO D): Nombre, Cédula, Ciudad */}
                 <input 
                   id="compareciente-nombre-4"
                   type="text" 
                   value={incisoDNombre} 
                   onChange={(e) => setIncisoDNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Nombre completo (opcional)"} 
-                  style={{ top: '114mm', left: '36mm', width: '95mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-d-nom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
+                  style={{ position: 'absolute', top: '215.5mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-nom" 
                 />
                 <input 
                   id="compareciente-cedula-4"
@@ -1667,9 +1699,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDoc} 
                   onChange={(e) => setIncisoDDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------" : "C.I. / RUC"} 
-                  style={{ top: '114mm', left: '153mm', width: '36mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-cert-inciso-d-doc" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  style={{ position: 'absolute', top: '215.5mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-4"
@@ -1677,63 +1709,33 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDom} 
                   onChange={(e) => setIncisoDDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "----------------------------------------" : "Domicilio exacto"} 
-                  style={{ top: '120mm', left: '62mm', width: '124mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-inciso-d-dom" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  style={{ position: 'absolute', top: '225.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-dom" 
                 />
 
-                {/* SEGUNDO: Folios y Tomo */}
+                {/* SEGUNDO: Libro/Tomo */}
                 <input 
-                  id="folio-1-cf"
-                  type="text" 
-                  value={folio1} 
-                  onChange={(e) => setFolio1(e.target.value)} 
-                  onKeyDown={handleEnterKey} 
-                  placeholder="45" 
-                  style={{ top: '128mm', left: '81mm', width: '14mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-cert-folio1" 
-                />
-                <input 
-                  id="folio-2-cf"
-                  type="text" 
-                  value={folio2} 
-                  onChange={(e) => setFolio2(e.target.value)} 
-                  onKeyDown={handleEnterKey} 
-                  placeholder="46" 
-                  style={{ top: '128mm', left: '99mm', width: '14mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-cert-folio2" 
-                />
-                <input 
-                  id="tomo-libro-cf"
+                  id="libro-tomo-cf"
                   type="text" 
                   value={tomoLibro} 
                   onChange={(e) => setTomoLibro(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="Tomo III" 
-                  style={{ top: '128mm', left: '118mm', width: '22mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold text-center focus:outline-none input-impresion pos-cert-tomo" 
+                  placeholder="46-TOMO II" 
+                  style={{ position: 'absolute', top: '248.0mm', left: '80.2mm', width: '55mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tomo" 
                 />
 
-                {/* Cierre/Fechas: Año en letras, Hora, Día, Mes */}
-                <input 
-                  id="anio-letras-cierre"
-                  type="text" 
-                  value={anioCert} 
-                  onChange={(e) => setAnioCert(e.target.value)} 
-                  onKeyDown={handleEnterKey} 
-                  placeholder="DOS MIL VEINTISÉIS" 
-                  style={{ top: '136mm', left: '64mm', width: '60mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-anio" 
-                />
+                {/* Cierre/Fechas: Hora, Día, Mes, Año */}
                 <input 
                   id="hora-certificacion"
                   type="text" 
                   value={horaCert} 
                   onChange={(e) => setHoraCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="10:30" 
-                  style={{ top: '142.5mm', left: '83mm', width: '18mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-hora" 
+                  placeholder="16:55" 
+                  style={{ position: 'absolute', top: '314.5mm', left: '79.4mm', width: '18mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-hora" 
                 />
                 <input 
                   id="dia-certificacion"
@@ -1741,9 +1743,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={diaCert} 
                   onChange={(e) => setDiaCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="12" 
-                  style={{ top: '142.5mm', left: '123mm', width: '13mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-dia" 
+                  placeholder="08" 
+                  style={{ position: 'absolute', top: '314.5mm', left: '119.8mm', width: '13mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-dia" 
                 />
                 <input 
                   id="mes-certificacion"
@@ -1751,9 +1753,19 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={mesCert} 
                   onChange={(e) => setMesCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="MAYO" 
-                  style={{ top: '142.5mm', left: '146mm', width: '44mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-cert-mes" 
+                  placeholder="OCTUBRE" 
+                  style={{ position: 'absolute', top: '314.5mm', left: '143.1mm', width: '44mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-mes" 
+                />
+                <input 
+                  id="anio-letras-cierre"
+                  type="text" 
+                  value={anioCert} 
+                  onChange={(e) => setAnioCert(e.target.value)} 
+                  onKeyDown={handleEnterKey} 
+                  placeholder="DOS MIL VEINTISÉIS.-" 
+                  style={{ position: 'absolute', top: '321.5mm', left: '60.6mm', width: '80mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-anio" 
                 />
               </div>
             </div>
@@ -1763,45 +1775,77 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 2: CONCUERDA (COORDENADAS MATEMÁTICAS EXACTAS DEL WORD)        */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Concuerda' && (
-            <div className="contenedor-hoja relative w-[215.9mm] h-[355.6mm]" style={{ width: '215.9mm', height: '355.6mm' }}>
+            <div
+              id="contenedor-hoja-2"
+              className="contenedor-hoja relative w-[215.9mm] h-[355.6mm] overflow-hidden bg-white"
+              style={{ width: '215.9mm', height: '355.6mm', position: 'relative', overflow: 'hidden', background: 'white' }}
+            >
               {/* ESTILOS FORZADOS Y CLASES DE POSICIONAMIENTO PARA CONCUERDA */}
               <style>{`
-                /* Tipografía dinámica para los campos de Concuerda */
-                .capa-datos-concuerda input,
-                .capa-datos-concuerda span,
-                .pos-matriz, .pos-folio, .pos-division, .pos-seccion,
-                .pos-registro, .pos-asiento, .pos-autorizante, .pos-caracter,
-                .pos-copia, .pos-destinatario, .pos-linea-adicional,
-                .pos-dia, .pos-mes, .pos-anio {
-                  font-size: ${fontSizeGlobal} !important;
-                  font-family: ${fontFamilyGlobal} !important;
+                /* Contenedor padre de la Hoja 2 (Pantalla e Impresión) */
+                #contenedor-hoja-2,
+                .contenedor-hoja {
+                  position: relative !important;
+                  width: 215.9mm !important;
+                  height: 355.6mm !important;
+                  overflow: hidden !important;
+                  background: white !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                }
+
+                /* Reglas estrictas para todos los campos hijos de Concuerda */
+                #contenedor-hoja-2 .capa-datos-concuerda input,
+                #contenedor-hoja-2 .capa-datos-concuerda .campo-hoja-2 {
+                  position: absolute !important;
+                  white-space: nowrap !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                  background: transparent;
+                  font-family: Arial, Helvetica, sans-serif !important;
+                  font-weight: bold !important;
+                  line-height: 1 !important;
+                }
+
+                #contenedor-hoja-2 .capa-datos-concuerda .campo-hoja-2:hover {
+                  background-color: rgba(254, 243, 199, 0.35);
+                  border-bottom-color: #64748b;
+                }
+
+                #contenedor-hoja-2 .capa-datos-concuerda .campo-hoja-2:focus {
+                  background-color: rgba(254, 243, 199, 0.55);
+                  border-bottom-color: #FF3131;
+                  outline: none;
                 }
 
                 /* Coordenadas absolutas milimétricas para los campos de Concuerda (215.9mm x 355.6mm) */
-                .pos-matriz, #escritura-nro-concuerda { top: 100mm; left: 142mm; width: 44.0mm; height: 6mm; }
-                .pos-folio, #fojas-concuerda { top: 112mm; left: 45mm; width: 50.0mm; height: 6mm; }
-                .pos-division, #division-concuerda { top: 112mm; left: 144mm; width: 44.0mm; height: 6mm; }
-                .pos-seccion, #seccion-concuerda { top: 124mm; left: 55mm; width: 12.0mm; height: 6mm; }
-                .pos-registro, #registro-concuerda { top: 125mm; left: 112mm; width: 70.0mm; height: 6mm; }
-                .pos-asiento, #ciudad-concuerda { top: 136mm; left: 68mm; width: 115.0mm; height: 6mm; }
-                .pos-autorizante, #notario-nombre-concuerda { top: 148mm; left: 68mm; width: 115.0mm; height: 6mm; }
-                .pos-caracter, #notario-caracter-concuerda { top: 160mm; left: 72mm; width: 75.0mm; height: 6mm; }
-                .pos-copia, #copia-concuerda { top: 172mm; left: 60mm; width: 45.0mm; height: 6mm; }
-                .pos-destinatario, #destinatario-concuerda { top: 172mm; left: 125mm; width: 65.0mm; height: 6mm; }
-                .pos-linea-adicional, #linea-adicional-concuerda { top: 184mm; left: 30mm; width: 58.0mm; height: 6mm; }
-                .pos-dia, #dia-concuerda { top: 184mm; left: 105mm; width: 55.0mm; height: 6mm; }
-                .pos-mes, #mes-concuerda { top: 196mm; left: 45mm; width: 35.0mm; height: 6mm; }
-                .pos-anio, #anio-concuerda { top: 196mm; left: 88mm; width: 95.0mm; height: 6mm; }
+                #contenedor-hoja-2 .pos-matriz, #contenedor-hoja-2 #escritura-nro-concuerda, .pos-matriz, #escritura-nro-concuerda { top: 84.2mm !important; left: 140.5mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-folio, #contenedor-hoja-2 #fojas-concuerda, .pos-folio, #fojas-concuerda { top: 95.2mm !important; left: 36.8mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-division, #contenedor-hoja-2 #division-concuerda, .pos-division, #division-concuerda { top: 95.2mm !important; left: 142.6mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-seccion, #contenedor-hoja-2 #seccion-concuerda, .pos-seccion, #seccion-concuerda { top: 105.2mm !important; left: 47.3mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-registro, #contenedor-hoja-2 #registro-concuerda, .pos-registro, #registro-concuerda { top: 106.0mm !important; left: 108.7mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-asiento, #contenedor-hoja-2 #ciudad-concuerda, .pos-asiento, #ciudad-concuerda { top: 115.5mm !important; left: 78.0mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-autorizante, #contenedor-hoja-2 #notario-nombre-concuerda, .pos-autorizante, #notario-nombre-concuerda { top: 126.2mm !important; left: 57.9mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-caracter, #contenedor-hoja-2 #notario-caracter-concuerda, .pos-caracter, #notario-caracter-concuerda { top: 137.2mm !important; left: 90.0mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-copia, #contenedor-hoja-2 #copia-concuerda, .pos-copia, #copia-concuerda { top: 147.2mm !important; left: 59.0mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-destinatario, #contenedor-hoja-2 #destinatario-concuerda, .pos-destinatario, #destinatario-concuerda { top: 147.2mm !important; left: 121.4mm !important; font-size: 11.5pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-linea-adicional, #contenedor-hoja-2 #linea-adicional-concuerda, .pos-linea-adicional, #linea-adicional-concuerda { top: 158.2mm !important; left: 26.2mm !important; font-size: 8pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-dia, #contenedor-hoja-2 #dia-concuerda, .pos-dia, #dia-concuerda { top: 158.2mm !important; left: 100.3mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-mes, #contenedor-hoja-2 #mes-concuerda, .pos-mes, #mes-concuerda { top: 168.7mm !important; left: 34.6mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
+                #contenedor-hoja-2 .pos-anio, #contenedor-hoja-2 #anio-concuerda, .pos-anio, #anio-concuerda { top: 168.7mm !important; left: 81.2mm !important; font-size: 12pt !important; font-weight: bold !important; font-family: Arial, Helvetica, sans-serif !important; }
 
                 @media print {
                   @page { size: 215.9mm 355.6mm; margin: 0mm !important; }
                   body, html { margin: 0mm !important; padding: 0mm !important; }
                   
                   /* Forzar al contenedor a mantener su marco de referencia */
+                  #contenedor-hoja-2,
                   .contenedor-hoja {
                     position: relative !important;
                     width: 215.9mm !important;
                     height: 355.6mm !important;
+                    overflow: hidden !important;
+                    background: white !important;
                     display: block !important;
                     margin: 0mm !important;
                     padding: 0mm !important;
@@ -1810,71 +1854,101 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   /* Evitar que el CSS base convierta los inputs absolutos en estáticos */
                   .input-impresion {
                     position: absolute !important;
+                    white-space: nowrap !important;
                     border: none !important;
                     background: transparent !important;
                     color: black !important;
                     box-shadow: none !important;
-                    font-size: ${fontSizeGlobal} !important;
-                    font-family: ${fontFamilyGlobal} !important;
+                    margin: 0mm !important;
+                    padding: 0mm !important;
+                    font-family: Arial, Helvetica, sans-serif !important;
                   }
                 }
               `}</style>
               
-              {/* CAPA DE GUÍA VISUAL */}
-              <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'}`}>
-                 <div className="absolute text-slate-400 text-sm font-normal tracking-widest" style={{ top: '100mm', left: '35mm' }}>...///... C U E R D A</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '100mm', left: '80mm' }}>fielmente con su escritura matriz Nº</div>
+              {/* CAPA DE GUÍA VISUAL (Solo visible en pantalla, sincronizada con los 14 campos de Concuerda) */}
+              <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
+                {/* Cabecera preimpresa Hoja de Seguridad */}
+                <div className="absolute flex items-start justify-between border-b-2 border-slate-300 pb-3" style={{ top: '18mm', left: '26.2mm', right: '25mm' }}>
+                  <div>
+                    <h2 className="font-black text-sm uppercase tracking-wider text-slate-500">CORTE SUPREMA DE JUSTICIA</h2>
+                    <p className="text-[11px] font-bold text-slate-400">REPÚBLICA DEL PARAGUAY</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400">HOJA DE SEGURIDAD NOTARIAL - CONCUERDA</p>
+                  </div>
+                  <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
+                    <span className="text-[9px] font-mono font-bold text-slate-400">SELLO / QR</span>
+                    <span className="text-[8px] text-slate-400">PREIMPRESO</span>
+                  </div>
+                </div>
+
+                {/* Renglón 1 (top: 84.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal tracking-widest whitespace-nowrap" style={{ top: '84.5mm', left: '26.2mm' }}>...///... C U E R D A</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '84.5mm', left: '80.0mm' }}>fielmente con su escritura matriz Nº</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '112mm', left: '25mm' }}>folio</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '112mm', left: '95mm' }}>del Protocolo de la División</div>
+                {/* Renglón 2 (top: 95.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '95.5mm', left: '26.2mm' }}>folio</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '95.5mm', left: '93.0mm' }}>del Protocolo de la División</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '124mm', left: '30mm' }}>Sección “</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '125mm', left: '68mm' }}>” del Registro Notarial Nº</div>
+                {/* Renglón 3 (top: 105.2mm / 106.0mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '105.5mm', left: '26.2mm' }}>Sección “</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '106.2mm', left: '60.5mm' }}>” del Registro Notarial Nº</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '136mm', left: '30mm' }}>con asiento en</div>
+                {/* Renglón 4 (top: 115.5mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '115.8mm', left: '26.2mm' }}>con asiento en</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '148mm', left: '30mm' }}>y autorizada por</div>
+                {/* Renglón 5 (top: 126.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '126.5mm', left: '26.2mm' }}>y autorizada por</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '160mm', left: '30mm' }}>en el carácter de</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '160mm', left: '150mm' }}>de dicho Registro,</div>
+                {/* Renglón 6 (top: 137.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '137.5mm', left: '26.2mm' }}>en el carácter de</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '137.5mm', left: '148.0mm' }}>de dicho Registro,</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '172mm', left: '30mm' }}>expido esta</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '172mm', left: '105mm' }}>copia para</div>
+                {/* Renglón 7 (top: 147.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '147.5mm', left: '26.2mm' }}>expido esta</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '147.5mm', left: '99.0mm' }}>copia para</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '184mm', left: '90mm' }}>a los</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '184mm', left: '165mm' }}>días del mes</div>
+                {/* Renglón 8 (top: 158.2mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '158.5mm', left: '89.0mm' }}>a los</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '158.5mm', left: '160.5mm' }}>días del mes</div>
                  
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '196mm', left: '25mm' }}>de</div>
-                 <div className="absolute text-slate-400 text-sm font-normal" style={{ top: '196mm', left: '72mm' }}>del año.</div>
+                {/* Renglón 9 (top: 168.7mm) */}
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '169.0mm', left: '26.2mm' }}>de</div>
+                <div className="absolute text-slate-400 text-[10.5pt] font-normal whitespace-nowrap" style={{ top: '169.0mm', left: '68.0mm' }}>del año</div>
+
+                {/* Pie de firma y sello */}
+                <div className="absolute text-center flex flex-col items-center" style={{ top: '215.0mm', left: '58.0mm', width: '100.0mm' }}>
+                  <div className="w-60 border-b border-dotted border-slate-300 mb-1"></div>
+                  <p className="font-bold text-[9px] uppercase tracking-wider text-slate-400">Firma y Sello del Notario</p>
+                </div>
               </div>
 
-              {/* CAPA DE DATOS */}
+              {/* CAPA DE DATOS (Interacción y posicionamiento milimétrico estricto) */}
               <div 
                 className="capa-datos-concuerda absolute inset-0 z-10" 
-                style={{ fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
+                style={{ position: 'absolute', top: '0mm', left: '0mm', width: '215.9mm', height: '355.6mm', fontFamily: 'Arial, Helvetica, sans-serif' }}
               >
-                 {/* Escritura: N° */}
+                 {/* N° Escritura */}
                  <input
                    id="escritura-nro-concuerda"
                    type="text"
                    value={matrizNro}
                    onChange={(e) => setMatrizNro(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Matriz"
-                   style={{ top: '100mm', left: '142mm', width: '44mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-matriz"
+                   placeholder="49.-----------------"
+                   style={{ position: 'absolute', top: '84.2mm', left: '140.5mm', width: '50mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-matriz"
                  />
                  
-                 {/* Fojas y Sección: Fojas, CIVIL, Letra B */}
+                 {/* Fojas, Sección (CIVIL), Serie/Letra (B) */}
                  <input
                    id="fojas-concuerda"
                    type="text"
                    value={folioConcuerda}
                    onChange={(e) => setFolioConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Fojas"
-                   style={{ top: '112mm', left: '45mm', width: '50mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-folio"
+                   placeholder="137 y siguiente"
+                   style={{ position: 'absolute', top: '95.2mm', left: '36.8mm', width: '54mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-folio"
                  />
                  
                  <input
@@ -1884,8 +1958,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    onChange={(e) => setDivisionConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
                    placeholder="CIVIL"
-                   style={{ top: '112mm', left: '144mm', width: '44mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-division"
+                   style={{ position: 'absolute', top: '95.2mm', left: '142.6mm', width: '44.5mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-division"
                  />
                  
                  <input
@@ -1895,11 +1969,11 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    onChange={(e) => setSeccionConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
                    placeholder="B"
-                   style={{ top: '124mm', left: '55mm', width: '12mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-seccion"
+                   style={{ position: 'absolute', top: '105.2mm', left: '47.3mm', width: '12mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-seccion"
                  />
                  
-                 {/* Registro: N° 1.292, Ciudad */}
+                 {/* N° Registro y Ciudad */}
                  <input
                    id="registro-concuerda"
                    type="text"
@@ -1907,8 +1981,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    onChange={(e) => setRegistroConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
                    placeholder="1.292"
-                   style={{ top: '125mm', left: '112mm', width: '70mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-registro"
+                   style={{ position: 'absolute', top: '106.0mm', left: '108.7mm', width: '74mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-registro"
                  />
                  
                  <input
@@ -1917,21 +1991,21 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={asientoConcuerda}
                    onChange={(e) => setAsientoConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Ciudad"
-                   style={{ top: '136mm', left: '68mm', width: '115mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-asiento"
+                   placeholder="ITAKYRY"
+                   style={{ position: 'absolute', top: '115.5mm', left: '78.0mm', width: '105mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-asiento"
                  />
                  
-                 {/* Notario: Nombre, TITULAR */}
+                 {/* Nombre Escribano y Cargo */}
                  <input
                    id="notario-nombre-concuerda"
                    type="text"
                    value={autorizanteConcuerda}
                    onChange={(e) => setAutorizanteConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Nombre del Notario"
-                   style={{ top: '148mm', left: '68mm', width: '115mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-autorizante"
+                   placeholder="RICARDO GABRIEL MARTINEZ VARELA"
+                   style={{ position: 'absolute', top: '126.2mm', left: '57.9mm', width: '125mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-autorizante"
                  />
                  
                  <input
@@ -1941,11 +2015,11 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    onChange={(e) => setCaracterConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
                    placeholder="TITULAR"
-                   style={{ top: '160mm', left: '72mm', width: '75mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-caracter"
+                   style={{ position: 'absolute', top: '137.2mm', left: '90.0mm', width: '56mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-caracter"
                  />
                  
-                 {/* Expedición: Copia PRIMERA, Para */}
+                 {/* Copia y A favor de */}
                  <input
                    id="copia-concuerda"
                    type="text"
@@ -1953,8 +2027,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    onChange={(e) => setCopiaConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
                    placeholder="PRIMERA"
-                   style={{ top: '172mm', left: '60mm', width: '45mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-copia"
+                   style={{ position: 'absolute', top: '147.2mm', left: '59.0mm', width: '38mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-copia"
                  />
                  
                  <input
@@ -1963,34 +2037,33 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={destinatarioConcuerda}
                    onChange={(e) => setDestinatarioConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Para"
-                   maxLength={35}
-                   style={{ top: '172mm', left: '125mm', width: '65mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-destinatario"
+                   placeholder="WHILHEM OSVALDO..."
+                   style={{ position: 'absolute', top: '147.2mm', left: '121.4mm', width: '72mm', height: '6mm', fontSize: '11.5pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-destinatario"
                  />
                  
+                 {/* Línea de guiones de relleno izquierdo */}
                  <input
                    id="linea-adicional-concuerda"
                    type="text"
                    value={lineaAdicionalConcuerda}
                    onChange={(e) => setLineaAdicionalConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="-----------------------"
-                   maxLength={35}
-                   style={{ top: '184mm', left: '30mm', width: '58mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-linea-adicional"
+                   placeholder="-----------------------------------------------------"
+                   style={{ position: 'absolute', top: '158.2mm', left: '26.2mm', width: '61mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-linea-adicional"
                  />
 
-                 {/* Fecha: Día, Mes, Año */}
+                 {/* Día, Mes, Año de expedición */}
                  <input
                    id="dia-concuerda"
                    type="text"
                    value={diaLetrasConcuerda}
                    onChange={(e) => setDiaLetrasConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Día"
-                   style={{ top: '184mm', left: '105mm', width: '55mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-dia"
+                   placeholder="VEINTITRES"
+                   style={{ position: 'absolute', top: '158.2mm', left: '100.3mm', width: '58mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-dia"
                  />
                  
                  <input
@@ -1999,9 +2072,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={mesConcuerda}
                    onChange={(e) => setMesConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Mes"
-                   style={{ top: '196mm', left: '45mm', width: '35mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-mes"
+                   placeholder="MAYO"
+                   style={{ position: 'absolute', top: '168.7mm', left: '34.6mm', width: '32mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-mes"
                  />
                  
                  <input
@@ -2010,9 +2083,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={anioLetrasConcuerda}
                    onChange={(e) => setAnioLetrasConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="Año"
-                   style={{ top: '196mm', left: '88mm', width: '95mm', height: '6mm' }}
-                   className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent text-black font-bold focus:outline-none input-impresion pos-anio"
+                   placeholder="DOS MIL VEINTICINCO.-"
+                   style={{ position: 'absolute', top: '168.7mm', left: '81.2mm', width: '101.5mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
+                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-anio"
                  />
 
               </div>
@@ -2023,70 +2096,148 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           {/* PLANTILLA 3: LEGALIZACIÓN (HOJA 3 - COORDENADAS ABSOLUTAS EN MILÍMETROS) */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Legalización' && (
-            <div className="contenedor-hoja relative w-[215.9mm] h-[355.6mm]" style={{ width: '215.9mm', height: '355.6mm' }}>
+            <div
+              id="contenedor-hoja-3"
+              className="contenedor-hoja relative w-[215.9mm] h-[355.6mm] overflow-hidden bg-white"
+              style={{ width: '215.9mm', height: '355.6mm', position: 'relative', overflow: 'hidden', background: 'white' }}
+            >
               <style>{`
-                .capa-datos-legalizacion input {
-                  font-size: ${fontSizeGlobal} !important;
-                  font-family: ${fontFamilyGlobal} !important;
+                #contenedor-hoja-3, .contenedor-hoja {
+                  position: relative !important;
+                  width: 215.9mm !important;
+                  height: 355.6mm !important;
+                  max-height: 355.6mm !important;
+                  overflow: hidden !important;
+                  background: white !important;
+                  box-sizing: border-box !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
                 }
 
-                #notaria-titular { top: 85mm; left: 85mm; width: 95.0mm; height: 6mm; }
-                #numero-registro { top: 95mm; left: 75mm; width: 105.0mm; height: 6mm; }
-                #fecha-emision-leg { top: 105mm; left: 45mm; width: 65.0mm; height: 6mm; }
-                #control-hoja-leg { top: 105mm; left: 120mm; width: 60.0mm; height: 6mm; }
-                #dia-legalizacion { top: 135mm; left: 100mm; width: 20.0mm; height: 6mm; }
-                #mes-anio-legalizacion { top: 135mm; left: 125mm; width: 32.0mm; height: 6mm; }
-                #anio-legalizacion { top: 135mm; left: 160mm; width: 25.0mm; height: 6mm; }
+                .capa-datos-legalizacion {
+                  position: absolute !important;
+                  top: 0mm !important;
+                  left: 0mm !important;
+                  width: 215.9mm !important;
+                  height: 355.6mm !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                }
+
+                #contenedor-hoja-3 .capa-datos-legalizacion input,
+                #contenedor-hoja-3 .capa-datos-legalizacion .campo-hoja-3,
+                #contenedor-hoja-3 .capa-datos-legalizacion .input-impresion {
+                  position: absolute !important;
+                  white-space: nowrap !important;
+                  background: transparent;
+                  font-family: "Times New Roman", Times, serif !important;
+                  font-size: 11pt !important;
+                  line-height: 1 !important;
+                  margin: 0mm !important;
+                  padding: 0mm !important;
+                }
+
+                #contenedor-hoja-3 .capa-datos-legalizacion .campo-hoja-3:hover {
+                  background-color: rgba(254, 243, 199, 0.35);
+                  border-bottom-color: #64748b;
+                }
+
+                #contenedor-hoja-3 .capa-datos-legalizacion .campo-hoja-3:focus {
+                  background-color: rgba(254, 243, 199, 0.55);
+                  border-bottom-color: #FF3131;
+                  outline: none;
+                }
+
+                #contenedor-hoja-3 #notaria-titular, #contenedor-hoja-3 .pos-leg-notaria, #notaria-titular, .pos-leg-notaria { position: absolute !important; top: 97.5mm !important; left: 108.0mm !important; width: 92.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: bold !important; font-style: italic !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #numero-registro, #contenedor-hoja-3 .pos-leg-registro, #numero-registro, .pos-leg-registro { position: absolute !important; top: 111.0mm !important; left: 141.0mm !important; width: 58.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #fecha-emision-leg, #contenedor-hoja-3 .pos-leg-fecha-doc, #fecha-emision-leg, .pos-leg-fecha-doc { position: absolute !important; top: 124.5mm !important; left: 47.0mm !important; width: 40.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #control-hoja-leg, #contenedor-hoja-3 .pos-leg-control, #control-hoja-leg, .pos-leg-control { position: absolute !important; top: 124.5mm !important; left: 102.0mm !important; width: 55.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #dia-legalizacion, #contenedor-hoja-3 .pos-leg-dia, #dia-legalizacion, .pos-leg-dia { position: absolute !important; top: 150.0mm !important; left: 127.0mm !important; width: 12.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #mes-anio-legalizacion, #contenedor-hoja-3 .pos-leg-mes, #mes-anio-legalizacion, .pos-leg-mes { position: absolute !important; top: 150.0mm !important; left: 156.0mm !important; width: 26.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
+                #contenedor-hoja-3 #anio-legalizacion, #contenedor-hoja-3 .pos-leg-anio, #anio-legalizacion, .pos-leg-anio { position: absolute !important; top: 150.0mm !important; left: 195.0mm !important; width: 16.0mm; height: 5.5mm; font-size: 11pt !important; font-weight: normal !important; font-style: normal !important; font-family: "Times New Roman", Times, serif !important; white-space: nowrap !important; }
 
                 @media print {
                   @page { size: 215.9mm 355.6mm; margin: 0mm !important; }
-                  body, html { margin: 0mm !important; padding: 0mm !important; }
+                  body, html {
+                    width: 215.9mm !important;
+                    height: 355.6mm !important;
+                    margin: 0mm !important;
+                    padding: 0mm !important;
+                    overflow: hidden !important;
+                  }
 
-                  .contenedor-hoja {
+                  #contenedor-hoja-3, .contenedor-hoja {
                     position: relative !important;
                     width: 215.9mm !important;
                     height: 355.6mm !important;
+                    max-height: 355.6mm !important;
+                    overflow: hidden !important;
+                    background: white !important;
                     display: block !important;
                     margin: 0mm !important;
                     padding: 0mm !important;
                   }
 
-                  .input-impresion {
+                  .capa-datos-legalizacion {
                     position: absolute !important;
+                    top: 0mm !important;
+                    left: 0mm !important;
+                    width: 215.9mm !important;
+                    height: 355.6mm !important;
+                  }
+
+                  #contenedor-hoja-3 .capa-datos-legalizacion input,
+                  #contenedor-hoja-3 .capa-datos-legalizacion .campo-hoja-3,
+                  #contenedor-hoja-3 .capa-datos-legalizacion .input-impresion {
+                    position: absolute !important;
+                    white-space: nowrap !important;
                     border: none !important;
                     background: transparent !important;
                     color: black !important;
                     box-shadow: none !important;
-                    font-size: ${fontSizeGlobal} !important;
-                    font-family: ${fontFamilyGlobal} !important;
+                    font-family: "Times New Roman", Times, serif !important;
+                    font-size: 11pt !important;
+                    line-height: 1 !important;
+                    margin: 0mm !important;
+                    padding: 0mm !important;
                   }
                 }
               `}</style>
-              {/* CABECERA GUÍA Y ESTRUCTURAL */}
+              {/* CABECERA GUÍA Y ESTRUCTURAL (Sincronizada al milímetro con los 7 campos de Legalización) */}
               <div className={`absolute inset-0 pointer-events-none z-0 print:hidden transition-opacity duration-300 ${mostrarGuia ? 'opacity-100' : 'opacity-0'} guia-impresion`}>
-                <div className="absolute flex items-start justify-between border-b-2 border-black pb-2" style={{ top: '15mm', left: '20mm', right: '20mm' }}>
+                <div className="absolute flex items-start justify-between border-b-2 border-slate-300 pb-3" style={{ top: '18mm', left: '25mm', right: '25mm' }}>
                   <div>
-                    <h2 className="font-black text-base uppercase tracking-wider whitespace-nowrap">CORTE SUPREMA DE JUSTICIA</h2>
-                    <p className="text-xs font-bold text-slate-700 whitespace-nowrap">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-xs font-bold mt-1 text-[#FF3131] whitespace-nowrap">LEGALIZACIÓN - ACTUACIÓN NOTARIAL (Serie PJH-2022)</p>
+                    <h2 className="font-black text-sm uppercase tracking-wider text-slate-500 whitespace-nowrap">CORTE SUPREMA DE JUSTICIA</h2>
+                    <p className="text-[11px] font-bold text-slate-400 whitespace-nowrap">REPÚBLICA DEL PARAGUAY</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400 whitespace-nowrap">LEGALIZACIÓN - ACTUACIÓN NOTARIAL (Serie PJH-2022)</p>
                   </div>
-                  <div className="border border-black p-2 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50 shrink-0">
-                    <span className="text-[10px] font-mono font-bold whitespace-nowrap">QR PJE</span>
-                    <span className="text-[8px] text-slate-500 whitespace-nowrap">SEC-2022</span>
+                  <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
+                    <span className="text-[9px] font-mono font-bold text-slate-400 whitespace-nowrap">QR PJE</span>
+                    <span className="text-[8px] text-slate-400 whitespace-nowrap">SEC-2022</span>
                   </div>
                 </div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '76mm', left: '45mm' }}>La CORTE SUPREMA DE JUSTICIA, legaliza la firma y</div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '85mm', left: '45mm' }}>sello del/la Notario/a</div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '95mm', left: '45mm' }}>Registro Nº</div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '105mm', left: '95mm' }}>Control Nº</div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '120mm', left: '45mm' }}>La presente Legalización se realiza sobre un documento de uso notarial expedido a nombre del/la Notario/a solicitante.</div>
-                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '135mm', left: '45mm' }}>Asunción, a los</div>
+
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '86.0mm', left: '25.0mm' }}>La CORTE SUPREMA DE JUSTICIA, legaliza la firma y</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '97.8mm', left: '25.0mm' }}>sello del/la Notario/a y Escribano/a Público/a:</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '111.3mm', left: '25.0mm' }}>Titular del Registro Notarial Número:</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '124.8mm', left: '25.0mm' }}>de fecha</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '124.8mm', left: '88.5mm' }}>Control Nº</div>
+                <div className="absolute text-slate-400 text-[10pt]" style={{ top: '137.5mm', left: '25.0mm', right: '25.0mm' }}>La presente Legalización se realiza sobre un documento de uso notarial expedido a nombre del/la Notario/a solicitante.</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '150.3mm', left: '95.0mm' }}>Asunción, a los</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '150.3mm', left: '141.0mm' }}>días de</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '150.3mm', left: '184.0mm' }}>de</div>
+
+                {/* Pie de firma y sello */}
+                <div className="absolute text-center flex flex-col items-center" style={{ top: '205.0mm', left: '58.0mm', width: '100.0mm' }}>
+                  <div className="w-60 border-b border-dotted border-slate-300 mb-1"></div>
+                  <p className="font-bold text-[9px] uppercase tracking-wider text-slate-400">Firma y Sello de Legalización</p>
+                </div>
               </div>
 
               {/* CAPA DE DATOS EN COORDENADAS FÍSICAS EXACTAS (mm) */}
               <div
                 className="capa-datos-legalizacion absolute inset-0 z-10"
-                style={{ fontSize: fontSizeGlobal, fontFamily: fontFamilyGlobal }}
+                style={{ position: 'absolute', top: '0mm', left: '0mm', width: '215.9mm', height: '355.6mm', fontSize: '11pt', fontFamily: '"Times New Roman", Times, serif' }}
               >
                 {/* Notario: Nombre y Registro */}
                 <input 
@@ -2095,9 +2246,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={nombreNotarioLeg} 
                   onChange={(e) => setNombreNotarioLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '85mm', left: '85mm', width: '95mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="RICARDO GABRIEL MARTÍNEZ VARELA"
+                  style={{ position: 'absolute', top: '97.5mm', left: '108.0mm', width: '92mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'bold', fontStyle: 'italic', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-notaria campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent font-bold italic text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="MARCELA MIRTA GÓMEZ NAVARRO"
                 />
                 <input 
                   id="numero-registro"
@@ -2105,9 +2256,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={escrituraNroLeg} 
                   onChange={(e) => setEscrituraNroLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '95mm', left: '75mm', width: '105mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="1.292 - ESCRITURA Nº 79"
+                  style={{ position: 'absolute', top: '111.0mm', left: '141.0mm', width: '58mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-registro campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="SEIS (6).-"
                 />
 
                 {/* Documento Base: Fecha doc y Control */}
@@ -2117,9 +2268,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={fechaEscrituraLeg} 
                   onChange={(e) => setFechaEscrituraLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '105mm', left: '45mm', width: '65mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="10 DE MAYO DE 2026"
+                  style={{ position: 'absolute', top: '124.5mm', left: '47.0mm', width: '40mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-fecha-doc campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="15 de febrero del 2022.-"
                 />
                 <input 
                   id="control-hoja-leg"
@@ -2127,9 +2278,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={hojaSeguridadNroLeg} 
                   onChange={(e) => setHojaSeguridadNroLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '105mm', left: '120mm', width: '60mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="PJD-2026 Nº 4.589.123"
+                  style={{ position: 'absolute', top: '124.5mm', left: '102.0mm', width: '55mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-control campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="000019301.-"
                 />
 
                 {/* Fecha Legalización: Día, Mes, Año */}
@@ -2139,9 +2290,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={diaLeg} 
                   onChange={(e) => setDiaLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '135mm', left: '100mm', width: '20mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="15"
+                  style={{ position: 'absolute', top: '150.0mm', left: '127.0mm', width: '12mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-dia campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="00"
                 />
                 <input 
                   id="mes-anio-legalizacion"
@@ -2149,9 +2300,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={mesLeg} 
                   onChange={(e) => setMesLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '135mm', left: '125mm', width: '32mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="MAYO"
+                  style={{ position: 'absolute', top: '150.0mm', left: '156.0mm', width: '26mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-mes campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="abril"
                 />
                 <input 
                   id="anio-legalizacion"
@@ -2159,9 +2310,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={anioLeg} 
                   onChange={(e) => setAnioLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
-                  style={{ top: '135mm', left: '160mm', width: '25mm', height: '6mm' }}
-                  className="absolute bg-transparent border-b border-dotted border-slate-400 print:border-transparent font-bold text-black focus:outline-none input-impresion" 
-                  placeholder="2026"
+                  style={{ position: 'absolute', top: '150.0mm', left: '195.0mm', width: '16mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
+                  className="pos-leg-anio campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
+                  placeholder="2022"
                 />
               </div>
             </div>
