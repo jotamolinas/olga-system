@@ -54,6 +54,10 @@
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
         }
+        html.dark body {
+            background-color: #0B0F17;
+            color: #f1f5f9;
+        }
         h1, h2, h3, .brand {
             font-family: 'Playfair Display', serif;
         }
@@ -62,6 +66,11 @@
         .bg-pattern {
             background-color: #f8fafc;
             background-image: radial-gradient(#e2e8f0 0.5px, transparent 0.5px);
+            background-size: 24px 24px;
+        }
+        html.dark .bg-pattern {
+            background-color: #0B0F17;
+            background-image: radial-gradient(#1e293b 0.5px, transparent 0.5px);
             background-size: 24px 24px;
         }
 
@@ -128,7 +137,7 @@
 
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-pattern text-slate-900">
+<body class="bg-pattern text-slate-900 dark:bg-[#0B0F17] dark:text-slate-100 transition-colors duration-200">
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 <script src="https://apis.google.com/js/api.js"></script>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Banknote,
   Printer,
@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Calculator,
+  ArrowLeft,
   Settings,
   Edit3,
   X,
@@ -28,12 +29,6 @@ import {
   UserCheck,
   Users,
   ChevronDown,
-  Bookmark,
-  BookmarkPlus,
-  BookmarkCheck,
-  FolderDown,
-  FolderPlus,
-  Sliders,
 } from 'lucide-react';
 import {
   EncabezadoFacturaPresupuesto,
@@ -44,7 +39,6 @@ import {
   TipoIvaNotarial,
   CategoriaTasaReembolso,
   MembreteEscribaniaConfig,
-  PlantillaPresupuesto,
   ENCABEZADO_INICIAL,
   ITEMS_TASAS_REEMBOLSO_BASE,
   ITEMS_SERVICIOS_HONORARIOS_BASE,
@@ -54,66 +48,11 @@ import {
   MEMBRETE_DEFAULT,
 } from '../types/presupuesto';
 import { Persona, TipoPersona } from '../types';
-import { consultarRUC, formatearRUCConDV } from '../services/dnitService';
-import { collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, query, where, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../services/auth';
+import { consultarRUC } from '../services/dnitService';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../services/auth';
 
 const STORAGE_KEY_PERSONAS = 'olga_directorio_personas';
-
-const PLANTILLAS_PREDEFINIDAS_BASE: PlantillaPresupuesto[] = [
-  {
-    id: 'plantilla-transferencia-estandar',
-    userId: 'global',
-    nombre: 'Transferencia de Inmueble (Estándar)',
-    descripcion: 'Tasas de inscripción registral, certificados de dominio e inhibición, catastro y honorarios de escritura pública.',
-    montoEstimadoTotal: 3450000,
-    tasas: [
-      { id: 'tasa-1', categoria: 'judicial', descripcion: 'Tasa Judicial de Inscripción en Registros Públicos', monto: 350000, tipoIva: 'exenta', activo: true },
-      { id: 'tasa-2', categoria: 'judicial', descripcion: 'Informe de Condiciones de Dominio e Inhibiciones (DGRP)', monto: 120000, tipoIva: 'exenta', activo: true },
-      { id: 'tasa-3', categoria: 'municipal', descripcion: 'Liquidación de Impuesto Inmobiliario y Tasas Municipales', monto: 180000, tipoIva: 'exenta', activo: true },
-      { id: 'tasa-4', categoria: 'otro', descripcion: 'Certificado de Catastro Nacional (SNC)', monto: 150000, tipoIva: 'exenta', activo: true },
-    ],
-    servicios: [
-      { id: 'srv-1', codigoConcepto: 'HON-ESCR', descripcion: 'Honorarios Notariales por Escritura Pública de Transferencia', cantidad: 1, precioUnitario: 2200000, tipoIva: '10', montoExento: 0, montoIva5: 0, montoIva10: 2200000, total: 2200000, activo: true },
-      { id: 'srv-2', codigoConcepto: 'HON-GEST', descripcion: 'Gestión, Diligenciamiento y Tramitación Registral', cantidad: 1, precioUnitario: 450000, tipoIva: '10', montoExento: 0, montoIva5: 0, montoIva10: 450000, total: 450000, activo: true },
-    ],
-    observaciones: 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes de tasas y timbrados registrales se basan en aranceles judiciales oficiales.',
-    creadoEn: '2026-01-15T10:00:00Z',
-  },
-  {
-    id: 'plantilla-constitucion-sociedad',
-    userId: 'global',
-    nombre: 'Constitución de Sociedad (S.A. / S.R.L.)',
-    descripcion: 'Inscripción en Registro de Personas Jurídicas y Comercio, Publicación Gaceta Oficial y honorarios de redacción estatutaria.',
-    montoEstimadoTotal: 5800000,
-    tasas: [
-      { id: 'tasa-soc-1', categoria: 'judicial', descripcion: 'Tasa de Entrada Registro Personas Jurídicas y Asociaciones', monto: 450000, tipoIva: 'exenta', activo: true },
-      { id: 'tasa-soc-2', categoria: 'judicial', descripcion: 'Tasa Registro Público de Comercio (Matrícula y Contrato)', monto: 350000, tipoIva: 'exenta', activo: true },
-      { id: 'tasa-soc-3', categoria: 'otro', descripcion: 'Publicaciones oficiales en Gaceta Oficial y Diario de Gran Circulación', monto: 500000, tipoIva: 'exenta', activo: true },
-    ],
-    servicios: [
-      { id: 'srv-soc-1', codigoConcepto: 'HON-SOC', descripcion: 'Honorarios por Redacción de Estatutos y Escritura de Constitución', cantidad: 1, precioUnitario: 3800000, tipoIva: '10', montoExento: 0, montoIva5: 0, montoIva10: 3800000, total: 3800000, activo: true },
-      { id: 'srv-soc-2', codigoConcepto: 'HON-DIPL', descripcion: 'Apertura de Libros Societarios y Diligenciamiento Tributario', cantidad: 1, precioUnitario: 700000, tipoIva: '10', montoExento: 0, montoIva5: 0, montoIva10: 700000, total: 700000, activo: true },
-    ],
-    observaciones: 'Validez del presupuesto: 30 días. No incluye el depósito previo de garantía ante el BNF.',
-    creadoEn: '2026-02-01T12:00:00Z',
-  },
-  {
-    id: 'plantilla-poder-especial',
-    userId: 'global',
-    nombre: 'Poder Especial / General Notarial',
-    descripcion: 'Poder para trámites bancarios, judiciales o de administración con aportes notariales.',
-    montoEstimadoTotal: 850000,
-    tasas: [
-      { id: 'tasa-pod-1', categoria: 'judicial', descripcion: 'Tasa Judicial y Aporte Notarial por Hoja de Protocolo', monto: 150000, tipoIva: 'exenta', activo: true },
-    ],
-    servicios: [
-      { id: 'srv-pod-1', codigoConcepto: 'HON-POD', descripcion: 'Honorarios Notariales por Escritura Pública de Poder Especial', cantidad: 1, precioUnitario: 700000, tipoIva: '10', montoExento: 0, montoIva5: 0, montoIva10: 700000, total: 700000, activo: true },
-    ],
-    observaciones: 'Validez del presupuesto: 15 días. Requiere presentación de Cédula de Identidad vigente de los otorgantes.',
-    creadoEn: '2026-02-10T09:00:00Z',
-  },
-];
 
 interface ModuloPresupuestosProps {
   onVolver?: () => void;
@@ -177,70 +116,41 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     };
   }, [userId]);
 
-  // Estado de encabezado: estrictamente 100% vacío (sin ningún mock data ni cliente precargado)
-  const [encabezado, setEncabezado] = useState<EncabezadoFacturaPresupuesto>(() => ({
-    tipoComprobante: 'Presupuesto',
-    numeroComprobante: 'PRES-0001',
-    timbrado: membrete.timbradoNumero || '',
-    fechaEmision: new Date().toISOString().slice(0, 10),
-    fechaVencimientoValidez: membrete.timbradoVigenciaFin || '',
-    condicionVenta: 'Contado',
-    clienteNombre: '',
-    clienteRucCI: '',
-    clienteTelefono: '',
-    clienteDireccion: '',
-    clienteEmail: '',
-    conceptoGeneral: '',
-    localidad: 'Asunción',
-  }));
+  // Estado de encabezado
+  const [encabezado, setEncabezado] = useState<EncabezadoFacturaPresupuesto>(() => {
+    try {
+      const guardado = localStorage.getItem('olga_presupuesto_encabezado');
+      if (guardado) return JSON.parse(guardado);
+    } catch (e) {
+      console.warn('Error leyendo encabezado guardado:', e);
+    }
+    return {
+      ...ENCABEZADO_INICIAL,
+      timbrado: membrete.timbradoNumero || ENCABEZADO_INICIAL.timbrado,
+      fechaVencimientoValidez: membrete.timbradoVigenciaFin || ENCABEZADO_INICIAL.fechaVencimientoValidez,
+    };
+  });
 
   // Estado de Tasas y Reembolsos
   const [tasas, setTasas] = useState<ItemTasaReembolso[]>(() => {
     try {
       const guardado = localStorage.getItem('olga_presupuesto_tasas');
-      if (guardado) {
-        const parsed = JSON.parse(guardado);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Si contenía los montos de prueba base antiguos activos, ignorar y empezar con lista limpia
-          const tieneMockAntiguo = parsed.some(
-            (t) => (t.id === 'tasa-jud-1' && t.monto === 185000) || (t.id === 'tasa-hip-1' && t.monto === 320000)
-          );
-          if (!tieneMockAntiguo) return parsed;
-        }
-      }
+      if (guardado) return JSON.parse(guardado);
     } catch (e) {
       console.warn('Error leyendo tasas guardadas:', e);
     }
-    return ITEMS_TASAS_REEMBOLSO_BASE.map(t => ({ ...t, activo: false, monto: 0 }));
+    return ITEMS_TASAS_REEMBOLSO_BASE;
   });
 
   // Estado de Servicios y Honorarios
   const [servicios, setServicios] = useState<ItemServicioHonorario[]>(() => {
     try {
       const guardado = localStorage.getItem('olga_presupuesto_servicios');
-      if (guardado) {
-        const parsed = JSON.parse(guardado);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Si contenía los servicios de prueba base antiguos activos, ignorar y empezar con lista limpia
-          const tieneMockAntiguo = parsed.some(
-            (s) => (s.id === 'srv-gastos-adm' && s.precioUnitario === 150000) || (s.id === 'srv-honorarios-prof' && s.precioUnitario === 2500000)
-          );
-          if (!tieneMockAntiguo) return parsed;
-        }
-      }
+      if (guardado) return JSON.parse(guardado);
     } catch (e) {
       console.warn('Error leyendo servicios guardados:', e);
     }
-    return ITEMS_SERVICIOS_HONORARIOS_BASE.map(s => ({
-      ...s,
-      activo: false,
-      cantidad: 1,
-      precioUnitario: 0,
-      montoExento: 0,
-      montoIva5: 0,
-      montoIva10: 0,
-      total: 0,
-    }));
+    return ITEMS_SERVICIOS_HONORARIOS_BASE;
   });
 
   // Observaciones y condiciones de pago
@@ -283,27 +193,6 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     } catch {}
     return true; // Por defecto Fondo Notarial Blanco
   });
-
-  // Estados para Plantillas de Tarifas y Precios Personalizados (Firebase & Local)
-  const [plantillas, setPlantillas] = useState<PlantillaPresupuesto[]>(() => {
-    try {
-      const storageKey = `olga_plantillas_presupuesto_${userId || 'default'}`;
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return PLANTILLAS_PREDEFINIDAS_BASE;
-  });
-  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
-  const [modalGuardarPlantillaAbierto, setModalGuardarPlantillaAbierto] = useState(false);
-  const [modalCargarPlantillaAbierto, setModalCargarPlantillaAbierto] = useState(false);
-  const [nombrePlantillaDraft, setNombrePlantillaDraft] = useState('');
-  const [descripcionPlantillaDraft, setDescripcionPlantillaDraft] = useState('');
-  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
-  const [plantillaSeleccionadaId, setPlantillaSeleccionadaId] = useState<string | null>(null);
-  const [feedbackPlantilla, setFeedbackPlantilla] = useState<{ tipo: 'success' | 'info' | 'warning'; mensaje: string } | null>(null);
 
   const refBuscadorCliente = useRef<HTMLDivElement>(null);
 
@@ -469,12 +358,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         ? `${persona.nombre} ${persona.apellido}`.trim()
         : persona.nombre;
 
-    const rucFormateado = formatearRUCConDV(persona.nro_documento || '');
-
     setEncabezado((prev) => ({
       ...prev,
       clienteNombre: nombreCompleto,
-      clienteRucCI: rucFormateado || persona.nro_documento || prev.clienteRucCI,
+      clienteRucCI: persona.nro_documento || prev.clienteRucCI,
       clienteDireccion: persona.domicilio || prev.clienteDireccion,
       clienteTelefono: persona.telefono || prev.clienteTelefono,
       clienteEmail: persona.email || prev.clienteEmail,
@@ -491,10 +378,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   // Consulta directa al servicio DNIT para autocompletar Razón Social y Dirección
   const handleConsultarDNIT = async () => {
     const doc = (encabezado.clienteRucCI || '').trim();
-    if (!doc || doc.length < 3) {
+    if (!doc || doc.length < 4) {
       setFeedbackDnit({
         tipo: 'warning',
-        mensaje: 'Ingrese un RUC o Cédula válido (mínimo 3 caracteres) para consultar ante el DNIT / SET.',
+        mensaje: 'Ingrese un RUC o Cédula válido (mínimo 4 caracteres) para consultar ante el DNIT / SET.',
       });
       setTimeout(() => setFeedbackDnit(null), 4000);
       return;
@@ -504,28 +391,26 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setFeedbackDnit(null);
     try {
       const res = await consultarRUC(doc);
-      if (res && (res.nombre_o_razon_social || res.nombre)) {
-        const nombreFinal = res.nombre || res.nombre_o_razon_social;
-        const rucFinal = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero);
-
+      if (res && res.nombre_o_razon_social) {
         setEncabezado((prev) => ({
           ...prev,
-          clienteNombre: nombreFinal,
-          clienteRucCI: rucFinal,
+          clienteNombre: res.nombre_o_razon_social,
+          clienteRucCI: res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero,
           clienteDireccion: res.direccion || prev.clienteDireccion,
           clienteTelefono: res.telefono || prev.clienteTelefono,
         }));
         setOrigenCliente(res.origen === 'FICHERO' ? 'FICHERO' : 'DNIT');
         setFeedbackDnit({
           tipo: 'success',
-          mensaje: `Contribuyente verificado (${res.origen === 'FICHERO' ? 'Fichero Local' : 'Padrón Oficial DNIT / SET'}): ${nombreFinal} [${rucFinal}]`,
+          mensaje: `Contribuyente verificado (${res.origen === 'FICHERO' ? 'Fichero Local' : 'Padrón Oficial DNIT / SET'}): ${res.nombre_o_razon_social}`,
         });
         setTimeout(() => setFeedbackDnit(null), 4500);
 
         // Autoguardado silencioso instantáneo en el Fichero de Personas
+        const docFormateado = res.dv ? `${res.documento_numero}-${res.dv}` : res.documento_numero;
         autoguardarClienteSilencioso({
-          nombre: nombreFinal,
-          doc: rucFinal,
+          nombre: res.nombre_o_razon_social,
+          doc: docFormateado,
           direccion: res.direccion,
           telefono: res.telefono,
           origen: res.origen === 'FICHERO' ? 'FICHERO' : 'DNIT',
@@ -726,51 +611,20 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     }
   };
 
-  // Restaurar / Iniciar Nuevo Presupuesto en Blanco (Pizarra 100% Limpia)
+  // Restaurar valores por defecto
   const handleRestaurarDefecto = () => {
-    try {
-      localStorage.removeItem('olga_presupuesto_encabezado');
-      localStorage.removeItem('olga_presupuesto_tasas');
-      localStorage.removeItem('olga_presupuesto_servicios');
-      localStorage.removeItem('olga_presupuesto_observaciones');
-    } catch {}
-
-    setEncabezado({
-      ...ENCABEZADO_INICIAL,
-      clienteNombre: '',
-      clienteRucCI: '',
-      clienteTelefono: '',
-      clienteDireccion: '',
-      clienteEmail: '',
-      conceptoGeneral: '',
-      timbrado: membrete.timbradoNumero || '',
-      fechaVencimientoValidez: membrete.timbradoVigenciaFin || '',
-    });
-    setTasas(ITEMS_TASAS_REEMBOLSO_BASE.map((t) => ({ ...t, activo: false, monto: 0, numeroComprobantePago: '' })));
-    setServicios(
-      ITEMS_SERVICIOS_HONORARIOS_BASE.map((s) => ({
-        ...s,
-        activo: false,
-        cantidad: 1,
-        precioUnitario: 0,
-        montoExento: 0,
-        montoIva5: 0,
-        montoIva10: 0,
-        total: 0,
-      }))
-    );
-    setPlantillaSeleccionadaId(null);
-    setOrigenCliente('MANUAL');
-    setFeedbackDnit(null);
-    setObservaciones(
-      'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
-    );
-
-    setFeedbackPlantilla({
-      tipo: 'info',
-      mensaje: 'Hoja en blanco lista: servicios y tasas disponibles, desmarcados y sin precios.',
-    });
-    setTimeout(() => setFeedbackPlantilla(null), 3500);
+    if (window.confirm('¿Desea restablecer todos los campos a los valores iniciales por defecto?')) {
+      setEncabezado({
+        ...ENCABEZADO_INICIAL,
+        timbrado: membrete.timbradoNumero || ENCABEZADO_INICIAL.timbrado,
+        fechaVencimientoValidez: membrete.timbradoVigenciaFin || ENCABEZADO_INICIAL.fechaVencimientoValidez,
+      });
+      setTasas(ITEMS_TASAS_REEMBOLSO_BASE);
+      setServicios(ITEMS_SERVICIOS_HONORARIOS_BASE);
+      setObservaciones(
+        'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
+      );
+    }
   };
 
   // Guardar cambios rápidos del membrete institucional
@@ -788,319 +642,6 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setModalMembreteAbierto(false);
   };
 
-  // 1. Cargar plantillas de precios desde Firestore (usuarios/{userId}/mis_precios y plantillas_presupuesto)
-  const cargarPlantillas = useCallback(async () => {
-    setCargandoPlantillas(true);
-    const effectiveUserId = auth.currentUser?.uid || userId || 'default';
-    const storageKey = `olga_plantillas_presupuesto_${effectiveUserId}`;
-
-    // Respaldo local inicial
-    let listaActual: PlantillaPresupuesto[] = [];
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          listaActual = parsed;
-        }
-      }
-    } catch {}
-
-    if (listaActual.length === 0) {
-      listaActual = PLANTILLAS_PREDEFINIDAS_BASE;
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(listaActual));
-      } catch {}
-    }
-    setPlantillas(listaActual);
-
-    // Consulta en Firestore
-    try {
-      const plantillasFirestore: PlantillaPresupuesto[] = [];
-
-      // A. Consultar documento del usuario en Firestore: usuarios/{userId}/mis_precios/tarifas_actuales
-      try {
-        const userPreciosRef = doc(db, 'usuarios', effectiveUserId, 'mis_precios', 'tarifas_actuales');
-        const userSnap = await getDoc(userPreciosRef);
-        if (userSnap.exists()) {
-          const uData = userSnap.data();
-          plantillasFirestore.push({
-            id: 'mis-precios-usuario',
-            userId: effectiveUserId,
-            nombre: uData.nombre || 'Mis Precios Personalizados (Firebase)',
-            descripcion: uData.descripcion || 'Menú de tarifas y honorarios propios guardados bajo su cuenta en Firestore.',
-            tasas: uData.tasas || [],
-            servicios: uData.servicios || [],
-            observaciones: uData.observaciones || '',
-            montoEstimadoTotal: uData.montoEstimadoTotal || 0,
-            creadoEn: uData.actualizadoEn ? (uData.actualizadoEn.toDate ? uData.actualizadoEn.toDate().toISOString() : String(uData.actualizadoEn)) : new Date().toISOString(),
-          });
-        }
-      } catch (eUserDoc) {
-        console.warn('Consulta en usuarios/{userId}/mis_precios:', eUserDoc);
-      }
-
-      // B. Consultar colección general de plantillas en Firestore: plantillas_presupuesto
-      const colRef = collection(db, 'plantillas_presupuesto');
-      const q = query(colRef, where('userId', '==', effectiveUserId));
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        snapshot.docs.forEach((d) => {
-          const data = d.data();
-          plantillasFirestore.push({
-            id: d.id,
-            userId: data.userId || effectiveUserId,
-            nombre: data.nombre || 'Plantilla Sin Nombre',
-            descripcion: data.descripcion || '',
-            tasas: data.tasas || [],
-            servicios: data.servicios || [],
-            observaciones: data.observaciones || '',
-            montoEstimadoTotal: data.montoEstimadoTotal || 0,
-            creadoEn: data.creadoEn ? (data.creadoEn.toDate ? data.creadoEn.toDate().toISOString() : String(data.creadoEn)) : new Date().toISOString(),
-          });
-        });
-      }
-
-      // Fusionar garantizando que las predefinidas estándar sigan disponibles
-      const combinadas = [...plantillasFirestore];
-      PLANTILLAS_PREDEFINIDAS_BASE.forEach((base) => {
-        if (!combinadas.some((c) => c.nombre.toLowerCase() === base.nombre.toLowerCase())) {
-          combinadas.push(base);
-        }
-      });
-
-      setPlantillas(combinadas);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(combinadas));
-      } catch {}
-    } catch (err) {
-      console.warn('Consulta de plantillas en Firestore (modo local activo):', err);
-    } finally {
-      setCargandoPlantillas(false);
-    }
-  }, [userId]);
-
-  // Carga reactiva inicial
-  useEffect(() => {
-    cargarPlantillas();
-  }, [cargarPlantillas]);
-
-  // 2. Guardar tarifas actuales en Firestore bajo usuarios/{userId}/mis_precios
-  const handleGuardarPlantilla = async () => {
-    setGuardandoPlantilla(true);
-    const effectiveUserId = auth.currentUser?.uid || userId || 'default';
-    const storageKey = `olga_plantillas_presupuesto_${effectiveUserId}`;
-    const nombreFinal = nombrePlantillaDraft.trim() || 'Mis Precios Personalizados';
-
-    const nuevaPlantilla: PlantillaPresupuesto = {
-      id: `plan-${Date.now()}`,
-      userId: effectiveUserId,
-      nombre: nombreFinal,
-      descripcion: descripcionPlantillaDraft.trim() || `Configuración con ${tasas.filter(t => t.activo).length} tasas y ${servicios.filter(s => s.activo).length} servicios.`,
-      tasas: tasas.map(t => ({ ...t })),
-      servicios: servicios.map(s => ({ ...s })),
-      observaciones: observaciones || '',
-      montoEstimadoTotal: liquidacion.totalGeneralOperacion,
-      creadoEn: new Date().toISOString(),
-    };
-
-    // Guardar en Firestore bajo usuarios/{userId}/mis_precios
-    try {
-      const docPayload = {
-        userId: effectiveUserId,
-        userEmail: auth.currentUser?.email || '',
-        nombre: nuevaPlantilla.nombre,
-        descripcion: nuevaPlantilla.descripcion,
-        tasas: nuevaPlantilla.tasas,
-        servicios: nuevaPlantilla.servicios,
-        observaciones: nuevaPlantilla.observaciones,
-        montoEstimadoTotal: nuevaPlantilla.montoEstimadoTotal,
-        actualizadoEn: serverTimestamp(),
-      };
-
-      // A. Guardar en el documento del usuario: usuarios/{userId}/mis_precios/tarifas_actuales
-      const userPreciosRef = doc(db, 'usuarios', effectiveUserId, 'mis_precios', 'tarifas_actuales');
-      await setDoc(userPreciosRef, docPayload, { merge: true });
-
-      // B. Guardar también en la colección plantillas_presupuesto
-      const docRef = await addDoc(collection(db, 'plantillas_presupuesto'), {
-        ...docPayload,
-        creadoEn: serverTimestamp(),
-      });
-      nuevaPlantilla.id = docRef.id;
-    } catch (err) {
-      console.warn('Persistencia en Firestore no completada, respaldando en almacenamiento local:', err);
-    }
-
-    // Respaldo local
-    try {
-      localStorage.setItem(`olga_mis_precios_${effectiveUserId}`, JSON.stringify(nuevaPlantilla));
-    } catch {}
-
-    setPlantillas(prev => {
-      const filtradas = prev.filter(p => p.id !== nuevaPlantilla.id && p.nombre.toLowerCase() !== nuevaPlantilla.nombre.toLowerCase());
-      const updated = [nuevaPlantilla, ...filtradas];
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    setModalGuardarPlantillaAbierto(false);
-    setNombrePlantillaDraft('');
-    setDescripcionPlantillaDraft('');
-    setGuardandoPlantilla(false);
-
-    setFeedbackPlantilla({
-      tipo: 'success',
-      mensaje: `¡Menú de precios guardado exitosamente en Firestore bajo usuarios/${effectiveUserId}/mis_precios!`,
-    });
-    setTimeout(() => setFeedbackPlantilla(null), 5000);
-  };
-
-  // 3. Recuperar precios desde Firebase (usuarios/{userId}/mis_precios) y sobrescribir la tabla
-  const handleRecuperarPreciosFirebase = async () => {
-    setCargandoPlantillas(true);
-    const effectiveUserId = auth.currentUser?.uid || userId || 'default';
-
-    try {
-      let tasasRecuperadas: ItemTasaReembolso[] | null = null;
-      let serviciosRecuperados: ItemServicioHonorario[] | null = null;
-      let obsRecuperadas: string | null = null;
-      let nombreCargado = '';
-
-      // A. Consultar documento usuarios/{userId}/mis_precios/tarifas_actuales en Firestore
-      const userPreciosRef = doc(db, 'usuarios', effectiveUserId, 'mis_precios', 'tarifas_actuales');
-      const snap = await getDoc(userPreciosRef);
-
-      if (snap.exists()) {
-        const data = snap.data();
-        if (Array.isArray(data.tasas) && data.tasas.length > 0) tasasRecuperadas = data.tasas;
-        if (Array.isArray(data.servicios) && data.servicios.length > 0) serviciosRecuperados = data.servicios;
-        if (data.observaciones) obsRecuperadas = data.observaciones;
-        nombreCargado = data.nombre || 'Mis Precios Personalizados';
-      } else {
-        // B. Si no existe aún en esa ruta, consultar en plantillas_presupuesto
-        const colRef = collection(db, 'plantillas_presupuesto');
-        const q = query(colRef, where('userId', '==', effectiveUserId));
-        const subSnap = await getDocs(q);
-        if (!subSnap.empty) {
-          const primerDoc = subSnap.docs[0].data();
-          if (Array.isArray(primerDoc.tasas) && primerDoc.tasas.length > 0) tasasRecuperadas = primerDoc.tasas;
-          if (Array.isArray(primerDoc.servicios) && primerDoc.servicios.length > 0) serviciosRecuperados = primerDoc.servicios;
-          if (primerDoc.observaciones) obsRecuperadas = primerDoc.observaciones;
-          nombreCargado = primerDoc.nombre || 'Plantilla Guardada';
-        }
-      }
-
-      // C. Sobrescribir los montos de la tabla con los valores personalizados del escribano
-      if (tasasRecuperadas || serviciosRecuperados) {
-        if (tasasRecuperadas) {
-          setTasas(tasasRecuperadas.map((t: ItemTasaReembolso) => ({ ...t })));
-        }
-        if (serviciosRecuperados) {
-          setServicios(serviciosRecuperados.map((s: ItemServicioHonorario) => ({ ...s })));
-        }
-        if (obsRecuperadas) {
-          setObservaciones(obsRecuperadas);
-        }
-        setPlantillaSeleccionadaId('mis-precios');
-        setFeedbackPlantilla({
-          tipo: 'success',
-          mensaje: `¡Precios personalizados "${nombreCargado}" recuperados de Firebase! Las tarifas han sido inyectadas en la tabla y están listas para ser editadas.`,
-        });
-        setTimeout(() => setFeedbackPlantilla(null), 5000);
-      } else {
-        // Si aún no tiene tarifas en Firebase, abrir el modal de plantillas disponibles
-        setModalCargarPlantillaAbierto(true);
-        setFeedbackPlantilla({
-          tipo: 'info',
-          mensaje: 'No se encontraron tarifas guardadas previas en Firebase. Seleccione una plantilla o guarde sus precios actuales.',
-        });
-        setTimeout(() => setFeedbackPlantilla(null), 4000);
-      }
-
-      await cargarPlantillas();
-    } catch (err) {
-      console.warn('Error recuperando tarifas desde Firebase:', err);
-      // Fallback local
-      const storageKey = `olga_mis_precios_${effectiveUserId}`;
-      const local = localStorage.getItem(storageKey);
-      if (local) {
-        try {
-          const parsed = JSON.parse(local);
-          if (Array.isArray(parsed.tasas)) setTasas(parsed.tasas.map((t: any) => ({ ...t })));
-          if (Array.isArray(parsed.servicios)) setServicios(parsed.servicios.map((s: any) => ({ ...s })));
-          if (parsed.observaciones) setObservaciones(parsed.observaciones);
-          setFeedbackPlantilla({
-            tipo: 'info',
-            mensaje: 'Precios cargados desde respaldo local.',
-          });
-          setTimeout(() => setFeedbackPlantilla(null), 4000);
-        } catch {}
-      } else {
-        setModalCargarPlantillaAbierto(true);
-      }
-    } finally {
-      setCargandoPlantillas(false);
-    }
-  };
-
-  // 3. Cargar plantilla seleccionada e inyectar montos en el estado de la liquidación
-  const handleCargarPlantilla = (plantilla: PlantillaPresupuesto) => {
-    // Clonar profundamente para que modificaciones posteriores en el presupuesto no alteren la plantilla
-    const tasasClonadas: ItemTasaReembolso[] = plantilla.tasas.map(t => ({ ...t }));
-    const serviciosClonados: ItemServicioHonorario[] = plantilla.servicios.map(s => ({ ...s }));
-
-    setTasas(tasasClonadas);
-    setServicios(serviciosClonados);
-    if (plantilla.observaciones) {
-      setObservaciones(plantilla.observaciones);
-    }
-    setPlantillaSeleccionadaId(plantilla.id);
-    setModalCargarPlantillaAbierto(false);
-
-    setFeedbackPlantilla({
-      tipo: 'success',
-      mensaje: `Plantilla "${plantilla.nombre}" cargada. Puede modificar cualquier importe libremente para este presupuesto en particular.`,
-    });
-    setTimeout(() => setFeedbackPlantilla(null), 5000);
-  };
-
-  // 4. Eliminar plantilla guardada
-  const handleEliminarPlantilla = async (plantillaId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const effectiveUserId = auth.currentUser?.uid || userId || 'default';
-    const storageKey = `olga_plantillas_presupuesto_${effectiveUserId}`;
-
-    try {
-      if (!plantillaId.startsWith('plantilla-')) {
-        await deleteDoc(doc(db, 'plantillas_presupuesto', plantillaId));
-      }
-    } catch (err) {
-      console.warn('Error eliminando plantilla en Firestore:', err);
-    }
-
-    setPlantillas(prev => {
-      const updated = prev.filter(p => p.id !== plantillaId);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    if (plantillaSeleccionadaId === plantillaId) {
-      setPlantillaSeleccionadaId(null);
-    }
-
-    setFeedbackPlantilla({
-      tipo: 'info',
-      mensaje: 'Presupuesto eliminado de la lista.',
-    });
-    setTimeout(() => setFeedbackPlantilla(null), 3000);
-  };
-
   // Función de Impresión Oficial Nativa (ejecuta window.print con estilos de Tailwind)
   const handleImprimir = () => {
     autoguardarClienteSilencioso();
@@ -1108,116 +649,70 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   };
 
   return (
-    <div className="space-y-6 font-sans print:space-y-0 print:p-0 print:m-0">
-      {/* Cabecera Principal Unificada en Color Oscuro (oculta al imprimir) */}
-      <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
+    <div className={`min-h-full flex flex-col font-sans rounded-3xl overflow-hidden border shadow-2xl transition-colors duration-200 dark:bg-[#0B0F17] dark:text-slate-100 dark:border-slate-800/80 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
+      modoFondoBlanco 
+        ? 'bg-slate-100 text-slate-800 border-slate-300' 
+        : 'bg-[#0B0F17] text-slate-100 border-slate-800'
+    }`}>
+      {/* Cabecera Principal del Módulo (oculta al imprimir) */}
+      <header className={`p-6 md:p-8 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border-slate-800/80 dark:text-slate-100 print:hidden ${
+        modoFondoBlanco
+          ? 'bg-white border-slate-200 text-slate-900'
+          : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100'
+      }`}>
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 blur-[100px] rounded-full pointer-events-none"></div>
 
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/10 text-amber-400 flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
-            <Banknote className="w-6 h-6 text-amber-400" />
+          {onVolver && (
+            <button
+              onClick={onVolver}
+              type="button"
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors border flex items-center gap-2 cursor-pointer ${
+                modoFondoBlanco
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Volver</span>
+            </button>
+          )}
+
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-inner">
+            <Banknote className="w-6 h-6 text-amber-500" />
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
-                <span>Presupuestos y Facturación Notarial</span>
-                <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 text-[9px] font-black uppercase tracking-widest rounded-lg">
-                  O.L.G.A.
-                </span>
-                <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-black uppercase tracking-widest rounded-lg">
-                  Ley 879
-                </span>
+              <h1 className={`text-xl md:text-2xl font-black tracking-tight font-serif dark:text-slate-100 ${modoFondoBlanco ? 'text-slate-900' : 'text-slate-100'}`}>
+                Presupuestos y Facturación Notarial
               </h1>
+              <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-700 dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] border border-amber-500/30 text-[9px] font-black uppercase tracking-widest rounded-lg">
+                Ley 879
+              </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1 font-medium">
+            <p className={`text-xs mt-1 font-medium dark:text-slate-400 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
               Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.
             </p>
           </div>
         </div>
 
-        {/* Resumen de Estado y Arancel Oficial */}
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
-          <div className="px-3.5 py-2 bg-slate-800/80 border border-slate-700/60 rounded-2xl text-[11px] font-bold text-slate-300 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-            <span>Arancel Oficial Ley 879/81</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Barra de Tareas Notarial (oculta al imprimir) */}
-      <div className={`p-3 sm:p-4 rounded-3xl border shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3 transition-colors print:hidden ${
-        modoFondoBlanco 
-          ? 'bg-white border-slate-200 text-slate-800' 
-          : 'bg-slate-900 border-slate-800 text-slate-100'
-      }`}>
         {/* Botones de Acción Global */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 relative z-10 print:hidden">
           <button
             type="button"
             onClick={handleRestaurarDefecto}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
               modoFondoBlanco
                 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                 : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
             }`}
-            title="Limpiar y dejar todos los servicios disponibles y desmarcados, sin precios"
+            title="Restablecer valores"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
-            <span>Limpiar / Hoja en Blanco</span>
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Restablecer</span>
           </button>
 
-          {/* Selector / Botón: Plantillas Guardadas */}
-          <button
-            type="button"
-            onClick={handleRecuperarPreciosFirebase}
-            disabled={cargandoPlantillas}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
-              plantillaSeleccionadaId
-                ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
-                : modoFondoBlanco
-                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-                : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
-            }`}
-            title="Consultar Firebase (usuarios/{userId}/mis_precios) y sobrescribir la tabla con sus precios personalizados"
-          >
-            {cargandoPlantillas ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
-            ) : (
-              <Bookmark className="w-3.5 h-3.5 text-amber-500" />
-            )}
-            <span>{cargandoPlantillas ? 'Consultando Firebase...' : 'Plantillas Guardadas'}</span>
-            {plantillas.length > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-                plantillaSeleccionadaId
-                  ? 'bg-slate-950 text-amber-400'
-                  : 'bg-amber-500/20 text-amber-800 dark:text-amber-300'
-              }`}>
-                {plantillas.length}
-              </span>
-            )}
-          </button>
-
-          {/* Botón: Guardar como Mis Precios / Plantilla */}
-          <button
-            type="button"
-            onClick={() => {
-              setNombrePlantillaDraft(encabezado.conceptoGeneral || 'Mis Precios Personalizados');
-              setDescripcionPlantillaDraft('');
-              setModalGuardarPlantillaAbierto(true);
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
-              modoFondoBlanco
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 hover:text-white border-slate-700'
-            }`}
-            title="Guardar las tarifas y honorarios actuales en Firestore bajo usuarios/{userId}/mis_precios"
-          >
-            <BookmarkPlus className="w-3.5 h-3.5 text-amber-500" />
-            <span className="hidden sm:inline">Guardar como Mis Precios / Plantilla</span>
-          </button>
-
-          {/* Botón: Guardar Presupuesto */}
           <button
             type="button"
             onClick={handleGuardarPresupuesto}
@@ -1240,28 +735,25 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             )}
             <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
           </button>
-        </div>
 
-        {/* Botón: Imprimir */}
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleImprimir}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+            className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
           >
             <Printer className="w-4 h-4 text-slate-950" />
             <span>Imprimir {encabezado.tipoComprobante}</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Barra de Filtros y Subsecciones (oculta al imprimir) */}
-      <div className={`px-4 sm:px-6 py-2.5 rounded-2xl border flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden ${
+      <div className={`px-6 py-3 border-b flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden ${
         modoFondoBlanco
           ? 'bg-white border-slate-200 text-slate-800'
-          : 'bg-slate-900 border-slate-800 text-slate-200'
+          : 'bg-slate-950/60 border-slate-800 text-slate-200'
       }`}>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           {(['todo', 'tasas', 'servicios', 'resumen'] as const).map((tab) => (
             <button
               key={tab}
@@ -1297,19 +789,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </div>
 
-      {/* Contenedor del Documento Notarial y Liquidación */}
-      <div className={`flex flex-col font-sans rounded-3xl overflow-hidden border shadow-xl transition-colors duration-200 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
-        modoFondoBlanco 
-          ? 'bg-slate-100 text-slate-800 border-slate-300' 
-          : 'bg-slate-900 text-slate-100 border-slate-800'
-      }`}>
-        {/* Contenido Modular con Scroll Limpio */}
-        <div className="p-6 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-280px)] print:p-0 print:m-0 print:space-y-4 print:overflow-visible print:max-h-none">
+      {/* Contenido Modular con Scroll Limpio */}
+      <div className="p-6 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-220px)] print:p-0 print:m-0 print:space-y-4 print:overflow-visible print:max-h-none">
         {/* Banner de Membrete Notarial Dinámico (Configuración Multi-usuario) */}
-        <div className={`border rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden transition-colors print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black print:rounded-xl ${
+        <div className={`border rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black print:rounded-xl ${
           modoFondoBlanco
             ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50'
-            : 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-slate-800 text-slate-100'
+            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
         }`}>
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 shadow-inner text-amber-500 print:hidden">
@@ -1395,10 +881,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         {/* SECCIÓN 1: ENCABEZADO Y DATOS FISCALES / DEL CLIENTE (PARTE 2)    */}
         {/* ================================================================= */}
         <section
-          className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-5 border transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+          className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-5 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
             modoFondoBlanco
               ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-              : 'bg-slate-950/80 border-slate-800/90 text-white shadow-xl'
+              : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
           }`}
         >
           <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-3 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
@@ -1583,7 +1069,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     handleActualizarEncabezado('clienteNombre', e.target.value);
                     setMostrarSugerenciasFichero(true);
                   }}
-                  placeholder="Escriba o busque en el Fichero de Personas..."
+                  placeholder="Escriba o busque en el Fichero (Ej: JUAN CARLOS PÉREZ GÓMEZ)"
                   className={`w-full rounded-xl pl-3 pr-10 py-2 font-bold focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                     modoFondoBlanco
                       ? 'bg-slate-50 border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-amber-600'
@@ -1778,12 +1264,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         {/* ================================================================= */}
         {/* SECCIÓN 2: REEMBOLSO DE IMPUESTOS Y TASAS                         */}
         {/* ================================================================= */}
-        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
           pestañaActiva !== 'todo' && pestañaActiva !== 'tasas' ? 'hidden print:block' : 'block'
         } ${
           modoFondoBlanco
             ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-            : 'bg-slate-950/80 border-slate-800/90 text-white shadow-xl'
+            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
         }`}>
           <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
             <div>
@@ -1885,9 +1371,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     <td className="py-2 px-3 text-right">
                       <input
                         type="number"
-                        value={tasa.monto === 0 ? '' : tasa.monto}
-                        placeholder="0"
-                        onChange={(e) => handleEditarTasa(tasa.id, 'monto', e.target.value === '' ? 0 : Number(e.target.value))}
+                        value={tasa.monto}
+                        onChange={(e) => handleEditarTasa(tasa.id, 'monto', Number(e.target.value) || 0)}
                         disabled={!tasa.activo}
                         className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
                           modoFondoBlanco
@@ -1930,12 +1415,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         {/* ================================================================= */}
         {/* SECCIÓN 3: SERVICIOS Y HONORARIOS NOTARIALES                      */}
         {/* ================================================================= */}
-        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
           pestañaActiva !== 'todo' && pestañaActiva !== 'servicios' ? 'hidden print:block' : 'block'
         } ${
           modoFondoBlanco
             ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-            : 'bg-slate-950/80 border-slate-800/90 text-white shadow-xl'
+            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
         }`}>
           <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
             <div>
@@ -2019,9 +1504,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     <td className="py-2 px-3 text-right">
                       <input
                         type="number"
-                        value={srv.precioUnitario === 0 ? '' : srv.precioUnitario}
-                        placeholder="0"
-                        onChange={(e) => handleEditarServicio(srv.id, 'precioUnitario', e.target.value === '' ? 0 : Number(e.target.value))}
+                        value={srv.precioUnitario}
+                        onChange={(e) => handleEditarServicio(srv.id, 'precioUnitario', Number(e.target.value) || 0)}
                         disabled={!srv.activo}
                         className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
                           modoFondoBlanco
@@ -2084,10 +1568,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         {/* ================================================================= */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:grid-cols-3 print:gap-4">
           {/* Columna Izquierda: Observaciones y Validez */}
-          <div className={`lg:col-span-2 rounded-2xl p-5 md:p-6 shadow-xl space-y-3 border transition-colors print:col-span-2 print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+          <div className={`lg:col-span-2 rounded-2xl p-5 md:p-6 shadow-xl space-y-3 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:col-span-2 print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
             modoFondoBlanco
               ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-              : 'bg-slate-950/80 border-slate-800/90 text-white shadow-xl'
+              : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
           }`}>
             <h3 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-800' : 'text-slate-300'} print:text-black`}>
               <AlertCircle className="w-4 h-4 text-amber-500 print:hidden" />
@@ -2187,7 +1671,6 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </div>
       </div>
-    </div>
 
       {/* Modal de Configuración Rápida de Membrete Notarial */}
       {modalMembreteAbierto && (
@@ -2343,319 +1826,6 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   Guardar Membrete
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Flotante de Notificaciones de Plantilla */}
-      {feedbackPlantilla && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-md animate-in fade-in slide-in-from-bottom-5 duration-300 print:hidden">
-          <div className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${
-            feedbackPlantilla.tipo === 'success'
-              ? 'bg-emerald-950 border-emerald-500/50 text-emerald-100 shadow-emerald-950/50'
-              : 'bg-slate-900 border-amber-500/50 text-amber-200 shadow-amber-950/50'
-          }`}>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-              feedbackPlantilla.tipo === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-            }`}>
-              <BookmarkCheck className="w-5 h-5" />
-            </div>
-            <div className="flex-1 text-xs font-medium">
-              {feedbackPlantilla.mensaje}
-            </div>
-            <button
-              type="button"
-              onClick={() => setFeedbackPlantilla(null)}
-              className="text-slate-400 hover:text-white p-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Guardar como Mis Precios / Plantilla */}
-      {modalGuardarPlantillaAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl space-y-6 text-white relative">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                  <BookmarkPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-serif text-white">
-                    Guardar como Mis Precios / Plantilla
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Almacena las tarifas y tasas actuales asociadas a su cuenta notarial en Firestore.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalGuardarPlantillaAbierto(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1.5 uppercase tracking-wider text-[11px]">
-                  Nombre de la Plantilla *
-                </label>
-                <input
-                  type="text"
-                  value={nombrePlantillaDraft}
-                  onChange={(e) => setNombrePlantillaDraft(e.target.value)}
-                  placeholder="Ej. Transferencia de Inmueble con Hipoteca Bancaria"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-amber-500 focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1.5 uppercase tracking-wider text-[11px]">
-                  Descripción o Notas del Acto Notarial (Opcional)
-                </label>
-                <textarea
-                  value={descripcionPlantillaDraft}
-                  onChange={(e) => setDescripcionPlantillaDraft(e.target.value)}
-                  rows={2}
-                  placeholder="Ej. Aranceles de honorarios habituales para operaciones inmobiliarias bancarizadas..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:border-amber-500 focus:outline-none resize-none"
-                />
-              </div>
-
-              {/* Resumen de contenido a guardar */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-                  <span>Resumen de la Plantilla</span>
-                  <span className="text-amber-400 font-mono">Gs. {liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[11px]">
-                  <div className="text-slate-300">
-                    Tasas activas: <strong>{tasas.filter((t) => t.activo).length}</strong> / {tasas.length}
-                  </div>
-                  <div className="text-slate-300">
-                    Servicios activos: <strong>{servicios.filter((s) => s.activo).length}</strong> / {servicios.length}
-                  </div>
-                  <div className="text-slate-400">
-                    Subtotal Tasas: Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}
-                  </div>
-                  <div className="text-slate-400">
-                    Total Honorarios: Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                💡 Al aplicar esta plantilla en el futuro, las tarifas se cargarán automáticamente y podrá editarlas libremente para cada presupuesto específico sin alterar la plantilla original.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-slate-800 gap-3">
-              <button
-                type="button"
-                onClick={() => setModalGuardarPlantillaAbierto(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleGuardarPlantilla}
-                disabled={guardandoPlantilla || !nombrePlantillaDraft.trim()}
-                className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 disabled:opacity-50 cursor-pointer flex items-center gap-2"
-              >
-                {guardandoPlantilla ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                    <span>Guardando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4 text-slate-950" />
-                    <span>Guardar Plantilla</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Selector de Plantillas Guardadas */}
-      {modalCargarPlantillaAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl space-y-6 text-white max-h-[90vh] flex flex-col relative">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                  <Bookmark className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-serif text-white">
-                    Plantillas de Tarifas Guardadas
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Inyecte instantáneamente sus precios y tasas base. Podrá editarlos al vuelo según cada caso.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalCargarPlantillaAbierto(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Banner de acceso directo a precios del usuario en Firebase */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                  <BookmarkCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white">Tarifas Propias en Firebase</div>
-                  <div className="text-[10px] text-slate-400 font-mono">usuarios/{auth.currentUser?.uid || userId || 'default'}/mis_precios</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleRecuperarPreciosFirebase}
-                disabled={cargandoPlantillas}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
-              >
-                {cargandoPlantillas ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>Recuperar de Firebase</span>
-              </button>
-            </div>
-
-            {/* Listado de Plantillas con Scroll */}
-            <div className="overflow-y-auto space-y-3.5 pr-1 flex-1">
-              {cargandoPlantillas ? (
-                <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
-                  <p className="text-xs">Cargando plantillas de Firestore...</p>
-                </div>
-              ) : plantillas.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 space-y-3">
-                  <FileText className="w-10 h-10 mx-auto text-slate-600" />
-                  <p className="text-sm font-bold">No hay plantillas guardadas aún</p>
-                  <p className="text-xs max-w-sm mx-auto text-slate-500">
-                    Ajuste los valores de tasas y honorarios en la tabla y haga clic en "Guardar como Mis Precios / Plantilla".
-                  </p>
-                </div>
-              ) : (
-                plantillas.map((plan) => {
-                  const esActiva = plantillaSeleccionadaId === plan.id;
-                  const tasasActivasCount = (plan.tasas || []).filter((t) => t.activo).length;
-                  const serviciosActivosCount = (plan.servicios || []).filter((s) => s.activo).length;
-                  const subtotalTasas = (plan.tasas || []).filter((t) => t.activo).reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
-                  const subtotalServicios = (plan.servicios || []).filter((s) => s.activo).reduce((sum, s) => sum + ((Number(s.cantidad) || 1) * (Number(s.precioUnitario) || 0)), 0);
-                  const totalEst = plan.montoEstimadoTotal || (subtotalTasas + subtotalServicios);
-                  const esPersonalizada = !plan.id.startsWith('plantilla-');
-
-                  return (
-                    <div
-                      key={plan.id}
-                      className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                        esActiva
-                          ? 'bg-amber-500/10 border-amber-500/50 shadow-md shadow-amber-500/10'
-                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-950'
-                      }`}
-                    >
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-sm text-white truncate">{plan.nombre}</h4>
-                          {esPersonalizada ? (
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
-                              Mi Tarifa
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-wider">
-                              Estándar
-                            </span>
-                          )}
-                          {esActiva && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-500/30 text-amber-300 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Aplicada
-                            </span>
-                          )}
-                        </div>
-
-                        {plan.descripcion && (
-                          <p className="text-xs text-slate-400 line-clamp-1">{plan.descripcion}</p>
-                        )}
-
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono">
-                          <span>{tasasActivasCount} tasas</span>
-                          <span>•</span>
-                          <span>{serviciosActivosCount} servicios</span>
-                          <span>•</span>
-                          <span className="text-amber-400 font-bold">
-                            Total Est.: Gs. {totalEst.toLocaleString('es-PY')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={(e) => handleEliminarPlantilla(plan.id, e)}
-                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl border border-transparent hover:border-rose-500/30 transition-all cursor-pointer"
-                          title={`Eliminar presupuesto "${plan.nombre}"`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCargarPlantilla(plan)}
-                          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
-                            esActiva
-                              ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700'
-                          }`}
-                        >
-                          <FolderDown className="w-3.5 h-3.5" />
-                          <span>Cargar en Presupuesto</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Pie del modal con botón de inicio limpio */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-800 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  handleRestaurarDefecto();
-                  setPlantillaSeleccionadaId(null);
-                  setModalCargarPlantillaAbierto(false);
-                }}
-                className="text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Limpiar y dejar todos los servicios disponibles y desmarcados, sin precios"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
-                <span>Limpiar / Hoja en Blanco</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalCargarPlantillaAbierto(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cerrar
-              </button>
             </div>
           </div>
         </div>

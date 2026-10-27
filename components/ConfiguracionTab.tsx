@@ -364,6 +364,32 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    const syncExternalTheme = (e: any) => {
+      if (e?.detail?.isDark !== undefined) {
+        setIsDarkMode(Boolean(e.detail.isDark));
+      } else {
+        try {
+          setIsDarkMode(localStorage.getItem('olga_theme') === 'dark');
+        } catch {}
+      }
+    };
+    window.addEventListener('olga_theme_changed', syncExternalTheme);
+    window.addEventListener('storage', syncExternalTheme);
+    return () => {
+      window.removeEventListener('olga_theme_changed', syncExternalTheme);
+      window.removeEventListener('storage', syncExternalTheme);
+    };
+  }, []);
+
   // Estados Seguridad y Accesos
   const [autenticacion2FA, setAutenticacion2FA] = useState(initialValues.autenticacion2FA);
   const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
@@ -762,16 +788,16 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-100 min-h-screen">
+    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-100 dark:bg-[#0B0F17] min-h-screen transition-colors duration-200">
       {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
-      <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-slate-900 dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-slate-800 rounded-xl border border-slate-700 text-[#FF3131] shrink-0">
             <Settings className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold font-serif tracking-tight text-white">Configuración del Sistema</h2>
-            <p className="text-slate-300 text-xs mt-0.5">
+            <h2 className="text-2xl font-bold font-serif tracking-tight text-white dark:text-slate-100">Configuración del Sistema</h2>
+            <p className="text-slate-300 dark:text-slate-400 text-xs mt-0.5">
               Parámetros institucionales, sincronización en tiempo real y directivas de seguridad.
             </p>
           </div>
@@ -786,11 +812,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       </div>
 
       {/* Cartel de Advertencia Notarial Reglamentaria */}
-      <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
+      <div className="p-4 bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
         <AlertCircle className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-600 leading-relaxed">
-          <strong className="text-slate-900 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
-          Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico avanzado. Su validez legal y administrativa plena requiere la revisión, autorización y sello protocolar del <strong>Escribano Titular</strong>.
+        <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          <strong className="text-slate-900 dark:text-slate-100 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
+          Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico avanzado. Su validez legal y administrativa plena requiere la revisión, autorización y sello protocolar del <strong className="dark:text-slate-200">Escribano Titular</strong>.
         </div>
       </div>
 
@@ -815,13 +841,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
       {/* Banner Informativo de Entorno de Operador Notarial */}
       {isOperador && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
+        <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 rounded-2xl border border-slate-200 shadow-sm flex items-start gap-4">
           <div className="p-3 bg-slate-900 text-white rounded-xl shrink-0 mt-0.5">
             <Building className="w-5 h-5 text-[#FF3131]" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900">Entorno de Operador Notarial</h3>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Entorno de Operador Notarial</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
               Estás conectado como operador notarial bajo el membrete oficial del Escribano Titular. Los ajustes de membrete institucional, facturación y administración de equipo están centralizados bajo la supervisión del Titular.
             </p>
           </div>
@@ -830,24 +856,24 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
       {/* Tarjeta 1: Perfil Institucional / Configuración de Membrete (Oculto para operadores) */}
       {currentUser?.role !== 'operador' && !isOperador && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-slate-100 rounded-xl text-slate-900">
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-slate-900 dark:text-slate-100">
               <Building className="w-5 h-5 text-[#FF3131]" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-900">Perfil Institucional</h3>
-              <p className="text-xs text-slate-500">Datos públicos, membrete protocolar e identidad visual para todo el sistema</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Perfil Institucional</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Datos públicos, membrete protocolar e identidad visual para todo el sistema</p>
             </div>
           </div>
         </div>
 
         <form onSubmit={handleGuardarPerfil} className="space-y-6">
-          <div className="flex flex-col md:flex-row items-center gap-6 p-5 bg-slate-50 rounded-2xl border border-slate-200">
+          <div className="flex flex-col md:flex-row items-center gap-6 p-5 bg-slate-50 dark:bg-[#0B0F17]/80 rounded-2xl border border-slate-200 dark:border-slate-800">
             {/* Círculo grande placeholder para el logo */}
             <div className="relative group shrink-0">
-              <div className="w-28 h-28 rounded-full border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden shadow-inner">
+              <div className="w-28 h-28 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center overflow-hidden shadow-inner">
                 {logoPreview ? (
                   <img src={logoPreview} alt="Logo Notaría" className="w-full h-full object-cover" />
                 ) : (
@@ -861,8 +887,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
             {/* Controles para subir logo */}
             <div className="space-y-2 text-center md:text-left flex-grow">
-              <h4 className="text-sm font-bold text-slate-800">Insignia o Logotipo Oficial</h4>
-              <p className="text-xs text-slate-500 max-w-md">
+              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">Insignia o Logotipo Oficial</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
                 Se guardará directamente en su cuenta en la nube (Firestore) y se sincronizará automáticamente con el encabezado y panel lateral de la aplicación.
               </p>
               <div className="flex flex-wrap items-center gap-2 pt-1 justify-center md:justify-start">
@@ -876,7 +902,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm"
                 >
                   <Upload className="w-3.5 h-3.5 text-[#FF3131]" />
                   <span>Subir Logo</span>
@@ -885,7 +911,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   <button
                     type="button"
                     onClick={handleRemoverLogo}
-                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     <span>Quitar</span>
@@ -899,13 +925,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           <div className="space-y-5">
             {/* Grupo 1: Datos Notariales Principales */}
             <div>
-              <h5 className="text-[11px] font-black uppercase text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
+              <h5 className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-[#FF3131]" />
                 Identificación Notarial e Institucional
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Notario / Escribano Titular *
                   </label>
                   <input
@@ -913,12 +939,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={nombreNotario}
                     onChange={(e) => setNombreNotario(e.target.value)}
                     placeholder="Ej. Esc. Sandra Molinas"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
 
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     N° de Registro Notarial *
                   </label>
                   <input
@@ -926,12 +952,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={registroNotarial}
                     onChange={(e) => setRegistroNotarial(e.target.value)}
                     placeholder="Ej. Reg. Nº 1.292"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
                   />
                 </div>
 
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Firma / Nombre de Escribanía *
                   </label>
                   <input
@@ -939,7 +965,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={nombreInstitucion}
                     onChange={(e) => setNombreInstitucion(e.target.value)}
                     placeholder="Ej. Escribanía Molinas & Asociados"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -947,13 +973,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
             {/* Grupo 2: Ubicación y Contacto */}
             <div>
-              <h5 className="text-[11px] font-black uppercase text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
+              <h5 className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-blue-500" />
                 Ubicación y Canales de Contacto
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Dirección Comercial / Sede *
                   </label>
                   <input
@@ -961,12 +987,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={direccion}
                     onChange={(e) => setDireccion(e.target.value)}
                     placeholder="Ej. Avda. Carlos A. López 450, Asunción"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
 
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Teléfono / Celular *
                   </label>
                   <input
@@ -974,12 +1000,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={telefono}
                     onChange={(e) => setTelefono(e.target.value)}
                     placeholder="Ej. +595 21 445 000 / 0981 123 456"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
 
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Correo Electrónico Notarial *
                   </label>
                   <input
@@ -987,21 +1013,21 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Ej. notaria@olgatech.com.py"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
               </div>
             </div>
 
             {/* Grupo 3: Datos de Facturación y Timbrado Fiscal */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h5 className="text-[11px] font-black uppercase text-slate-700 tracking-wider mb-2.5 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <div className="bg-slate-50 dark:bg-[#0B0F17]/80 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <h5 className="text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 RUC de la Escribanía y Timbrado Fiscal SET/DNIT
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     RUC de la Escribanía *
                   </label>
                   <input
@@ -1009,12 +1035,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={ruc}
                     onChange={(e) => setRuc(e.target.value)}
                     placeholder="Ej. 80012345-6"
-                    className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
                   />
                 </div>
 
                 <div className="md:col-span-1">
-                  <label className="block text-xs font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     N° de Timbrado Oficial *
                   </label>
                   <input
@@ -1022,31 +1048,31 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={timbradoNumero}
                     onChange={(e) => setTimbradoNumero(e.target.value)}
                     placeholder="Ej. 16894321"
-                    className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
                   />
                 </div>
 
                 <div className="md:col-span-1 grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                       Inicio Vigencia
                     </label>
                     <input
                       type="date"
                       value={timbradoVigenciaInicio}
                       onChange={(e) => setTimbradoVigenciaInicio(e.target.value)}
-                      className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                      className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold uppercase text-slate-600 tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                       Fin Vigencia
                     </label>
                     <input
                       type="date"
                       value={timbradoVigenciaFin}
                       onChange={(e) => setTimbradoVigenciaFin(e.target.value)}
-                      className="w-full bg-white border border-slate-200 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                      className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
                     />
                   </div>
                 </div>
@@ -1068,32 +1094,32 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       )}
 
       {/* Tarjeta 2: Preferencias y Notificaciones */}
-      <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-        <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-          <div className="p-2.5 bg-slate-100 rounded-xl text-slate-900">
+      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <div className="p-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-slate-900 dark:text-slate-100">
             <Bell className="w-5 h-5 text-[#FF3131]" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Preferencias y Notificaciones</h3>
-            <p className="text-xs text-slate-500">Automatizaciones operativas y alertas del flujo notarial</p>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Preferencias y Notificaciones</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Automatizaciones operativas y alertas del flujo notarial</p>
           </div>
         </div>
 
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
           {/* Toggle Tema Visual: Fondo Blanco vs Modo Oscuro */}
           <div className="py-4 flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <span className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <span>Tema Visual del Sistema</span>
                 <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border ${
                   isDarkMode 
-                    ? 'bg-slate-900 text-amber-400 border-slate-700' 
+                    ? 'bg-slate-900 text-amber-400 border-slate-700 dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] dark:border-amber-400' 
                     : 'bg-amber-50 text-amber-900 border-amber-200'
                 }`}>
                   {isDarkMode ? 'Modo Oscuro' : 'Fondo Blanco'}
                 </span>
               </span>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Alterna entre la vista notarial en fondo blanco y el modo oscuro en toda la plataforma.
               </p>
             </div>
@@ -1103,7 +1129,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               aria-checked={isDarkMode}
               onClick={() => handleToggleTema(!isDarkMode)}
               className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none items-center shadow-inner ${
-                isDarkMode ? 'bg-slate-900' : 'bg-amber-400'
+                isDarkMode ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : 'bg-slate-300'
               }`}
               title={isDarkMode ? 'Cambiar a Fondo Blanco' : 'Cambiar a Modo Oscuro'}
             >
@@ -1120,10 +1146,10 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           {/* Toggle 1 */}
           <div className="py-4 flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <span className="text-sm font-bold text-slate-800 block">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 block">
                 Activar notificaciones de vencimientos
               </span>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Emite recordatorios preventivos y alertas en la campana 5 días antes de la caducidad de cuotas.
               </p>
             </div>
@@ -1137,7 +1163,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 guardarYNotificar({ notificacionesVencimiento: nuevo }, nuevo ? 'Notificaciones de vencimiento activadas.' : 'Notificaciones de vencimiento desactivadas.');
               }}
               className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                notificacionesVencimiento ? 'bg-[#FF3131]' : 'bg-slate-200'
+                notificacionesVencimiento ? 'bg-[#FF3131]' : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
               <span
@@ -1151,10 +1177,10 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           {/* Toggle 2 */}
           <div className="py-4 flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <span className="text-sm font-bold text-slate-800 block">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 block">
                 Aplicar multas por mora automáticamente
               </span>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Calcula recargos compensatorios y punitorios reglamentarios al sobrepasar el plazo perentorio fijado.
               </p>
             </div>
@@ -1168,7 +1194,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 guardarYNotificar({ multasMoraAutomatica: nuevo }, nuevo ? 'Multas por mora automáticas habilitadas.' : 'Multas por mora automáticas pausadas.');
               }}
               className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                multasMoraAutomatica ? 'bg-[#FF3131]' : 'bg-slate-200'
+                multasMoraAutomatica ? 'bg-[#FF3131]' : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
               <span
@@ -1182,10 +1208,10 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           {/* Toggle 3 */}
           <div className="py-4 flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <span className="text-sm font-bold text-slate-800 block">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 block">
                 Numeración correlativa automática
               </span>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Garantiza correlatividad estricta sin omisiones ni duplicaciones en el registro de pagarés creados.
               </p>
             </div>
@@ -1199,7 +1225,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 guardarYNotificar({ numeracionCorrelativa: nuevo }, nuevo ? 'Numeración correlativa secuencial forzada.' : 'Numeración correlativa manual permitida.');
               }}
               className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                numeracionCorrelativa ? 'bg-[#FF3131]' : 'bg-slate-200'
+                numeracionCorrelativa ? 'bg-[#FF3131]' : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
               <span
@@ -1213,32 +1239,32 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       </div>
 
       {/* Tarjeta 3: Seguridad y Accesos */}
-      <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-        <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-          <div className="p-2.5 bg-slate-100 rounded-xl text-slate-900">
+      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <div className="p-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-slate-900 dark:text-slate-100">
             <Shield className="w-5 h-5 text-[#FF3131]" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Seguridad y Accesos</h3>
-            <p className="text-xs text-slate-500">Blindaje de credenciales y autorización de operadores notariados</p>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Seguridad y Accesos</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Blindaje de credenciales y autorización de operadores notariados</p>
           </div>
         </div>
 
         <div className="space-y-5">
           {/* Toggle 2FA */}
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
+          <div className="p-4 bg-slate-50 dark:bg-[#0B0F17]/80 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <Lock className="w-5 h-5 text-slate-700 shrink-0 mt-0.5" />
+              <Lock className="w-5 h-5 text-slate-700 dark:text-slate-300 shrink-0 mt-0.5" />
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900">
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                     Autenticación en 2 pasos (2FA)
                   </span>
-                  <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-slate-200 text-slate-800">
+                  <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
                     Recomendado
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Exige confirmación por token o código OTP antes de emitir o certificar pagarés con valor cambiario.
                 </p>
               </div>
@@ -1253,7 +1279,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 guardarYNotificar({ autenticacion2FA: nuevo }, nuevo ? 'Autenticación 2FA activada para todos los operadores.' : 'Autenticación 2FA deshabilitada.');
               }}
               className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                autenticacion2FA ? 'bg-[#FF3131]' : 'bg-slate-200'
+                autenticacion2FA ? 'bg-[#FF3131]' : 'bg-slate-200 dark:bg-slate-700'
               }`}
             >
               <span
@@ -1266,14 +1292,14 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
           {/* Botón secundario Gestionar Operadores (Oculto para operadores) */}
           {currentUser?.role !== 'operador' && !isOperador && (
-            <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200 gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 dark:bg-[#0B0F17]/80 rounded-2xl border border-slate-200 dark:border-slate-800 gap-4">
               <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-slate-700 shrink-0" />
+                <Users className="w-5 h-5 text-slate-700 dark:text-slate-300 shrink-0" />
                 <div>
-                  <span className="text-sm font-bold text-slate-900 block">
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100 block">
                     Gestión de Operadores Notariales
                   </span>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Slots utilizados: {operadores.length} de {limiteActual} ({slotsLibres} libres)
                   </p>
                 </div>
@@ -1281,7 +1307,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               <button
                 type="button"
                 onClick={() => setModalUsuariosAbierto(true)}
-                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-sm"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
                 <Users className="w-3.5 h-3.5 text-[#FF3131]" />
                 <span>Gestionar Operadores</span>
@@ -1294,12 +1320,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       {/* Modal Interactivo de Gestión de Operadores */}
       {currentUser?.role !== 'operador' && !isOperador && modalUsuariosAbierto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
+          <div className="bg-white dark:bg-[#121824]/95 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Users className="w-5 h-5 text-[#FF3131]" />
                 <div>
-                  <h4 className="text-base font-bold text-white">Gestión de Usuarios y Operadores</h4>
+                  <h4 className="text-base font-bold text-white dark:text-slate-100">Gestión de Usuarios y Operadores</h4>
                   <p className="text-xs text-slate-400">
                     Slots utilizados: {operadores.length} de {limiteActual}
                   </p>
@@ -1316,12 +1342,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
               {/* Formulario para agregar usuario */}
-              <form onSubmit={handleAddOperador} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <form onSubmit={handleAddOperador} className="p-4 bg-slate-50 dark:bg-[#0B0F17]/90 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
                     Registrar Nuevo Operador Local
                   </span>
-                  <span className={`text-xs font-bold ${operadores.length >= limiteActual ? 'text-red-500' : 'text-slate-500'}`}>
+                  <span className={`text-xs font-bold ${operadores.length >= limiteActual ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
                     Slots utilizados: {operadores.length} de {limiteActual}
                   </span>
                 </div>

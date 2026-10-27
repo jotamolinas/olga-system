@@ -1546,9 +1546,9 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   return (
-    <div className="space-y-4 md:space-y-8 animate-message" id="pagares-tab-panel">
+    <div className="space-y-4 md:space-y-8 animate-message dark:bg-[#0B0F17]" id="pagares-tab-panel">
       {/* Cabecera Principal Unificada */}
-      <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
+      <div className="bg-slate-900 dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="relative z-10">
           <div className="flex items-center gap-3">
@@ -1556,13 +1556,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
               <Banknote className="w-5 h-5 text-[#FF3131]" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-serif">
+              <h2 className="text-xl font-black text-white dark:text-slate-100 tracking-tight flex items-center gap-2 font-serif">
                 <span>Gestión de Pagarés</span>
                 <span className="px-2.5 py-0.5 bg-[#FF3131] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
                   O.L.G.A.
                 </span>
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+              <p className="text-xs text-slate-400 dark:text-slate-400 mt-0.5 font-medium">
                 Panel principal para la gestión, redacción y control de pagarés oficiales para la {config.escribania.nombre}.
               </p>
             </div>
@@ -1580,19 +1580,19 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
       {/* Sincronización Alerta Verde / Notificación Empresarial */}
       {syncAlertBanner && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 p-4 rounded-3xl flex items-start justify-between shadow-sm animate-fade-in">
+        <div className="bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200 p-4 rounded-3xl flex items-start justify-between shadow-sm animate-fade-in">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+              <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900">Sincronización con Fichero de Clientes</h4>
-              <p className="text-xs font-semibold text-emerald-800 mt-0.5">{syncAlertBanner.texto}</p>
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">Sincronización con Fichero de Clientes</h4>
+              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 mt-0.5">{syncAlertBanner.texto}</p>
             </div>
           </div>
           <button
             onClick={() => setSyncAlertBanner(null)}
-            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs p-1 rounded-lg"
+            className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 font-bold text-xs p-1 rounded-lg"
           >
             ✕
           </button>
@@ -1600,17 +1600,17 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       )}
 
       {/* Tab selection inside Pagares panel */}
-      <div className="flex flex-col lg:flex-row justify-between items-center bg-white p-2 sm:p-3 rounded-3xl border border-slate-100 shadow-sm gap-2">
-        <div className="flex flex-wrap justify-center gap-3 w-full box-border lg:w-auto bg-slate-50 p-1 rounded-2xl">
+      <div className="flex flex-col lg:flex-row justify-between items-center bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-2 sm:p-3 rounded-3xl border border-slate-100 shadow-sm gap-2">
+        <div className="flex flex-wrap justify-center gap-3 w-full box-border lg:w-auto bg-slate-50 dark:bg-[#0B0F17] p-1 rounded-2xl">
           <button
             onClick={() => { setPanelView('list'); setEditingPagareId(null); }}
-            className={`flex-1 lg:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all ${panelView === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex-1 lg:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all ${panelView === 'list' ? 'bg-white dark:bg-[#121824] text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
           >
             Activos ({pagares.filter(p => p.status !== 'anulado').length})
           </button>
           <button
             onClick={() => { setPanelView('list_anulados'); setEditingPagareId(null); }}
-            className={`flex-1 lg:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all ${panelView === 'list_anulados' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            className={`flex-1 lg:flex-none px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all ${panelView === 'list_anulados' ? 'bg-white dark:bg-[#121824] text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
           >
             Eliminados ({pagares.filter(p => p.status === 'anulado').length})
           </button>
@@ -1618,7 +1618,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
             onClick={() => {
               handleClearForm();
             }}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all shadow-sm ${panelView === 'create' ? 'bg-[#FF3131] text-white' : 'bg-red-50 text-[#FF3131] hover:bg-[#FF3131] hover:text-white border border-red-100'}`}
+            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all shadow-sm ${panelView === 'create' ? 'bg-[#FF3131] text-white' : 'bg-red-50 dark:bg-red-950/40 text-[#FF3131] hover:bg-[#FF3131] hover:text-white border border-red-100 dark:border-red-900/50'}`}
           >
             <Plus className="w-4 h-4" /> Redactar Nuevo
           </button>
@@ -1628,7 +1628,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
             type="button"
             onClick={handleSincronizarTodosRetroactivo}
             disabled={isSyncingRetroactivo}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200/80 shadow-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 shadow-sm disabled:opacity-50"
             title="Detección retroactiva: Revisa todos los pagarés y auto-registra a los firmantes no fichados en el Fichero de Clientes"
           >
             {isSyncingRetroactivo ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" /> : <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />}
@@ -1774,18 +1774,18 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
         return (
           /* LIST VIEW OF CREATED PROMISSORY NOTES */
-          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-md">
-            <div className="pb-6 border-b border-slate-100 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-6 sm:p-8 rounded-[2.5rem] border border-slate-100 shadow-md">
+            <div className="pb-6 border-b border-slate-100 dark:border-slate-800/80 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-2">
+                <h2 className="text-2xl font-bold font-serif text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <span>Caja Registradora de Pagarés</span>
                   {panelView === 'list_anulados' && (
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-sans font-bold">
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-sans font-bold">
                       Papelera / Eliminados
                     </span>
                   )}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                   Documentos autorizados ordenados por urgencia de cobro. Haga clic para abrir la Certificación de Firmas e Impresión Oficial.
                 </p>
               </div>
@@ -1861,13 +1861,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     <div
                       key={pag.id}
                       onClick={() => setSelectedPagareForDetail(pag)}
-                      className={`rounded-3xl border shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between p-5 md:p-6 relative group cursor-pointer ${
+                      className={`rounded-3xl border shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between p-5 md:p-6 relative group cursor-pointer dark:bg-[#0B0F17]/90 dark:backdrop-blur-xl dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl ${
                         badgeStatus === 'vencido' 
-                          ? 'bg-red-50/60 border-red-300 hover:border-red-500 hover:bg-red-50' 
+                          ? 'bg-red-50/60 border-red-300 hover:border-red-500 hover:bg-red-50 dark:border-red-900/70' 
                           : badgeStatus === 'proximo' 
-                            ? 'bg-amber-50/60 border-amber-300 hover:border-amber-500 hover:bg-amber-50' 
+                            ? 'bg-amber-50/60 border-amber-300 hover:border-amber-500 hover:bg-amber-50 dark:border-amber-900/70' 
                             : badgeStatus === 'al_dia' || badgeStatus === 'pagado'
-                              ? 'bg-emerald-50/60 border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50'
+                              ? 'bg-emerald-50/60 border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50 dark:border-emerald-900/70'
                               : 'bg-slate-50/60 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
                       } ${activePagareMenuId === pag.id ? 'z-30' : 'z-0 hover:z-10'}`}
                     >
@@ -1875,14 +1875,14 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         {/* 1. CABECERA DE LA TARJETA (Idéntica a Escritos) */}
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                            <div className="w-10 h-10 bg-slate-900 text-[#FF3131] rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                            <div className="w-10 h-10 bg-slate-900 dark:bg-slate-800 text-[#FF3131] rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
                               <FileText className="w-5 h-5 text-[#FF3131]" />
                             </div>
                             <div className="flex-1 overflow-hidden min-w-0">
-                              <h4 className="font-bold text-slate-900 text-sm truncate" title={`Pagaré Nº ${pag.correlativo || 'S/N'}`}>
+                              <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm truncate" title={`Pagaré Nº ${pag.correlativo || 'S/N'}`}>
                                 Pagaré Nº {pag.correlativo || 'S/N'}
                               </h4>
-                              <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
                                 <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
                                 <span className="truncate">{dateStr}</span>
                               </p>
@@ -1998,7 +1998,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         {/* 2. CUERPO DE LA TARJETA (Minimalista) */}
                         <div className="mt-3 mb-3">
                           <div className="flex items-baseline justify-between gap-2">
-                            <div className="text-lg md:text-xl font-black text-slate-900 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors flex items-baseline gap-1">
+                            <div className="text-lg md:text-xl font-black text-slate-900 dark:text-slate-100 font-mono tracking-tight group-hover:text-[#FF3131] transition-colors flex items-baseline gap-1">
                               <span className="text-xs font-bold text-slate-400">{getMonedaSimbolo(pag.moneda)}</span>
                               <span>{formatCurrencyValue(pag.valor_total || (pag as any).monto || 0, pag.moneda)}</span>
                             </div>
@@ -2006,7 +2006,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                               const pendingIndex = pag.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
                               if (pendingIndex !== -1 && pag.cronograma) {
                                 return (
-                                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-lg shrink-0">
+                                  <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-2 py-0.5 rounded-lg shrink-0">
                                     Cuota {pag.cronograma[pendingIndex].numero_cuota}/{pag.cronograma.length}
                                   </span>
                                 );
@@ -2024,16 +2024,16 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                         </div>
 
                         {/* Partes Compactas: Acreedor y Deudor */}
-                        <div className="space-y-1.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                        <div className="space-y-1.5 bg-slate-50/80 dark:bg-[#121824]/90 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/80">
                           <div className="overflow-hidden">
                             <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold leading-none mb-0.5">Acreedor</p>
-                            <p className="text-xs font-bold text-slate-700 truncate" title={nombreAcreedor}>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate" title={nombreAcreedor}>
                               {nombreAcreedor}
                             </p>
                           </div>
-                          <div className="pt-1.5 border-t border-slate-200/60 overflow-hidden">
+                          <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-800 overflow-hidden">
                             <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold leading-none mb-0.5">Deudor Principal</p>
-                            <p className="text-xs font-bold text-slate-700 truncate" title={nombreDeudor}>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate" title={nombreDeudor}>
                               {nombreDeudor}
                             </p>
                           </div>
@@ -2041,7 +2041,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       </div>
 
                       {/* 3. PIE DE LA TARJETA Y ACCIONES */}
-                      <div className="border-t border-slate-100 pt-3 mt-4 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
                         {/* A la izquierda: Botón de EDITAR */}
                         {(pag.status !== 'anulado' && pag.estado !== 'Anulado') ? (
                           <button
@@ -2131,10 +2131,10 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           
           {/* Main settings panel */}
-          <div className="xl:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-md space-y-8">
-            <div className="pb-4 border-b border-slate-50">
-              <h2 className="text-2xl font-bold font-serif text-slate-800">Formulario de Redacción del Pagaré</h2>
-              <p className="text-xs text-slate-500 mt-1">Especifique condiciones iniciales, asigne partes firmantes y configure el cronograma financiero.</p>
+          <div className="xl:col-span-2 bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-8 rounded-[2.5rem] border border-slate-100 shadow-md space-y-8">
+            <div className="pb-4 border-b border-slate-50 dark:border-slate-800">
+              <h2 className="text-2xl font-bold font-serif text-slate-800 dark:text-slate-100">Formulario de Redacción del Pagaré</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Especifique condiciones iniciales, asigne partes firmantes y configure el cronograma financiero.</p>
             </div>
 
             {/* 1. Datos Generales */}

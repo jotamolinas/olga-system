@@ -37,9 +37,6 @@ export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
   margenHorizontal: 0,
 };
 
-export const TEXTO_EJEMPLO_PROTOCOLO = 'ESCRITURA PÚBLICA (EJEMPLO): Haga clic aquí para comenzar a redactar...';
-export const TEXTO_EJEMPLO_LOMO = 'PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL';
-
 export const getConfigKey = (tipo: TipoDocumentoNotarial): string => {
   switch (tipo) {
     case 'Sellado Notarial - Protocolo':
@@ -97,10 +94,11 @@ const resolverTipoDocumentoInicial = (hojaInicial?: string): TipoDocumentoNotari
   return 'Sellado Notarial - Protocolo';
 };
 
-export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ hojaInicial }) => {
+export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ onVolver, hojaInicial }) => {
   const tipoInicial = resolverTipoDocumentoInicial(hojaInicial);
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoNotarial>(tipoInicial);
   const [mostrarGuia, setMostrarGuia] = useState<boolean>(true);
+  const [rellenoGuiones, setRellenoGuiones] = useState<boolean>(true);
 
   // Carga inicial independiente para la plantilla activa por defecto
   const initialConfig = cargarConfiguracionHoja(tipoInicial);
@@ -228,26 +226,15 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
   const [anioLeg, setAnioLeg] = useState<string>('2022');
 
   // PLANTILLA 0: Protocolo
-  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('');
-  const [mostrarEjemploLomo, setMostrarEjemploLomo] = useState<boolean>(true);
+  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
   const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>([
-    TEXTO_EJEMPLO_PROTOCOLO
+    'ESCRITURA PÚBLICA NÚMERO SETENTA Y NUEVE (79).- En la Ciudad de Asunción, Capital de la República del Paraguay, a los diez días del mes de mayo del año dos mil veintiséis, ante mí: RICARDO GABRIEL MARTÍNEZ VARELA, Notario y Escribano Público Titular del Registro Notarial Número Mil Doscientos Noventa y Dos (1.292), comparecen...'
   ]);
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
-  const limpiarTextoEjemplo = (index: number) => {
-    if (protocoloPaginas[index] === TEXTO_EJEMPLO_PROTOCOLO) {
-      const nuevasPaginas = [...protocoloPaginas];
-      nuevasPaginas[index] = '';
-      setProtocoloPaginas(nuevasPaginas);
-    }
-  };
 
   const handleTextareaChange = (index: number, e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    let texto = e.target.value;
-    if (texto.includes(TEXTO_EJEMPLO_PROTOCOLO)) {
-      texto = texto.replace(TEXTO_EJEMPLO_PROTOCOLO, '');
-    }
+    const texto = e.target.value;
     const nuevasPaginas = [...protocoloPaginas];
     
     // Límite de seguridad: Cuántos caracteres entran aproximadamente en 25 renglones
@@ -427,22 +414,17 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
       if (tipoDocumento === 'Sellado Notarial - Protocolo') {
         const pagina1 = paginasValidas[0];
         let lomo = pagina1.querySelector('.caja-fija-lomo, .nuevo-lomo-grid, .texto-vertical-sello, .lomo-impresion') as HTMLElement;
-        const textoParaImprimir = (!mostrarEjemploLomo && protocoloTextoVertical.trim()) ? protocoloTextoVertical : '';
 
-        if (!textoParaImprimir) {
-          if (lomo) lomo.remove();
-        } else {
-          if (!lomo) {
-            lomo = document.createElement('div');
-            pagina1.insertBefore(lomo, pagina1.firstChild);
-          } else if (pagina1.firstChild !== lomo) {
-            pagina1.insertBefore(lomo, pagina1.firstChild);
-          }
-
-          lomo.className = 'caja-fija-lomo';
-          lomo.removeAttribute('style');
-          lomo.innerHTML = `<span>${textoParaImprimir}</span>`;
+        if (!lomo) {
+          lomo = document.createElement('div');
+          pagina1.insertBefore(lomo, pagina1.firstChild);
+        } else if (pagina1.firstChild !== lomo) {
+          pagina1.insertBefore(lomo, pagina1.firstChild);
         }
+
+        lomo.className = 'caja-fija-lomo';
+        lomo.removeAttribute('style');
+        lomo.innerHTML = `<span>${protocoloTextoVertical}</span>`;
       }
     }
 
@@ -689,7 +671,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
   };
 
   return (
-    <div id="contenedor-principal-notarial" className="min-h-screen bg-white text-slate-900 flex flex-col font-sans print:min-h-0 print:bg-white print:block print:m-0 print:p-0">
+    <div id="contenedor-principal-notarial" className="min-h-screen bg-slate-900/95 text-slate-100 flex flex-col font-sans print:min-h-0 print:bg-white print:block print:m-0 print:p-0">
       {/* Estilos de Paginación Estricta de 25 líneas con Simetría Doble Faz (Anverso/Reverso) */}
       <style>{`
         .lomo-impresion, .texto-vertical-sello {
@@ -974,7 +956,15 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
       <header className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border border-slate-800 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-red-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="relative z-10 flex items-center gap-3">
-
+          {onVolver && (
+            <button
+              onClick={onVolver}
+              type="button"
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors border border-slate-700"
+            >
+              ← Volver
+            </button>
+          )}
           <div className="w-10 h-10 rounded-2xl bg-white/10 text-[#FF3131] flex items-center justify-center shrink-0 border border-white/10">
             <Stamp className="w-5 h-5 text-[#FF3131]" />
           </div>
@@ -1012,56 +1002,78 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
         </div>
       </header>
 
-
+      {/* Opciones Auxiliares de Formato (No imprimible) */}
+      <div className="opciones-auxiliares-notarial bg-slate-800/80 border-y border-slate-700/80 px-6 py-2.5 text-xs text-slate-300 print:hidden flex flex-wrap items-center justify-between gap-4">
+        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
+          <input 
+            type="checkbox" 
+            checked={rellenoGuiones} 
+            onChange={(e) => setRellenoGuiones(e.target.checked)}
+            className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
+          />
+          <span>Autorrellenar líneas vacías con guiones (----)</span>
+        </label>
+        {tipoDocumento === 'Sellado Notarial - Protocolo' && (
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold text-[10px]">Texto Lomo:</span>
+            <input
+              type="text"
+              value={protocoloTextoVertical}
+              onChange={(e) => setProtocoloTextoVertical(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-white text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
+            />
+          </div>
+        )}
+      </div>
 
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 215.9mm x 355.6mm) */}
-      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-100 border-t border-slate-200 print:p-0 print:m-0 print:block print:bg-white">
+      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-950 print:p-0 print:m-0 print:block print:bg-white">
         {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Espaciado, Guía, Guardar e Imprimir) */}
-        <div className="barra-controles-notarial mb-4 bg-slate-200/80 border border-slate-300/90 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800 shadow-sm print:hidden w-full max-w-7xl">
+        <div className="barra-controles-notarial mb-4 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200 shadow-xl print:hidden w-full max-w-7xl">
           {/* Bloque Izquierdo: Calibración, Tipografía y Espaciados */}
           <div className="flex flex-wrap items-center gap-3">
             {/* Calibrador de Impresora (Offset X / Y) */}
-            <div className="flex items-center gap-1.5 bg-white/90 px-2.5 py-1 rounded-xl border border-slate-300 shadow-xs">
-              <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1" title="Calibrador milimétrico de impresora">
-                <Sliders className="w-3.5 h-3.5 text-amber-600" />
+            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/70">
+              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1" title="Calibrador milimétrico de impresora">
+                <Sliders className="w-3.5 h-3.5" />
                 Offset:
               </span>
-              <div className="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded-lg border border-slate-200">
-                <span className="text-[10px] text-slate-500 font-semibold">X:</span>
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
+                <span className="text-[10px] text-slate-400">X:</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetX(offsetX - 1)} 
                   title="Restar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
                 >
                   -
                 </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-700 font-bold">{offsetX}mm</span>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetX}mm</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetX(offsetX + 1)} 
                   title="Sumar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
                 >
                   +
                 </button>
               </div>
-              <div className="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded-lg border border-slate-200">
-                <span className="text-[10px] text-slate-500 font-semibold">Y:</span>
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
+                <span className="text-[10px] text-slate-400">Y:</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetY(offsetY - 1)} 
                   title="Restar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
                 >
                   -
                 </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-700 font-bold">{offsetY}mm</span>
+                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetY}mm</span>
                 <button 
                   type="button"
                   onClick={() => setOffsetY(offsetY + 1)} 
                   title="Sumar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-slate-700 font-bold hover:text-slate-900 transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
                 >
                   +
                 </button>
@@ -1069,18 +1081,18 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
             </div>
 
             {/* Separador */}
-            <div className="h-4 w-px bg-slate-300 hidden lg:block"></div>
+            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
 
             {/* Tipografía (Fuente, Tamaño, A-/A+) */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                <Type className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Type className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Fuente</span>
               </span>
               <select
                 value={fontFamilyGlobal}
                 onChange={(e) => setFontFamilyGlobal(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
               >
                 <option value="Arial, Helvetica, sans-serif">Arial</option>
                 <option value='"Times New Roman", Times, serif'>Times New Roman</option>
@@ -1091,7 +1103,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
               <select
                 value={fontSizeGlobal}
                 onChange={(e) => setFontSizeGlobal(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
               >
                 <option value="12px">12 px</option>
                 <option value="13px">13 px</option>
@@ -1102,7 +1114,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                 <option value="20px">20 px</option>
               </select>
 
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
@@ -1111,7 +1123,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                     if (idx > 0) setFontSizeGlobal(sizes[idx - 1]);
                   }}
                   title="Reducir tamaño (A-)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   A-
                 </button>
@@ -1123,7 +1135,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                     if (idx !== -1 && idx < sizes.length - 1) setFontSizeGlobal(sizes[idx + 1]);
                   }}
                   title="Aumentar tamaño (A+)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   A+
                 </button>
@@ -1131,31 +1143,31 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
             </div>
 
             {/* Separador */}
-            <div className="h-4 w-px bg-slate-300 hidden lg:block"></div>
+            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
 
             {/* Espaciado vertical (Interlineado) */}
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-700 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
-                <MoveVertical className="w-3.5 h-3.5 text-sky-600" />
+              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
+                <MoveVertical className="w-3.5 h-3.5 text-sky-400" />
                 Líneas:
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setInterlineadoGlobal((prev) => Math.max(6.0, Number((prev - 0.2).toFixed(1))))}
+                  onClick={() => setInterlineadoGlobal((prev) => Math.max(8.0, Number((prev - 0.2).toFixed(1))))}
                   title="Reducir interlineado (-0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   -
                 </button>
-                <span className="w-12 text-center font-mono text-[11px] text-sky-700 font-bold">
-                  {interlineadoGlobal}mm
+                <span className="w-12 text-center font-mono text-[11px] text-sky-300 font-bold">
+                  {interlineadoGlobal.toFixed(1)}mm
                 </span>
                 <button
                   type="button"
                   onClick={() => setInterlineadoGlobal((prev) => Math.min(16.0, Number((prev + 0.2).toFixed(1))))}
                   title="Aumentar interlineado (+0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   +
                 </button>
@@ -1164,27 +1176,27 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
 
             {/* Margen horizontal (Indentación In/Out) */}
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-700 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
-                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
+                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-400" />
                 Margen H:
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs">
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
                 <button
                   type="button"
                   onClick={() => setMargenHorizontal((prev) => Math.max(-25, prev - 1))}
                   title="Desplazar a la izquierda (-1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   ◄
                 </button>
-                <span className="w-11 text-center font-mono text-[11px] text-emerald-700 font-bold">
+                <span className="w-11 text-center font-mono text-[11px] text-emerald-300 font-bold">
                   {margenHorizontal > 0 ? `+${margenHorizontal}` : margenHorizontal}mm
                 </span>
                 <button
                   type="button"
                   onClick={() => setMargenHorizontal((prev) => Math.min(25, prev + 1))}
                   title="Desplazar a la derecha (+1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors"
+                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
                 >
                   ►
                 </button>
@@ -1194,7 +1206,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   type="button"
                   onClick={() => setMargenHorizontal(0)}
                   title="Restablecer margen a 0mm"
-                  className="text-[10px] text-slate-500 hover:text-amber-600 underline ml-0.5"
+                  className="text-[10px] text-slate-400 hover:text-amber-400 underline ml-0.5"
                 >
                   Reset
                 </button>
@@ -1208,13 +1220,13 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
             <button
               type="button"
               onClick={() => setMostrarGuia(!mostrarGuia)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-xs ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                 mostrarGuia 
-                  ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100' 
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
+                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
               }`}
             >
-              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-600" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
+              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5" />}
               <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
             </button>
 
@@ -1223,26 +1235,26 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
               type="button"
               onClick={handleGuardarConfiguracion}
               title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-xs ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
                 guardadoFeedback
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                  : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400'
+                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-emerald-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-amber-500/40 hover:border-amber-400 hover:text-amber-300'
               }`}
             >
               {guardadoFeedback ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
                   <span>¡Guardado!</span>
                 </>
               ) : (
                 <>
-                  <Save className="w-3.5 h-3.5 text-amber-600" />
+                  <Save className="w-3.5 h-3.5 text-amber-400" />
                   <span>Guardar Config.</span>
                 </>
               )}
             </button>
 
-            {/* Botón Imprimir Hoja (En su posición original) */}
+            {/* Botón Imprimir Hoja */}
             <button
               id="btn-imprimir-hoja"
               type="button"
@@ -1252,29 +1264,6 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
               <Printer className="w-4 h-4" />
               <span>Imprimir Hoja</span>
             </button>
-
-            {/* Campo Registros Públicos Civil y Comercial (Lomo) - Hacia la derecha */}
-            {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-300 shadow-xs">
-                <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
-                  Registros Públicos Civil y Comercial:
-                </span>
-                <input
-                  id="input-lomo-registro"
-                  type="text"
-                  value={protocoloTextoVertical}
-                  onChange={(e) => {
-                    setMostrarEjemploLomo(false);
-                    setProtocoloTextoVertical(e.target.value);
-                  }}
-                  onClick={() => setMostrarEjemploLomo(false)}
-                  onFocus={() => setMostrarEjemploLomo(false)}
-                  placeholder="Escriba aquí el texto..."
-                  className="bg-slate-50 border border-slate-300 text-slate-800 text-xs px-2.5 py-0.5 rounded-lg w-52 sm:w-64 outline-none focus:border-[#FF3131] font-medium"
-                  title="Texto vertical del lomo para Registros Públicos Civil y Comercial"
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -1636,7 +1625,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoBNombre} 
                   onChange={(e) => setIncisoBNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="Nombre completo (opcional)" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '169.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-nom" 
                 />
@@ -1646,7 +1635,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoBDoc} 
                   onChange={(e) => setIncisoBDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="C.I. / RUC" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
                   style={{ position: 'absolute', top: '169.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-doc" 
                 />
@@ -1656,7 +1645,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoBDom} 
                   onChange={(e) => setIncisoBDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="Ciudad / Domicilio" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
                   style={{ position: 'absolute', top: '180.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-dom" 
                 />
@@ -1668,7 +1657,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoCNombre} 
                   onChange={(e) => setIncisoCNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************************************" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '192.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-nom" 
                 />
@@ -1678,7 +1667,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoCDoc} 
                   onChange={(e) => setIncisoCDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
                   style={{ position: 'absolute', top: '192.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-doc" 
                 />
@@ -1688,7 +1677,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoCDom} 
                   onChange={(e) => setIncisoCDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************************************" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
                   style={{ position: 'absolute', top: '203.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-dom" 
                 />
@@ -1700,7 +1689,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoDNombre} 
                   onChange={(e) => setIncisoDNombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************************************" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '215.5mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-nom" 
                 />
@@ -1710,7 +1699,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoDDoc} 
                   onChange={(e) => setIncisoDDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************" 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
                   style={{ position: 'absolute', top: '215.5mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-doc" 
                 />
@@ -1720,7 +1709,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                   value={incisoDDom} 
                   onChange={(e) => setIncisoDDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="****************************************" 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
                   style={{ position: 'absolute', top: '225.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-dom" 
                 />
@@ -2332,7 +2321,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
           {/* PLANTILLA 0: SELLADO NOTARIAL - PROTOCOLO (25 RENGLONES Y TEXTO VERTICAL)   */}
           {/* ========================================================================= */}
           {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-            <div id="contenedor-paginas-protocolo" className="flex flex-col gap-12 print:gap-0 print:py-0 print:m-0 print:p-0 print:bg-white items-center bg-slate-100 py-8">
+            <div id="contenedor-paginas-protocolo" className="flex flex-col gap-12 print:gap-0 print:py-0 print:m-0 print:p-0 print:bg-white items-center bg-slate-900 py-12">
               {protocoloPaginas
                 .filter((textoPagina, i) => i === 0 || (textoPagina && textoPagina.trim() !== ''))
                 .map((textoPagina, index, arr) => {
@@ -2366,29 +2355,15 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                       {/* CAPA 1: TEXTO VERTICAL (Lomo, ÚNICAMENTE en la Primera Página, de abajo hacia arriba) */}
                       {index === 0 && (
                         <div 
-                          onClick={() => {
-                            setMostrarEjemploLomo(false);
-                            const inputLomo = document.getElementById('input-lomo-registro');
-                            if (inputLomo) inputLomo.focus();
-                          }}
-                          className={`texto-vertical-sello lomo-impresion z-10 print:visible ${
-                            mostrarEjemploLomo ? 'cursor-pointer hover:opacity-80' : 'pointer-events-none'
-                          }`}
-                          title={mostrarEjemploLomo ? 'Haga clic para borrar el ejemplo y escribir texto de registro' : ''}
+                          className="texto-vertical-sello lomo-impresion pointer-events-none z-10 print:visible"
                           style={{ position: 'absolute', left: '15mm', top: '42.55mm', width: '12mm', height: '211.75mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {(protocoloTextoVertical.trim() !== '' || mostrarEjemploLomo) && (
-                            <span
-                              className={`texto-vertical-contenido text-[7pt] tracking-[0.5mm] whitespace-nowrap ${
-                                !protocoloTextoVertical.trim() && mostrarEjemploLomo
-                                  ? 'text-slate-400 italic font-normal print:hidden'
-                                  : 'text-slate-700 font-bold print:text-black'
-                              }`}
-                              style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'inline-block' }}
-                            >
-                              {protocoloTextoVertical.trim() !== '' ? protocoloTextoVertical : TEXTO_EJEMPLO_LOMO}
-                            </span>
-                          )}
+                          <span
+                            className="texto-vertical-contenido text-[7pt] font-bold tracking-[0.5mm] whitespace-nowrap text-slate-400 print:text-black"
+                            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', display: 'inline-block' }}
+                          >
+                            {protocoloTextoVertical}
+                          </span>
                         </div>
                       )}
 
@@ -2398,14 +2373,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                         value={textoPagina}
                         onChange={(e) => handleTextareaChange(index, e)}
                         onKeyDown={(e) => handleKeyDown(index, e)}
-                        onClick={() => limpiarTextoEjemplo(index)}
-                        onFocus={() => limpiarTextoEjemplo(index)}
                         placeholder={`Redacte aquí la ${isAnverso ? 'cara frontal (Anverso)' : 'cara trasera (Reverso)'}...`}
-                        className={`absolute z-20 bg-transparent outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden cursor-text ${
-                          textoPagina === TEXTO_EJEMPLO_PROTOCOLO
-                            ? 'text-slate-400 italic font-normal'
-                            : 'text-black font-bold text-justify'
-                        }`}
+                        className="absolute z-20 bg-transparent text-black font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
                         style={{
                           position: 'absolute',
                           top: '42.55mm',
@@ -2437,7 +2406,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ ho
                           padding: '0mm',
                         }}
                       >
-                        {textoPagina === TEXTO_EJEMPLO_PROTOCOLO ? '' : textoPagina}
+                        {textoPagina}
                       </div>
                     </div>
                   );

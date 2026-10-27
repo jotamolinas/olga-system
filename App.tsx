@@ -844,6 +844,30 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     localStorage.setItem('ihara_config', JSON.stringify(config));
   }, [config]);
 
+  // Sincronización global del Modo Dark (olga_theme) con el nodo raíz
+  useEffect(() => {
+    const syncTheme = (e?: any) => {
+      try {
+        const isDark =
+          e?.detail?.isDark !== undefined
+            ? Boolean(e.detail.isDark)
+            : localStorage.getItem('olga_theme') === 'dark';
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch {}
+    };
+    syncTheme();
+    window.addEventListener('olga_theme_changed', syncTheme);
+    window.addEventListener('storage', syncTheme);
+    return () => {
+      window.removeEventListener('olga_theme_changed', syncTheme);
+      window.removeEventListener('storage', syncTheme);
+    };
+  }, []);
+
   // One-time migration for old local storage data
   useEffect(() => {
     if (currentUser) {
@@ -1302,7 +1326,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const visiblePagares = pagares;
 
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-pattern text-slate-800 print:block print:h-auto print:overflow-visible print:bg-white" id="main-panel-container">
+    <div className="flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-pattern dark:bg-[#0B0F17] text-slate-800 dark:text-slate-100 transition-colors duration-200 print:block print:h-auto print:overflow-visible print:bg-white" id="main-panel-container">
       
       {/* Backdrop overlay for mobile & desktop menu */}
       {isMobileMenuOpen && (
@@ -1313,7 +1337,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       )}
 
       {/* Sidebar Navigation Drawer (Collapsible) */}
-      <aside className={`fixed inset-y-0 left-0 z-[100] w-80 bg-slate-900 text-white flex flex-col pt-8 pb-6 px-6 shadow-2xl shrink-0 overflow-y-auto transition-transform duration-300 ease-in-out print:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-[100] w-80 bg-slate-900 dark:bg-[#121824]/95 dark:backdrop-blur-xl dark:border-r dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] text-white flex flex-col pt-8 pb-6 px-6 shadow-2xl shrink-0 overflow-y-auto transition-transform duration-300 ease-in-out print:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
         {/* Brand identity */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-6">
@@ -1343,7 +1367,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 return (
                   <span
                     onClick={() => setShowBenefits(true)}
-                    className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-2 py-1 rounded text-[10px] shadow-[0_0_10px_rgba(234,179,8,0.5)] cursor-pointer transition-transform hover:scale-105 inline-block"
+                    className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-2 py-1 rounded text-[10px] shadow-[0_0_10px_rgba(234,179,8,0.5)] dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] cursor-pointer transition-transform hover:scale-105 inline-block"
                   >
                     PLAN FULL
                   </span>
@@ -1679,20 +1703,20 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       </aside>
 
       {/* Main Content Workspace viewport */}
-      <main className="flex-grow flex flex-col h-full overflow-hidden relative" id="main-content-viewport">
+      <main className="flex-grow flex flex-col h-full overflow-hidden relative dark:bg-[#0B0F17]" id="main-content-viewport">
         
         {/* Dynamic header display */}
-        <header className="bg-white/80 border-b border-slate-100 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md print:hidden">
+        <header className="bg-white/80 dark:bg-[#121824]/90 dark:backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md transition-colors print:hidden">
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl shrink-0 transition-colors border border-slate-200"
+              className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-xl shrink-0 transition-colors border border-slate-200 dark:border-slate-700"
               title="Abrir menú"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200">
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 hidden sm:flex items-center justify-center bg-slate-900 border border-slate-200 dark:border-slate-700">
               {logoInstitucional ? (
                 <img src={logoInstitucional} alt="Logo" className="w-full h-full object-cover" />
               ) : (
@@ -1700,13 +1724,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
+              <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none truncate">
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
                   : (customBranding.nombreInstitucion || userData?.razonSocial || workspaceName || config.escribania.nombre)
                 }
               </h1>
-              <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
+              <p className="text-[8px] md:text-[10px] text-slate-400 dark:text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
                 {isOperador 
                   ? `Operador Notarial • ${workspaceName || 'Escribanía Titular'}`
                   : `${customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular ${userData?.matricula || config.escribania.nro_registro}`
@@ -1741,7 +1765,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       <div className="flex items-center shrink-0 flex-shrink-0">
         <span 
           onClick={() => setShowBenefits(true)}
-          className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
+          className="cursor-pointer bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-black font-extrabold px-3 py-1 rounded shadow-[0_0_10px_rgba(234,179,8,0.5)] dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] text-[10px] sm:text-xs transition-transform hover:scale-105 whitespace-nowrap"
         >
           {nombrePlan}
         </span>
@@ -2017,15 +2041,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
               return (
                 /* Conversational assistance with O.L.G.A. IA */
-                <div className="bg-white p-4 md:p-8 md:rounded-[2.5rem] border-0 md:border md:border-slate-100 shadow-none md:shadow-md flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message" id="chat-assistant-container">
-                  <div className="border-b border-slate-50 pb-4 shrink-0">
+                <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-4 md:p-8 md:rounded-[2.5rem] border-0 md:border md:border-slate-100 shadow-none md:shadow-md flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message" id="chat-assistant-container">
+                  <div className="border-b border-slate-50 dark:border-slate-800/80 pb-4 shrink-0">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
-                        <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-2.5">
+                        <h2 className="text-2xl font-bold font-serif text-slate-800 dark:text-slate-100 flex items-center gap-2.5">
                           {esPlanFull ? <Sparkles className="w-6 h-6 text-[#FF3131]" /> : <MessageSquare className="w-6 h-6 text-[#FF3131]" />}
                           {esPlanFull ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Asistente Jurídico y Tributario'}
                         </h2>
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="text-xs text-slate-400 dark:text-slate-400 mt-1">
                           {esPlanFull 
                             ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
                             : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
@@ -2035,8 +2059,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                       {/* Estado de acceso / Plan badge */}
                       <div className="shrink-0 flex items-center gap-2">
                         {tienePlanPago ? (
-                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${esPlanFull ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${esPlanFull ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-gradient-to-r dark:from-amber-500 dark:via-yellow-400 dark:to-amber-600 dark:text-slate-950 dark:font-bold dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] dark:border-amber-400' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'}`}>
+                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500 dark:bg-slate-950' : 'bg-emerald-500'}`}></div>
                             {esPlanFull ? 'Plan Full / Oráculo Habilitado' : 'Plan Básico Activo'}
                           </div>
                         ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
@@ -2054,13 +2078,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                   </div>
 
                   {/* Dialog Messages viewport */}
-                  <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 dark:bg-[#0B0F17]/90 rounded-3xl border border-slate-100 dark:border-slate-800/80">
                     {chatMessages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
+                        <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 dark:bg-[#FF3131] text-white rounded-tr-none' : 'bg-white dark:bg-[#121824] border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
                           {msg.role === 'model' ? (
                             <div className="flex flex-col gap-2 relative group w-full box-border">
-                              <div id={`model-msg-${i}`} className="markdown-body prose prose-slate max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 border-b border-transparent group-hover:border-slate-50 pb-2">
+                              <div id={`model-msg-${i}`} className="markdown-body prose prose-slate dark:prose-invert max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 dark:prose-strong:text-slate-100 border-b border-transparent group-hover:border-slate-50 dark:group-hover:border-slate-800 pb-2">
                                 <ReactMarkdown>{msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text}</ReactMarkdown>
                               </div>
                               <div className="flex items-center gap-2 self-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2116,10 +2140,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
                   {/* Question Input form bar */}
                   {tieneAccesoChat ? (
-                    <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
+                    <div className="flex flex-col gap-1 bg-slate-100 dark:bg-[#0B0F17] dark:border dark:border-slate-800/80 p-2 md:rounded-2xl shrink-0">
                       {/* Oracle Admin / Full Plan Chips */}
                       {esPlanFull && (
-                        <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
+                        <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60 dark:border-slate-800">
                           <button
                             type="button"
                             onClick={() => handleSendChatMessage('Actúa como auditor legal. Analiza este documento y enumera cualquier cláusula abusiva, usura o renuncia ilegal de derechos según el Código Civil Paraguayo.')}
@@ -2212,7 +2236,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                             }
                           }}
                           placeholder={esPlanFull ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta jurídica al Asistente O.L.G.A...."}
-                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
+                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
                         <button
                           onClick={() => handleSendChatMessage()}
@@ -2372,10 +2396,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             {/* Modal de Beneficios Plan Full */}
       {showBenefits && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-yellow-500 rounded-xl p-6 w-full box-border max-w-sm shadow-2xl relative">
-            <h3 className="text-yellow-500 text-lg font-black mb-4 flex items-center gap-2">
-              <Star className="w-5 h-5" /> Beneficios Plan Full
-            </h3>
+          <div className="bg-slate-900 dark:bg-[#121824]/95 dark:backdrop-blur-xl border border-yellow-500 dark:border-amber-500/80 dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] rounded-2xl p-6 w-full box-border max-w-sm shadow-2xl relative">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-yellow-500 dark:text-amber-400 text-lg font-black flex items-center gap-2">
+                <Star className="w-5 h-5" /> Beneficios Plan Full
+              </h3>
+              <span className="px-2.5 py-0.5 rounded text-[10px] bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 font-bold shadow-[0_0_20px_rgba(245,158,11,0.35)]">
+                FULL
+              </span>
+            </div>
             <ul className="space-y-3 mb-6 text-sm text-slate-200">
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Consultas IA: Ilimitadas

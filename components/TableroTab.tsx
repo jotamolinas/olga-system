@@ -79,22 +79,22 @@ const OverlayDetails: React.FC<{
 
   return createPortal(
     <div className="absolute inset-0 z-50 flex items-center justify-center p-4 md:p-8 animate-fade-in bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full box-border max-w-4xl max-h-full flex flex-col overflow-hidden animate-slide-up border border-slate-100 relative">
-        <div className="p-6 md:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2.5rem] shadow-2xl w-full box-border max-w-4xl max-h-full flex flex-col overflow-hidden animate-slide-up border border-slate-100 relative">
+        <div className="p-6 md:p-8 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-[#0B0F17]/60">
           <div className="flex items-center gap-4">
-             <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-700">
+             <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-sm text-slate-700 dark:text-slate-100">
                {icon}
              </div>
              <div>
-               <h3 className="text-xl font-bold font-serif text-slate-800">{title}</h3>
-               <p className="text-xs font-black uppercase tracking-widest text-slate-400 mt-1">{items.length} Registros</p>
+               <h3 className="text-xl font-bold font-serif text-slate-800 dark:text-slate-100">{title}</h3>
+               <p className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-400 mt-1">{items.length} Registros</p>
              </div>
           </div>
-          <button onClick={onClose} className="p-3 bg-white hover:bg-slate-100 text-slate-500 rounded-2xl transition-colors shadow-sm">
+          <button onClick={onClose} className="p-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-2xl transition-colors shadow-sm">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 md:p-8 overflow-y-auto flex-grow bg-slate-50">
+        <div className="p-6 md:p-8 overflow-y-auto flex-grow bg-slate-50 dark:bg-[#0B0F17]">
            {items.length === 0 ? (
              <div className="text-center py-12">
                <p className="text-slate-400 font-bold">No hay registros para mostrar.</p>
@@ -104,7 +104,7 @@ const OverlayDetails: React.FC<{
                {items.map((item, idx) => (
                  <div 
                    key={idx} 
-                   className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5 hover:bg-slate-50`}
+                   className={`bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5 hover:bg-slate-50 dark:hover:bg-slate-800/70`}
                    onClick={() => {
                      if (type === 'escritos' && onOpenDocument && item.texto) {
                        onOpenDocument(item.texto);
@@ -118,14 +118,14 @@ const OverlayDetails: React.FC<{
                    {type === 'pagares' ? (
                      <>
                        <div>
-                         <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                            <FileText className="w-4 h-4 text-blue-400" />
                            Pagaré Correlativo: {(item as Pagare).correlativo || `#${(item as Pagare).id?.slice(0,6)}`}
                          </p>
-                         <p className="text-xs text-slate-500 mt-1.5 ml-6">Fecha de pago: {(item as Pagare).fecha_primer_pago || 'No definida'}</p>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 ml-6">Fecha de pago: {(item as Pagare).fecha_primer_pago || 'No definida'}</p>
                          <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
                            <span className="text-slate-400 font-medium">Responsable:</span>
-                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{(item as Pagare).creator_name || (item as any).creatorName || 'Titular'}</span>
+                           <span className="font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">{(item as Pagare).creator_name || (item as any).creatorName || 'Titular'}</span>
                            {((item as Pagare).creator_role === 'operador' || (item as any).creatorRole === 'operador') && (
                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                                Operador
@@ -135,47 +135,47 @@ const OverlayDetails: React.FC<{
                        </div>
                        <div className="text-right">
                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Total ({(item as Pagare).moneda})</p>
-                         <p className="text-sm font-bold text-emerald-600 mt-0.5">{formatCurrencyValue((item as Pagare).valor_total || 0, (item as Pagare).moneda)}</p>
+                         <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{formatCurrencyValue((item as Pagare).valor_total || 0, (item as Pagare).moneda)}</p>
                        </div>
                      </>
                    ) : type === 'escritos' ? (
                      <>
                        <div className="flex-1 min-w-0 pr-4">
-                         <p className="text-sm font-bold text-slate-800 flex items-center gap-2 truncate">
+                         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 truncate">
                            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
                            {item.tipo || 'Escrito'}
                          </p>
-                         <p className="text-xs text-slate-500 mt-1 ml-6">
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-6">
                            {item.createdAt ? new Date(item.createdAt).toLocaleDateString('es-PY') : (item.fechaCreacion?.toMillis ? new Date(item.fechaCreacion.toMillis()).toLocaleDateString('es-PY') : 'Fecha desconocida')}
                          </p>
                          <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
                            <span className="text-slate-400 font-medium">Responsable:</span>
-                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{item.creator_name || item.creatorName || 'Titular'}</span>
+                           <span className="font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">{item.creator_name || item.creatorName || 'Titular'}</span>
                            {(item.creator_role === 'operador' || item.creatorRole === 'operador') && (
                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                                Operador
                              </span>
                            )}
                          </div>
-                         <p className="text-xs text-slate-500 mt-1.5 ml-6 italic line-clamp-2">
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 ml-6 italic line-clamp-2">
                            {item.texto ? `"${item.texto.substring(0, 150)}..."` : 'Sin contenido de texto extraído'}
                          </p>
                        </div>
                        <div className="text-right shrink-0">
-                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-xl inline-block">Guardado</p>
+                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl inline-block">Guardado</p>
                        </div>
                      </>
                    ) : (
                      <>
                         <div>
-                         <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                            <Users className="w-4 h-4 text-emerald-400" />
                            {(item as Persona).nombre} {(item as Persona).apellido || ''}
                          </p>
-                         <p className="text-xs text-slate-500 mt-1.5 ml-6">{(item as Persona).tipo_documento}: {(item as Persona).nro_documento}</p>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 ml-6">{(item as Persona).tipo_documento}: {(item as Persona).nro_documento}</p>
                          <div className="flex items-center gap-1.5 mt-1 ml-6 text-[10px]">
                            <span className="text-slate-400 font-medium">Responsable:</span>
-                           <span className="font-bold text-slate-700 truncate max-w-[140px]">{(item as Persona).creator_name || (item as any).creatorName || 'Titular'}</span>
+                           <span className="font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">{(item as Persona).creator_name || (item as any).creatorName || 'Titular'}</span>
                            {((item as Persona).creator_role === 'operador' || (item as any).creatorRole === 'operador') && (
                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                                Operador
@@ -184,7 +184,7 @@ const OverlayDetails: React.FC<{
                          </div>
                        </div>
                        <div className="text-right">
-                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-xl inline-block">{(item as Persona).tipo_persona}</p>
+                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl inline-block">{(item as Persona).tipo_persona}</p>
                        </div>
                      </>
                    )}
@@ -459,35 +459,35 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
         {/* TARJETA 1: Pagarés */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-          <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white">
+        <div className="group relative bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white">
             <FileText className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Total Pagarés</p>
-            <p className="text-3xl font-black text-slate-800 flex items-baseline gap-2">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-400 mb-1">Total Pagarés</p>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 flex items-baseline gap-2">
               <CountUp end={totalPagares} />
               {pagaresAnulados > 0 && <span className="text-sm font-bold text-slate-400">({pagaresAnulados} ANULADOS)</span>}
             </p>
           </div>
-          <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <button onClick={() => setActiveOverlay('pagares')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">
+          <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <button onClick={() => setActiveOverlay('pagares')} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50 dark:hover:bg-slate-700">
               Ver Detalles <ChevronRight className="w-3 h-3" />
             </button>
           </div>
         </div>
 
         {/* TARJETA 2: Personas Activas */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-          <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white">
+        <div className="group relative bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white">
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Personas Activas</p>
-            <p className="text-3xl font-black text-slate-800"><CountUp end={personasActivas} /></p>
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-400 mb-1">Personas Activas</p>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100"><CountUp end={personasActivas} /></p>
           </div>
-          <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <button onClick={() => setActiveOverlay('personas')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">
+          <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <button onClick={() => setActiveOverlay('personas')} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50 dark:hover:bg-slate-700">
               Ver Detalles <ChevronRight className="w-3 h-3" />
             </button>
           </div>
@@ -495,34 +495,34 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
         {/* TARJETA 3: Escritos Guardados */}
         
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-          <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white">
+        <div className="group relative bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white">
             <Clock className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Escritos Guardados</p>
-            <p className="text-3xl font-black text-slate-800"><CountUp end={escritos.length} /></p>
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-400 mb-1">Escritos Guardados</p>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100"><CountUp end={escritos.length} /></p>
           </div>
-          <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <button onClick={() => setActiveOverlay('escritos')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">
+          <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <button onClick={() => setActiveOverlay('escritos')} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50 dark:hover:bg-slate-700">
               Ver Detalles <ChevronRight className="w-3 h-3" />
             </button>
           </div>
         </div>
 
         {/* TARJETA 4: Valor Notariado */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-          <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white">
+        <div className="group relative bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white">
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Total Valor Notariado</p>
-            <p className="text-3xl font-black text-slate-800">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-400 mb-1">Total Valor Notariado</p>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100">
               Gs. <CountUp end={totalValorNotariado} isCurrency={true} />
             </p>
           </div>
-          <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <button onClick={() => setActiveOverlay('valor')} className="bg-white text-slate-900 border border-slate-200 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50">
+          <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <button onClick={() => setActiveOverlay('valor')} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-xl px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-300 hover:bg-slate-50 dark:hover:bg-slate-700">
               Ver Detalles <ChevronRight className="w-3 h-3" />
             </button>
           </div>
@@ -531,15 +531,15 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       </div>
 
       {/* Resumen de Estado de Pagarés (30 días) */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8 flex flex-col md:flex-row gap-8">
+      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8 flex flex-col md:flex-row gap-8">
         <div className="flex flex-col flex-1 gap-2">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center">
               <PieChartIcon className="w-5 h-5" />
             </div>
-            <h3 className="text-xl font-extrabold text-slate-800 tracking-tight">Estado de Pagarés</h3>
+            <h3 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Estado de Pagarés</h3>
           </div>
-          <p className="text-slate-500 text-sm leading-relaxed max-w-md">
+          <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed max-w-md">
             Distribución de los pagarés registrados en los últimos 30 días según su estado operativo (Pendiente, Cobrado, Vencido, Anulado).
           </p>
           
@@ -547,8 +547,8 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             {chartData.map(entry => (
               <div key={entry.name} className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-sm font-bold text-slate-700 flex-1">{entry.name}</span>
-                <span className="text-sm font-black text-slate-900">{entry.value}</span>
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 flex-1">{entry.name}</span>
+                <span className="text-sm font-black text-slate-900 dark:text-slate-100">{entry.value}</span>
               </div>
             ))}
           </div>
@@ -583,9 +583,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
       
       {/* Últimos Registros */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 md:p-8 border-b border-slate-50 flex items-center justify-between">
-          <h3 className="text-xl font-bold font-serif text-slate-800">Gestión de Escritos (O.L.G.A.)</h3>
+      <div className="bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+        <div className="p-6 md:p-8 border-b border-slate-50 dark:border-slate-800/80 flex items-center justify-between">
+          <h3 className="text-xl font-bold font-serif text-slate-800 dark:text-slate-100">Gestión de Escritos (O.L.G.A.)</h3>
         </div>
         <div className="p-6 md:p-8">
           <div className="space-y-4">
@@ -601,17 +601,17 @@ export const TableroTab: React.FC<TableroTabProps> = ({
               return (
                 <div 
                   key={escrito.id || idx}
-                  className="p-4 rounded-2xl border bg-white border-slate-100 shadow-sm transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className="p-4 rounded-2xl border bg-white dark:bg-[#0B0F17]/80 border-slate-100 dark:border-slate-800/80 shadow-sm transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">
                       <FileText className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-800">
+                      <h4 className="font-bold text-slate-800 dark:text-slate-100">
                         {escrito.tipo || 'Documento Generado'}
                       </h4>
-                      <div className="text-xs text-slate-500 mt-1 max-w-[200px] md:max-w-md truncate">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[200px] md:max-w-md truncate">
                         {previewText}
                       </div>
                     </div>
@@ -622,7 +622,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                       <Clock className="w-3 h-3" /> {dateStr}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-slate-700">
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
                         Por: {escrito.creator_name || 'Titular'}
                       </span>
                       {escrito.creator_role === 'operador' && (
