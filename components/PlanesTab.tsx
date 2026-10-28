@@ -18,7 +18,14 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
       monthlyPrice: '250.000',
       annualBasePrice: '3.000.000',
       annualDiscountedPrice: '2.500.000',
-      features: ['Asistente O.L.G.A. Básico', 'Generación de Pagarés', 'Exportación de PDF (Marca de Agua)', 'Soporte Estándar'],
+      features: [
+        'Dashboard',
+        'Gestión de Pagarés',
+        'Fichero Personas',
+        'Gestión de Escritos',
+        'Asistente IA',
+        'Soporte'
+      ],
       recommended: false,
     },
     {
@@ -29,7 +36,16 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
       monthlyPrice: '575.000',
       annualBasePrice: '6.900.000',
       annualDiscountedPrice: '5.750.000',
-      features: ['Todo lo del Básico', 'Gestión de Escritos Libre', 'Plantillas Legales Simples', 'Exportación Limpia (Sin Marca)'],
+      features: [
+        'Dashboard',
+        'Gestión de Pagarés',
+        'Fichero Personas',
+        'Gestión de Escritos',
+        'Asistente IA',
+        'Lienzo Notarial',
+        'Presupuesto',
+        'Soporte'
+      ],
       recommended: true,
     },
     {
@@ -40,7 +56,12 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
       monthlyPrice: '1.000.000',
       annualBasePrice: '12.000.000',
       annualDiscountedPrice: '10.000.000',
-      features: ['Todo lo del Pro', 'Estatutos y Contratos Corporativos', 'Historial de Auditoría (Logs)', 'Soporte Prioritario'],
+      features: [
+        'Todo lo del Plan Pro',
+        'El Oráculo (en vez de Asistente IA)',
+        'Auditoría y Estatutos',
+        'Soporte Corporativo'
+      ],
       recommended: false,
     },
     {
@@ -51,7 +72,12 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
       monthlyPrice: '1.350.000',
       annualBasePrice: '16.200.000',
       annualDiscountedPrice: '13.500.000',
-      features: ['Todo lo de Empresa', 'El Oráculo Legal', 'Módulo Perfil SEPRELAD', 'Procesamiento Masivo y Traducción'],
+      features: [
+        'Todo lo del Plan Empresa',
+        'El Oráculo Ilimitado',
+        'Skin Glassmorphism Exclusivo',
+        'Soporte VIP 24/7'
+      ],
       recommended: false,
     }
   ];

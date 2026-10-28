@@ -395,8 +395,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   const isAdmin = forceAdmin && isActualAdminUser;
 
-  const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'basico').toLowerCase().trim();
+  const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || 'basico').toLowerCase().trim();
+  // El skin dorado y efecto Glassmorphism es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
+  const esPlanPro = planActual.includes('pro');
+  const esPlanEmpresa = planActual.includes('empresa');
+  // Plan Pro, Empresa y Full tienen acceso a Lienzo Notarial y Presupuestos
+  const tieneLienzoYPresupuestos = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || esPlanPro || esPlanEmpresa || planActual.includes('full');
+  // Plan Full y Empresa tienen acceso a El Oráculo
+  const tieneOraculo = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full') || esPlanEmpresa;
 
   useEffect(() => {
     if (isAdmin) {
@@ -1701,25 +1708,57 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
 
             {activeTab === 'lienzo' && (
-              <EditorNotarialOficial 
-                onVolver={() => setActiveTab('escritos')} 
-                esPlanFull={esPlanFull}
-              />
+              tieneLienzoYPresupuestos ? (
+                <EditorNotarialOficial 
+                  onVolver={() => setActiveTab('escritos')} 
+                  esPlanFull={esPlanFull}
+                />
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
+                  <Stamp className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Lienzo Notarial Exclusivo</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    El Lienzo Notarial Oficial está disponible a partir del <strong>Plan Pro</strong>, <strong>Plan Empresa</strong> y <strong>Plan Full</strong>.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('planes')}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-900/40 cursor-pointer"
+                  >
+                    Ver Planes Disponibles
+                  </button>
+                </div>
+              )
             )}
 
             {activeTab === 'facturacion' && (
-              <ModuloPresupuestos 
-                onVolver={() => setActiveTab('lienzo')}
-                userId={currentUser?.uid || currentUser?.email || 'default'}
-                userProfile={userProfile || userData}
-                onIrAConfiguracion={() => setActiveTab('cuenta')}
-                escribaniaNombre={workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
-                registroNotarial={customBranding.registroNotarial || userData?.matricula || config.escribania.nro_registro}
-                rucEscribania={customBranding.ruc || userData?.ruc || '80012345-6'}
-                direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
-                telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
-                esPlanFull={esPlanFull}
-              />
+              tieneLienzoYPresupuestos ? (
+                <ModuloPresupuestos 
+                  onVolver={() => setActiveTab('lienzo')}
+                  userId={currentUser?.uid || currentUser?.email || 'default'}
+                  userProfile={userProfile || userData}
+                  onIrAConfiguracion={() => setActiveTab('cuenta')}
+                  escribaniaNombre={workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
+                  registroNotarial={customBranding.registroNotarial || userData?.matricula || config.escribania.nro_registro}
+                  rucEscribania={customBranding.ruc || userData?.ruc || '80012345-6'}
+                  direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
+                  telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
+                  esPlanFull={esPlanFull}
+                />
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
+                  <CreditCard className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Módulo de Presupuestos Exclusivo</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    El Módulo de Presupuestos está disponible a partir del <strong>Plan Pro</strong>, <strong>Plan Empresa</strong> y <strong>Plan Full</strong>.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('planes')}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-900/40 cursor-pointer"
+                  >
+                    Ver Planes Disponibles
+                  </button>
+                </div>
+              )
             )}
             
             {activeTab === 'cuenta' && (
@@ -1769,45 +1808,50 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
 
             {activeTab === 'chat' && (() => {
-              const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
+              const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || '').toLowerCase();
               const tienePlanPago = rawPlan.includes('basico') || rawPlan.includes('básico') || rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || String(userData?.estadoPago || userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO' || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-              const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || rawPlan.includes('full');
+              // Skin dorado SOLO para Plan Full:
+              const esPlanFullSkin = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || rawPlan.includes('full');
+              // El Oráculo para Plan Full y Plan Empresa:
+              const tieneOraculoChat = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || rawPlan.includes('full') || rawPlan.includes('empresa');
               const tieneAccesoChat = pruebaActiva || tienePlanPago;
 
               return (
                 /* Conversational assistance with O.L.G.A. IA */
                 <div className={`p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message ${
-                  esPlanFull 
+                  esPlanFullSkin 
                     ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
                     : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
                 }`} id="chat-assistant-container">
-                  <div className={`pb-4 shrink-0 border-b ${esPlanFull ? 'border-amber-100' : 'border-slate-800'}`}>
+                  <div className={`pb-4 shrink-0 border-b ${esPlanFullSkin ? 'border-amber-100' : 'border-slate-800'}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                          esPlanFull 
+                          esPlanFullSkin 
                             ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
                             : 'bg-slate-800 border border-slate-700 text-slate-300'
                         }`}>
-                          {esPlanFull ? <Sparkles className="w-6 h-6 text-amber-600" /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
+                          {tieneOraculoChat ? <Sparkles className={`w-6 h-6 ${esPlanFullSkin ? 'text-amber-600' : 'text-amber-400'}`} /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h2 className={`${esPlanFull ? 'text-slate-900' : 'text-white'} font-serif font-bold text-2xl tracking-tight`}>
-                              {esPlanFull ? 'El Oráculo de O.L.G.A.' : 'O.L.G.A. - Asistente Jurídico y Tributario'}
+                            <h2 className={`${esPlanFullSkin ? 'text-slate-900' : 'text-white'} font-serif font-bold text-2xl tracking-tight`}>
+                              {tieneOraculoChat ? 'El Oráculo de O.L.G.A.' : 'Asistente IA - O.L.G.A.'}
                             </h2>
                             <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow-xs ${
-                              esPlanFull 
+                              esPlanFullSkin 
                                 ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950' 
-                                : 'bg-red-600 text-white'
+                                : tieneOraculoChat
+                                  ? 'bg-slate-800 text-amber-400 border border-slate-700'
+                                  : 'bg-red-600 text-white'
                             }`}>
-                              O.L.G.A.
+                              {tieneOraculoChat ? 'EL ORÁCULO' : 'ASISTENTE IA'}
                             </span>
                           </div>
-                          <p className={`text-xs mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
-                            {esPlanFull 
-                              ? 'Supervisión, auditoría y análisis documental avanzado. Usa los chips para atajos rápidos.' 
-                              : 'Pregunte libremente a O.L.G.A. sobre legislación, redacción contractual o simulaciones.'}
+                          <p className={`text-xs mt-1 ${esPlanFullSkin ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {tieneOraculoChat 
+                              ? 'Supervisión, auditoría y análisis documental avanzado con El Oráculo.' 
+                              : 'Consultas sobre legislación, pagarés, personas, redacción de escritos y cálculos notariales.'}
                           </p>
                         </div>
                       </div>
@@ -1816,12 +1860,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                       <div className="shrink-0 flex items-center gap-2">
                         {tienePlanPago ? (
                           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
-                            esPlanFull 
+                            esPlanFullSkin 
                               ? 'bg-amber-50 text-amber-800 border-amber-200' 
                               : 'bg-slate-800 text-slate-300 border-slate-700'
                           }`}>
-                            <div className={`w-2 h-2 rounded-full ${esPlanFull ? 'bg-amber-500' : 'bg-emerald-400'}`}></div>
-                            {esPlanFull ? 'Plan Full / Oráculo Habilitado' : 'Plan Estándar Activo'}
+                            <div className={`w-2 h-2 rounded-full ${esPlanFullSkin ? 'bg-amber-500' : tieneOraculoChat ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
+                            {tieneOraculoChat ? 'El Oráculo Habilitado' : 'Asistente IA Habilitado'}
                           </div>
                         ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
                           <div className={`mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
@@ -1869,7 +1913,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                                     Exportar a Escrito
                                   </button>
                                 )}
-                                {(role === 'admin' || esPlanFull) && (
+                                {(role === 'admin' || esPlanFull || tieneOraculoChat) && (
                                   <button 
                                     onClick={() => {
                                       const elm = document.getElementById(`model-msg-${i}`);
@@ -1906,7 +1950,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                   {tieneAccesoChat ? (
                     <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
                       {/* Oracle Admin / Full Plan Chips */}
-                      {esPlanFull && (
+                      {(esPlanFull || tieneOraculoChat) && (
                         <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
                           <button
                             type="button"
@@ -1999,7 +2043,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                               handleSendChatMessage();
                             }
                           }}
-                          placeholder={esPlanFull ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta jurídica al Asistente O.L.G.A...."}
+                          placeholder={tieneOraculoChat ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta al Asistente IA..."}
                           className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
                         />
                         <button

@@ -104,8 +104,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
 
   // Insignia dinámica de plan
-  const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || 'PLAN FULL';
+  const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || activePlan || 'basico';
   const planNameStr = String(planRaw).trim().toUpperCase();
+  const planLower = planNameStr.toLowerCase();
+
+  const esAdmin = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com';
+  // El skin dorado es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
+  const esSkinDorado = esAdmin || planLower.includes('full');
+  // Plan Full y Plan Empresa tienen acceso a El Oráculo
+  const tieneOraculo = esAdmin || planLower.includes('full') || planLower.includes('empresa');
+  // Plan Pro, Full y Empresa tienen acceso a Lienzo Notarial y Presupuestos
+  const tieneLienzoYPresupuestos = esAdmin || planLower.includes('pro') || planLower.includes('empresa') || planLower.includes('full');
+
+  // En Plan Full y Empresarial se llama 'El Oráculo'; en Básico y Pro es 'Asistente IA'
+  const nombreAsistente = tieneOraculo ? 'El Oráculo' : 'Asistente IA';
 
   const renderPlanBadge = () => {
     if (isOperador) {
@@ -166,31 +178,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   const navItems: NavItem[] = [
-    { id: 'tablero', label: 'Tablero Principal', icon: Activity },
+    { id: 'tablero', label: 'Dashboard', icon: Activity },
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
     { id: 'personas', label: 'Fichero Personas', icon: Users },
     { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
-    { id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp },
-    { id: 'facturacion', label: 'Presupuestos / Factura', icon: CreditCard },
+    // Lienzo Notarial y Presupuesto: Disponibles exclusivamente a partir de Plan Pro, Full, Empresa o Admin
+    ...(tieneLienzoYPresupuestos ? [
+      { id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp },
+      { id: 'facturacion', label: 'Presupuesto', icon: CreditCard },
+    ] : []),
+    // Asistente IA / El Oráculo
+    {
+      id: 'chat',
+      label: nombreAsistente,
+      icon: tieneOraculo ? Sparkles : MessageSquare,
+      customRenderLabel: () => nombreAsistente
+    },
+    // Soporte
+    {
+      id: 'soporte',
+      label: 'Soporte',
+      icon: LifeBuoy,
+      customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte'
+    },
+    // Configuración de Escribanía / Cuenta
+    { id: 'cuenta', label: 'Configuración Escribanía', icon: Sliders },
     // Opciones administrativas
     { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
     { id: 'knowledge', label: 'Entrenamiento IA', icon: Database, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
     { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
-    // Asistente y Soporte
-    {
-      id: 'chat',
-      label: 'Asistente O.L.G.A.',
-      icon: (role === 'admin' || esPlanFull) ? Sparkles : MessageSquare,
-      customRenderLabel: () => (role === 'admin' || esPlanFull) ? 'El Oráculo IA' : 'Asistente O.L.G.A.'
-    },
-    { id: 'cuenta', label: 'Configuración Escribanía', icon: Sliders },
-    {
-      id: 'soporte',
-      label: 'Soporte y Ayuda',
-      icon: LifeBuoy,
-      customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte Notarial'
-    }
   ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || role === 'admin');
@@ -458,8 +475,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <Sparkles className="w-5 h-5 text-slate-300" />
                 </div>
               )}
-              <p className="text-xs font-semibold text-white">¿En qué puedo ayudarte?</p>
-              <p className="text-[11px] text-slate-400 mb-2.5 mt-0.5">Asistente notarial inteligente</p>
+              <p className="text-xs font-semibold text-white">
+                {tieneOraculo ? 'El Oráculo' : 'Asistente IA'}
+              </p>
+              <p className="text-[11px] text-slate-400 mb-2.5 mt-0.5">
+                {tieneOraculo ? 'Inteligencia Notarial y Auditoría' : 'Consultas y cálculos notariales'}
+              </p>
               <button
                 type="button"
                 onClick={() => {
@@ -467,13 +488,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setIsMobileMenuOpen(false);
                 }}
                 className={`w-full py-2 px-3 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  esPlanFull 
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35)]' 
+                  esSkinDorado 
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold shadow-[0_4px_14px_rgba(245,158,11,0.35)]' 
                     : 'bg-slate-700 hover:bg-slate-600 text-white border border-slate-600 shadow-sm'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 text-white/90" />
-                <span>Consultar IA →</span>
+                <Sparkles className={`w-3.5 h-3.5 ${esSkinDorado ? 'text-slate-950' : 'text-white/90'}`} />
+                <span>{tieneOraculo ? 'Consultar al Oráculo →' : 'Consultar Asistente IA →'}</span>
               </button>
             </div>
           )}
