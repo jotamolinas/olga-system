@@ -499,6 +499,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
+          {/* Logotipo en el Menú Lateral (Tanto en modo claro como oscuro) */}
+          <div className="flex items-center justify-center py-2 px-1 mb-1.5 transition-all">
+            {logoInstitucional ? (
+              <img
+                src={logoInstitucional}
+                alt="Logo Institucional"
+                className={`object-contain transition-all duration-300 ${
+                  isExpanded ? 'max-h-10 max-w-[140px]' : 'w-7 h-7 rounded-lg'
+                }`}
+              />
+            ) : (
+              <img
+                src="/logo-olga.png"
+                alt="Logo O.L.G.A."
+                className={`object-contain transition-all duration-300 ${
+                  isExpanded ? 'max-h-9 max-w-[130px]' : 'w-7 h-7'
+                }`}
+              />
+            )}
+          </div>
+
           {/* Fila de controles inferiores: Expandir/Fijar + Cerrar Sesión */}
           <div
             className={`flex items-center gap-1.5 ${
