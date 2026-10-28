@@ -271,8 +271,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
-        setAcreedorNombreRaw(res.nombre_o_razon_social);
-        if (res.direccion) setAcreedorDomicilioRaw(res.direccion);
+        setAcreedorNombreRaw(res.nombre_o_razon_social.trim());
+        if (res.direccion) setAcreedorDomicilioRaw(res.direccion.trim());
         setAcreedorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
         setFeedbackAcreedorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackAcreedorDnit(null), 4000);
@@ -306,8 +306,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
-        setDeudorNombreRaw(res.nombre_o_razon_social);
-        if (res.direccion) setDeudorDomicilioRaw(res.direccion);
+        setDeudorNombreRaw(res.nombre_o_razon_social.trim());
+        if (res.direccion) setDeudorDomicilioRaw(res.direccion.trim());
         setDeudorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
         setFeedbackDeudorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackDeudorDnit(null), 4000);
@@ -341,8 +341,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
-        setCodeudor1NombreRaw(res.nombre_o_razon_social);
-        if (res.direccion) setCodeudor1DomicilioRaw(res.direccion);
+        setCodeudor1NombreRaw(res.nombre_o_razon_social.trim());
+        if (res.direccion) setCodeudor1DomicilioRaw(res.direccion.trim());
         setCodeudor1Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
         setFeedbackCodeudor1Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor1Dnit(null), 4000);
@@ -376,8 +376,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
-        setCodeudor2NombreRaw(res.nombre_o_razon_social);
-        if (res.direccion) setCodeudor2DomicilioRaw(res.direccion);
+        setCodeudor2NombreRaw(res.nombre_o_razon_social.trim());
+        if (res.direccion) setCodeudor2DomicilioRaw(res.direccion.trim());
         setCodeudor2Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
         setFeedbackCodeudor2Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor2Dnit(null), 4000);

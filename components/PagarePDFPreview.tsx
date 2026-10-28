@@ -45,8 +45,9 @@ const EditableField = ({ value, onChange, className, style }: any) => {
   const ref = useRef<HTMLSpanElement>(null);
   
   useEffect(() => {
-    if (ref.current && ref.current.innerText !== value) {
-      ref.current.innerText = value || '';
+    const cleanVal = String(value || '').trim();
+    if (ref.current && ref.current.innerText !== cleanVal) {
+      ref.current.innerText = cleanVal;
     }
   }, [value]);
 
@@ -55,10 +56,10 @@ const EditableField = ({ value, onChange, className, style }: any) => {
       ref={ref}
       contentEditable
       suppressContentEditableWarning
-      className={`outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline-block ${className || ''}`}
-      style={{ minWidth: '20px', ...style }}
+      className={`outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline empty:inline-block empty:min-w-[20px] ${className || ''}`}
+      style={style}
       onBlur={(e) => {
-        onChange(e.target.innerText);
+        onChange(e.target.innerText.trim());
       }}
     />
   );
@@ -73,7 +74,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 }) => {
   const [pageSize, setPageSize] = useState<'legal' | 'a4'>('legal');
   const [baseCertificadoNro, setBaseCertificadoNro] = useState(pagare?.certificado_firmas_nro || '000406185');
-  const [fechaLugarEmision, setFechaLugarEmision] = useState(`${config?.escribania?.localidad || 'Hernandarias'}, ${pagare?.created_at ? new Date(pagare.created_at).getDate() : new Date().getDate()} de ${getMesNombre(pagare?.created_at ? new Date(pagare.created_at).getMonth() : new Date().getMonth()).toLowerCase()} de ${pagare?.created_at ? new Date(pagare.created_at).getFullYear() : new Date().getFullYear()} .-`);
+  const [fechaLugarEmision, setFechaLugarEmision] = useState(`${(config?.escribania?.localidad || 'Hernandarias').trim()}, ${pagare?.created_at ? new Date(pagare.created_at).getDate() : new Date().getDate()} de ${getMesNombre(pagare?.created_at ? new Date(pagare.created_at).getMonth() : new Date().getMonth()).toLowerCase().trim()} de ${pagare?.created_at ? new Date(pagare.created_at).getFullYear() : new Date().getFullYear()}.-`);
   const [tasaInteres, setTasaInteres] = useState('5');
   const [clausulaPenal, setClausulaPenal] = useState('454');
   const [moraAutomatica, setMoraAutomatica] = useState('424');
@@ -124,29 +125,29 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   };
 
   const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
-  const initialDeudorNombre = pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : '');
-  const initialDeudorDocumento = formatDocClean(pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : ''));
-  const rawDeudorDom = pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : '');
-  const initialDeudorDomicilio = (rawDeudorDom && rawDeudorDom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawDeudorDom : '';
+  const initialDeudorNombre = (pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : '') || '').trim();
+  const initialDeudorDocumento = formatDocClean(pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : '')).trim();
+  const rawDeudorDom = (pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : '') || '').trim();
+  const initialDeudorDomicilio = (rawDeudorDom && rawDeudorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawDeudorDom : '';
 
   const initialCodeudor1 = personas.find(p => p.id === pagare?.codeudor1_id);
-  const initialCodeudor1Nombre = pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : '');
-  const initialCodeudor1Documento = formatDocClean(pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : ''));
-  const rawCodeudor1Dom = pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : '');
-  const initialCodeudor1Domicilio = (rawCodeudor1Dom && rawCodeudor1Dom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor1Dom : '';
+  const initialCodeudor1Nombre = (pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : '') || '').trim();
+  const initialCodeudor1Documento = formatDocClean(pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : '')).trim();
+  const rawCodeudor1Dom = (pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : '') || '').trim();
+  const initialCodeudor1Domicilio = (rawCodeudor1Dom && rawCodeudor1Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor1Dom : '';
 
   const initialCodeudor2 = personas.find(p => p.id === pagare?.codeudor2_id);
-  const initialCodeudor2Nombre = pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : '');
-  const initialCodeudor2Documento = formatDocClean(pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : ''));
-  const rawCodeudor2Dom = pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : '');
-  const initialCodeudor2Domicilio = (rawCodeudor2Dom && rawCodeudor2Dom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor2Dom : '';
+  const initialCodeudor2Nombre = (pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : '') || '').trim();
+  const initialCodeudor2Documento = formatDocClean(pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : '')).trim();
+  const rawCodeudor2Dom = (pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : '') || '').trim();
+  const initialCodeudor2Domicilio = (rawCodeudor2Dom && rawCodeudor2Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor2Dom : '';
 
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  const rawAcreedorDom = pagare?.acreedor_domicilio_raw || '';
-  const [acreedorNombreEditable, setAcreedorNombreEditable] = useState(pagare?.acreedor_nombre_raw || '');
+  const rawAcreedorDom = (pagare?.acreedor_domicilio_raw || '').trim();
+  const [acreedorNombreEditable, setAcreedorNombreEditable] = useState((pagare?.acreedor_nombre_raw || '').trim());
   const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(
-    (rawAcreedorDom && rawAcreedorDom.trim().toUpperCase() !== 'NO ESPECIFICADO') ? rawAcreedorDom : ''
+    (rawAcreedorDom && rawAcreedorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawAcreedorDom : ''
   );
   const [deudorNombreEditable, setDeudorNombreEditable] = useState(initialDeudorNombre);
   const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(formatDocClean(initialDeudorDocumento));
@@ -539,11 +540,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   className="text-[13px] leading-relaxed text-slate-900 mb-6 space-y-3 text-justify relative z-10 break-inside-avoid print:break-inside-avoid font-sans outline-none focus:bg-slate-50 p-2 -mx-2 rounded transition-colors cursor-text"
                 >
                   <p>
-                    El día <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate())}</span> de <span className="uppercase">{getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth())}</span> del año <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear())}</span>, pagaré al Señor <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline-block" style={{width: Math.max(150, acreedorNombreEditable.length * 8) + "px"}} value={acreedorNombreEditable} onChange={setAcreedorNombreEditable} />
-                    {acreedorDomicilioEditable && acreedorDomicilioEditable.trim().toUpperCase() !== 'NO ESPECIFICADO' ? (
-                      <span>, en su domicilio en <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors inline-block" style={{width: Math.max(200, acreedorDomicilioEditable.length * 8) + "px"}} value={acreedorDomicilioEditable} onChange={setAcreedorDomicilioEditable} /></span>
-                    ) : ''}
-                    , la suma de GUARANIES <span className="uppercase">{numberToWords(item.monto)}</span> (Gs. {formatCurrencyValue(item.monto, pagare.moneda)}). Si este documento no fuera pagado, devengara un interés del <EditableField className="w-6 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={tasaInteres} onChange={setTasaInteres} />% mensual en concepto de cláusula penal (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={clausulaPenal} onChange={setClausulaPenal} /> C.C) desde la mora, que se producirá automáticamente (Art. <EditableField className="w-8 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={moraAutomatica} onChange={setMoraAutomatica} /> C.C) sin necesidad de interpelación judicial o extrajudicial alguna. Este documento lleva la cláusula "sin protesto" y en consecuencia, dispensa al portador de formalizar el protesto por falta de aceptación o de pago, para ejercer la acción de regreso (Art. <EditableField className="w-10 text-center outline-none border-b hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={dispensaProtesto} onChange={setDispensaProtesto} /> C.C). Las partes constituyen domicilio especial en los lugares fijados más abajo.-
+                    El día <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate()).trim()}</span> de <span className="uppercase">{getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth()).trim()}</span> del año <span className="uppercase">{numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear()).trim()}</span>, pagaré al Señor <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors" value={acreedorNombreEditable.trim()} onChange={(val: string) => setAcreedorNombreEditable(val.trim())} />{acreedorDomicilioEditable && acreedorDomicilioEditable.trim().toUpperCase() !== 'NO ESPECIFICADO' ? (<>, en su domicilio en <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors" value={acreedorDomicilioEditable.trim()} onChange={(val: string) => setAcreedorDomicilioEditable(val.trim())} /></>) : ''}, la suma de GUARANIES <span className="uppercase">{numberToWords(item.monto).trim()}</span> (Gs. {formatCurrencyValue(item.monto, pagare.moneda).trim()}). Si este documento no fuera pagado, devengara un interés del <EditableField className="outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={tasaInteres.trim()} onChange={(val: string) => setTasaInteres(val.trim())} />% mensual en concepto de cláusula penal (Art. <EditableField className="outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={clausulaPenal.trim()} onChange={(val: string) => setClausulaPenal(val.trim())} /> C.C) desde la mora, que se producirá automáticamente (Art. <EditableField className="outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={moraAutomatica.trim()} onChange={(val: string) => setMoraAutomatica(val.trim())} /> C.C) sin necesidad de interpelación judicial o extrajudicial alguna. Este documento lleva la cláusula "sin protesto" y en consecuencia, dispensa al portador de formalizar el protesto por falta de aceptación o de pago, para ejercer la acción de regreso (Art. <EditableField className="outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 bg-transparent transition-colors" value={dispensaProtesto.trim()} onChange={(val: string) => setDispensaProtesto(val.trim())} /> C.C). Las partes constituyen domicilio especial en los lugares fijados más abajo.-
                   </p>
                 </div>
 
@@ -580,10 +577,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                 {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
                 <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
-                  <div className="text-[12px] uppercase flex items-center whitespace-nowrap">
-                    LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° 
-                    <EditableField className={`w-24 ml-1 bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index)} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val); }} />
-                    . SERIE PJE-{new Date().getFullYear()}.- CONSTE.
+                  <div className="text-[12px] uppercase whitespace-nowrap">
+                    LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° <EditableField className={`bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index).trim()} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val.trim()); }} />. SERIE PJE-{new Date().getFullYear()}.- CONSTE.
                   </div>
                 </div>
 
