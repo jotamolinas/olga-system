@@ -2340,7 +2340,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                       Tel: {membrete.telefono || '+595 21 000-000'} | R.U.C.: {membrete.ruc || '80012345-6'} | Timbrado: {membrete.timbradoNumero || '16894321'}
                     </p>
                   </div>
-                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 text-right min-w-[170px] shrink-0">
+                  <div style={{ backgroundColor: "#f8fafc", borderColor: "#cbd5e1" }} className="border rounded-xl p-3 text-right min-w-[170px] shrink-0">
                     <span className="text-xs font-black text-slate-900 uppercase tracking-widest block">
                       {encabezado.tipoComprobante || 'PRESUPUESTO'}
                     </span>
@@ -2357,7 +2357,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 </div>
 
                 {/* TARJETA DE DATOS DEL CLIENTE */}
-                <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div style={{ backgroundColor: "#f8fafc", borderColor: "#cbd5e1" }} className="border rounded-xl p-3 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Cliente / Razón Social</span>
                     <strong className="text-slate-900 font-bold text-sm">{encabezado.clienteNombre || 'Consumidor Final'}</strong>
@@ -2382,7 +2382,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
                 {/* TABLA 1: TASAS Y REEMBOLSOS */}
                 <div className="mb-3">
-                  <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-800 tracking-wide mb-1 border border-slate-200">
+                  <div style={{ backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }} className="px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-900 tracking-wide mb-1 border">
                     <span>I. Tasas Judiciales, Registros e Impuestos (Reembolsos Oficiales)</span>
                     <span className="font-mono text-emerald-800">Subtotal: Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
                   </div>
@@ -2414,7 +2414,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
                 {/* TABLA 2: SERVICIOS Y HONORARIOS */}
                 <div className="mb-3">
-                  <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-800 tracking-wide mb-1 border border-slate-200">
+                  <div style={{ backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }} className="px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-900 tracking-wide mb-1 border">
                     <span>II. Servicios Notariales, Honorarios y Gestiones</span>
                     <span className="font-mono text-amber-800">Subtotal: Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
                   </div>
@@ -2449,7 +2449,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 </div>
 
                 {/* CUADRO DE LIQUIDACIÓN Y TOTALES */}
-                <div className="border-2 border-slate-900 rounded-xl p-3 mb-3 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white">
+                <div style={{ backgroundColor: "#ffffff", borderColor: "#0f172a" }} className="border-2 rounded-xl p-3 mb-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="text-[10px] text-slate-600 sm:border-r border-slate-200 pr-2">
                     <span className="font-black uppercase tracking-wider text-slate-800 block mb-1">Liquidación Tributaria (IVA):</span>
                     <div className="grid grid-cols-2 gap-1 font-mono">

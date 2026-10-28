@@ -113,9 +113,9 @@ html.dark .bg-pattern {
 
 /* 2. Contenedores, Tarjetas, Formularios y Paneles Centrales en RAL 9011 (Graphite Black Mate) */
 html.dark .bg-white:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet):not([data-paper="true"]):not(#hoja-presupuesto-impresion),
-html.dark .bg-slate-50:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet),
-html.dark .bg-slate-100:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet),
-html.dark .bg-slate-900,
+html.dark .bg-slate-50:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet):not(#hoja-presupuesto-impresion *):not(#hoja-presupuesto-impresion),
+html.dark .bg-slate-100:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet):not(#hoja-presupuesto-impresion *):not(#hoja-presupuesto-impresion),
+html.dark .bg-slate-900:not(#hoja-presupuesto-impresion *):not(#hoja-presupuesto-impresion),
 html.dark .bg-slate-800:not(button),
 html.dark aside,
 html.dark .bg-\[\#F6F7F9\],
@@ -139,9 +139,9 @@ html.dark .divide-slate-800 {
 }
 
 /* 4. Tipografía y Textos con Blanco Roto Suave (#E2E4E9) para Reducir Fatiga Visual */
-html.dark .text-slate-900:not(.hoja-notarial *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
-html.dark .text-slate-800:not(.hoja-notarial *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
-html.dark .text-slate-700:not(.hoja-notarial *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
+html.dark .text-slate-900:not(.hoja-notarial):not(.hoja-notarial *):not(.editor-notarial-papel):not(.editor-notarial-papel *):not(#editor-notarial-activo):not(#editor-notarial-activo *):not(.pagina-virtual):not(.pagina-virtual *):not(#hoja-presupuesto-impresion):not(#hoja-presupuesto-impresion *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
+html.dark .text-slate-800:not(.hoja-notarial):not(.hoja-notarial *):not(.editor-notarial-papel):not(.editor-notarial-papel *):not(#editor-notarial-activo):not(#editor-notarial-activo *):not(.pagina-virtual):not(.pagina-virtual *):not(#hoja-presupuesto-impresion):not(#hoja-presupuesto-impresion *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
+html.dark .text-slate-700:not(.hoja-notarial):not(.hoja-notarial *):not(.editor-notarial-papel):not(.editor-notarial-papel *):not(#editor-notarial-activo):not(#editor-notarial-activo *):not(.pagina-virtual):not(.pagina-virtual *):not(#hoja-presupuesto-impresion):not(#hoja-presupuesto-impresion *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *),
 html.dark .text-white:not(.hoja-notarial *):not(.editor-notarial-papel *):not(.pagina-virtual *):not(#hoja-presupuesto-impresion *):not([class*="bg-"]):not(button) {
     color: #E2E4E9 !important;
 }
@@ -248,25 +248,87 @@ html.dark button:not([class*="bg-amber"]):not([class*="bg-red"]):not([class*="bg
     border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
-/* 8. AISLAMIENTO ESTRICTO DE DOCUMENTOS (HOJAS EN BLANCO INTOCABLES) */
+/* 8. AISLAMIENTO ESTRICTO DE DOCUMENTOS (HOJAS EN BLANCO INTOCABLES CON TINTA NEGRA NÍTIDA) */
 html.dark .editor-notarial-papel,
+html.dark .editor-notarial-papel *,
+html.dark #editor-notarial-activo,
+html.dark #editor-notarial-activo *,
+html.dark .contenedor-hoja,
+html.dark .contenedor-hoja *,
+html.dark .hoja-notarial,
+html.dark .hoja-notarial *,
+html.dark .pagina-virtual,
+html.dark .pagina-virtual *,
+html.dark .printing-sheet,
+html.dark .printing-sheet *,
+html.dark [data-document-paper="true"],
+html.dark [data-document-paper="true"] *,
+html.dark .documento-hoja-blanca,
+html.dark .documento-hoja-blanca * {
+    color: #000000 !important;
+    text-shadow: none !important;
+}
+
+html.dark .editor-notarial-papel,
+html.dark #editor-notarial-activo,
 html.dark .contenedor-hoja,
 html.dark .hoja-notarial,
 html.dark .pagina-virtual,
 html.dark .printing-sheet,
 html.dark [data-document-paper="true"],
-html.dark .documento-hoja-blanca,
-html.dark #editor-notarial-activo,
-html.dark .printing-sheet * {
+html.dark .documento-hoja-blanca {
+    background-color: #ffffff !important;
+}
+
+/* ==========================================================================
+   HOJA DE PRESUPUESTO NOTARIAL (DISEÑO BLANCO OFICIAL INTOCABLE)
+   ========================================================================== */
+html.dark #hoja-presupuesto-impresion {
     background-color: #ffffff !important;
     color: #0f172a !important;
 }
 
-html.dark .editor-notarial-papel *,
-html.dark .contenedor-hoja *,
-html.dark .hoja-notarial *,
-html.dark .pagina-virtual * {
+html.dark #hoja-presupuesto-impresion * {
+    color: #0f172a !important;
+}
+
+html.dark #hoja-presupuesto-impresion h1,
+html.dark #hoja-presupuesto-impresion h2,
+html.dark #hoja-presupuesto-impresion h3,
+html.dark #hoja-presupuesto-impresion strong,
+html.dark #hoja-presupuesto-impresion b,
+html.dark #hoja-presupuesto-impresion .font-bold,
+html.dark #hoja-presupuesto-impresion .font-black {
     color: #000000 !important;
+}
+
+html.dark #hoja-presupuesto-impresion .text-slate-500,
+html.dark #hoja-presupuesto-impresion .text-slate-600 {
+    color: #475569 !important;
+}
+
+html.dark #hoja-presupuesto-impresion .bg-white {
+    background-color: #ffffff !important;
+}
+
+html.dark #hoja-presupuesto-impresion .bg-slate-50 {
+    background-color: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
+
+html.dark #hoja-presupuesto-impresion .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+
+html.dark #hoja-presupuesto-impresion .border-slate-900 {
+    border-color: #0f172a !important;
+}
+
+html.dark #hoja-presupuesto-impresion .border-slate-300,
+html.dark #hoja-presupuesto-impresion .border-slate-200,
+html.dark #hoja-presupuesto-impresion .border-slate-100 {
+    border-color: #e2e8f0 !important;
 }
 
 /* Forzar que todos los textareas e inputs sobre la hoja notarial/protocolo sean transparentes con tinta negra */
@@ -291,15 +353,6 @@ html.dark #envoltorio-lienzo-notarial,
 html.dark #contenedor-paginas-protocolo,
 html.dark #editor-notarial-activo-bloque {
     background-color: #0A0A0A !important;
-}
-
-/* Hoja de Presupuesto Notarial Oficial aislada en blanco puro con tinta negra */
-html.dark #hoja-presupuesto-impresion,
-html.dark #hoja-presupuesto-impresion * {
-    color: #000000 !important;
-}
-html.dark #hoja-presupuesto-impresion {
-    background-color: #ffffff !important;
 }
 
 /* Tablas y filas en modo oscuro */

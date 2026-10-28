@@ -3297,7 +3297,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     max-width: 850px !important;
                     min-height: 1100px !important;
                     background-color: #ffffff !important;
-                    color: #0f172a !important;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+                    color: #000000 !important;
                     padding-top: 200px !important;
                     padding-bottom: 95px !important;
                     padding-left: 170px !important;
@@ -3309,17 +3310,31 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     text-justify: inter-word !important;
                     box-sizing: border-box !important;
                   }
-                  #editor-notarial-activo * {
-                    color: inherit;
+                  #editor-notarial-activo *,
+                  .editor-notarial-papel * {
+                    color: #000000 !important;
                     font-family: inherit;
                   }
-                  #editor-notarial-activo p {
+                  #editor-notarial-activo p,
+                  .editor-notarial-papel p {
+                    color: #000000 !important;
                     margin-top: 0 !important;
                     margin-bottom: 0 !important;
                     min-height: 10.4mm !important;
                     text-align: justify !important;
                     text-justify: inter-word !important;
                     line-height: 10.4mm !important;
+                  }
+                  #editor-notarial-activo span,
+                  .editor-notarial-papel span {
+                    color: #000000 !important;
+                  }
+                  #editor-notarial-activo strong,
+                  .editor-notarial-papel strong,
+                  #editor-notarial-activo b,
+                  .editor-notarial-papel b {
+                    color: #000000 !important;
+                    font-weight: 700 !important;
                   }
                   #editor-notarial-activo ul,
                   .editor-notarial-papel ul {
@@ -3337,6 +3352,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   }
                   #editor-notarial-activo li,
                   .editor-notarial-papel li {
+                    color: #000000 !important;
                     display: list-item !important;
                     margin-bottom: 0.25rem !important;
                     text-align: justify !important;
@@ -3358,6 +3374,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     maxWidth: '850px',
                     minHeight: '1100px',
                     backgroundColor: '#ffffff',
+                    color: '#000000',
                     paddingTop: '180px',
                     paddingBottom: '100px',
                     paddingLeft: '140px',
@@ -3367,7 +3384,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     textAlign: 'justify',
                     boxSizing: 'border-box'
                   }}
-                  className={`w-full max-w-[850px] min-h-[1100px] bg-white shadow-2xl mx-auto ring-1 ring-slate-200 outline-none overflow-y-auto font-serif text-[18px] leading-relaxed text-justify text-slate-900 selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                  className={`w-full max-w-[850px] min-h-[1100px] bg-white shadow-2xl mx-auto ring-1 ring-slate-200 outline-none overflow-y-auto font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
                     previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
                   }`}
                 />
