@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Printer, 
+import {
+  RotateCcw,Printer, 
   Eye, 
   EyeOff, 
   ShieldCheck, 
@@ -155,6 +155,65 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   };
 
   // Guardar configuración manual con feedback visual en el botón
+  
+  // Función para vaciar los campos de la hoja activa
+  const handleLimpiarCampos = () => {
+    if (tipoDocumento === 'Certificación de Firmas') {
+      setFirmasT1('');
+      setFirmasT2('');
+      setFirmasT3('');
+      setTramoPrimero1('');
+      setTramoPrimero2('');
+      setTramoPrimero3('');
+      setIncisoANombre('');
+      setIncisoADoc('');
+      setIncisoADom('');
+      setIncisoBNombre('');
+      setIncisoBDoc('');
+      setIncisoBDom('');
+      setIncisoCNombre('');
+      setIncisoCDoc('');
+      setIncisoCDom('');
+      setIncisoDNombre('');
+      setIncisoDDoc('');
+      setIncisoDDom('');
+      setFolio1('');
+      setFolio2('');
+      setTomoLibro('');
+      setHoraCert('');
+      setDiaCert('');
+      setMesCert('');
+      setAnioCert('');
+    } else if (tipoDocumento === 'Concuerda') {
+      setMatrizNro('');
+      setFolioConcuerda('');
+      setDivisionConcuerda('');
+      setSeccionConcuerda('');
+      setRegistroConcuerda('');
+      setAsientoConcuerda('');
+      setAutorizanteConcuerda('');
+      setCaracterConcuerda('');
+      setCopiaConcuerda('');
+      setDestinatarioConcuerda('');
+      setLineaAdicionalConcuerda('');
+      setCierreConcuerda('');
+      setDiaLetrasConcuerda('');
+      setMesConcuerda('');
+      setAnioLetrasConcuerda('');
+    } else if (tipoDocumento === 'Legalización') {
+      setNombreNotarioLeg('');
+      setLineaAdicionalLeg('');
+      setEscrituraNroLeg('');
+      setFechaEscrituraLeg('');
+      setHojaSeguridadNroLeg('');
+      setDiaLeg('');
+      setMesLeg('');
+      setAnioLeg('');
+    } else if (tipoDocumento === 'Sellado Notarial - Protocolo') {
+      setProtocoloPaginas(['']);
+    }
+  };
+
   const handleGuardarConfiguracion = () => {
     guardarConfiguracionActual(tipoDocumento);
     setGuardadoFeedback(true);
@@ -164,67 +223,67 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   };
 
   // PLANTILLA 1: Certificación de Firmas (Art. 152 Ley 879)
-  const [firmasT1, setFirmasT1] = useState<string>('TITULAR.-');
-  const [firmasT2, setFirmasT2] = useState<string>('1.292.-');
-  const [firmasT3, setFirmasT3] = useState<string>('ITAKYRY.-');
+  const [firmasT1, setFirmasT1] = useState<string>('');
+  const [firmasT2, setFirmasT2] = useState<string>('');
+  const [firmasT3, setFirmasT3] = useState<string>('');
   
   // Desborde inteligente Punto Primero (Tramo 1, 2, 3)
-  const [tramoPrimero1, setTramoPrimero1] = useState<string>('CONTRATO PRIVADO DE');
-  const [tramoPrimero2, setTramoPrimero2] = useState<string>('VENTA DE VEHICULO AUTOMOTOR');
-  const [tramoPrimero3, setTramoPrimero3] = useState<string>('y ratificado en todas sus partes ante mi presencia');
+  const [tramoPrimero1, setTramoPrimero1] = useState<string>('');
+  const [tramoPrimero2, setTramoPrimero2] = useState<string>('');
+  const [tramoPrimero3, setTramoPrimero3] = useState<string>('');
 
   // Incisos a, b, c, d
-  const [incisoANombre, setIncisoANombre] = useState<string>('JUAN CARLOS PÉREZ GÓMEZ');
-  const [incisoADoc, setIncisoADoc] = useState<string>('1.234.567');
-  const [incisoADom, setIncisoADom] = useState<string>('ASUNCIÓN');
+  const [incisoANombre, setIncisoANombre] = useState<string>('');
+  const [incisoADoc, setIncisoADoc] = useState<string>('');
+  const [incisoADom, setIncisoADom] = useState<string>('');
 
-  const [incisoBNombre, setIncisoBNombre] = useState<string>('MARÍA ELENA GONZÁLEZ DE PÉREZ');
-  const [incisoBDoc, setIncisoBDoc] = useState<string>('2.345.678');
-  const [incisoBDom, setIncisoBDom] = useState<string>('ASUNCIÓN');
+  const [incisoBNombre, setIncisoBNombre] = useState<string>('');
+  const [incisoBDoc, setIncisoBDoc] = useState<string>('');
+  const [incisoBDom, setIncisoBDom] = useState<string>('');
 
-  const [incisoCNombre, setIncisoCNombre] = useState<string>('****************************************');
-  const [incisoCDoc, setIncisoCDoc] = useState<string>('****************');
-  const [incisoCDom, setIncisoCDom] = useState<string>('****************************************');
+  const [incisoCNombre, setIncisoCNombre] = useState<string>('');
+  const [incisoCDoc, setIncisoCDoc] = useState<string>('');
+  const [incisoCDom, setIncisoCDom] = useState<string>('');
 
-  const [incisoDNombre, setIncisoDNombre] = useState<string>('****************************************');
-  const [incisoDDoc, setIncisoDDoc] = useState<string>('****************');
-  const [incisoDDom, setIncisoDDom] = useState<string>('****************************************');
+  const [incisoDNombre, setIncisoDNombre] = useState<string>('');
+  const [incisoDDoc, setIncisoDDoc] = useState<string>('');
+  const [incisoDDom, setIncisoDDom] = useState<string>('');
 
   // Segundo, Cuarto
-  const [folio1, setFolio1] = useState<string>('45');
-  const [folio2, setFolio2] = useState<string>('46');
-  const [tomoLibro, setTomoLibro] = useState<string>('46-TOMO II');
-  const [horaCert, setHoraCert] = useState<string>('16:55');
-  const [diaCert, setDiaCert] = useState<string>('08');
-  const [mesCert, setMesCert] = useState<string>('OCTUBRE');
-  const [anioCert, setAnioCert] = useState<string>('DOS MIL VEINTISÉIS.-');
+  const [folio1, setFolio1] = useState<string>('');
+  const [folio2, setFolio2] = useState<string>('');
+  const [tomoLibro, setTomoLibro] = useState<string>('');
+  const [horaCert, setHoraCert] = useState<string>('');
+  const [diaCert, setDiaCert] = useState<string>('');
+  const [mesCert, setMesCert] = useState<string>('');
+  const [anioCert, setAnioCert] = useState<string>('');
 
   // PLANTILLA 2: Concuerda
-  const [matrizNro, setMatrizNro] = useState<string>('49.-----------------');
-  const [folioConcuerda, setFolioConcuerda] = useState<string>('137 y siguiente');
-  const [divisionConcuerda, setDivisionConcuerda] = useState<string>('CIVIL');
-  const [seccionConcuerda, setSeccionConcuerda] = useState<string>('B');
-  const [registroConcuerda, setRegistroConcuerda] = useState<string>('1.292');
-  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('ITAKYRY');
-  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('RICARDO GABRIEL MARTINEZ VARELA');
-  const [caracterConcuerda, setCaracterConcuerda] = useState<string>('TITULAR');
-  const [copiaConcuerda, setCopiaConcuerda] = useState<string>('PRIMERA');
-  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('WHILHEM OSVALDO...');
-  const [lineaAdicionalConcuerda, setLineaAdicionalConcuerda] = useState<string>('-----------------------------------------------------');
+  const [matrizNro, setMatrizNro] = useState<string>('');
+  const [folioConcuerda, setFolioConcuerda] = useState<string>('');
+  const [divisionConcuerda, setDivisionConcuerda] = useState<string>('');
+  const [seccionConcuerda, setSeccionConcuerda] = useState<string>('');
+  const [registroConcuerda, setRegistroConcuerda] = useState<string>('');
+  const [asientoConcuerda, setAsientoConcuerda] = useState<string>('');
+  const [autorizanteConcuerda, setAutorizanteConcuerda] = useState<string>('');
+  const [caracterConcuerda, setCaracterConcuerda] = useState<string>('');
+  const [copiaConcuerda, setCopiaConcuerda] = useState<string>('');
+  const [destinatarioConcuerda, setDestinatarioConcuerda] = useState<string>('');
+  const [lineaAdicionalConcuerda, setLineaAdicionalConcuerda] = useState<string>('');
   const [cierreConcuerda, setCierreConcuerda] = useState<string>('');
-  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('VEINTITRES');
-  const [mesConcuerda, setMesConcuerda] = useState<string>('MAYO');
-  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('DOS MIL VEINTICINCO.-');
+  const [diaLetrasConcuerda, setDiaLetrasConcuerda] = useState<string>('');
+  const [mesConcuerda, setMesConcuerda] = useState<string>('');
+  const [anioLetrasConcuerda, setAnioLetrasConcuerda] = useState<string>('');
 
   // PLANTILLA 3: Legalización
-  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('MARCELA MIRTA GÓMEZ NAVARRO');
+  const [nombreNotarioLeg, setNombreNotarioLeg] = useState<string>('');
   const [lineaAdicionalLeg, setLineaAdicionalLeg] = useState<string>('');
-  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('SEIS (6).-');
-  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('15 de febrero del 2022.-');
-  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('000019301.-');
-  const [diaLeg, setDiaLeg] = useState<string>('00');
-  const [mesLeg, setMesLeg] = useState<string>('abril');
-  const [anioLeg, setAnioLeg] = useState<string>('2022');
+  const [escrituraNroLeg, setEscrituraNroLeg] = useState<string>('');
+  const [fechaEscrituraLeg, setFechaEscrituraLeg] = useState<string>('');
+  const [hojaSeguridadNroLeg, setHojaSeguridadNroLeg] = useState<string>('');
+  const [diaLeg, setDiaLeg] = useState<string>('');
+  const [mesLeg, setMesLeg] = useState<string>('');
+  const [anioLeg, setAnioLeg] = useState<string>('');
 
   // PLANTILLA 0: Protocolo
   const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
@@ -447,7 +506,25 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     // Convertir todos los inputs a spans transfiriendo exactamente su id, style, className y contenido
     clone.querySelectorAll('input').forEach((inp) => {
       const span = document.createElement('span');
-      span.textContent = inp.value || '\u00A0';
+      let valorTexto = inp.value;
+      if (!valorTexto || valorTexto.trim() === '') {
+        if (rellenoGuiones) {
+          if (inp.id === 'compareciente-nombre-2' || inp.id === 'compareciente-nombre-3' || inp.id === 'compareciente-nombre-4') {
+            valorTexto = '****************************************';
+          } else if (inp.id === 'compareciente-cedula-2' || inp.id === 'compareciente-cedula-3' || inp.id === 'compareciente-cedula-4') {
+            valorTexto = '****************';
+          } else if (inp.id === 'compareciente-ciudad-2' || inp.id === 'compareciente-ciudad-3' || inp.id === 'compareciente-ciudad-4') {
+            valorTexto = '****************************************';
+          } else if (inp.id === 'linea-adicional-concuerda') {
+            valorTexto = '-----------------------------------------------------';
+          } else {
+            valorTexto = '\u00A0';
+          }
+        } else {
+          valorTexto = '\u00A0';
+        }
+      }
+      span.textContent = valorTexto;
       if (inp.id) span.id = inp.id;
       span.className = inp.className;
       const inlineStyle = inp.getAttribute('style');
@@ -1386,6 +1463,17 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
             </button>
 
+                        {/* Botón Limpiar Campos */}
+            <button
+              type="button"
+              onClick={handleLimpiarCampos}
+              title={`Limpiar todos los campos de "${tipoDocumento}"`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border border-slate-700 bg-slate-800 text-slate-300 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 shadow-sm active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Limpiar Campos</span>
+            </button>
+
             {/* Botón Guardar Configuración */}
             <button
               type="button"
@@ -1701,9 +1789,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={firmasT1} 
                   onChange={(e) => setFirmasT1(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="TITULAR.-" 
+                  placeholder="TITULAR / ADSCRIPTO" 
                   style={{ position: 'absolute', top: '74.0mm', left: '99.2mm', width: '75mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t1" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-firmas-t1" 
                 />
                 <input 
                   id="registro-notaria-cf"
@@ -1711,9 +1799,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={firmasT2} 
                   onChange={(e) => setFirmasT2(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="1.292.-" 
+                  placeholder="N° Registro" 
                   style={{ position: 'absolute', top: '86.0mm', left: '69.6mm', width: '33mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t2" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-firmas-t2" 
                 />
                 <input 
                   id="ciudad-registro-cf"
@@ -1721,9 +1809,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={firmasT3} 
                   onChange={(e) => setFirmasT3(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="ITAKYRY.-" 
+                  placeholder="Ciudad / Asiento" 
                   style={{ position: 'absolute', top: '86.0mm', left: '137.3mm', width: '50mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-firmas-t3" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-firmas-t3" 
                 />
 
                 {/* Acto: Tipo de Acto y Objeto del Acto */}
@@ -1733,9 +1821,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={tramoPrimero1} 
                   onChange={(e) => setTramoPrimero1(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="CONTRATO PRIVADO DE" 
+                  placeholder="Tipo de contrato" 
                   style={{ position: 'absolute', top: '124.0mm', left: '160.6mm', width: '48mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tramo1" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-tramo1" 
                 />
                 <input 
                   id="objeto-acto-cf"
@@ -1743,9 +1831,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={tramoPrimero2} 
                   onChange={(e) => setTramoPrimero2(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="VENTA DE VEHICULO..." 
+                  placeholder="Objeto del acto / contrato" 
                   style={{ position: 'absolute', top: '134.5mm', left: '31.5mm', width: '114mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tramo2" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-tramo2" 
                 />
 
                 {/* Compareciente 1 (INCISO A): Nombre, Cédula, Ciudad */}
@@ -1755,9 +1843,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoANombre} 
                   onChange={(e) => setIncisoANombre(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="Nombre completo" 
+                  placeholder="Nombre completo compareciente 1" 
                   style={{ position: 'absolute', top: '146.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-nom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-a-nom" 
                 />
                 <input 
                   id="compareciente-cedula-1"
@@ -1767,7 +1855,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onKeyDown={handleEnterKey} 
                   placeholder="C.I. / RUC" 
                   style={{ position: 'absolute', top: '146.0mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-doc" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-a-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-1"
@@ -1777,7 +1865,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onKeyDown={handleEnterKey} 
                   placeholder="Ciudad / Domicilio" 
                   style={{ position: 'absolute', top: '157.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-a-dom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-a-dom" 
                 />
 
                 {/* Compareciente 2 (INCISO B): Nombre, Cédula, Ciudad */}
@@ -1789,7 +1877,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onKeyDown={handleEnterKey} 
                   placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '169.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-nom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-b-nom" 
                 />
                 <input 
                   id="compareciente-cedula-2"
@@ -1797,9 +1885,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDoc} 
                   onChange={(e) => setIncisoBDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC (opcional)"} 
                   style={{ position: 'absolute', top: '169.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-doc" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-b-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-2"
@@ -1807,9 +1895,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoBDom} 
                   onChange={(e) => setIncisoBDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio (opcional)"} 
                   style={{ position: 'absolute', top: '180.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-b-dom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-b-dom" 
                 />
 
                 {/* Compareciente 3 (INCISO C): Nombre, Cédula, Ciudad */}
@@ -1821,7 +1909,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onKeyDown={handleEnterKey} 
                   placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '192.0mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-nom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-c-nom" 
                 />
                 <input 
                   id="compareciente-cedula-3"
@@ -1829,9 +1917,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDoc} 
                   onChange={(e) => setIncisoCDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC (opcional)"} 
                   style={{ position: 'absolute', top: '192.0mm', left: '155.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-doc" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-c-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-3"
@@ -1839,9 +1927,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoCDom} 
                   onChange={(e) => setIncisoCDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio (opcional)"} 
                   style={{ position: 'absolute', top: '203.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-c-dom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-c-dom" 
                 />
 
                 {/* Compareciente 4 (INCISO D): Nombre, Cédula, Ciudad */}
@@ -1853,7 +1941,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onKeyDown={handleEnterKey} 
                   placeholder={rellenoGuiones ? "****************************************" : "Nombre completo (opcional)"} 
                   style={{ position: 'absolute', top: '215.5mm', left: '37.8mm', width: '94mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-nom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-d-nom" 
                 />
                 <input 
                   id="compareciente-cedula-4"
@@ -1861,9 +1949,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDoc} 
                   onChange={(e) => setIncisoDDoc(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC"} 
+                  placeholder={rellenoGuiones ? "****************" : "C.I. / RUC (opcional)"} 
                   style={{ position: 'absolute', top: '215.5mm', left: '154.3mm', width: '36mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-doc" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-d-doc" 
                 />
                 <input 
                   id="compareciente-ciudad-4"
@@ -1871,9 +1959,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={incisoDDom} 
                   onChange={(e) => setIncisoDDom(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio"} 
+                  placeholder={rellenoGuiones ? "****************************************" : "Ciudad / Domicilio (opcional)"} 
                   style={{ position: 'absolute', top: '225.0mm', left: '63.2mm', width: '124mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-inciso-d-dom" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-inciso-d-dom" 
                 />
 
                 {/* SEGUNDO: Libro/Tomo */}
@@ -1883,9 +1971,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={tomoLibro} 
                   onChange={(e) => setTomoLibro(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="46-TOMO II" 
+                  placeholder="Libro / Tomo" 
                   style={{ position: 'absolute', top: '248.0mm', left: '80.2mm', width: '55mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-tomo" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-tomo" 
                 />
 
                 {/* Cierre/Fechas: Hora, Día, Mes, Año */}
@@ -1895,9 +1983,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={horaCert} 
                   onChange={(e) => setHoraCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="16:55" 
+                  placeholder="Hora" 
                   style={{ position: 'absolute', top: '314.5mm', left: '79.4mm', width: '18mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-hora" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-hora" 
                 />
                 <input 
                   id="dia-certificacion"
@@ -1905,9 +1993,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={diaCert} 
                   onChange={(e) => setDiaCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="08" 
+                  placeholder="Día" 
                   style={{ position: 'absolute', top: '314.5mm', left: '119.8mm', width: '13mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-dia" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-dia" 
                 />
                 <input 
                   id="mes-certificacion"
@@ -1915,9 +2003,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={mesCert} 
                   onChange={(e) => setMesCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="OCTUBRE" 
+                  placeholder="Mes" 
                   style={{ position: 'absolute', top: '314.5mm', left: '143.1mm', width: '44mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-mes" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-mes" 
                 />
                 <input 
                   id="anio-letras-cierre"
@@ -1925,9 +2013,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={anioCert} 
                   onChange={(e) => setAnioCert(e.target.value)} 
                   onKeyDown={handleEnterKey} 
-                  placeholder="DOS MIL VEINTISÉIS.-" 
+                  placeholder="Año en letras (ej. DOS MIL VEINTISÉIS.-)" 
                   style={{ position: 'absolute', top: '321.5mm', left: '60.6mm', width: '80mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                  className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-1 pos-cert-anio" 
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-1 pos-cert-anio" 
                 />
               </div>
             </div>
@@ -2096,9 +2184,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={matrizNro}
                    onChange={(e) => setMatrizNro(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="49.-----------------"
+                   placeholder="N° Escritura"
                    style={{ position: 'absolute', top: '84.2mm', left: '140.5mm', width: '50mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-matriz"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-matriz"
                  />
                  
                  {/* Fojas, Sección (CIVIL), Serie/Letra (B) */}
@@ -2108,9 +2196,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={folioConcuerda}
                    onChange={(e) => setFolioConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="137 y siguiente"
+                   placeholder="Fojas"
                    style={{ position: 'absolute', top: '95.2mm', left: '36.8mm', width: '54mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-folio"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-folio"
                  />
                  
                  <input
@@ -2119,9 +2207,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={divisionConcuerda}
                    onChange={(e) => setDivisionConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="CIVIL"
+                   placeholder="Sección (CIVIL)"
                    style={{ position: 'absolute', top: '95.2mm', left: '142.6mm', width: '44.5mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-division"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-division"
                  />
                  
                  <input
@@ -2130,9 +2218,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={seccionConcuerda}
                    onChange={(e) => setSeccionConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="B"
+                   placeholder="Serie (B)"
                    style={{ position: 'absolute', top: '105.2mm', left: '47.3mm', width: '12mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-seccion"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-seccion"
                  />
                  
                  {/* N° Registro y Ciudad */}
@@ -2142,9 +2230,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={registroConcuerda}
                    onChange={(e) => setRegistroConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="1.292"
+                   placeholder="N° Registro"
                    style={{ position: 'absolute', top: '106.0mm', left: '108.7mm', width: '74mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-registro"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-registro"
                  />
                  
                  <input
@@ -2153,9 +2241,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={asientoConcuerda}
                    onChange={(e) => setAsientoConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="ITAKYRY"
+                   placeholder="Ciudad / Asiento"
                    style={{ position: 'absolute', top: '115.5mm', left: '78.0mm', width: '105mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-asiento"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-asiento"
                  />
                  
                  {/* Nombre Escribano y Cargo */}
@@ -2165,9 +2253,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={autorizanteConcuerda}
                    onChange={(e) => setAutorizanteConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="RICARDO GABRIEL MARTINEZ VARELA"
+                   placeholder="Nombre del Escribano Autorizante"
                    style={{ position: 'absolute', top: '126.2mm', left: '57.9mm', width: '125mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-autorizante"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-autorizante"
                  />
                  
                  <input
@@ -2176,9 +2264,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={caracterConcuerda}
                    onChange={(e) => setCaracterConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="TITULAR"
+                   placeholder="Carácter (TITULAR / ADSCRIPTO)"
                    style={{ position: 'absolute', top: '137.2mm', left: '90.0mm', width: '56mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-caracter"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-caracter"
                  />
                  
                  {/* Copia y A favor de */}
@@ -2188,9 +2276,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={copiaConcuerda}
                    onChange={(e) => setCopiaConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="PRIMERA"
+                   placeholder="Copia (PRIMERA / SEGUNDA)"
                    style={{ position: 'absolute', top: '147.2mm', left: '59.0mm', width: '38mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-copia"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-copia"
                  />
                  
                  <input
@@ -2199,9 +2287,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={destinatarioConcuerda}
                    onChange={(e) => setDestinatarioConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="WHILHEM OSVALDO..."
+                   placeholder="A favor de (Titular / Destinatario)"
                    style={{ position: 'absolute', top: '147.2mm', left: '121.4mm', width: '72mm', height: '6mm', fontSize: '11.5pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-destinatario"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-destinatario"
                  />
                  
                  {/* Línea de guiones de relleno izquierdo */}
@@ -2211,9 +2299,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={lineaAdicionalConcuerda}
                    onChange={(e) => setLineaAdicionalConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="-----------------------------------------------------"
+                   placeholder="Guiones de seguridad (-----------------)"
                    style={{ position: 'absolute', top: '158.2mm', left: '26.2mm', width: '61mm', height: '5.5mm', fontSize: '8pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-linea-adicional"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-linea-adicional"
                  />
 
                  {/* Día, Mes, Año de expedición */}
@@ -2223,9 +2311,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={diaLetrasConcuerda}
                    onChange={(e) => setDiaLetrasConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="VEINTITRES"
+                   placeholder="Día en letras"
                    style={{ position: 'absolute', top: '158.2mm', left: '100.3mm', width: '58mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-dia"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-dia"
                  />
                  
                  <input
@@ -2234,9 +2322,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={mesConcuerda}
                    onChange={(e) => setMesConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="MAYO"
+                   placeholder="Mes"
                    style={{ position: 'absolute', top: '168.7mm', left: '34.6mm', width: '32mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-mes"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-mes"
                  />
                  
                  <input
@@ -2245,9 +2333,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                    value={anioLetrasConcuerda}
                    onChange={(e) => setAnioLetrasConcuerda(e.target.value)}
                    onKeyDown={handleEnterKey}
-                   placeholder="DOS MIL VEINTICINCO.-"
+                   placeholder="Año en letras (ej. DOS MIL VEINTICINCO.-)"
                    style={{ position: 'absolute', top: '168.7mm', left: '81.2mm', width: '101.5mm', height: '6mm', fontSize: '12pt', fontWeight: 'bold', fontFamily: 'Arial, Helvetica, sans-serif', whiteSpace: 'nowrap' }}
-                   className="absolute whitespace-nowrap bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black font-bold focus:outline-none input-impresion campo-hoja-2 pos-anio"
+                   className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold campo-hoja-2 pos-anio"
                  />
 
               </div>
@@ -2408,9 +2496,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={nombreNotarioLeg} 
                   onChange={(e) => setNombreNotarioLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="Nombre del/la Notario/a"
                   style={{ position: 'absolute', top: '97.5mm', left: '108.0mm', width: '92mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'bold', fontStyle: 'italic', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-notaria campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent font-bold italic text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="MARCELA MIRTA GÓMEZ NAVARRO"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-bold italic campo-hoja-3 pos-leg-notaria" 
                 />
                 <input 
                   id="numero-registro"
@@ -2418,9 +2506,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={escrituraNroLeg} 
                   onChange={(e) => setEscrituraNroLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="N° Registro (ej. SEIS (6).-)"
                   style={{ position: 'absolute', top: '111.0mm', left: '141.0mm', width: '58mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-registro campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="SEIS (6).-"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-registro" 
                 />
 
                 {/* Documento Base: Fecha doc y Control */}
@@ -2430,9 +2518,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={fechaEscrituraLeg} 
                   onChange={(e) => setFechaEscrituraLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="Fecha doc (ej. 15 de febrero del 2022.-)"
                   style={{ position: 'absolute', top: '124.5mm', left: '47.0mm', width: '40mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-fecha-doc campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="15 de febrero del 2022.-"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-fecha-doc" 
                 />
                 <input 
                   id="control-hoja-leg"
@@ -2440,9 +2528,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={hojaSeguridadNroLeg} 
                   onChange={(e) => setHojaSeguridadNroLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="N° Control (ej. 000019301.-)"
                   style={{ position: 'absolute', top: '124.5mm', left: '102.0mm', width: '55mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-control campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="000019301.-"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-control" 
                 />
 
                 {/* Fecha Legalización: Día, Mes, Año */}
@@ -2452,9 +2540,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={diaLeg} 
                   onChange={(e) => setDiaLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="Día"
                   style={{ position: 'absolute', top: '150.0mm', left: '127.0mm', width: '12mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-dia campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="00"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-dia" 
                 />
                 <input 
                   id="mes-anio-legalizacion"
@@ -2462,9 +2550,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={mesLeg} 
                   onChange={(e) => setMesLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="Mes"
                   style={{ position: 'absolute', top: '150.0mm', left: '156.0mm', width: '26mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-mes campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="abril"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-mes" 
                 />
                 <input 
                   id="anio-legalizacion"
@@ -2472,9 +2560,9 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   value={anioLeg} 
                   onChange={(e) => setAnioLeg(e.target.value)} 
                   onKeyDown={handleEnterKey}
+                  placeholder="Año"
                   style={{ position: 'absolute', top: '150.0mm', left: '195.0mm', width: '16mm', height: '5.5mm', fontSize: '11pt', fontWeight: 'normal', fontStyle: 'normal', fontFamily: '"Times New Roman", Times, serif', whiteSpace: 'nowrap' }}
-                  className="pos-leg-anio campo-hoja-3 absolute bg-transparent border-b border-dotted border-slate-300 hover:border-slate-500 focus:border-[#FF3131] transition-colors print:border-transparent text-black focus:outline-none input-impresion whitespace-nowrap" 
-                  placeholder="2022"
+                  className="absolute whitespace-nowrap bg-amber-50/40 hover:bg-amber-100/50 focus:bg-white border-b border-dashed border-slate-400 focus:border-amber-500 outline-none px-0.5 transition-colors placeholder:text-slate-400/70 placeholder:font-normal placeholder:italic print:bg-transparent print:border-none print:placeholder-transparent print:p-0 print:shadow-none input-impresion text-black font-normal campo-hoja-3 pos-leg-anio" 
                 />
               </div>
             </div>
