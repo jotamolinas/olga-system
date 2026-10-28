@@ -654,17 +654,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   };
 
   return (
-    <div className={`min-h-full flex flex-col font-sans rounded-3xl overflow-hidden border shadow-2xl transition-colors duration-200 print:border-none print:shadow-none print:p-0 print:m-0 print:bg-white print:text-black print:rounded-none ${
-      modoFondoBlanco 
-        ? 'bg-slate-100 text-slate-800 border-slate-300' 
-        : 'bg-[#F6F7F9] text-slate-800 border-slate-200/80'
-    }`}>
+    <div className="w-full space-y-6 font-sans transition-colors duration-200 print:space-y-4 print:p-0 print:m-0 print:bg-white print:text-black" id="modulo-presupuestos-root">
       {/* Cabecera Principal del Módulo (oculta al imprimir) */}
       <header className={`${
         esFull 
           ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 border border-slate-800 shadow-2xl'
-      } rounded-3xl p-6 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden`}>
+          : 'bg-slate-900 border border-slate-800 shadow-xl'
+      } rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden`}>
         {esFull && (
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
         )}
@@ -770,8 +766,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </header>
 
-      {/* Barra de Filtros y Subsecciones (oculta al imprimir) */}
-      <div className="px-6 py-3 border-b border-slate-200/80 bg-slate-50/80 flex items-center justify-between gap-4 flex-wrap transition-colors print:hidden">
+      {/* Barra de Filtros y Totales Sticky (oculta al imprimir) */}
+      <div className="sticky top-2 z-20 px-6 py-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg flex items-center justify-between gap-4 flex-wrap transition-all print:hidden">
         <div className="flex items-center gap-2">
           {(['todo', 'tasas', 'servicios', 'resumen'] as const).map((tab) => (
             <button
@@ -806,8 +802,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </div>
 
-      {/* Contenido Modular con Scroll Limpio */}
-      <div className="p-6 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-220px)] print:p-0 print:m-0 print:space-y-4 print:overflow-visible print:max-h-none">
+      {/* Contenido Modular con Scroll Único Fluido */}
+      <div className="space-y-6 md:space-y-8 print:p-0 print:m-0 print:space-y-4">
         {/* Banner de Membrete Notarial Dinámico (Configuración Multi-usuario) */}
         <div className={`border rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black print:rounded-xl ${
           modoFondoBlanco
