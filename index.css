@@ -78,3 +78,160 @@
     display: list-item !important;
     margin-bottom: 0.25rem !important;
 }
+
+/* ==========================================================================
+   MATTE BLACK & GLOSS SYSTEM THEME (MODO OSCURO MATE PREMIUM)
+   ========================================================================== */
+
+html.dark, 
+html.dark body {
+    background-color: #0D0E12 !important;
+    color: #e2e8f0 !important;
+}
+
+/* 1. Fondo General y Viewports del Sistema */
+html.dark #root,
+html.dark main,
+html.dark #main-content-viewport,
+html.dark .bg-pattern {
+    background-color: #0D0E12 !important;
+    background-image: none !important;
+}
+
+/* 2. Tarjetas, Paneles, Contenedores y Tableros (Gris Grafito Mate #16171E) */
+html.dark .bg-white:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet):not([data-paper="true"]),
+html.dark .bg-slate-50:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet),
+html.dark .bg-slate-100:not(.editor-notarial-papel):not(.contenedor-hoja):not(.hoja-notarial):not(.pagina-virtual):not(.printing-sheet),
+html.dark .bg-\[\#F6F7F9\],
+html.dark .bg-\[\#ECECE8\] {
+    background-color: #16171E !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+}
+
+/* 3. Bordes y Separadores Sutiles */
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300,
+html.dark .divide-slate-100,
+html.dark .divide-slate-200 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* 4. Tipografía y Textos */
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700 {
+    color: #f8fafc !important;
+}
+
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+    color: #94a3b8 !important;
+}
+
+/* 5. Inputs, Selects y Textareas en Gris Mate con Borde Suave */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark select,
+html.dark textarea:not(.editor-notarial-papel) {
+    background-color: #1C1E27 !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+    color: #64748b !important;
+}
+
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus {
+    border-color: #f59e0b !important;
+    outline: none !important;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(245, 158, 11, 0.2) !important;
+}
+
+/* 6. Botones Estándar y Controles: Gris Oscuro Mate con relieve sutil */
+html.dark button:not([class*="bg-amber"]):not([class*="bg-red"]):not([class*="bg-blue"]):not([class*="bg-emerald"]):not([class*="bg-orange"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="text-amber"]):not([class*="bg-transparent"]) {
+    background-color: #242632 !important;
+    color: #f1f5f9 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark button:not([class*="bg-amber"]):not([class*="bg-red"]):not([class*="bg-blue"]):not([class*="bg-emerald"]):not([class*="bg-orange"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):hover {
+    background-color: #2D303E !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* 7. Botones de Color con Efecto GLOSSY Elevado */
+html.dark button[class*="bg-amber"],
+html.dark button[class*="bg-orange"],
+html.dark button[class*="bg-red"],
+html.dark button[class*="bg-blue"],
+html.dark button[class*="bg-emerald"],
+html.dark button[class*="bg-indigo"],
+html.dark button[class*="bg-gradient"],
+html.dark .btn-glossy {
+    position: relative;
+    box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.25) !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+html.dark button[class*="bg-amber"]:hover,
+html.dark button[class*="bg-orange"]:hover,
+html.dark button[class*="bg-red"]:hover,
+html.dark button[class*="bg-blue"]:hover,
+html.dark button[class*="bg-emerald"]:hover,
+html.dark button[class*="bg-indigo"]:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.5), 0 6px 20px rgba(0, 0, 0, 0.45) !important;
+}
+
+html.dark button[class*="bg-amber"]:active,
+html.dark button[class*="bg-orange"]:active,
+html.dark button[class*="bg-red"]:active,
+html.dark button[class*="bg-blue"]:active,
+html.dark button[class*="bg-emerald"]:active {
+    transform: translateY(0);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 8. AISLAMIENTO ESTRICTO DE DOCUMENTOS (HOJAS EN BLANCO INTOCABLES) */
+html.dark .editor-notarial-papel,
+html.dark .contenedor-hoja,
+html.dark .hoja-notarial,
+html.dark .pagina-virtual,
+html.dark .printing-sheet,
+html.dark [data-document-paper="true"],
+html.dark .documento-hoja-blanca,
+html.dark #editor-notarial-activo,
+html.dark .printing-sheet * {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+}
+
+html.dark .editor-notarial-papel *,
+html.dark .contenedor-hoja *,
+html.dark .hoja-notarial *,
+html.dark .pagina-virtual * {
+    color: #000000 !important;
+}
+
+/* Mantener el lienzo notarial flotante sobre fondo oscuro profundo como una mesa de luz */
+html.dark #envoltorio-lienzo-notarial,
+html.dark #contenedor-paginas-protocolo {
+    background-color: #0D0E12 !important;
+}
+
+/* Tablas y filas en modo oscuro */
+html.dark tr.hover\:bg-slate-50\/40:hover,
+html.dark tr.hover\:bg-slate-50:hover,
+html.dark tr.hover\:bg-slate-100:hover {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}

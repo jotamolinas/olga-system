@@ -1392,7 +1392,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   return (
     <div 
-      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans ${esPlanFull ? 'bg-[#ECECE8] dark:bg-[#0B0D13]' : 'bg-[#F6F7F9]'} text-slate-800 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans ${esPlanFull ? 'bg-[#ECECE8] dark:bg-[#0D0E12]' : 'bg-[#F6F7F9] dark:bg-[#0D0E12]'} text-slate-800 dark:text-slate-100 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
         !isSidebarPinned ? 'md:pl-[72px]' : ''
       }`} 
       id="main-panel-container"
@@ -1438,7 +1438,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         <header className={`${
           esPlanFull 
             ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border-b border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-            : 'bg-white/90 border-b border-slate-200/70 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)]'
+            : 'bg-white/90 dark:bg-[#16171E] border-b border-slate-200/70 dark:border-white/10 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)]'
         } p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl print:hidden`}>
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button (solo en pantallas móviles) */}
@@ -2090,7 +2090,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </div>
 
         {/* Dynamic bottom bar info */}
-        <footer className={`bg-white/90 border-t border-slate-200/80 text-slate-400 p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
+        <footer className={`bg-white/90 dark:bg-[#16171E] border-t border-slate-200/80 dark:border-white/10 text-slate-400 p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
           SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL
         </footer>
       </main>
