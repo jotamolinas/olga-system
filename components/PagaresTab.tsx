@@ -32,6 +32,7 @@ interface PagaresTabProps {
   initialPanelView?: 'list' | 'list_anulados' | 'create';
   initialEditingId?: string | null;
   onClose?: () => void;
+  esPlanFull?: boolean;
 }
 
 export const PagaresTab: React.FC<PagaresTabProps> = ({
@@ -48,7 +49,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   isSoftBlocked = false,
   initialPanelView = 'list',
   initialEditingId = null,
-  onClose
+  onClose,
+  esPlanFull
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
   const { workspaceId } = useWorkspace(auth?.currentUser, userData);
@@ -59,6 +61,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const rawPlan = String(activeUserData?.planActual || activeUserData?.plan || '').toLowerCase();
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
   const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
+  const esFull = esPlanFull !== undefined ? esPlanFull : (rawPlan.includes('full') || (esAdmin && rawPlan.includes('full')));
   const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
   const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || isAprobado || esAdmin;
   const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
