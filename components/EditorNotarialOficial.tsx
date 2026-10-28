@@ -432,13 +432,16 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     // Para plantillas de una sola hoja (Certificación, Concuerda, Legalización)
     if (tipoDocumento !== 'Sellado Notarial - Protocolo') {
       clone.classList.add('plantilla-unica-hoja');
-      clone.classList.remove('shadow-2xl');
+      clone.classList.remove('shadow-2xl', 'flex', 'flex-col', 'justify-between');
+      clone.style.display = 'block';
       clone.style.width = '215.9mm';
       clone.style.height = '355.6mm';
       clone.style.maxHeight = '355.6mm';
       clone.style.overflow = 'hidden';
       clone.style.boxSizing = 'border-box';
-      clone.style.margin = '0 auto';
+      clone.style.margin = '0';
+      clone.style.padding = '0';
+      clone.style.border = 'none';
     }
 
     // Convertir todos los inputs a spans transfiriendo exactamente su id, style, className y contenido
@@ -594,6 +597,130 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       display: block !important;
       margin: 0mm !important;
       padding: 0mm !important;
+    }
+
+
+    /* ==========================================================================
+       HOJA 3: LEGALIZACIÓN - COORDENADAS MILIMÉTRICAS ESTRICTAS
+       ========================================================================== */
+    #contenedor-hoja-3 {
+      position: absolute !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+      max-height: 355.6mm !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-3 .capa-datos-legalizacion {
+      position: absolute !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+    }
+
+    #contenedor-hoja-3 span,
+    #contenedor-hoja-3 input,
+    #contenedor-hoja-3 .campo-hoja-3,
+    #contenedor-hoja-3 .input-impresion {
+      position: absolute !important;
+      white-space: nowrap !important;
+      border: none !important;
+      outline: none !important;
+      background: transparent !important;
+      color: #000000 !important;
+      box-shadow: none !important;
+      font-family: "Times New Roman", Times, serif !important;
+      font-size: 11pt !important;
+      line-height: 1 !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-3 #notaria-titular,
+    #contenedor-hoja-3 .pos-leg-notaria {
+      top: 97.5mm !important;
+      left: 108.0mm !important;
+      width: 92.0mm !important;
+      height: 5.5mm !important;
+      font-weight: bold !important;
+      font-style: italic !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #numero-registro,
+    #contenedor-hoja-3 .pos-leg-registro {
+      top: 111.0mm !important;
+      left: 141.0mm !important;
+      width: 58.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #fecha-emision-leg,
+    #contenedor-hoja-3 .pos-leg-fecha-doc {
+      top: 124.5mm !important;
+      left: 47.0mm !important;
+      width: 40.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #control-hoja-leg,
+    #contenedor-hoja-3 .pos-leg-control {
+      top: 124.5mm !important;
+      left: 102.0mm !important;
+      width: 55.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #dia-legalizacion,
+    #contenedor-hoja-3 .pos-leg-dia {
+      top: 150.0mm !important;
+      left: 127.0mm !important;
+      width: 12.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #mes-anio-legalizacion,
+    #contenedor-hoja-3 .pos-leg-mes {
+      top: 150.0mm !important;
+      left: 156.0mm !important;
+      width: 26.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
+    }
+
+    #contenedor-hoja-3 #anio-legalizacion,
+    #contenedor-hoja-3 .pos-leg-anio {
+      top: 150.0mm !important;
+      left: 195.0mm !important;
+      width: 16.0mm !important;
+      height: 5.5mm !important;
+      font-weight: normal !important;
+      font-style: normal !important;
+      font-family: "Times New Roman", Times, serif !important;
     }
 
     /* CAMPOS DE FORMULARIO CONVERTIDOS A SPAN */
@@ -2256,7 +2383,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '97.8mm', left: '25.0mm' }}>sello del/la Notario/a y Escribano/a Público/a:</div>
                 <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '111.3mm', left: '25.0mm' }}>Titular del Registro Notarial Número:</div>
                 <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '124.8mm', left: '25.0mm' }}>de fecha</div>
-                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '124.8mm', left: '88.5mm' }}>Control Nº</div>
+                <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '124.8mm', left: '84.0mm' }}>Control Nº</div>
                 <div className="absolute text-slate-400 text-[10pt]" style={{ top: '137.5mm', left: '25.0mm', right: '25.0mm' }}>La presente Legalización se realiza sobre un documento de uso notarial expedido a nombre del/la Notario/a solicitante.</div>
                 <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '150.3mm', left: '95.0mm' }}>Asunción, a los</div>
                 <div className="absolute text-slate-400 text-[10.5pt] whitespace-nowrap" style={{ top: '150.3mm', left: '141.0mm' }}>días de</div>
