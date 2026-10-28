@@ -26,6 +26,7 @@ interface TableroTabProps {
   workspaceId?: string;
   workspaceName?: string;
   isSoftBlocked?: boolean; // <-- NUEVO
+  esPlanFull?: boolean;
 }
 
 const CountUp: React.FC<{ end: number; duration?: number; isCurrency?: boolean }> = ({ end, duration = 1500, isCurrency = false }) => {
@@ -214,7 +215,8 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   isAdmin,
   userData,
   workspaceId,
-  workspaceName
+  workspaceName,
+  esPlanFull
 }) => {
   const { workspaceId: hookWorkspaceId } = useWorkspace(auth?.currentUser, userData);
   const activeWorkspaceId = workspaceId || hookWorkspaceId;
@@ -416,7 +418,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   return (
     <div className="w-full box-border flex flex-col gap-8 w-full animate-fade-in pb-12">
-      <div className="bg-white rounded-2xl p-6 md:p-7 flex flex-col md:flex-row items-center justify-between gap-6 border border-slate-200/70 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] relative overflow-hidden">
+      <div className={`${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white rounded-2xl p-6 md:p-7 border border-slate-200/70 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]'} flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden`}>
         <div className="relative z-10 text-center md:text-left w-full box-border">
           <h2 className="text-slate-900 text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center border border-orange-200/60 shadow-xs">
@@ -460,7 +462,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
         {/* TARJETA 1: Pagarés */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+        <div className={`group relative rounded-[2rem] p-6 flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white border border-slate-100 shadow-sm'}`}>
           <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white">
             <FileText className="w-6 h-6" />
           </div>
@@ -479,7 +481,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         </div>
 
         {/* TARJETA 2: Personas Activas */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+        <div className={`group relative rounded-[2rem] p-6 flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white border border-slate-100 shadow-sm'}`}>
           <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white">
             <Users className="w-6 h-6" />
           </div>
@@ -496,7 +498,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
         {/* TARJETA 3: Escritos Guardados */}
         
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+        <div className={`group relative rounded-[2rem] p-6 flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white border border-slate-100 shadow-sm'}`}>
           <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white">
             <Clock className="w-6 h-6" />
           </div>
@@ -512,7 +514,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         </div>
 
         {/* TARJETA 4: Valor Notariado */}
-        <div className="group relative bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+        <div className={`group relative rounded-[2rem] p-6 flex flex-col gap-4 overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white border border-slate-100 shadow-sm'}`}>
           <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white">
             <DollarSign className="w-6 h-6" />
           </div>
@@ -532,7 +534,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       </div>
 
       {/* Resumen de Estado de Pagarés (30 días) */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8 flex flex-col md:flex-row gap-8">
+      <div className={`rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row gap-8 ${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white border border-slate-100 shadow-sm'}`}>
         <div className="flex flex-col flex-1 gap-2">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">

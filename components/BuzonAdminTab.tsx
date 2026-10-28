@@ -73,7 +73,7 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
     <div className="w-full box-border max-w-7xl mx-auto mt-8 space-y-6">
       <div className={`p-6 rounded-3xl flex items-center justify-between gap-4 transition-all ${
         esPlanFull 
-          ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
           : 'bg-slate-900 text-white shadow-xl border border-slate-800'
       }`}>
         <div className="flex items-center gap-4">
@@ -106,7 +106,7 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
 
       <div className={`rounded-3xl overflow-hidden transition-all ${
         esPlanFull
-          ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]'
+          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]'
           : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
       }`}>
         {tickets.length === 0 ? (

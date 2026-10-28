@@ -2722,7 +2722,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           {/* Cabecera Principal Unificada */}
           <div className={`${
             esFull 
-              ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+              ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
               : 'bg-slate-900 border border-slate-800 shadow-xl'
           } rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden`}>
             {esFull && (

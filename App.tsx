@@ -395,8 +395,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   const isAdmin = forceAdmin && isActualAdminUser;
 
-  const planUsuario = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'basico').toLowerCase().trim();
-  const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full');
+  const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || 'basico').toLowerCase().trim();
+  const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
 
   useEffect(() => {
     if (isAdmin) {
@@ -1322,7 +1322,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   return (
     <div 
-      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans bg-[#F6F7F9] text-slate-800 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans ${esPlanFull ? 'bg-[#ECECE8] dark:bg-[#0B0D13]' : 'bg-[#F6F7F9]'} text-slate-800 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
         !isSidebarPinned ? 'md:pl-[72px]' : ''
       }`} 
       id="main-panel-container"
@@ -1365,7 +1365,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       <main className="flex-grow flex flex-col h-full overflow-hidden relative" id="main-content-viewport">
         
         {/* Dynamic header display */}
-        <header className="bg-white/90 border-b border-slate-200/70 p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)] print:hidden">
+        <header className={`${
+          esPlanFull 
+            ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border-b border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
+            : 'bg-white/90 border-b border-slate-200/70 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)]'
+        } p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl print:hidden`}>
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button (solo en pantallas móviles) */}
             <button
@@ -1577,6 +1581,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 workspaceId={workspaceId}
                 workspaceName={workspaceName}
                 isSoftBlocked={isSoftBlocked}
+                esPlanFull={esPlanFull}
               />
             )}
 
@@ -1710,7 +1715,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 /* Conversational assistance with O.L.G.A. IA */
                 <div className={`p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message ${
                   esPlanFull 
-                    ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+                    ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
                     : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
                 }`} id="chat-assistant-container">
                   <div className={`pb-4 shrink-0 border-b ${esPlanFull ? 'border-amber-100' : 'border-slate-800'}`}>

@@ -796,7 +796,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
       <div className={`p-6 rounded-3xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden transition-all ${
         isFull 
-          ? 'bg-white border border-amber-200/70 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
+          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
           : 'bg-slate-900 text-white shadow-xl border border-slate-800'
       }`}>
         {isFull && (

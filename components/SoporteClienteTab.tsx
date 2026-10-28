@@ -49,7 +49,7 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
   return (
     <div className={`rounded-3xl p-6 md:p-8 animate-fade-in w-full box-border max-w-3xl mx-auto mt-8 transition-all ${
       esPlanFull
-        ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]'
+        ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]'
         : 'bg-slate-900 text-white shadow-xl border border-slate-800'
     }`}>
       <div className={`flex items-center gap-4 mb-8 pb-6 border-b ${
