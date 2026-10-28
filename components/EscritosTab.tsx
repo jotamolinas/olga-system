@@ -2950,9 +2950,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {/* 2. CUERPO CENTRAL: EDITOR NOTARIAL ACTIVO (MODO DE ENFOQUE TOTAL)         */}
       {/* ========================================================================= */}
       {mostrarEditor && (
-        <div id="editor-notarial-activo-bloque" className="min-h-screen bg-slate-100 relative -m-4 sm:-m-6 md:-m-8 p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
+        <div id="editor-notarial-activo-bloque" className="min-h-screen bg-slate-100 dark:bg-[#0D0E12] relative -m-4 sm:-m-6 md:-m-8 p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
           {/* CABECERA FLOTANTE FIJA (FIXED TOOLBAR ESTILO WORD) - SIEMPRE ACCESIBLE */}
-          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 md:px-8 pt-3 pb-3 transition-all space-y-3">
+          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 dark:bg-[#16171E]/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 shadow-sm px-4 md:px-8 pt-3 pb-3 transition-all space-y-3">
             {/* Fila superior: Botón '⬅ Volver (ESC)', Título del editor y estadísticas */}
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
               <div className="flex items-center gap-3">
@@ -2963,16 +2963,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     setShowSplitScreen(false);
                     setSelectedPlantillaId('');
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs cursor-pointer active:scale-95 shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#242632] hover:bg-slate-100 dark:hover:bg-[#2D303E] text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all border border-slate-300 dark:border-white/10 shadow-xs cursor-pointer active:scale-95 shrink-0"
                   title="Volver al dashboard principal de archivos (ESC)"
                 >
                   <ArrowLeft className="w-3.5 h-3.5 text-slate-700" />
                   <span>⬅ Volver (ESC)</span>
                 </button>
 
-                  <span className="uppercase tracking-widest text-slate-700 flex items-center gap-2 border-l border-slate-200 pl-3">
+                  <span className="uppercase tracking-widest text-slate-700 dark:text-slate-300 flex items-center gap-2 border-l border-slate-200 dark:border-white/10 pl-3">
                     <Edit3 className="w-4 h-4 text-[#FF3131]" />
-                    <span className="font-black text-slate-900 text-xs">
+                    <span className="font-black text-slate-900 dark:text-slate-100 text-xs">
                       {previewMode ? 'MODO LECTURA / PREVISUALIZACIÓN' : 'EDITOR NOTARIAL ACTIVO'}
                     </span>
                   </span>
@@ -2985,14 +2985,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   {activeEditingDoc && (
                     <>
                       <span>•</span>
-                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-0.5 rounded-lg text-slate-500 font-sans">
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 px-2 py-0.5 rounded-lg text-slate-500 dark:text-slate-400 font-sans">
                         <span className="font-mono text-[10px] text-slate-400">
                           Ref. Soporte: {activeEditingDoc.correlativo || String(activeEditingDoc.id || '').slice(0, 3)} - {String(activeEditingDoc.id || '').slice(-6)}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleCopiarCodigoSoporte(activeEditingDoc)}
-                          className="flex items-center gap-1 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                          className="flex items-center gap-1 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-[#242632] hover:bg-slate-100 dark:hover:bg-[#2D303E] px-1.5 py-0.5 rounded transition-colors cursor-pointer"
                           title="Copiar código estructurado para soporte técnico"
                         >
                           {copiedSupportId === activeEditingDoc.id ? (
@@ -3024,7 +3024,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   value={documentTitle}
                   onChange={(e) => setDocumentTitle(e.target.value)}
                   placeholder="Ej. Contrato de Compraventa Inmueble..."
-                  className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none"
+                  className="w-full box-border bg-slate-50 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none"
                 />
               </div>
 
@@ -3035,7 +3035,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 <select
                   value={selectedCategoryForSave}
                   onChange={(e) => setSelectedCategoryForSave(e.target.value)}
-                  className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none"
+                  className="w-full box-border bg-slate-50 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none"
                 >
                   {sortedCarpetas.map(c => (
                     <option key={c.id} value={c.nombre}>{c.nombre}</option>
@@ -3050,7 +3050,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 <button
                   type="button"
                   onClick={handleLimpiarEditor}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-200 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
                   title="Limpiar completamente el área de redacción (Hoja en Blanco)"
                 >
                   <RotateCcw className="w-3 h-3 text-slate-500" />
@@ -3074,7 +3074,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   type="button"
                   onClick={handleCopiarTexto}
                   disabled={!editorText}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl text-xs font-bold transition-colors border border-slate-200 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
                   title="Copiar texto al portapapeles"
                 >
                   {copiedFeedback ? (
@@ -3121,7 +3121,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   type="button"
                   onClick={handleImprimirPDF}
                   disabled={!editorText.trim()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer shadow-xs active:scale-95"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-white/10 cursor-pointer shadow-xs active:scale-95"
                   title="Imprimir o Descargar como PDF con márgenes de hoja notarial"
                 >
                   <Printer className="w-3.5 h-3.5 text-slate-600" />
@@ -3146,9 +3146,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
             {/* BARRA DE HERRAMIENTAS (TOOLBAR MINIMALISTA TIPO WORD) - CONDICIONAL INTELIGENTE */}
             {mostrarBarraHerramientas && (
-              <div className="bg-slate-100 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner animate-in fade-in duration-200">
+              <div className="bg-slate-100 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner animate-in fade-in duration-200">
                 {/* Formato de Texto: Negrita, Cursiva, Subrayado */}
-                <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200">
+                <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200 dark:border-white/10">
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
@@ -3156,7 +3156,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.bold
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Negrita"
                   >
@@ -3169,7 +3169,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.italic
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Cursiva"
                   >
@@ -3182,7 +3182,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.underline
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Subrayado"
                   >
@@ -3191,7 +3191,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 </div>
 
                 {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
-                <div className="flex items-center gap-1 px-2.5 border-r border-slate-200">
+                <div className="flex items-center gap-1 px-2.5 border-r border-slate-200 dark:border-white/10">
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
@@ -3199,7 +3199,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyLeft
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Alinear a la Izquierda"
                   >
@@ -3212,7 +3212,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyCenter
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Centrar"
                   >
@@ -3225,7 +3225,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyRight
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Alinear a la Derecha"
                   >
@@ -3238,7 +3238,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyFull
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Justificar"
                   >
@@ -3255,7 +3255,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.insertUnorderedList
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Lista con viñetas"
                   >
@@ -3268,7 +3268,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.insertOrderedList
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 hover:text-slate-950 hover:bg-white hover:shadow-xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
                     }`}
                     title="Lista numerada"
                   >
@@ -3289,7 +3289,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             <div className={`flex flex-col ${showSplitScreen ? '2xl:flex-row' : ''} gap-6 items-start`}>
               
               {/* LADO IZQUIERDO: Editor Normal */}
-              <div className={`w-full bg-slate-200/60 py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 overflow-x-auto flex justify-center shadow-inner ${showSplitScreen ? '2xl:w-1/2' : ''}`}>
+              <div className={`w-full bg-slate-200/60 dark:bg-[#111217] py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 dark:border-white/10 overflow-x-auto flex justify-center shadow-inner ${showSplitScreen ? '2xl:w-1/2' : ''}`}>
                 <style>{`
                   #editor-notarial-activo,
                   .editor-notarial-papel {
@@ -3385,7 +3385,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
           {/* Aviso Notarial Mandatorio */}
           <div className="px-4 md:px-8 pb-6">
-            <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5 text-[11px] text-slate-600 font-medium shadow-xs">
+            <div className="p-3 bg-white dark:bg-[#16171E] rounded-xl border border-slate-200 dark:border-white/10 flex items-center gap-2.5 text-[11px] text-slate-600 dark:text-slate-300 font-medium shadow-xs">
               <AlertCircle className="w-4 h-4 text-[#FF3131] shrink-0" />
               <span>
                 <strong>Aviso Legal Notarial:</strong> Todo documento generado en este sistema es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.

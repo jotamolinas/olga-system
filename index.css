@@ -80,6 +80,22 @@
 }
 
 /* ==========================================================================
+   DESHABILITAR FLECHAS Y RECUADROS DE INPUTS NUMÉRICOS (SPIN BUTTONS)
+   ========================================================================== */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    margin: 0 !important;
+    display: none !important;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
+/* ==========================================================================
    MATTE BLACK & GLOSS SYSTEM THEME (MODO OSCURO MATE PREMIUM)
    ========================================================================== */
 
@@ -131,9 +147,9 @@ html.dark .text-slate-500 {
 }
 
 /* 5. Inputs, Selects y Textareas en Gris Mate con Borde Suave */
-html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.hoja-notarial input):not(.pagina-virtual input):not(#contenedor-paginas-protocolo input):not(#envoltorio-lienzo-notarial input):not(.campo-hoja):not(.input-impresion),
 html.dark select,
-html.dark textarea:not(.editor-notarial-papel) {
+html.dark textarea:not(.editor-notarial-papel):not(.hoja-notarial textarea):not(.pagina-virtual textarea):not(.contenedor-hoja textarea):not(#contenedor-paginas-protocolo textarea):not(#envoltorio-lienzo-notarial textarea) {
     background-color: #1C1E27 !important;
     color: #ffffff !important;
     border-color: rgba(255, 255, 255, 0.12) !important;
@@ -223,10 +239,37 @@ html.dark .pagina-virtual * {
     color: #000000 !important;
 }
 
+/* Forzar que todos los textareas e inputs sobre la hoja notarial/protocolo sean transparentes con tinta negra */
+html.dark .hoja-notarial textarea,
+html.dark .pagina-virtual textarea,
+html.dark .contenedor-hoja textarea,
+html.dark #envoltorio-lienzo-notarial textarea,
+html.dark #contenedor-paginas-protocolo textarea,
+html.dark .hoja-notarial input,
+html.dark .pagina-virtual input,
+html.dark .contenedor-hoja input,
+html.dark #envoltorio-lienzo-notarial input,
+html.dark #contenedor-paginas-protocolo input {
+    background-color: transparent !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+
 /* Mantener el lienzo notarial flotante sobre fondo oscuro profundo como una mesa de luz */
 html.dark #envoltorio-lienzo-notarial,
-html.dark #contenedor-paginas-protocolo {
+html.dark #contenedor-paginas-protocolo,
+html.dark #editor-notarial-activo-bloque {
     background-color: #0D0E12 !important;
+}
+
+/* Hoja de Presupuesto Notarial Oficial aislada en blanco puro con tinta negra */
+html.dark #hoja-presupuesto-impresion,
+html.dark #hoja-presupuesto-impresion * {
+    color: #000000 !important;
+}
+html.dark #hoja-presupuesto-impresion {
+    background-color: #ffffff !important;
 }
 
 /* Tablas y filas en modo oscuro */

@@ -101,6 +101,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   // Modal para edición rápida de membrete dentro del módulo de facturación
   const [modalMembreteAbierto, setModalMembreteAbierto] = useState(false);
+  // Estados para el Modal de Previsualización e Impresión Notarial Oficial (A4 / Oficio)
+  const [modalImpresionAbierto, setModalImpresionAbierto] = useState(false);
+  const [formatoPapel, setFormatoPapel] = useState<'a4' | 'oficio'>('a4');
   const [membreteDraft, setMembreteDraft] = useState<MembreteEscribaniaConfig>(membrete);
 
   // Sincronización reactiva del membrete ante cambios en configuración o cambio de usuario
@@ -647,10 +650,411 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setModalMembreteAbierto(false);
   };
 
-  // Función de Impresión Oficial Nativa (ejecuta window.print con estilos de Tailwind)
+    // Abre el Modal Oficial de Previsualización e Impresión Notarial
   const handleImprimir = () => {
     autoguardarClienteSilencioso();
-    window.print();
+    setModalImpresionAbierto(true);
+  };
+
+  // Motor de Impresión Notarial Directo (Genera una ventana limpia calibrada a 1 página exacta en A4 u Oficio)
+  const handleImprimirPresupuestoDirecto = (formato: 'a4' | 'oficio' = formatoPapel) => {
+    autoguardarClienteSilencioso();
+    
+    const tasasActivas = tasas.filter(t => t.activo);
+    const serviciosActivos = servicios.filter(s => s.activo);
+
+    const pageSizeCss = formato === 'a4' ? '210mm 297mm' : '216mm 330mm';
+    const numPresupuesto = encabezado.numeroComprobante || 'PRES-0001';
+    const fechaEmision = encabezado.fechaEmision || new Date().toISOString().slice(0, 10);
+    const clienteNombre = encabezado.clienteNombre || 'Consumidor Final';
+    const clienteRuc = encabezado.clienteRucCI || 'Sin Especificar';
+    const clienteTel = encabezado.clienteTelefono || '-';
+    const clienteDir = encabezado.clienteDireccion || '-';
+    const concepto = encabezado.conceptoGeneral || 'Servicios y Gestiones Notariales';
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Presupuesto Notarial ${numPresupuesto} - ${clienteNombre}</title>
+  <style>
+    @page {
+      size: ${pageSizeCss} portrait;
+      margin: 8mm 12mm 8mm 12mm;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      line-height: 1.3;
+    }
+    .hoja-impresion {
+      width: 100%;
+      max-width: ${formato === 'a4' ? '190mm' : '196mm'};
+      margin: 0 auto;
+      padding: 2mm 0;
+    }
+    .header-box {
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .notaria-title {
+      font-size: 14pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+      margin: 0 0 2px 0;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    .notaria-sub {
+      font-size: 8pt;
+      color: #475569;
+      margin: 1px 0;
+      line-height: 1.25;
+    }
+    .presupuesto-badge {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 6px 12px;
+      text-align: right;
+      min-width: 160px;
+    }
+    .presupuesto-badge h2 {
+      margin: 0 0 4px 0;
+      font-size: 11pt;
+      font-weight: 900;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .presupuesto-badge p {
+      margin: 1px 0;
+      font-size: 8pt;
+      color: #334155;
+    }
+    .cliente-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      background: #f8fafc;
+      display: grid;
+      grid-template-columns: 2fr 1.2fr;
+      gap: 5px 16px;
+      font-size: 8.5pt;
+    }
+    .cliente-card .full-row {
+      grid-column: 1 / -1;
+    }
+    .cliente-card strong {
+      color: #0f172a;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      letter-spacing: 0.3px;
+    }
+    .seccion-title {
+      font-size: 8.5pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+      background: #e2e8f0;
+      padding: 3.5px 8px;
+      border-radius: 4px;
+      margin: 8px 0 5px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6px;
+      font-size: 8.5pt;
+    }
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 3.5px 6px;
+      border-bottom: 1px solid #cbd5e1;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 3.5px 6px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+    }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .subtotal-row {
+      font-weight: 700;
+      background: #f8fafc;
+      border-top: 1px solid #cbd5e1;
+    }
+    .liquidacion-box {
+      border: 1.5px solid #0f172a;
+      border-radius: 8px;
+      padding: 7px 12px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 12px;
+      background: #ffffff;
+    }
+    .liquidacion-iva {
+      font-size: 7.5pt;
+      color: #475569;
+      border-right: 1px dashed #cbd5e1;
+      padding-right: 12px;
+    }
+    .liquidacion-totales {
+      text-align: right;
+    }
+    .total-general {
+      font-size: 13pt;
+      font-weight: 900;
+      color: #0f172a;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .observaciones-box {
+      font-size: 7.5pt;
+      color: #64748b;
+      line-height: 1.25;
+      margin-bottom: 12px;
+      border-left: 2px solid #cbd5e1;
+      padding-left: 8px;
+    }
+    .firmas-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-top: 22px;
+      text-align: center;
+    }
+    .linea-firma {
+      border-top: 1px solid #0f172a;
+      padding-top: 4px;
+      font-size: 8pt;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .cargo-firma {
+      font-size: 7pt;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="hoja-impresion">
+    <div class="header-box">
+      <div>
+        <h1 class="notaria-title">${membrete.nombreNotario || 'Escribanía Notarial'}</h1>
+        <p class="notaria-sub"><strong>${membrete.registroNotarial || 'Registro Notarial'}</strong> • ${membrete.nombreEscribania || 'Escribanía Pública'}</p>
+        <p class="notaria-sub">${membrete.direccion || 'Asunción, República del Paraguay'}</p>
+        <p class="notaria-sub">Tel: ${membrete.telefono || '+595 21 000-000'} | R.U.C.: ${membrete.ruc || '80012345-6'} | Timbrado: ${membrete.timbradoNumero || '16894321'}</p>
+      </div>
+      <div class="presupuesto-badge">
+        <h2>${encabezado.tipoComprobante || 'PRESUPUESTO'}</h2>
+        <p><strong>Nº:</strong> <span class="mono">${numPresupuesto}</span></p>
+        <p><strong>Fecha Emisión:</strong> ${fechaEmision}</p>
+        <p><strong>Condición:</strong> ${encabezado.condicionVenta || 'Contado'}</p>
+        <p><strong>Validez:</strong> 30 días</p>
+      </div>
+    </div>
+
+    <div class="cliente-card">
+      <div>
+        <strong>Cliente / Razón Social:</strong><br>
+        <span style="font-weight: 700; font-size: 9.5pt;">${clienteNombre}</span>
+      </div>
+      <div>
+        <strong>R.U.C. / C.I. Nº:</strong><br>
+        <span class="mono" style="font-weight: 700;">${clienteRuc}</span>
+      </div>
+      <div>
+        <strong>Domicilio / Sede:</strong><br>
+        <span>${clienteDir}</span>
+      </div>
+      <div>
+        <strong>Teléfono:</strong><br>
+        <span>${clienteTel}</span>
+      </div>
+      <div class="full-row" style="border-top: 1px dashed #e2e8f0; padding-top: 4px;">
+        <strong>Acto / Concepto Notarial:</strong>
+        <span style="font-weight: 600; color: #0f172a; margin-left: 4px;">${concepto}</span>
+      </div>
+    </div>
+
+    <div class="seccion-title">
+      <span>I. Tasas Judiciales, Aranceles de Registro e Impuestos (Reembolsos Oficiales)</span>
+      <span>Subtotal: Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 65%;">Concepto / Arancel Oficial</th>
+          <th style="width: 15%; text-align: center;">Nº Comprobante</th>
+          <th style="width: 20%; text-align: right;">Importe (PYG)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tasasActivas.length > 0 ? tasasActivas.map(t => `
+          <tr>
+            <td>${t.descripcion}</td>
+            <td class="text-center mono" style="font-size: 8pt; color: #64748b;">${t.numeroComprobantePago || '-'}</td>
+            <td class="text-right mono font-bold">Gs. ${Number(t.monto).toLocaleString('es-PY')}</td>
+          </tr>
+        `).join('') : `
+          <tr>
+            <td colspan="3" style="text-align: center; color: #94a3b8; font-style: italic; padding: 6px;">Sin tasas judiciales o registrales adicionales asignadas a este presupuesto.</td>
+          </tr>
+        `}
+        <tr class="subtotal-row">
+          <td colspan="2">TOTAL TASAS Y REEMBOLSOS OFICIALES (EXENTAS DE IVA)</td>
+          <td class="text-right mono">Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="seccion-title">
+      <span>II. Servicios Notariales, Honorarios Profesionales y Gestiones</span>
+      <span>Subtotal: Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 55%;">Descripción del Servicio / Honorario</th>
+          <th style="width: 10%; text-align: center;">Cant.</th>
+          <th style="width: 15%; text-align: right;">Precio Unit.</th>
+          <th style="width: 5%; text-align: center;">IVA</th>
+          <th style="width: 15%; text-align: right;">Subtotal (PYG)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${serviciosActivos.length > 0 ? serviciosActivos.map(s => `
+          <tr>
+            <td>${s.descripcion}</td>
+            <td class="text-center mono">${s.cantidad}</td>
+            <td class="text-right mono">Gs. ${Number(s.precioUnitario).toLocaleString('es-PY')}</td>
+            <td class="text-center mono" style="font-size: 7.5pt;">${s.tipoIva === 'exenta' ? 'Ex.' : s.tipoIva + '%'}</td>
+            <td class="text-right mono font-bold">Gs. ${Number(s.total).toLocaleString('es-PY')}</td>
+          </tr>
+        `).join('') : `
+          <tr>
+            <td colspan="5" style="text-align: center; color: #94a3b8; font-style: italic; padding: 6px;">Sin honorarios de servicios cargados.</td>
+          </tr>
+        `}
+        <tr class="subtotal-row">
+          <td colspan="4">TOTAL SERVICIOS Y HONORARIOS PROFESIONALES (IVA INCLUIDO)</td>
+          <td class="text-right mono">Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="liquidacion-box">
+      <div class="liquidacion-iva">
+        <strong style="text-transform: uppercase; color: #334155; font-size: 7.5pt;">Liquidación del Impuesto al Valor Agregado (IVA):</strong><br>
+        <div style="margin-top: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px;">
+          <span>Gravadas Exentas:</span><span class="mono text-right">Gs. ${liquidacion.subtotalServiciosExentas.toLocaleString('es-PY')}</span>
+          <span>Gravadas 5%:</span><span class="mono text-right">Gs. ${liquidacion.subtotalServicios5.toLocaleString('es-PY')}</span>
+          <span>Gravadas 10%:</span><span class="mono text-right">Gs. ${liquidacion.subtotalServicios10.toLocaleString('es-PY')}</span>
+          <span>Liquidación IVA 5%:</span><span class="mono text-right">Gs. ${liquidacion.iva5.toLocaleString('es-PY')}</span>
+          <span>Liquidación IVA 10%:</span><span class="mono text-right">Gs. ${liquidacion.iva10.toLocaleString('es-PY')}</span>
+          <span style="font-weight: 700; color: #0f172a;">TOTAL IVA LIQUIDADO:</span><span class="mono text-right" style="font-weight: 700; color: #0f172a;">Gs. ${liquidacion.totalIvaLiquidado.toLocaleString('es-PY')}</span>
+        </div>
+      </div>
+      <div class="liquidacion-totales">
+        <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between;">
+          <span>Subtotal Tasas y Reembolsos:</span>
+          <span class="mono font-bold">Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+        </div>
+        <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between; margin-top: 2px;">
+          <span>Subtotal Servicios y Honorarios:</span>
+          <span class="mono font-bold">Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+        </div>
+        <div class="total-general" style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px;">TOTAL GENERAL A PAGAR:</span>
+          <span class="mono" style="font-size: 13pt; color: #0f172a;">Gs. ${liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="observaciones-box">
+      <strong>Observaciones Generales:</strong> ${observaciones}
+    </div>
+
+    <div class="firmas-grid">
+      <div>
+        <div class="linea-firma">Firma y Aclaración del Cliente / Aceptación</div>
+        <div class="cargo-firma">C.I. / R.U.C.: ${clienteRuc}</div>
+      </div>
+      <div>
+        <div class="linea-firma">${membrete.nombreNotario || 'Notario Público Titular'}</div>
+        <div class="cargo-firma">${membrete.registroNotarial || 'Escribanía Notarial'} • Sello Oficial</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    try {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(htmlContent);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+          win.print();
+        }, 350);
+        return;
+      }
+    } catch (e) {
+      console.warn('window.open no disponible, usando fallback con iframe:', e);
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
+      }, 350);
+    }
   };
 
   return (
@@ -1387,7 +1791,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         value={tasa.monto}
                         onChange={(e) => handleEditarTasa(tasa.id, 'monto', Number(e.target.value) || 0)}
                         disabled={!tasa.activo}
-                        className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
+                        className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
                           modoFondoBlanco
                             ? 'bg-slate-50 border border-slate-300 text-emerald-700 focus:border-emerald-600'
                             : 'bg-slate-900 border border-slate-700/80 text-emerald-400 focus:border-emerald-500'
@@ -1507,7 +1911,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         value={srv.cantidad}
                         onChange={(e) => handleEditarServicio(srv.id, 'cantidad', Number(e.target.value) || 1)}
                         disabled={!srv.activo}
-                        className={`w-16 rounded-lg px-2 py-1 text-center font-mono text-xs focus:outline-none mx-auto print:border-none print:p-0 print:bg-transparent print:text-black ${
+                        className={`w-16 rounded-lg px-2 py-1 text-center font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none mx-auto print:border-none print:p-0 print:bg-transparent print:text-black ${
                           modoFondoBlanco 
                             ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-amber-600' 
                             : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
@@ -1843,6 +2247,264 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL OFICIAL DE PREVISUALIZACIÓN E IMPRESIÓN NOTARIAL (A4 / OFICIO 1 PÁG) */}
+      {/* ========================================================================= */}
+      {modalImpresionAbierto && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-start p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+          {/* BARRA SUPERIOR DE ACCIONES Y FORMATO */}
+          <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-5 flex flex-wrap items-center justify-between gap-4 shadow-2xl sticky top-2 z-30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-sm tracking-tight">Previsualización de Presupuesto Notarial</h3>
+                <p className="text-slate-400 text-xs">Formato oficial calibrado para encajar perfectamente en 1 sola página</p>
+              </div>
+            </div>
+
+            {/* Selector de Papel y Acciones */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setFormatoPapel('a4')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    formatoPapel === 'a4'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  A4 (210 × 297 mm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormatoPapel('oficio')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    formatoPapel === 'oficio'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Oficio (216 × 330 mm)
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleImprimirPresupuestoDirecto(formatoPapel)}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/40 cursor-pointer active:scale-95"
+              >
+                <Printer className="w-4 h-4 text-white" />
+                <span>IMPRIMIR AHORA</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalImpresionAbierto(false)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                title="Cerrar previsualización"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* SIMULACIÓN DE LA HOJA IMPRESA EN PAPEL BLANCO NOTARIAL */}
+          <div className="w-full flex justify-center pb-12">
+            <div
+              id="hoja-presupuesto-impresion"
+              style={{
+                width: formatoPapel === 'a4' ? '210mm' : '216mm',
+                minHeight: formatoPapel === 'a4' ? '297mm' : '330mm',
+                boxSizing: 'border-box',
+              }}
+              className="bg-white text-slate-900 rounded-lg shadow-2xl p-8 sm:p-10 border border-slate-200 font-sans flex flex-col justify-between"
+            >
+              <div>
+                {/* CABECERA NOTARIAL */}
+                <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start gap-4">
+                  <div>
+                    <h2 className="text-xl font-serif font-black uppercase tracking-wide text-slate-900">
+                      {membrete.nombreNotario || 'Escribanía Notarial'}
+                    </h2>
+                    <p className="text-xs text-slate-600 font-bold mt-0.5">
+                      {membrete.registroNotarial || 'Registro Notarial'} • {membrete.nombreEscribania || 'Escribanía Pública'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {membrete.direccion || 'Asunción, República del Paraguay'}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      Tel: {membrete.telefono || '+595 21 000-000'} | R.U.C.: {membrete.ruc || '80012345-6'} | Timbrado: {membrete.timbradoNumero || '16894321'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 text-right min-w-[170px] shrink-0">
+                    <span className="text-xs font-black text-slate-900 uppercase tracking-widest block">
+                      {encabezado.tipoComprobante || 'PRESUPUESTO'}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-800 block mt-0.5">
+                      Nº {encabezado.numeroComprobante || 'PRES-0001'}
+                    </span>
+                    <span className="text-[10px] text-slate-600 block mt-1">
+                      Emisión: {encabezado.fechaEmision || new Date().toISOString().slice(0, 10)}
+                    </span>
+                    <span className="text-[10px] text-slate-600 block">
+                      Condición: {encabezado.condicionVenta || 'Contado'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* TARJETA DE DATOS DEL CLIENTE */}
+                <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Cliente / Razón Social</span>
+                    <strong className="text-slate-900 font-bold text-sm">{encabezado.clienteNombre || 'Consumidor Final'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">R.U.C. / C.I.</span>
+                    <strong className="text-slate-900 font-mono font-bold">{encabezado.clienteRucCI || 'Sin Especificar'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Domicilio</span>
+                    <span className="text-slate-700">{encabezado.clienteDireccion || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Contacto / Teléfono</span>
+                    <span className="text-slate-700">{encabezado.clienteTelefono || '-'}</span>
+                  </div>
+                  <div className="sm:col-span-2 pt-1.5 border-t border-slate-200">
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Acto o Trámite Notarial</span>
+                    <span className="text-slate-900 font-semibold">{encabezado.conceptoGeneral || 'Servicios y Gestiones Notariales'}</span>
+                  </div>
+                </div>
+
+                {/* TABLA 1: TASAS Y REEMBOLSOS */}
+                <div className="mb-3">
+                  <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-800 tracking-wide mb-1 border border-slate-200">
+                    <span>I. Tasas Judiciales, Registros e Impuestos (Reembolsos Oficiales)</span>
+                    <span className="font-mono text-emerald-800">Subtotal: Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+                  </div>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-300 text-[10px] text-slate-500 font-bold uppercase">
+                        <th className="py-1 px-2 text-left">Concepto Oficial</th>
+                        <th className="py-1 px-2 text-center w-28">Nº Boleta</th>
+                        <th className="py-1 px-2 text-right w-32">Monto (PYG)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tasas.filter(t => t.activo).length > 0 ? (
+                        tasas.filter(t => t.activo).map(t => (
+                          <tr key={t.id} className="border-b border-slate-100">
+                            <td className="py-1 px-2 text-slate-800">{t.descripcion}</td>
+                            <td className="py-1 px-2 text-center text-slate-500 font-mono text-[10px]">{t.numeroComprobantePago || '-'}</td>
+                            <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">Gs. {Number(t.monto).toLocaleString('es-PY')}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="py-2 text-center text-slate-400 italic text-[11px]">Sin tasas judiciales cargadas en este presupuesto.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* TABLA 2: SERVICIOS Y HONORARIOS */}
+                <div className="mb-3">
+                  <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-800 tracking-wide mb-1 border border-slate-200">
+                    <span>II. Servicios Notariales, Honorarios y Gestiones</span>
+                    <span className="font-mono text-amber-800">Subtotal: Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+                  </div>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-300 text-[10px] text-slate-500 font-bold uppercase">
+                        <th className="py-1 px-2 text-left">Descripción del Servicio</th>
+                        <th className="py-1 px-2 text-center w-16">Cant.</th>
+                        <th className="py-1 px-2 text-right w-24">Precio Unit.</th>
+                        <th className="py-1 px-2 text-center w-14">IVA</th>
+                        <th className="py-1 px-2 text-right w-28">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {servicios.filter(s => s.activo).length > 0 ? (
+                        servicios.filter(s => s.activo).map(s => (
+                          <tr key={s.id} className="border-b border-slate-100">
+                            <td className="py-1 px-2 text-slate-800">{s.descripcion}</td>
+                            <td className="py-1 px-2 text-center font-mono">{s.cantidad}</td>
+                            <td className="py-1 px-2 text-right font-mono">Gs. {Number(s.precioUnitario).toLocaleString('es-PY')}</td>
+                            <td className="py-1 px-2 text-center font-mono text-[10px]">{s.tipoIva === 'exenta' ? 'Ex.' : s.tipoIva + '%'}</td>
+                            <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">Gs. {Number(s.total).toLocaleString('es-PY')}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="py-2 text-center text-slate-400 italic text-[11px]">Sin honorarios de servicios cargados.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* CUADRO DE LIQUIDACIÓN Y TOTALES */}
+                <div className="border-2 border-slate-900 rounded-xl p-3 mb-3 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white">
+                  <div className="text-[10px] text-slate-600 sm:border-r border-slate-200 pr-2">
+                    <span className="font-black uppercase tracking-wider text-slate-800 block mb-1">Liquidación Tributaria (IVA):</span>
+                    <div className="grid grid-cols-2 gap-1 font-mono">
+                      <span>Exentas:</span><span className="text-right">Gs. {liquidacion.subtotalServiciosExentas.toLocaleString('es-PY')}</span>
+                      <span>Gravadas 5%:</span><span className="text-right">Gs. {liquidacion.subtotalServicios5.toLocaleString('es-PY')}</span>
+                      <span>Gravadas 10%:</span><span className="text-right">Gs. {liquidacion.subtotalServicios10.toLocaleString('es-PY')}</span>
+                      <span className="font-bold text-slate-900">Total IVA Liq.:</span>
+                      <span className="text-right font-bold text-slate-900">Gs. {liquidacion.totalIvaLiquidado.toLocaleString('es-PY')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col justify-between text-right">
+                    <div className="space-y-0.5 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Subtotal Tasas:</span>
+                        <span className="font-mono font-semibold">Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>Subtotal Honorarios:</span>
+                        <span className="font-mono font-semibold">Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+                      </div>
+                    </div>
+                    <div className="pt-1.5 border-t border-slate-200 mt-2 flex justify-between items-baseline">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-900">Total a Pagar:</span>
+                      <span className="text-lg font-mono font-black text-slate-950">Gs. {liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OBSERVACIONES */}
+                <div className="border-l-2 border-slate-300 pl-2.5 text-[10px] text-slate-500 mb-6">
+                  <strong className="text-slate-700">Observaciones:</strong> {observaciones}
+                </div>
+              </div>
+
+              {/* SECCIÓN DE FIRMAS */}
+              <div className="grid grid-cols-2 gap-8 text-center pt-8 border-t border-slate-200">
+                <div>
+                  <div className="border-t border-slate-800 pt-1.5 text-xs font-bold text-slate-800">
+                    Firma y Aclaración del Cliente
+                  </div>
+                  <span className="text-[10px] text-slate-500 block">C.I. / R.U.C.: {encabezado.clienteRucCI || 'Sin Especificar'}</span>
+                </div>
+                <div>
+                  <div className="border-t border-slate-800 pt-1.5 text-xs font-bold text-slate-800">
+                    {membrete.nombreNotario || 'Notario Público Titular'}
+                  </div>
+                  <span className="text-[10px] text-slate-500 block">{membrete.registroNotarial || 'Escribanía Notarial'} • Sello</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
