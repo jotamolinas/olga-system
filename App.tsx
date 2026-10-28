@@ -649,6 +649,17 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               setUserProfile(fallbackProfile);
               setIsCheckingProfile(false);
               return;
+            } else {
+              // Si el usuario ya existe en Firestore pero aún no estaba en caché:
+              const existingData = userSnap.data();
+              if (user) {
+                (user as any).role = existingData?.role || existingData?.rol || 'usuario';
+                (user as any).rol = (user as any).role;
+                (user as any).nombre = existingData?.nombre || existingData?.razonSocial || existingData?.nombreInstitucion || existingData?.nombreCompleto || user.displayName || user.email?.split('@')[0] || 'Usuario';
+              }
+              setUserProfile(existingData);
+              setIsCheckingProfile(false);
+              return;
             }
           }
 
@@ -917,9 +928,43 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   if (!isBypassAuth && (isCheckingProfile || (currentUser && !userProfile))) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 border-4 border-slate-700 border-t-[#FF3131] rounded-full animate-spin"></div>
-        <div className="font-bold text-slate-400 text-sm tracking-widest uppercase">Verificando perfil...</div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans select-none">
+        {/* Glows ambientales de fondo */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-amber-500/10 rounded-full blur-[90px] pointer-events-none"></div>
+
+        <div className="relative z-10 flex flex-col items-center max-w-sm w-full text-center">
+          {/* Contenedor del Logo con sutil animación */}
+          <div className="relative mb-6">
+            <div className="w-24 h-24 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/60 flex items-center justify-center p-3.5 backdrop-blur-md">
+              <img 
+                src="/logo-olga.png" 
+                alt="O.L.G.A." 
+                className="w-full h-full object-contain animate-pulse"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            </div>
+            {/* Anillo de carga giratorio alrededor del logo */}
+            <div className="absolute -inset-1.5 rounded-[1.75rem] border-2 border-transparent border-t-[#FF3131] border-r-amber-500/50 animate-spin pointer-events-none"></div>
+          </div>
+
+          {/* Nombre y mensaje */}
+          <h1 className="text-2xl font-black text-white font-serif tracking-tight mb-2">
+            O.L.G.A.
+          </h1>
+          <p className="text-xs font-semibold text-slate-400 tracking-wider uppercase mb-5 flex items-center justify-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF3131] animate-ping"></span>
+            Iniciando sesión...
+          </p>
+
+          {/* Barra de progreso sutil y elegante */}
+          <div className="w-48 h-1 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700/50">
+            <div className="h-full bg-gradient-to-r from-[#FF3131] via-amber-400 to-[#FF3131] animate-[pulse_1.5s_ease-in-out_infinite] w-full"></div>
+          </div>
+          <span className="text-[11px] text-slate-500 mt-3 font-medium">Preparando tu espacio de trabajo</span>
+        </div>
       </div>
     );
   }
@@ -963,7 +1008,25 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const logoInstitucional = workspaceData?.logo_institucional || userProfile?.logo_institucional || null;
 
   const skipOnboarding = currentUser?.email === "jotamolinas@gmail.com" || isOperador;
-  if (!skipOnboarding && userProfile && userProfile.perfilCompletado !== true) {
+
+  // Verificación blindada: un usuario ya tiene perfil si cuenta con perfilCompletado o cualquiera de los datos notariales/empresariales registrados
+  const yaTienePerfil = Boolean(
+    userProfile?.perfilCompletado === true ||
+    userProfile?.razonSocial ||
+    userProfile?.tipoPerfil ||
+    userProfile?.nombreInstitucion ||
+    userProfile?.matricula ||
+    userProfile?.ruc ||
+    userData?.perfilCompletado === true ||
+    userData?.razonSocial ||
+    userData?.tipoPerfil ||
+    userData?.nombreInstitucion
+  );
+
+  const esInicioSesionExistente = typeof window !== 'undefined' && window.sessionStorage?.getItem('olga_auth_flow') === 'login';
+
+  // Solo mostrar FichaProfesional si es un usuario que se registra por primera vez y NO tiene su perfil configurado
+  if (!skipOnboarding && userProfile && !yaTienePerfil && !esInicioSesionExistente) {
     return (
       <FichaProfesional 
         currentUser={currentUser}

@@ -28,8 +28,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       setError('');
       
       if (isLogin) {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem('olga_auth_flow', 'login');
+        }
         await emailSignIn(cleanEmail, cleanPassword);
       } else {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem('olga_auth_flow', 'register');
+        }
         await emailSignUp(cleanEmail, cleanPassword);
       }
       onLogin();
