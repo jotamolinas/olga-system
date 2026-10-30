@@ -1,5 +1,6 @@
 import { Persona, Pagare, TipoPersona, TipoDocumento } from '../types';
 import { formatearRUCConDV } from './dnitService';
+import { buscarPersonaDuplicada, extraerDocBase, sonMismaPersona } from './personaDedup';
 
 export const PERSONAS_STORAGE_KEY = 'olga_directorio_personas';
 export const PAGARES_STORAGE_KEY = 'olga_pagares';
@@ -70,25 +71,28 @@ export function savePagaresToStorage(pagares: Pagare[]): void {
 }
 
 /**
- * Revisa si existe una persona por ID o por documento (CI o RUC).
+ * Revisa si existe una persona por ID, documento (CI o RUC con/sin DV) o por identidad de nombre.
  */
 export function findPersonaPorDocOId(
   personas: Persona[],
   id?: string,
-  docStr?: string
+  docStr?: string,
+  nombreStr?: string
 ): Persona | undefined {
+  if (!Array.isArray(personas) || personas.length === 0) return undefined;
+
   if (id) {
     const porId = personas.find(p => p.id === id);
     if (porId) return porId;
   }
-  if (!docStr) return undefined;
-  const targetNorm = normalizarDoc(docStr);
-  if (!targetNorm) return undefined;
 
-  return personas.find(p => {
-    const pDocNorm = normalizarDoc(p.nro_documento);
-    return pDocNorm && pDocNorm === targetNorm;
-  });
+  return buscarPersonaDuplicada(
+    {
+      nro_documento: docStr,
+      nombre: nombreStr
+    },
+    personas
+  );
 }
 
 export interface FirmanteInput {
@@ -111,10 +115,14 @@ export function sincronizarOAutoRegistrarPersona(
   const docLimpio = (firmante.documento || '').trim();
   const nombreLimpio = (firmante.nombre || '').trim();
 
-  // Buscar coincidencia por documento normalizado
-  const existente = findPersonaPorDocOId(personasActuales, undefined, docLimpio);
+  // Buscar coincidencia por documento normalizado, base o nombre
+  const existente = findPersonaPorDocOId(personasActuales, undefined, docLimpio, nombreLimpio);
   if (existente) {
-    // Si ya existe pero no tenía domicilio o su nombre era incompleto y ahora lo tenemos, podemos enriquecerlo opcionalmente
+    // Si ya existe pero no tenía domicilio y ahora lo tenemos, actualizar no destructivamente
+    if (firmante.domicilio && !existente.domicilio) {
+      existente.domicilio = firmante.domicilio.trim();
+      savePersonasToStorage(personasActuales);
+    }
     return { persona: existente, esNueva: false };
   }
 
@@ -159,6 +167,12 @@ export function sincronizarOAutoRegistrarPersona(
     origen: firmante.origen || (tipoDocumento === 'RUC' ? 'DNIT' : 'MANUAL'),
     notas_notariales: `Auto-registrado desde Gestión de Pagarés (${firmante.rol.toUpperCase()}) el ${new Date().toLocaleDateString('es-PY')}.`
   };
+
+  // Verificación estricta final de unicidad registral
+  const duplicadoFinal = buscarPersonaDuplicada(nuevaPersona, personasActuales);
+  if (duplicadoFinal) {
+    return { persona: duplicadoFinal, esNueva: false };
+  }
 
   personasActuales.push(nuevaPersona);
   savePersonasToStorage(personasActuales);

@@ -49,6 +49,7 @@ import {
 } from '../types/presupuesto';
 import { Persona, TipoPersona } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
+import { sonMismaPersona, extraerDocBase } from '../services/personaDedup';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
 
@@ -285,9 +286,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         } catch {}
       }
 
-      const docComparar = doc.replace(/[.-]/g, '').toLowerCase();
       const indice = lista.findIndex(
-        (p) => (p.nro_documento || '').replace(/[.-]/g, '').toLowerCase() === docComparar
+        (p) => sonMismaPersona({ nro_documento: doc, nombre }, p)
       );
 
       // Evaluación dinámica según normativa tributaria paraguaya:

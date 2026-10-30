@@ -11,6 +11,7 @@ import {
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
   fetchKnowledgeDocsFromFirestore, syncKnowledgeDocToFirestore, deleteKnowledgeDocFromFirestore, guardarEscritoToFirestore 
 } from './services/firestore';
+import { buscarPersonaDuplicada, depurarDuplicadosLista } from './services/personaDedup';
 import { LoginScreen } from './components/LoginScreen';
 
 import { useTrialStatus } from './hooks/useTrialStatus';
@@ -448,7 +449,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       const stored = localStorage.getItem('olga_directorio_personas') || localStorage.getItem('ihara_personas');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const { listaLimpia } = depurarDuplicadosLista(parsed);
+          return listaLimpia;
+        }
       }
     } catch (e) {
       console.warn('Error parsing personas from localStorage:', e);
@@ -828,7 +832,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         const item = doc.data() as any;
         return { ...item, id: doc.id } as Persona;
       });
-      // Sincronización segura y no destructiva: fusionar por ID con el estado previo
+      // Sincronización segura y no destructiva: fusionar por ID y depurar duplicados
       setPersonas(prev => {
         if (!data || data.length === 0) {
           if (prev && prev.length > 0) {
@@ -845,11 +849,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           if (p && p.id) map.set(p.id, p);
         });
 
-        const merged = Array.from(map.values());
+        const mergedRaw = Array.from(map.values());
+        const { listaLimpia } = depurarDuplicadosLista(mergedRaw);
         try {
-          localStorage.setItem('olga_directorio_personas', JSON.stringify(merged));
+          localStorage.setItem('olga_directorio_personas', JSON.stringify(listaLimpia));
         } catch {}
-        return merged;
+        return listaLimpia;
       });
     }, (error) => {
       console.error("Fallo en sincronización de personas:", error);
@@ -1052,9 +1057,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Handlers for Personas CRUD
   const handleAddPersona = (newPersona: Persona): boolean => {
-    // Unique check
-    const exists = personas.some(p => p.nro_documento.trim().toLowerCase() === newPersona.nro_documento.trim().toLowerCase());
-    if (exists) {
+    // Unique check estricto por documento base, normalizado o nombre
+    const duplicado = buscarPersonaDuplicada(newPersona, personas);
+    if (duplicado) {
+      console.warn(`Persona duplicada detectada: ${newPersona.nombre} (${newPersona.nro_documento}) coincide con ${duplicado.nombre} (${duplicado.nro_documento})`);
       return false;
     }
 

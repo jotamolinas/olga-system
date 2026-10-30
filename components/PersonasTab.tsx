@@ -30,11 +30,21 @@ import {
   Calendar,
   ExternalLink,
   Lock,
-  Loader2
+  Loader2,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { Persona, TipoPersona, TipoDocumento, Pagare } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { useTrialStatus } from '../hooks/useTrialStatus';
+import { 
+  buscarPersonaDuplicada, 
+  depurarDuplicadosLista, 
+  detectarGruposDuplicados, 
+  sonMismaPersona, 
+  extraerDocBase 
+} from '../services/personaDedup';
+import { deletePersonaFromFirestore } from '../services/firestore';
 
 interface PersonasTabProps {
   personas?: Persona[];
@@ -114,13 +124,14 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        setOrigenDnitActivo(true);
         // En Paraguay, las personas jurídicas inician con prefijo '800'
         const rucLimpio = ruc.replace(/\D/g, '');
         const esJuridica = rucLimpio.startsWith('800');
         setTipoPersona(esJuridica ? 'jurídica' : 'física');
 
-        // GESTIÓN DEL DÍGITO VERIFICADOR OBLIGATORIA:
-        // Cargar siempre el documento formateado con su Dígito Verificador (-DV)
+        // GESTIÓN DEL DÍGITO VERIFICADOR OBLIGATORIA CON DNIT:
+        // Cargar siempre el documento formateado con su Dígito Verificador (-DV) obtenido de DNIT
         const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
         setNroDocumento(docConDv);
 
@@ -150,46 +161,39 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         setFeedbackDnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackDnit(null), 4000);
       } else {
-        // Aunque no esté en el padrón tributario remoto, autocalcular y cargar el Dígito Verificador oficial Módulo 11
-        const docConDv = formatearRUCConDV(ruc);
-        if (docConDv) {
-          setNroDocumento(docConDv);
-          const numBase = ruc.split('-')[0].replace(/\D/g, '');
-          const dvCalc = calcularDVParaguay(numBase);
-          setFeedbackDnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
-        } else {
-          setFeedbackDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
-        }
-        setTimeout(() => setFeedbackDnit(null), 3500);
+        // Si no está registrado en el DNIT, se respeta el número de cédula tal cual lo ingresó el usuario sin forzar DV
+        setFeedbackDnit('Documento no encontrado en DNIT. Puede completar los datos manualmente sin dígito verificador.');
+        setTimeout(() => setFeedbackDnit(null), 4000);
       }
     } catch (err) {
       console.warn('Consulta DNIT no completada:', err);
-      const docConDv = formatearRUCConDV(ruc);
-      if (docConDv) {
-        setNroDocumento(docConDv);
-      }
-      setFeedbackDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
-      setTimeout(() => setFeedbackDnit(null), 3500);
+      // No forzar Dígito Verificador al usuario si la consulta no se completa
+      setFeedbackDnit('No encontrado en DNIT o sin conexión. Puede ingresar los datos manualmente sin dígito verificador.');
+      setTimeout(() => setFeedbackDnit(null), 4000);
     } finally {
       setLoadingDnit(false);
     }
   };
 
-  // 1. Estado de Personas con persistencia en localStorage y respaldo inicial en memoria
+  // 1. Estado de Personas con persistencia en localStorage y deduplicación notarial automática
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
     try {
       const guardado = localStorage.getItem(STORAGE_KEY);
       if (guardado) {
         const parsed = JSON.parse(guardado);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const { listaLimpia } = depurarDuplicadosLista(parsed);
+          return listaLimpia;
         }
       }
     } catch (err) {
       console.warn('Error leyendo directorio desde localStorage:', err);
     }
 
-    if (personas && Array.isArray(personas)) return personas;
+    if (personas && Array.isArray(personas)) {
+      const { listaLimpia } = depurarDuplicadosLista(personas);
+      return listaLimpia;
+    }
     return [];
   });
 
@@ -293,8 +297,20 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
   const [domicilio, setDomicilio] = useState('');
+  const [origenDnitActivo, setOrigenDnitActivo] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDepurando, setIsDepurando] = useState(false);
+
+  // Detección reactiva de registros duplicados en el Fichero
+  const gruposDuplicados = useMemo(() => {
+    return detectarGruposDuplicados(listaPersonas);
+  }, [listaPersonas]);
+
+  const totalDuplicadosCount = useMemo(() => {
+    return gruposDuplicados.reduce((acc, g) => acc + g.duplicados.length, 0);
+  }, [gruposDuplicados]);
 
   // 3. Estados de Buscador y Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -377,6 +393,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setTelefono('');
     setEmail('');
     setDomicilio('');
+    setOrigenDnitActivo(false);
     setErrorMsg('');
   };
 
@@ -395,6 +412,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setTelefono(persona.telefono || '');
     setEmail(persona.email || '');
     setDomicilio(persona.domicilio || '');
+    setOrigenDnitActivo(persona.origen === 'DNIT');
     setErrorMsg('');
     setSuccessMsg('');
     setFeedbackDnit(null);
@@ -463,9 +481,52 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setTimeout(() => setSuccessMsg(''), 3500);
   };
 
+  // Función Notarial para depurar y fusionar registros duplicados
+  const handleDepurarDuplicados = async () => {
+    setIsDepurando(true);
+    try {
+      const baseParaDepurar = (personas && personas.length > 0) ? personas : listaPersonas;
+      const { listaLimpia, duplicadosEliminados, idsEliminados } = depurarDuplicadosLista(baseParaDepurar);
+
+      if (duplicadosEliminados === 0) {
+        setSuccessMsg('✓ Fichero auditado: No se detectaron registros duplicados.');
+        setTimeout(() => setSuccessMsg(''), 3500);
+        return;
+      }
+
+      // Eliminar registros secundarios de Firestore
+      for (const idEliminado of idsEliminados) {
+        if (onDeletePersona) {
+          onDeletePersona(idEliminado);
+        } else {
+          deletePersonaFromFirestore(idEliminado).catch(console.error);
+        }
+      }
+
+      // Actualizar registros principales/fusionados
+      if (onUpdatePersona) {
+        for (const p of listaLimpia) {
+          onUpdatePersona(p);
+        }
+      }
+
+      guardarListaPersistente(listaLimpia);
+      setSuccessMsg(`⚡ Depuración notarial exitosa: Se unificaron ${duplicadosEliminados} registro(s) duplicado(s).`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err) {
+      console.error('Error al depurar duplicados:', err);
+      setErrorMsg('Ocurrió un error al depurar los duplicados del fichero.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    } finally {
+      setIsDepurando(false);
+    }
+  };
+
   // Guardar persona (Crear o Actualizar)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -497,36 +558,92 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-    // Asegurar Dígito Verificador oficial para personas y empresas
-    const docFinal = formatearRUCConDV(nroDocumento.trim()) || nroDocumento.trim();
+    // Guardado manual respetando la entrada del usuario:
+    // Si el usuario carga manualmente la cédula y no pone dígito verificador, se guarda tal como lo ingresó.
+    // Solo cuando se consulta la DNIT o si el usuario escribe explícitamente el guion con DV, se guarda con dígito verificador.
+    const docFinal = nroDocumento.trim();
 
-    // Validar duplicado de documento
-    const docClean = docFinal.toLowerCase();
-    const docCleanBase = docClean.split('-')[0];
-    const duplicado = listaPersonas.find(p => {
-      if (p.id === editingId) return false;
-      const pDoc = (p.nro_documento || '').trim().toLowerCase();
-      const pDocBase = pDoc.split('-')[0];
-      return pDoc === docClean || (pDocBase && docCleanBase && pDocBase === docCleanBase);
-    });
+    // Validar duplicado de documento y nombre con la máxima precisión notarial
+    const candidato: Partial<Persona> = {
+      id: editingId || undefined,
+      nombre: nombreFinal,
+      apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
+      nro_documento: docFinal,
+      tipo_persona: tipoPersona
+    };
+
+    const baseComparar = (personas && personas.length > 0) ? personas : listaPersonas;
+    const duplicado = buscarPersonaDuplicada(candidato, baseComparar, editingId);
+
     if (duplicado) {
-      setErrorMsg(`Error: El número de documento "${docFinal}" ya está registrado a nombre de "${duplicado.nombre}".`);
+      const nomDup = `${duplicado.nombre} ${duplicado.apellido || ''}`.trim();
+      setErrorMsg(`⚠️ No se puede guardar: Ya existe un interviniente registrado con este documento o identidad ("${nomDup}" - Doc: ${duplicado.nro_documento}). No se permite el doble guardado.`);
       return;
     }
 
-    // Representación legal notarial: Se inicializa de forma neutra ("No aplica" para Física, "Sin Asignar" para Jurídica salvo asignación manual)
-    const representanteLegalValor = tipoPersona === 'física' 
-      ? 'No aplica' 
-      : (representanteId ? 'Asignado' : 'Sin Asignar');
+    setIsSubmitting(true);
+    try {
+      // Representación legal notarial: Se inicializa de forma neutra ("No aplica" para Física, "Sin Asignar" para Jurídica salvo asignación manual)
+      const representanteLegalValor = tipoPersona === 'física' 
+        ? 'No aplica' 
+        : (representanteId ? 'Asignado' : 'Sin Asignar');
 
-    const activeUser = (currentUser || auth?.currentUser) as any;
+      const activeUser = (currentUser || auth?.currentUser) as any;
 
-    // 1. SI ES EDICIÓN: El ID ya existe y debe preservarse de forma intacta
-    if (editingId) {
-      const personaExistente = (personas && personas.length > 0 ? personas : listaPersonas).find(p => p.id === editingId);
-      const registroFinal: Persona = {
-        ...(personaExistente || {}),
-        id: editingId, // Preservar exactamente el ID original
+      // 1. SI ES EDICIÓN: El ID ya existe y debe preservarse de forma intacta
+      if (editingId) {
+        const personaExistente = (personas && personas.length > 0 ? personas : listaPersonas).find(p => p.id === editingId);
+        const registroFinal: Persona = {
+          ...(personaExistente || {}),
+          id: editingId, // Preservar exactamente el ID original
+          tipo_persona: tipoPersona,
+          nombre: nombreFinal,
+          apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
+          tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
+          nro_documento: docFinal,
+          telefono: telefono.trim(),
+          email: email.trim(),
+          domicilio: domicilio.trim(),
+          representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
+          representanteLegal: representanteLegalValor,
+          responsable: personaExistente?.responsable && personaExistente.responsable !== 'MONKEY BUSINESS IA' && personaExistente.responsable !== 'Titular' 
+            ? personaExistente.responsable 
+            : null,
+          origen: personaExistente?.origen || (origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL')),
+          notas_notariales: personaExistente?.notas_notariales,
+          userId: personaExistente?.userId || workspaceId || activeUser?.uid || '',
+          creator_id: personaExistente?.creator_id || activeUser?.uid,
+          createdBy: personaExistente?.createdBy || activeUser?.uid,
+          creator_name: personaExistente?.creator_name && personaExistente.creator_name !== 'MONKEY BUSINESS IA' && personaExistente.creator_name !== 'Titular'
+            ? personaExistente.creator_name
+            : undefined,
+          creator_role: personaExistente?.creator_role
+        };
+
+        // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
+        if (onUpdatePersona) {
+          onUpdatePersona(registroFinal);
+        }
+
+        // Mapeo no destructivo: se preservan íntegramente todos los demás registros
+        const baseParaActualizar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
+        const nuevaLista = baseParaActualizar.map(p => p.id === editingId ? registroFinal : p);
+        guardarListaPersistente(nuevaLista);
+
+        setSuccessMsg(`Datos de "${registroFinal.nombre}" actualizados exitosamente.`);
+        resetFormulario();
+        setTimeout(() => setSuccessMsg(''), 4000);
+
+        if (onClose) {
+          onClose();
+        }
+        return;
+      }
+
+      // 2. SI ES CREACIÓN NUEVA (editingId no existe): Inicialización neutra de datos
+      const nuevoId = `p-${Date.now()}`;
+      const registroNuevo: Persona = {
+        id: nuevoId,
         tipo_persona: tipoPersona,
         nombre: nombreFinal,
         apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
@@ -537,74 +654,33 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         domicilio: domicilio.trim(),
         representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
         representanteLegal: representanteLegalValor,
-        responsable: personaExistente?.responsable && personaExistente.responsable !== 'MONKEY BUSINESS IA' && personaExistente.responsable !== 'Titular' 
-          ? personaExistente.responsable 
-          : null,
-        origen: personaExistente?.origen || (tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL'),
-        notas_notariales: personaExistente?.notas_notariales,
-        userId: personaExistente?.userId || workspaceId || activeUser?.uid || '',
-        creator_id: personaExistente?.creator_id || activeUser?.uid,
-        createdBy: personaExistente?.createdBy || activeUser?.uid,
-        creator_name: personaExistente?.creator_name && personaExistente.creator_name !== 'MONKEY BUSINESS IA' && personaExistente.creator_name !== 'Titular'
-          ? personaExistente.creator_name
-          : undefined,
-        creator_role: personaExistente?.creator_role
+        responsable: null,
+        origen: origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL'),
+        userId: workspaceId || activeUser?.uid || '',
+        creator_id: activeUser?.uid,
+        createdBy: activeUser?.uid,
+        creator_name: undefined,
+        creator_role: undefined
       };
 
-      // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
-      if (onUpdatePersona) {
-        onUpdatePersona(registroFinal);
+      if (onAddPersona) {
+        const agregado = onAddPersona(registroNuevo);
+        if (agregado === false) {
+          setErrorMsg(`⚠️ Ya existe un registro para esta persona o documento en el sistema.`);
+          return;
+        }
       }
 
-      // Mapeo no destructivo: se preservan íntegramente todos los demás registros
-      const baseParaActualizar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
-      const nuevaLista = baseParaActualizar.map(p => p.id === editingId ? registroFinal : p);
+      const baseParaAgregar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
+      const nuevaLista = [registroNuevo, ...baseParaAgregar];
       guardarListaPersistente(nuevaLista);
 
-      setSuccessMsg(`Datos de "${registroFinal.nombre}" actualizados exitosamente.`);
+      setSuccessMsg(`Persona "${registroNuevo.nombre}" registrada en el fichero.`);
       resetFormulario();
       setTimeout(() => setSuccessMsg(''), 4000);
-
-      if (onClose) {
-        onClose();
-      }
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // 2. SI ES CREACIÓN NUEVA (editingId no existe): Inicialización neutra de datos
-    const nuevoId = `p-${Date.now()}`;
-    const registroNuevo: Persona = {
-      id: nuevoId,
-      tipo_persona: tipoPersona,
-      nombre: nombreFinal,
-      apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
-      tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
-      nro_documento: docFinal,
-      telefono: telefono.trim(),
-      email: email.trim(),
-      domicilio: domicilio.trim(),
-      representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
-      representanteLegal: representanteLegalValor,
-      responsable: null,
-      origen: tipoPersona === 'jurídica' ? 'DNIT' : 'MANUAL',
-      userId: workspaceId || activeUser?.uid || '',
-      creator_id: activeUser?.uid,
-      createdBy: activeUser?.uid,
-      creator_name: undefined,
-      creator_role: undefined
-    };
-
-    if (onAddPersona) {
-      onAddPersona(registroNuevo);
-    }
-
-    const baseParaAgregar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
-    const nuevaLista = [registroNuevo, ...baseParaAgregar];
-    guardarListaPersistente(nuevaLista);
-
-    setSuccessMsg(`Persona "${registroNuevo.nombre}" registrada en el fichero.`);
-    resetFormulario();
-    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   // 5. Filtrado en tiempo real con .filter()
@@ -934,6 +1010,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       {feedbackDnit}
                     </p>
                   )}
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Permite guardar C.I. sin dígito verificador. El DV se añade al consultar DNIT.
+                  </p>
                 </div>
               </div>
             ) : (
@@ -1007,6 +1086,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       {feedbackDnit}
                     </p>
                   )}
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    R.U.C. con dígito verificador obtenido automáticamente al consultar DNIT.
+                  </p>
                 </div>
 
                 {/* Selector de Representante Legal */}
@@ -1109,10 +1191,17 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               )}
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                {editingId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                <span>{editingId ? 'Guardar Cambios' : 'Registrar Persona'}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : editingId ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                <span>{isSubmitting ? 'Guardando...' : editingId ? 'Guardar Cambios' : 'Registrar Persona'}</span>
               </button>
             </div>
           </form>
@@ -1150,43 +1239,105 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             </div>
           </div>
 
-          {/* Filtros Rápidos por Categoría */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <button
-              type="button"
-              onClick={() => setFiltroTipo('todos')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                filtroTipo === 'todos' 
-                  ? 'bg-slate-900 text-white' 
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Todos ({listaPersonas.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroTipo('física')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                filtroTipo === 'física' 
-                  ? 'bg-slate-900 text-white' 
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Físicas ({conteoFisicas})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroTipo('jurídica')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                filtroTipo === 'jurídica' 
-                  ? 'bg-slate-900 text-white' 
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Jurídicas ({conteoJuridicas})
-            </button>
+          {/* Filtros Rápidos por Categoría y Control Notarial de Duplicados */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <button
+                type="button"
+                onClick={() => setFiltroTipo('todos')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filtroTipo === 'todos' 
+                    ? 'bg-slate-900 text-white' 
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Todos ({listaPersonas.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroTipo('física')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filtroTipo === 'física' 
+                    ? 'bg-slate-900 text-white' 
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Físicas ({conteoFisicas})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroTipo('jurídica')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filtroTipo === 'jurídica' 
+                    ? 'bg-slate-900 text-white' 
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Jurídicas ({conteoJuridicas})
+              </button>
+            </div>
+
+            {/* Herramienta de Auditoría y Limpieza de Duplicados */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDepurarDuplicados}
+                disabled={isDepurando}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                title="Escanear y depurar registros duplicados por documento o identidad"
+              >
+                {isDepurando ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                )}
+                <span>Auditar Duplicados</span>
+                {totalDuplicadosCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black animate-pulse">
+                    {totalDuplicadosCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Banner Activo de Detección de Duplicados en el Fichero */}
+          {totalDuplicadosCount > 0 && (
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-amber-950 shadow-sm animate-fade-in">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-700 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-sm text-amber-950">
+                      Se detectaron {totalDuplicadosCount} registro(s) duplicado(s) en el Fichero
+                    </p>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                      Acción Notarial
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Coinciden por C.I. base, RUC con o sin Dígito Verificador o identidad de nombres. Puede fusionarlos para unificar su historial de pagarés y expediente en un único registro limpio.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDepurarDuplicados}
+                disabled={isDepurando}
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl shrink-0 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDepurando ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-yellow-200" />
+                )}
+                <span>Fusionar y Eliminar Duplicados</span>
+              </button>
+            </div>
+          )}
 
           {/* Tabla de Directorio Enterprise */}
           <div className="overflow-x-auto">
