@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 400" fill="none" width="100%" height="100%">
+  <!-- Emblem Notarial / Column skyline in official O.L.G.A. signature red -->
+  <path 
+    d="M 12 250 H 76 V 126 H 124 V 250 H 172 V 28 H 220 V 250 H 268 V 74 H 316 V 250 H 428" 
+    stroke="#FB3131" 
+    stroke-width="26" 
+    stroke-linejoin="miter" 
+    stroke-linecap="square"
+  />
+  
+  <!-- O.L.G.A. text enlarged, bold, in matching signature red -->
+  <text 
+    x="220" 
+    y="348" 
+    text-anchor="middle" 
+    fill="#FB3131" 
+    font-family="'Courier New', Courier, monospace" 
+    font-size="64" 
+    font-weight="900" 
+    letter-spacing="14px"
+  >O.L.G.A</text>
+</svg>

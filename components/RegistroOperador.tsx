@@ -200,7 +200,7 @@ export const RegistroOperador: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 sm:p-8">
             {/* Logo Oficial Central */}
             <img 
-              src="/logo-olga.png" 
+              src="/logo-olga.png?v=3" 
               alt="O.L.G.A. Notarial" 
               className="h-16 w-auto mx-auto mb-6 object-contain" 
             />

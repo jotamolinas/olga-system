@@ -13,70 +13,80 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
     {
       id: 'Básico',
       name: 'Plan Básico',
+      badge: 'INICIAL',
       users: 2,
       aiLimits: 20,
       monthlyPrice: '250.000',
       annualBasePrice: '3.000.000',
       annualDiscountedPrice: '2.500.000',
       features: [
-        'Dashboard',
-        'Gestión de Pagarés',
-        'Fichero Personas',
-        'Gestión de Escritos',
-        'Asistente IA',
-        'Soporte'
+        'Pagarés a la Orden ilimitados',
+        'Gestión básica de documentos',
+        'Fichero de Personas (C.I. y RUC)',
+        'Asistente O.L.G.A. IA Estándar',
+        'Exportación de PDF (Marca de Agua)',
+        'Soporte por correo'
       ],
       recommended: false,
     },
     {
       id: 'Pro',
       name: 'Plan Pro',
+      badge: 'PROFESIONAL',
       users: 5,
       aiLimits: 50,
       monthlyPrice: '575.000',
       annualBasePrice: '6.900.000',
       annualDiscountedPrice: '5.750.000',
       features: [
-        'Dashboard',
-        'Gestión de Pagarés',
-        'Fichero Personas',
-        'Gestión de Escritos',
-        'Asistente IA',
-        'Lienzo Notarial',
-        'Presupuesto',
-        'Soporte'
+        'Todo lo incluido en Plan Básico',
+        'Gestión de Escritos Notariales y Legales Libre',
+        'Plantillas Legales y Comerciales completas',
+        'Exportación Limpia (Sin Marca de Agua)',
+        'Soporte Ágil y Asistido por WhatsApp'
       ],
       recommended: true,
     },
     {
       id: 'Empresa',
       name: 'Plan Empresa',
+      badge: 'CORPORATIVO / ESCRIBANÍAS',
       users: 10,
       aiLimits: 100,
       monthlyPrice: '1.000.000',
       annualBasePrice: '12.000.000',
       annualDiscountedPrice: '10.000.000',
       features: [
-        'Todo lo del Plan Pro',
-        'El Oráculo (en vez de Asistente IA)',
-        'Auditoría y Estatutos',
-        'Soporte Corporativo'
+        'Todo lo incluido en Plan Pro',
+        'Presupuestos y Facturación Notarial (Exclusivo Ley 879/81)',
+        'Lienzo Notarial Oficial (CSJ)',
+        'El Oráculo Legal IA para dictámenes notariales',
+        'Módulo SEPRELAD (Debida Diligencia)',
+        'Traducción Jurídica y Procesamiento Masivo',
+        'Certificación de Firmas, Concuerda y Legalización',
+        'Estatutos y Contratos Corporativos',
+        'Historial de Auditoría Notarial (Audit Logs)'
       ],
       recommended: false,
     },
     {
       id: 'Full',
       name: 'Plan Full',
+      badge: 'GLOW GOLD EDITION',
       users: 15,
       aiLimits: 300,
       monthlyPrice: '1.350.000',
       annualBasePrice: '16.200.000',
       annualDiscountedPrice: '13.500.000',
       features: [
-        'Todo lo del Plan Empresa',
-        'El Oráculo Ilimitado',
-        'Skin Glassmorphism Exclusivo',
-        'Soporte VIP 24/7'
+        'Todos los beneficios de Plan Empresa',
+        'Interfaz Exclusiva "Glow Gold Edition" (Skin Dorado)',
+        'Atendimiento VIP 24 Horas y Onboarding Dedicado',
+        'Presupuestos y Facturación Notarial (Exclusivo Ley 879/81)',
+        'Lienzo Notarial Completo con calibración multidocumento',
+        'El Oráculo Legal IA Ilimitado y Prioritario',
+        'Módulo SEPRELAD (Debida Diligencia)',
+        'Traducción Jurídica y Procesamiento Masivo'
       ],
       recommended: false,
     }
@@ -140,15 +150,18 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
                 </div>
               )}
               
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                {plan.badge}
+              </div>
               <h3 className={`text-xl font-bold mb-2 ${isFull || isEmpresa ? 'text-white' : plan.recommended ? 'text-blue-100' : 'text-white'}`}>{plan.name}</h3>
               
               <div className="flex flex-col gap-2 mb-6 text-sm">
                 <div className={`flex items-center gap-2 p-2 rounded-lg border ${isFull ? 'text-yellow-50 bg-yellow-800/40 border-yellow-600/50' : isEmpresa ? 'text-slate-300 bg-slate-900 border-slate-800' : 'text-slate-300 bg-slate-800/50 border-slate-700/50'}`}>
-                  <Users className={`w-4 h-4 ${isFull ? 'text-yellow-200' : 'text-slate-400'}`} />
+                  <Users className={`w-4 h-4 ${isFull ? 'text-amber-400' : 'text-slate-400'}`} />
                   <span><strong>{plan.users}</strong> Usuarios</span>
                 </div>
                 <div className={`flex items-center gap-2 p-2 rounded-lg border ${isFull ? 'text-yellow-50 bg-yellow-800/40 border-yellow-600/50' : isEmpresa ? 'text-slate-300 bg-slate-900 border-slate-800' : 'text-slate-300 bg-slate-800/50 border-slate-700/50'}`}>
-                  <Bot className={`w-4 h-4 ${isFull ? 'text-yellow-200' : 'text-emerald-400'}`} />
+                  <Bot className={`w-4 h-4 ${isFull ? 'text-amber-400' : 'text-emerald-400'}`} />
                   <span><strong>{plan.aiLimits}</strong> Consultas IA/mes</span>
                 </div>
               </div>
@@ -174,12 +187,35 @@ export const PlanesTab: React.FC<PlanesTabProps> = ({ onPlanSelect, activePlan }
               </div>
 
               <ul className="space-y-3 mb-8 flex-grow">
-                {plan.features.map((feature, idx) => (
-                  <li key={idx} className={`flex gap-3 text-sm items-start ${isFull ? 'text-yellow-50' : plan.recommended ? 'text-blue-100' : 'text-slate-300'}`}>
-                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${isFull ? 'text-yellow-950' : plan.recommended ? 'text-blue-400' : 'text-emerald-500'}`} />
-                    <span>{feature}</span>
-                  </li>
-                ))}
+                {plan.features.map((feature, idx) => {
+                  const isSpecialPresupuesto = feature.includes('Ley 879/81');
+                  const isSpecialLienzo = feature.includes('Lienzo Notarial Oficial');
+                  return (
+                    <li 
+                      key={idx} 
+                      className={`flex gap-2.5 text-xs md:text-sm items-start ${
+                        isSpecialPresupuesto 
+                          ? 'bg-amber-400/15 border border-amber-400/40 p-2 rounded-xl text-amber-200 font-bold' 
+                          : isSpecialLienzo
+                            ? 'text-emerald-300 font-bold'
+                            : isFull 
+                              ? 'text-yellow-50' 
+                              : plan.recommended 
+                                ? 'text-blue-100' 
+                                : 'text-slate-300'
+                      }`}
+                    >
+                      <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${
+                        isFull 
+                          ? 'text-amber-400' 
+                          : plan.recommended 
+                            ? 'text-blue-400' 
+                            : 'text-emerald-500'
+                      }`} />
+                      <span>{feature}</span>
+                    </li>
+                  );
+                })}
               </ul>
 
               <button 

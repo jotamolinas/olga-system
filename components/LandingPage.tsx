@@ -686,61 +686,65 @@ export const LandingPage: React.FC = () => {
             
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
               
-              {/* PLAN BÁSICO (Color Verde Esmeralda) */}
-              <div className="group bg-white border-2 border-emerald-500/30 text-slate-900 rounded-3xl p-7 flex flex-col justify-between transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] hover:bg-emerald-600 hover:border-emerald-500 hover:shadow-[0_20px_40px_-12px_rgba(16,185,129,0.4)] hover:text-white cursor-pointer">
+              {/* PLAN BÁSICO (INICIAL) */}
+              <div className="group bg-white border-2 border-emerald-500/30 text-slate-900 rounded-[1.75rem] p-7 flex flex-col justify-between shadow-sm transition-all duration-300 ease-out hover:-translate-y-2 hover:bg-emerald-600 hover:border-emerald-500 hover:shadow-2xl hover:shadow-emerald-600/30 hover:text-white cursor-default">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-emerald-100 transition-colors mb-1">Inicial</div>
-                  <h3 className="text-xl font-black text-slate-900 group-hover:text-white transition-colors mb-4">Plan Básico</h3>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 transition-colors group-hover:text-emerald-100">
+                    INICIAL
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 font-serif mb-4 transition-colors group-hover:text-white">
+                    Plan Básico
+                  </h3>
                   
                   <div className="flex flex-col gap-2 mb-6 text-xs">
-                    <div className="flex items-center gap-2 text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Users className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">2</strong> Usuarios habilitados</span>
+                    <div className="flex items-center gap-2.5 text-slate-700 bg-slate-50/80 px-3 py-2.5 rounded-xl border border-slate-200/80 font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white">
+                      <Users className="w-4 h-4 text-slate-500 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-slate-900 font-bold transition-colors group-hover:text-white">2</strong> Usuarios habilitados</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Bot className="w-4 h-4 text-emerald-600 group-hover:text-emerald-200 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">20</strong> Consultas IA / mes</span>
+                    <div className="flex items-center gap-2.5 text-slate-700 bg-slate-50/80 px-3 py-2.5 rounded-xl border border-slate-200/80 font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white">
+                      <Bot className="w-4 h-4 text-emerald-600 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-slate-900 font-bold transition-colors group-hover:text-white">20</strong> Consultas IA / mes</span>
                     </div>
                   </div>
 
-                  <div className="mb-6 pb-6 border-b border-slate-100 group-hover:border-white/20 transition-colors">
+                  <div className="mb-6 pb-6 border-b border-slate-100 transition-colors group-hover:border-white/20">
                     {isAnnual ? (
                       <div>
-                        <div className="text-slate-400 line-through text-xs font-mono group-hover:text-emerald-200/80 transition-colors">Gs. 3.000.000</div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 2.500.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-emerald-100 transition-colors">/ año (pago único)</span>
+                        <div className="text-slate-400 line-through text-xs font-mono transition-colors group-hover:text-emerald-200">Gs. 3.000.000</div>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 2.500.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-emerald-100">/ año (pago único)</span>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 250.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-emerald-100 transition-colors">/ mes</span>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 250.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-emerald-100">/ mes</span>
                       </div>
                     )}
                   </div>
 
-                  <ul className="space-y-3 mb-8 text-xs text-slate-600 group-hover:text-white/95 transition-colors">
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                  <ul className="space-y-3 mb-8 text-xs text-slate-600 transition-colors group-hover:text-emerald-50">
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Pagarés a la Orden ilimitados</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Gestión básica de documentos</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Fichero de Personas (C.I. y RUC)</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Asistente O.L.G.A. IA Estándar</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Exportación de PDF (Marca de Agua)</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Soporte por correo</span>
                     </li>
                   </ul>
@@ -748,67 +752,71 @@ export const LandingPage: React.FC = () => {
 
                 <button 
                   onClick={() => navigate('/consola')} 
-                  className="w-full py-3 bg-white border-2 border-slate-200 text-slate-800 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer active:scale-98 group-hover:bg-white group-hover:text-emerald-700 group-hover:border-white font-bold group-hover:shadow-lg"
+                  className="w-full py-3 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-xs active:scale-98 group-hover:bg-white group-hover:text-emerald-700 group-hover:border-white group-hover:shadow-lg"
                 >
-                  Seleccionar Básico
+                  SELECCIONAR BÁSICO
                 </button>
               </div>
               
-              {/* PLAN PRO (RECOMENDADO - Color Azul) */}
-              <div className="group bg-white border-2 border-blue-600 text-slate-900 rounded-3xl p-7 flex flex-col justify-between relative shadow-lg shadow-blue-600/5 transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] hover:bg-blue-600 hover:border-blue-500 hover:shadow-[0_20px_40px_-12px_rgba(37,99,235,0.45)] hover:text-white cursor-pointer">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest py-1 px-3.5 rounded-full shadow-sm flex items-center gap-1 transition-all group-hover:bg-white group-hover:text-blue-600 group-hover:shadow-md">
+              {/* PLAN PRO (PROFESIONAL) */}
+              <div className="group bg-white border-2 border-blue-600 text-slate-900 rounded-[1.75rem] p-7 flex flex-col justify-between relative shadow-md shadow-blue-600/5 transition-all duration-300 ease-out hover:-translate-y-2 hover:bg-blue-600 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-600/30 hover:text-white cursor-default">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest py-1 px-3.5 rounded-full shadow-sm flex items-center gap-1 transition-colors group-hover:bg-white group-hover:text-blue-700 group-hover:shadow-md">
                   <Target className="w-3 h-3" /> Recomendado
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-100 transition-colors mb-1">Profesional</div>
-                  <h3 className="text-xl font-black text-slate-900 group-hover:text-white transition-colors mb-4">Plan Pro</h3>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 mb-1 transition-colors group-hover:text-blue-100">
+                    PROFESIONAL
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 font-serif mb-4 transition-colors group-hover:text-white">
+                    Plan Pro
+                  </h3>
                   
                   <div className="flex flex-col gap-2 mb-6 text-xs">
-                    <div className="flex items-center gap-2 text-slate-700 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100 group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Users className="w-4 h-4 text-blue-600 group-hover:text-white transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">5</strong> Usuarios habilitados</span>
+                    <div className="flex items-center gap-2.5 text-blue-950 bg-blue-50/70 px-3 py-2.5 rounded-xl border border-blue-200/80 font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white">
+                      <Users className="w-4 h-4 text-blue-600 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-blue-950 font-bold transition-colors group-hover:text-white">5</strong> Usuarios habilitados</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-700 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100 group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Bot className="w-4 h-4 text-blue-600 group-hover:text-blue-100 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">50</strong> Consultas IA / mes</span>
+                    <div className="flex items-center gap-2.5 text-blue-950 bg-blue-50/70 px-3 py-2.5 rounded-xl border border-blue-200/80 font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/20 group-hover:text-white">
+                      <Bot className="w-4 h-4 text-blue-600 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-blue-950 font-bold transition-colors group-hover:text-white">50</strong> Consultas IA / mes</span>
                     </div>
                   </div>
 
-                  <div className="mb-6 pb-6 border-b border-slate-100 group-hover:border-white/20 transition-colors">
+                  <div className="mb-6 pb-6 border-b border-slate-100 transition-colors group-hover:border-white/20">
                     {isAnnual ? (
                       <div>
-                        <div className="text-slate-400 line-through text-xs font-mono group-hover:text-blue-200/80 transition-colors">Gs. 6.900.000</div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 5.750.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-blue-100 transition-colors">/ año (pago único)</span>
+                        <div className="text-slate-400 line-through text-xs font-mono transition-colors group-hover:text-blue-200">Gs. 6.900.000</div>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 5.750.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-blue-100">/ año (pago único)</span>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 575.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-blue-100 transition-colors">/ mes</span>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 575.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-blue-100">/ mes</span>
                       </div>
                     )}
                   </div>
 
-                  <ul className="space-y-3 mb-8 text-xs text-slate-700 group-hover:text-white/95 transition-colors">
-                    <li className="flex items-start gap-2 font-semibold">
-                      <Check className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                  <ul className="space-y-3 mb-8 text-xs text-slate-700 transition-colors group-hover:text-blue-50">
+                    <li className="flex items-start gap-2.5 font-semibold text-slate-900 transition-colors group-hover:text-white">
+                      <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Todo lo incluido en Plan Básico</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Gestión de Escritos Notariales y Legales Libre</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Plantillas Legales y Comerciales completas</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Exportación Limpia (Sin Marca de Agua)</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0 mt-0.5 transition-colors" />
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Soporte Ágil y Asistido por WhatsApp</span>
                     </li>
                   </ul>
@@ -816,73 +824,107 @@ export const LandingPage: React.FC = () => {
 
                 <button 
                   onClick={() => navigate('/consola')} 
-                  className="w-full py-3 bg-blue-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-98 group-hover:bg-white group-hover:text-blue-700 font-bold group-hover:shadow-lg"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer active:scale-98 group-hover:bg-white group-hover:text-blue-700 group-hover:shadow-lg"
                 >
-                  <span>Seleccionar Pro</span>
+                  <span>SELECCIONAR PRO</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* PLAN EMPRESA (CORPORATIVO / ONYX BLACK GLOSS) */}
-              <div className="group bg-white border-2 border-slate-800 text-slate-900 rounded-3xl p-7 flex flex-col justify-between shadow-lg transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] hover:bg-gradient-to-br hover:from-slate-900 hover:via-slate-950 hover:to-black hover:border-slate-700 hover:shadow-[0_20px_45px_-10px_rgba(15,23,42,0.65)] hover:text-white relative overflow-hidden cursor-pointer">
-                {/* Sutil brillo de fondo gloss */}
-                <div className="absolute -right-20 -top-20 w-44 h-44 bg-white/5 rounded-full blur-2xl pointer-events-none group-hover:bg-white/10 transition-all"></div>
-
+              {/* PLAN EMPRESA (CORPORATIVO / ESCRIBANÍAS) */}
+              <div className="group bg-white border-2 border-slate-900 text-slate-900 rounded-[1.75rem] p-7 flex flex-col justify-between shadow-sm transition-all duration-300 ease-out hover:-translate-y-2 hover:bg-[#0B0F17] hover:border-slate-800 hover:shadow-2xl hover:shadow-black/50 hover:text-white cursor-default">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-slate-400 transition-colors mb-1">
-                    Corporativo / Escribanías
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 transition-colors group-hover:text-slate-400">
+                    CORPORATIVO / ESCRIBANÍAS
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 group-hover:text-white transition-colors mb-4">Plan Empresa</h3>
+                  <h3 className="text-2xl font-black text-slate-900 font-serif mb-4 transition-colors group-hover:text-white">
+                    Plan Empresa
+                  </h3>
                   
                   <div className="flex flex-col gap-2 mb-6 text-xs">
-                    <div className="flex items-center gap-2 text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200 group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Users className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">10</strong> Usuarios habilitados</span>
+                    <div className="flex items-center gap-2.5 text-slate-700 bg-slate-50/80 px-3 py-2.5 rounded-xl border border-slate-200/80 font-medium transition-colors group-hover:bg-white/10 group-hover:border-white/15 group-hover:text-white">
+                      <Users className="w-4 h-4 text-slate-500 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-slate-900 font-bold transition-colors group-hover:text-white">10</strong> Usuarios habilitados</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200 group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white transition-all">
-                      <Bot className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-white">100</strong> Consultas IA / mes</span>
+                    <div className="flex items-center gap-2.5 text-slate-700 bg-slate-50/80 px-3 py-2.5 rounded-xl border border-slate-200/80 font-medium transition-colors group-hover:bg-white/10 group-hover:border-white/15 group-hover:text-white">
+                      <Bot className="w-4 h-4 text-emerald-600 shrink-0 transition-colors group-hover:text-emerald-400" />
+                      <span><strong className="text-slate-900 font-bold transition-colors group-hover:text-white">100</strong> Consultas IA / mes</span>
                     </div>
                   </div>
 
-                  <div className="mb-6 pb-6 border-b border-slate-100 group-hover:border-white/10 transition-colors">
+                  <div className="mb-6 pb-6 border-b border-slate-100 transition-colors group-hover:border-white/20">
                     {isAnnual ? (
                       <div>
-                        <div className="text-slate-400 line-through text-xs font-mono group-hover:text-slate-400 transition-colors">Gs. 12.000.000</div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 10.000.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-slate-300 transition-colors">/ año (pago único)</span>
+                        <div className="text-slate-400 line-through text-xs font-mono transition-colors group-hover:text-slate-400">Gs. 12.000.000</div>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 10.000.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-slate-400">/ año (pago único)</span>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-white transition-colors">Gs. 1.000.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-slate-300 transition-colors">/ mes</span>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 1.000.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-slate-400">/ mes</span>
                       </div>
                     )}
                   </div>
 
-                  <ul className="space-y-3 mb-8 text-xs text-slate-700 group-hover:text-slate-200 transition-colors">
-                    <li className="flex items-start gap-2 font-semibold text-slate-900 group-hover:text-white">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 mt-0.5 transition-colors" />
+                  <ul className="space-y-3 mb-8 text-xs text-slate-700 transition-colors group-hover:text-slate-200">
+                    <li className="flex items-start gap-2.5 font-semibold text-slate-900 transition-colors group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
                       <span>Todo lo incluido en Plan Pro</span>
                     </li>
-                    <li className="flex items-start gap-2 font-semibold text-emerald-700 group-hover:text-emerald-300">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 mt-0.5 transition-colors" />
-                      <span>Lienzo Notarial Oficial (CSJ)</span>
+
+                    {/* RESALTADO: PRESUPUESTO LEY 879/81 */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs transition-colors group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-emerald-400" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">Presupuestos y Facturación Notarial (Ley 879/81)</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-slate-300">Cálculo de aranceles e IVA oficial automático</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 mt-0.5 transition-colors" />
-                      <span>Certificación de Firmas, Concuerda y Legalización</span>
+
+                    {/* RESALTADO: LIENZO NOTARIAL CSJ */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs transition-colors group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-emerald-400" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">Lienzo Notarial Oficial (CSJ)</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-slate-300">Calibración milimétrica para Hoja de Seguridad (216×330 mm)</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 mt-0.5 transition-colors" />
-                      <span>El Oráculo Legal IA para dictámenes</span>
+
+                    {/* RESALTADO: EL ORÁCULO LEGAL IA Y BENEFICIOS */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs transition-colors group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-blue-400" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">El Oráculo Legal IA (Dictámenes Notariales)</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-slate-300">Dictámenes jurídicos inmediatos, análisis de títulos, jurisprudencia y blindaje de escrituras</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 mt-0.5 transition-colors" />
-                      <span>Estatutos y Contratos Corporativos</span>
+
+                    {/* BOTONES ESPECIALES SEPRELAD Y TRADUCCIÓN */}
+                    <li className="flex flex-col gap-2 pt-1">
+                      <div className="text-[11px] font-bold text-slate-900 flex items-center gap-1.5 transition-colors group-hover:text-white">
+                        <Check className="w-4 h-4 text-slate-900 shrink-0 transition-colors group-hover:text-white" />
+                        <span>Módulos Corporativos Especiales:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pl-6">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <ShieldCheck className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> SEPRELAD
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <FileText className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> Traducción Legal
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <Stamp className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> Certificación CSJ
+                        </span>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 transition-colors" />
+
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-emerald-400" />
+                      <span>Estatutos, Contratos Corporativos y Concuerda</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-emerald-400" />
                       <span>Historial de Auditoría Notarial (Audit Logs)</span>
                     </li>
                   </ul>
@@ -890,92 +932,132 @@ export const LandingPage: React.FC = () => {
 
                 <button 
                   onClick={() => navigate('/consola')} 
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer active:scale-98 shadow-sm group-hover:bg-white group-hover:text-slate-950 font-bold group-hover:shadow-lg"
+                  className="w-full py-3 bg-[#0B0F17] hover:bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md active:scale-98 group-hover:bg-white group-hover:text-slate-950 group-hover:shadow-lg"
                 >
-                  Seleccionar Empresa
+                  SELECCIONAR EMPRESA
                 </button>
               </div>
 
-              {/* PLAN FULL (GLOW GOLD EDITION - EDICIÓN NOTARIAL DEFINITIVA) */}
-              <div className="group bg-gradient-to-b from-amber-50/40 via-white to-amber-50/20 border-2 border-amber-400 text-slate-900 rounded-3xl p-7 flex flex-col justify-between relative shadow-md transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] hover:bg-gradient-to-br hover:from-amber-400 hover:via-yellow-500 hover:to-amber-600 hover:border-amber-300 hover:shadow-[0_20px_50px_-10px_rgba(245,158,11,0.55)] hover:text-slate-950 cursor-pointer">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-widest py-1 px-3.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300 whitespace-nowrap group-hover:bg-slate-950 group-hover:text-amber-400 group-hover:border-amber-300 transition-all">
+              {/* PLAN FULL (GLOW GOLD EDITION) */}
+              <div className="group bg-white border-2 border-amber-400 text-slate-900 rounded-[1.75rem] p-7 flex flex-col justify-between relative shadow-sm transition-all duration-300 ease-out hover:-translate-y-2 hover:bg-gradient-to-b hover:from-amber-500 hover:via-amber-600 hover:to-amber-700 hover:border-amber-400 hover:shadow-2xl hover:shadow-amber-500/40 hover:text-white cursor-default">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-widest py-1 px-3.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300 whitespace-nowrap transition-colors group-hover:bg-white group-hover:text-amber-800 group-hover:border-white">
                   <Star className="w-3 h-3 fill-current" /> Edición Definitiva
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-amber-700 group-hover:text-amber-950 transition-colors mb-1 flex items-center gap-1.5 font-bold">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500 group-hover:text-amber-950" />
-                    <span>Glow Gold Edition</span>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1 flex items-center gap-1.5 transition-colors group-hover:text-amber-100">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 transition-colors group-hover:text-white" />
+                    <span>GLOW GOLD EDITION</span>
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 group-hover:text-slate-950 transition-colors mb-4">Plan Full</h3>
+                  <h3 className="text-2xl font-black text-slate-900 font-serif mb-4 transition-colors group-hover:text-white">
+                    Plan Full
+                  </h3>
                   
                   <div className="flex flex-col gap-2 mb-6 text-xs">
-                    <div className="flex items-center gap-2 text-slate-800 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200 group-hover:bg-white/35 group-hover:border-white/50 group-hover:text-slate-950 transition-all">
-                      <Users className="w-4 h-4 text-amber-700 group-hover:text-slate-950 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-black">15</strong> Usuarios habilitados</span>
+                    <div className="flex items-center gap-2.5 text-slate-900 bg-[#FEF8E7] px-3 py-2.5 rounded-xl border border-[#FDE6B0] font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                      <Users className="w-4 h-4 text-amber-700 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-black font-bold transition-colors group-hover:text-white">15</strong> Usuarios habilitados</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-800 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200 group-hover:bg-white/35 group-hover:border-white/50 group-hover:text-slate-950 transition-all">
-                      <Bot className="w-4 h-4 text-amber-700 group-hover:text-slate-950 transition-colors" />
-                      <span><strong className="text-slate-900 group-hover:text-black">300</strong> Consultas IA / mes</span>
+                    <div className="flex items-center gap-2.5 text-slate-900 bg-[#FEF8E7] px-3 py-2.5 rounded-xl border border-[#FDE6B0] font-medium transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                      <Bot className="w-4 h-4 text-amber-700 shrink-0 transition-colors group-hover:text-white" />
+                      <span><strong className="text-black font-bold transition-colors group-hover:text-white">300</strong> Consultas IA / mes</span>
                     </div>
                   </div>
 
-                  <div className="mb-6 pb-6 border-b border-amber-200 group-hover:border-slate-950/20 transition-colors">
+                  <div className="mb-6 pb-6 border-b border-amber-200 transition-colors group-hover:border-white/20">
                     {isAnnual ? (
                       <div>
-                        <div className="text-slate-400 line-through text-xs font-mono group-hover:text-amber-950/70 transition-colors">Gs. 16.200.000</div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-slate-950 transition-colors">Gs. 13.500.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-slate-900 transition-colors">/ año (pago único)</span>
+                        <div className="text-slate-400 line-through text-xs font-mono transition-colors group-hover:text-amber-200">Gs. 16.200.000</div>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 13.500.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-amber-100">/ año (pago único)</span>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-slate-950 transition-colors">Gs. 1.350.000</div>
-                        <span className="text-[11px] text-slate-500 group-hover:text-slate-900 transition-colors">/ mes</span>
+                        <div className="text-2xl font-black text-slate-900 font-mono transition-colors group-hover:text-white">Gs. 1.350.000</div>
+                        <span className="text-[11px] text-slate-500 transition-colors group-hover:text-amber-100">/ mes</span>
                       </div>
                     )}
                   </div>
 
-                  <ul className="space-y-3 mb-8 text-xs text-slate-800 group-hover:text-slate-950 transition-colors">
-                    <li className="flex items-start gap-2 font-bold text-amber-900 group-hover:text-slate-950">
-                      <Check className="w-4 h-4 text-amber-600 group-hover:text-slate-950 shrink-0 mt-0.5 transition-colors" />
-                      <span>Todo lo incluido en Plan Empresa</span>
+                  <ul className="space-y-3 mb-8 text-xs text-slate-700 transition-colors group-hover:text-amber-50">
+                    <li className="flex items-start gap-2.5 font-semibold text-slate-900 transition-colors group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <span>Mismos beneficios de Plan Empresa con ventajas exclusivas:</span>
                     </li>
-                    <li className="flex items-start gap-2 font-bold text-amber-950 bg-amber-100/50 p-1.5 rounded-lg border border-amber-200 group-hover:bg-white/40 group-hover:border-white/60 group-hover:text-slate-950 transition-all">
-                      <Check className="w-4 h-4 text-amber-600 group-hover:text-slate-950 shrink-0 mt-0.5 transition-colors" />
-                      <span>Presupuestos y Facturación Notarial (Exclusivo Ley 879/81)</span>
+
+                    {/* EXCLUSIVO 1: SKIN DORADO */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                      <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">Interfaz Exclusiva &ldquo;Glow Gold Edition&rdquo; (Skin Dorado)</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-amber-100">Skin Glassmorphism Premium en oro y grafito notarial</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 group-hover:text-slate-950 shrink-0 mt-0.5 transition-colors" />
-                      <span>Lienzo Notarial Completo con calibración multidocumento</span>
+
+                    {/* EXCLUSIVO 2: ATENCIÓN 24HS */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                      <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">Atendimiento VIP 24 Horas &amp; Onboarding Dedicado</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-amber-100">Canal de atención telefónico y WhatsApp exclusivo 24/7</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 group-hover:text-slate-950 shrink-0 mt-0.5 transition-colors" />
-                      <span>El Oráculo Legal IA sin restricciones</span>
+
+                    {/* RESALTADO: PRESUPUESTOS */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs transition-colors group-hover:bg-white/10 group-hover:border-white/20 group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <div>
+                        <span className="text-slate-900 transition-colors group-hover:text-white">Presupuestos y Facturación Notarial (Ley 879/81)</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-amber-100">Aranceles oficiales, desglose y facturación instantánea</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 group-hover:text-slate-950 shrink-0 mt-0.5 transition-colors" />
-                      <span>Módulo Perfil de Debida Diligencia SEPRELAD</span>
+
+                    {/* RESALTADO: LIENZO NOTARIAL */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 transition-colors group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <span>Lienzo Notarial Completo con calibración CSJ multidocumento</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 transition-colors" />
-                      <span>Procesamiento Masivo y Traducción Legal</span>
+
+                    {/* RESALTADO: EL ORÁCULO LEGAL IA Y BENEFICIOS */}
+                    <li className="flex items-start gap-2.5 font-bold text-slate-900 transition-colors group-hover:text-white">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <div>
+                        <span>El Oráculo Legal IA sin restricciones</span>
+                        <div className="text-[10px] font-normal text-slate-600 mt-0.5 transition-colors group-hover:text-amber-100">Dictámenes jurídicos inmediatos, análisis de títulos y jurisprudencia</div>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 transition-colors" />
-                      <span>Interfaz Exclusiva &ldquo;Glow Gold Edition&rdquo;</span>
+
+                    {/* BOTONES ESPECIALES SEPRELAD Y TRADUCCIÓN */}
+                    <li className="flex flex-col gap-2 pt-1">
+                      <div className="text-[11px] font-bold text-slate-900 flex items-center gap-1.5 transition-colors group-hover:text-white">
+                        <Check className="w-4 h-4 text-slate-900 shrink-0 transition-colors group-hover:text-white" />
+                        <span>Módulos de Máxima Potencia Habilitados:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pl-6">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <ShieldCheck className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> SEPRELAD
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <FileText className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> Traducción Legal
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 border border-slate-300/80 text-black shadow-2xs transition-colors group-hover:bg-white/15 group-hover:border-white/25 group-hover:text-white">
+                          <Stamp className="w-3.5 h-3.5 text-slate-800 shrink-0 transition-colors group-hover:text-white" /> Certificación CSJ
+                        </span>
+                      </div>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 transition-colors" />
-                      <span>Soporte VIP 24/7 y Onboarding Dedicado</span>
+
+                    <li className="flex items-start gap-2.5 text-slate-600 transition-colors group-hover:text-amber-100">
+                      <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5 transition-colors group-hover:text-white" />
+                      <span>Estatutos, Contratos Corporativos, Concuerda y Audit Logs</span>
                     </li>
                   </ul>
                 </div>
 
                 <button 
                   onClick={() => navigate('/consola')} 
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-slate-950 text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md group-hover:bg-slate-950 group-hover:from-slate-950 group-hover:via-slate-950 group-hover:to-slate-950 group-hover:text-amber-400 group-hover:shadow-xl font-bold cursor-pointer active:scale-98"
+                  className="w-full py-3 bg-[#E88300] hover:bg-[#D47700] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-amber-600/20 cursor-pointer active:scale-98 group-hover:bg-white group-hover:text-amber-800 group-hover:shadow-lg"
                 >
-                  Seleccionar Plan Full
+                  SELECCIONAR PLAN FULL
                 </button>
               </div>
 

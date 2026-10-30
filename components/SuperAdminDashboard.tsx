@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { 
   CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
-  Search, DollarSign
+  Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
+  Building, Zap, CheckCircle2, UserCheck, ShieldQuestion
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line
 } from 'recharts';
+
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  telefono: string;
+  nombre: string;
+  razonSocial: string;
+  plan: string;
+  estadoSuscripcion: 'activo' | 'prueba' | 'pendiente' | 'vencido';
+  estadoPago: string;
+  modalidadPago: string;
+  montoAPagar: number;
+  timestamp: number;
+  fechaFormateada: string;
+  diasRestantes?: number;
+  isRecent: boolean;
+  raw: any;
+}
 
 interface PendingPayment {
   id: string;
@@ -60,29 +79,88 @@ export const SuperAdminDashboard: React.FC = () => {
   const [chartData, setChartData] = useState<{name: string, cantidad: number}[]>([]);
   const [lineData, setLineData] = useState<{name: string, volumen: number}[]>([]);
 
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [userFilter, setUserFilter] = useState<'todos' | 'activos' | 'prueba' | 'pendientes'>('todos');
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+
+  const getUserTimestamp = (u: any): number => {
+    if (!u) return 0;
+    const candidates = [
+      u.createdAt,
+      u.created_at,
+      u.fechaCreacion,
+      u.fecha_creacion,
+      u.fechaRegistro,
+      u.fecha_registro,
+      u.fechaSolicitud,
+      u.fecha_solicitud,
+      u.fecha_inicio_plan,
+      u.fechaAprobacion,
+      u.timestamp,
+      u.updatedAt,
+      u.updated_at
+    ];
+
+    for (const c of candidates) {
+      if (!c) continue;
+      if (typeof c?.toDate === 'function') {
+        const ms = c.toDate().getTime();
+        if (!isNaN(ms) && ms > 0) return ms;
+      }
+      if (typeof c === 'number' && !isNaN(c)) {
+        if (c > 1000000000000) return c;
+        if (c > 100000000) return c * 1000;
+      }
+      if (typeof c === 'string') {
+        const ms = Date.parse(c);
+        if (!isNaN(ms) && ms > 0) return ms;
+      }
+    }
+    return 0;
+  };
+
+  const formatUserDate = (timestamp: number) => {
+    if (!timestamp || timestamp === 0) return 'Reciente / No registrada';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return 'Fecha inválida';
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        const usersSnap = await getDocs(collection(db, 'users'));
+    let unsubscribeUsers: (() => void) | null = null;
+    let isMounted = true;
+
+    // 1. Sincronización en TIEMPO REAL de Usuarios (Con Plan, En Prueba y Pendientes)
+    try {
+      const usersCol = collection(db, 'users');
+      unsubscribeUsers = onSnapshot(usersCol, (usersSnap) => {
+        if (!isMounted) return;
+
+        const usersList: RegisteredUser[] = [];
+        const pend: PendingPayment[] = [];
         let tUsers = 0;
         let aUsers = 0;
         let aiQ = 0;
-        const userMap: Record<string, any> = {};
-        const pend: PendingPayment[] = [];
 
-        usersSnap.forEach(doc => {
-          const data = doc.data();
+        usersSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          const docId = docSnap.id;
           tUsers++;
-          if (data.plan && data.plan !== 'Demo') aUsers++;
-          if (data.aiConsultationsCount) aiQ += data.aiConsultationsCount;
-          userMap[doc.id] = data;
 
+          if (data.aiConsultationsCount) aiQ += data.aiConsultationsCount;
+
+          const planStr = String(data.planActual || data.plan || data.planSolicitado || '').toLowerCase();
           const estadoPago = String(data.estadoPago || '').toUpperCase();
-          if (estadoPago === 'PAGO_PENDIENTE_VERIFICACION' || estadoPago === 'PENDIENTE') {
+          const estadoPlataforma = String(data.estadoPlataforma || '').toUpperCase();
+
+          const isPending = estadoPago === 'PAGO_PENDIENTE_VERIFICACION' || estadoPago === 'PENDIENTE';
+          if (isPending) {
             pend.push({
-              id: doc.id,
-              userId: doc.id,
-              email: data.email || data.correo || data.phoneNumber || data.telefono || doc.id || 'Desconocido',
+              id: docId,
+              userId: docId,
+              email: data.email || data.correo || data.phoneNumber || data.telefono || docId || 'Desconocido',
               nombreCliente: data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Cliente sin nombre registrado',
               montoAPagar: data.montoAPagar || 0,
               modalidadPago: data.modalidadPago || 'Desconocido',
@@ -91,10 +169,86 @@ export const SuperAdminDashboard: React.FC = () => {
               planSolicitado: data.planSolicitado || 'Plan desconocido',
             });
           }
+
+          const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('basico') || planStr.includes('básico') || estadoPago === 'APROBADO' || estadoPago === 'ACTIVO' || estadoPlataforma === 'APROBADO';
+          if (isPaidPlan) aUsers++;
+
+          const timestamp = getUserTimestamp(data);
+
+          let estadoSuscripcion: 'activo' | 'prueba' | 'pendiente' | 'vencido' = 'prueba';
+          let diasRestantes = 5;
+
+          if (isPending) {
+            estadoSuscripcion = 'pendiente';
+          } else if (isPaidPlan) {
+            estadoSuscripcion = 'activo';
+          } else {
+            // Período de prueba de 5 días
+            if (timestamp > 0) {
+              const diffMs = Date.now() - timestamp;
+              const daysPassed = diffMs / (1000 * 60 * 60 * 24);
+              diasRestantes = Math.max(0, Math.ceil(5 - daysPassed));
+              if (daysPassed > 5 || diasRestantes <= 0) {
+                estadoSuscripcion = 'vencido';
+              } else {
+                estadoSuscripcion = 'prueba';
+              }
+            } else {
+              estadoSuscripcion = 'prueba';
+              diasRestantes = 5;
+            }
+          }
+
+          const isRecent = timestamp > 0 && (Date.now() - timestamp) < (24 * 60 * 60 * 1000);
+
+          usersList.push({
+            id: docId,
+            email: data.email || data.correo || '',
+            telefono: data.phoneNumber || data.telefono || data.celular || data.phone || '',
+            nombre: data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Usuario Registrado',
+            razonSocial: data.razonSocial || data.escribania?.nombre || '',
+            plan: data.planActual || data.plan || (estadoSuscripcion === 'activo' ? 'Plan Activo' : 'Prueba Gratuita'),
+            estadoSuscripcion,
+            estadoPago: data.estadoPago || data.estadoPlataforma || (estadoSuscripcion === 'activo' ? 'APROBADO' : 'PRUEBA'),
+            modalidadPago: data.modalidadPago || (data.tipoPlan ? `Plan ${data.tipoPlan}` : ''),
+            montoAPagar: data.montoAPagar || 0,
+            timestamp,
+            fechaFormateada: formatUserDate(timestamp),
+            diasRestantes,
+            isRecent,
+            raw: data
+          });
         });
 
+        // REGLA CRÍTICA: Orden estricto de arriba para abajo de más nuevo a más viejo siempre.
+        // Los nuevos usuarios que ingresen se posicionan automáticamente en el top del contenedor.
+        usersList.sort((a, b) => b.timestamp - a.timestamp);
+
+        setRegisteredUsers(usersList);
+        setPendingPayments(pend.sort((a, b) => (b.fechaSolicitud?.toDate?.()?.getTime() || 0) - (a.fechaSolicitud?.toDate?.()?.getTime() || 0)));
+        setLoadingUsers(false);
+        setLoadingPayments(false);
+
+        setMetrics(prev => ({
+          ...prev,
+          totalUsers: tUsers,
+          activeUsers: aUsers,
+          aiQueries: aiQ,
+          alerts: pend.length
+        }));
+      }, (err) => {
+        console.error("Error en snapshot en tiempo real de usuarios:", err);
+        setLoadingUsers(false);
+      });
+    } catch (err) {
+      console.error("Error inicializando listener de usuarios:", err);
+      setLoadingUsers(false);
+    }
+
+    // 2. Carga de Pagarés Globales para métricas y gráficos
+    const fetchPagaresData = async () => {
+      try {
         const pagaresSnap = await getDocs(collection(db, 'pagares'));
-        let tPagares = pagaresSnap.size;
         const pgs: PagareGlobal[] = [];
         const mesCounts: Record<string, number> = {};
         const mesVolumen: Record<string, number> = {};
@@ -118,27 +272,18 @@ export const SuperAdminDashboard: React.FC = () => {
 
         pagaresSnap.forEach(doc => {
           const rawData = doc.data();
-          
           let rawMonto = rawData.valor_total || rawData.monto || 0;
           if (typeof rawMonto === 'string') {
             rawMonto = parseFloat(rawMonto.replace(/[^\d.-]/g, '')) || 0;
           }
 
           const fechaRaw = rawData.created_at;
-
           const uid = rawData.userId || rawData.creator_id || '';
-          const mappedUser = uid ? userMap[uid] : null;
-          let displayEmail = 'Desconocido';
-          if (mappedUser) {
-            displayEmail = mappedUser.razonSocial || mappedUser.email || `ID: ${uid}`;
-          } else if (uid) {
-            displayEmail = `ID: ${uid}`;
-          }
 
           const mappedPagare: PagareGlobal = {
             id: doc.id,
             userId: uid,
-            userEmail: displayEmail,
+            userEmail: rawData.creatorEmail || rawData.userEmail || `ID: ${uid}`,
             empresa: rawData.acreedor_nombre_raw || 'Empresa Desconocida',
             acreedor_nombre: rawData.acreedor_nombre_raw || 'Emisor Desconocido',
             acreedor_documento: rawData.acreedor_documento_raw || '',
@@ -163,14 +308,6 @@ export const SuperAdminDashboard: React.FC = () => {
           }
         });
 
-        setMetrics({
-          totalUsers: tUsers,
-          activeUsers: aUsers,
-          totalPagares: tPagares,
-          aiQueries: aiQ,
-          alerts: pend.length
-        });
-
         const parseDateSort = (val: any) => {
           if (!val) return 0;
           if (val.toDate) return val.toDate().getTime();
@@ -186,8 +323,8 @@ export const SuperAdminDashboard: React.FC = () => {
           return 0;
         };
 
-        setPendingPayments(pend.sort((a, b) => (b.fechaSolicitud?.toDate?.()?.getTime() || 0) - (a.fechaSolicitud?.toDate?.()?.getTime() || 0)));
         setPagaresGlobal(pgs.sort((a, b) => parseDateSort(b.created_at) - parseDateSort(a.created_at)));
+        setMetrics(prev => ({ ...prev, totalPagares: pagaresSnap.size }));
 
         const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
         const currentMonth = new Date().getMonth();
@@ -202,15 +339,18 @@ export const SuperAdminDashboard: React.FC = () => {
         setLineData(last6Months.map(m => ({ name: m, volumen: mesVolumen[m] || 0 })));
 
         setLoading(false);
-        setLoadingPayments(false);
       } catch (err) {
-        console.error(err);
+        console.error("Error al obtener pagarés globales:", err);
         setLoading(false);
-        setLoadingPayments(false);
       }
     };
 
-    fetchAllData();
+    fetchPagaresData();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribeUsers) unsubscribeUsers();
+    };
   }, []);
 
   const formatDate = (timestamp: any) => {
@@ -513,6 +653,296 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* CONTENEDOR: USUARIOS INSCRIPTOS CON PLAN Y EN PRUEBA (EN VIVO) */}
+      {/* ============================================================== */}
+      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="p-6 border-b border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                <Users className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                  Directorio de Usuarios Registrados y en Prueba
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    En Vivo
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-1 font-medium">
+                  Monitoreo de suscripciones activas, cuentas en prueba y nuevos registros. Los usuarios más nuevos se incorporan siempre arriba de forma automática.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Buscador + Filtros por Píldoras */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={userSearchTerm}
+                onChange={(e) => setUserSearchTerm(e.target.value)}
+                placeholder="Buscar por email, teléfono o nombre..."
+                className="w-full sm:w-64 pl-9 pr-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            
+            <div className="flex items-center gap-1 p-1 bg-slate-800/80 rounded-xl border border-slate-700 text-xs shrink-0 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setUserFilter('todos')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  userFilter === 'todos' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Todos ({registeredUsers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserFilter('activos')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  userFilter === 'activos' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Con Plan ({registeredUsers.filter(u => u.estadoSuscripcion === 'activo').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserFilter('prueba')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  userFilter === 'prueba' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                En Prueba ({registeredUsers.filter(u => u.estadoSuscripcion === 'prueba').length})
+              </button>
+              {registeredUsers.some(u => u.estadoSuscripcion === 'pendiente') && (
+                <button
+                  type="button"
+                  onClick={() => setUserFilter('pendientes')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    userFilter === 'pendientes' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Pendientes ({registeredUsers.filter(u => u.estadoSuscripcion === 'pendiente').length})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla en Tiempo Real */}
+        <div className="overflow-x-auto">
+          {loadingUsers ? (
+            <div className="p-12 flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+              <p className="text-xs text-slate-400">Sincronizando usuarios con Firestore...</p>
+            </div>
+          ) : registeredUsers.length === 0 ? (
+            <div className="p-12 text-center flex flex-col items-center">
+              <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
+                <Users className="w-8 h-8 text-slate-500" />
+              </div>
+              <p className="text-slate-300 font-bold">No hay usuarios registrados</p>
+              <p className="text-xs text-slate-500 mt-1">Los nuevos usuarios que se registren aparecerán aquí automáticamente.</p>
+            </div>
+          ) : (
+            <table className="w-full box-border text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-950/50 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-black">
+                  <th className="p-4 pl-6">Usuario / Escribanía</th>
+                  <th className="p-4">Contacto Suscrito (Mail / Teléfono)</th>
+                  <th className="p-4">Plan Asignado</th>
+                  <th className="p-4">Estado Suscripción</th>
+                  <th className="p-4 pr-6 text-right">Fecha Ingreso (Más nuevo a viejo)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {registeredUsers
+                  .filter((u) => {
+                    if (userFilter === 'activos' && u.estadoSuscripcion !== 'activo') return false;
+                    if (userFilter === 'prueba' && u.estadoSuscripcion !== 'prueba') return false;
+                    if (userFilter === 'pendientes' && u.estadoSuscripcion !== 'pendiente') return false;
+                    if (userSearchTerm.trim() !== '') {
+                      const term = userSearchTerm.toLowerCase();
+                      const matchName = (u.nombre || '').toLowerCase().includes(term);
+                      const matchEmail = (u.email || '').toLowerCase().includes(term);
+                      const matchTel = (u.telefono || '').toLowerCase().includes(term);
+                      const matchPlan = (u.plan || '').toLowerCase().includes(term);
+                      const matchId = (u.id || '').toLowerCase().includes(term);
+                      return matchName || matchEmail || matchTel || matchPlan || matchId;
+                    }
+                    return true;
+                  })
+                  .map((user, idx) => {
+                    const p = (user.plan || '').toLowerCase();
+                    const isFull = p.includes('full');
+                    const isEmpresa = p.includes('empresa');
+                    const isPro = p.includes('pro');
+                    const isBasico = p.includes('basico') || p.includes('básico');
+
+                    return (
+                      <tr 
+                        key={user.id} 
+                        className={`hover:bg-slate-800/40 transition-colors ${
+                          user.isRecent ? 'bg-blue-500/[0.03]' : ''
+                        }`}
+                      >
+                        {/* 1. Usuario / Escribanía */}
+                        <td className="p-4 pl-6">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
+                              user.estadoSuscripcion === 'activo'
+                                ? isFull
+                                  ? 'bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 text-slate-950 border-amber-400/40 shadow-xs'
+                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : user.estadoSuscripcion === 'prueba'
+                                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                                  : user.estadoSuscripcion === 'pendiente'
+                                    ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
+                                    : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                            }`}>
+                              {(user.nombre || user.email || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white text-sm truncate max-w-[220px]">
+                                {user.nombre}
+                              </p>
+                              {user.razonSocial && user.razonSocial !== user.nombre && (
+                                <p className="text-xs text-slate-400 truncate max-w-[220px]">
+                                  {user.razonSocial}
+                                </p>
+                              )}
+                              <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-[220px]">
+                                ID: {user.id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. Contacto Suscrito (Mail / Teléfono) */}
+                        <td className="p-4">
+                          <div className="space-y-1">
+                            {user.email ? (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-100 font-medium">
+                                <Mail className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                <span className="truncate max-w-[260px] select-all font-mono" title={user.email}>
+                                  {user.email}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 italic">
+                                <Mail className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>Sin email registrado</span>
+                              </div>
+                            )}
+
+                            {user.telefono ? (
+                              <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono font-bold">
+                                <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span className="truncate select-all" title={user.telefono}>
+                                  {user.telefono}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 italic">
+                                <Phone className="w-3 h-3 text-slate-600 shrink-0" />
+                                <span>Sin teléfono</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 3. Plan Asignado */}
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            {isFull ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_8px_rgba(245,158,11,0.25)]">
+                                <Crown className="w-3 h-3 text-slate-950" /> PLAN FULL
+                              </span>
+                            ) : isEmpresa ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-800 text-white border border-slate-700 shadow-sm">
+                                <Building className="w-3 h-3 text-slate-300" /> PLAN EMPRESA
+                              </span>
+                            ) : isPro ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                <Zap className="w-3 h-3 text-blue-400" /> PLAN PRO
+                              </span>
+                            ) : isBasico ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> PLAN BÁSICO
+                              </span>
+                            ) : user.estadoSuscripcion === 'prueba' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                <Clock className="w-3 h-3 text-cyan-400" /> PRUEBA ({user.diasRestantes ?? 5}D)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+                                {user.plan || 'Sin Plan'}
+                              </span>
+                            )}
+
+                            {user.modalidadPago && user.modalidadPago !== 'Desconocido' && (
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                {user.modalidadPago}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 4. Estado Suscripción */}
+                        <td className="p-4">
+                          {user.estadoSuscripcion === 'activo' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              Con Plan Activo
+                            </span>
+                          )}
+                          {user.estadoSuscripcion === 'prueba' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                              En Prueba Activa
+                            </span>
+                          )}
+                          {user.estadoSuscripcion === 'pendiente' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                              Pendiente Verificación
+                            </span>
+                          )}
+                          {user.estadoSuscripcion === 'vencido' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                              Prueba Vencida
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 5. Fecha de Registro (Ordenado más nuevo a viejo) */}
+                        <td className="p-4 pr-6 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-2">
+                            {user.isRecent && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500 text-white shadow-xs">
+                                <Sparkles className="w-2.5 h-2.5" /> Nuevo
+                              </span>
+                            )}
+                            <span className="text-xs text-slate-300 font-mono">
+                              {user.fechaFormateada}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           )}

@@ -945,7 +945,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           <div className="relative mb-6">
             <div className="w-24 h-24 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/60 flex items-center justify-center p-3.5 backdrop-blur-md">
               <img 
-                src="/logo-olga.png" 
+                src="/logo-olga.png?v=3" 
                 alt="O.L.G.A." 
                 className="w-full h-full object-contain animate-pulse"
                 onError={(e) => {
@@ -2216,16 +2216,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             </h3>
             <ul className="space-y-3 mb-6 text-sm text-slate-200">
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Consultas IA: Ilimitadas
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> El Oráculo Legal IA: Consultas y Dictámenes Ilimitados
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Generación de Pagarés y Escritos: Ilimitados
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Presupuestos Ley 879/81 y Lienzo Notarial CSJ
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Gestión de Equipo: Habilitado
+                <CheckCircle2 className="w-4 h-4 text-amber-400" /> ✨ Skin Dorado Glow Gold Edition Exclusivo
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Soporte Prioritario
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Fichero, Pagarés, Escritos y Auditoría Notarial
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Soporte VIP 24/7 y Onboarding Dedicado
               </li>
             </ul>
             <button
@@ -2247,19 +2250,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             </h3>
             <ul className="space-y-3 mb-6 text-sm text-slate-200">
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Usuarios ilimitados
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> El Oráculo Legal IA: Consultas y Dictámenes Ilimitados
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Soporte prioritario 24/7
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Presupuestos Ley 879/81 y Lienzo Notarial CSJ
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Módulos avanzados
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Fichero, Pagarés, Escritos y Auditoría Notarial
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Consultas IA: Ilimitadas
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Debida Diligencia SEPRELAD y Traducción Masiva
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Generación de Escritos: Ilimitados
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Soporte VIP 24/7 y Onboarding Dedicado
               </li>
             </ul>
             <button
