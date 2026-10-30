@@ -211,6 +211,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       setAnioLeg('');
     } else if (tipoDocumento === 'Sellado Notarial - Protocolo') {
       setProtocoloPaginas(['']);
+      setTextoRegistrosPublicos('');
+      setFueEditadoRegistros(true);
     }
   };
 
@@ -286,10 +288,25 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [anioLeg, setAnioLeg] = useState<string>('');
 
   // PLANTILLA 0: Protocolo
-  const [protocoloTextoVertical, setProtocoloTextoVertical] = useState<string>('PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL');
-  const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>([
-    'ESCRITURA PÚBLICA NÚMERO SETENTA Y NUEVE (79).- En la Ciudad de Asunción, Capital de la República del Paraguay, a los diez días del mes de mayo del año dos mil veintiséis, ante mí: RICARDO GABRIEL MARTÍNEZ VARELA, Notario y Escribano Público Titular del Registro Notarial Número Mil Doscientos Noventa y Dos (1.292), comparecen...'
-  ]);
+  const TEXTO_DEFECTO_PROTOCOLO = 'PARA REGISTROS PÚBLICOS CIVIL Y COMERCIAL - PROTOCOLO NOTARIAL';
+  const [textoRegistrosPublicos, setTextoRegistrosPublicos] = useState<string>('');
+  const [fueEditadoRegistros, setFueEditadoRegistros] = useState<boolean>(false);
+  const protocoloTextoVertical = fueEditadoRegistros ? textoRegistrosPublicos : TEXTO_DEFECTO_PROTOCOLO;
+
+  const handleFocusRegistros = () => {
+    if (!fueEditadoRegistros) {
+      setFueEditadoRegistros(true);
+    }
+  };
+
+  const handleChangeRegistros = (nuevoValor: string) => {
+    if (!fueEditadoRegistros) {
+      setFueEditadoRegistros(true);
+    }
+    setTextoRegistrosPublicos(nuevoValor);
+  };
+
+  const [protocoloPaginas, setProtocoloPaginas] = useState<string[]>(['']);
   const textareasRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
 
@@ -1235,32 +1252,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         </div>
       </header>
 
-      {/* Opciones Auxiliares de Formato (No imprimible) */}
-      <div className="opciones-auxiliares-notarial bg-slate-800/80 border-y border-slate-700/80 px-6 py-2.5 text-xs text-slate-300 print:hidden flex flex-wrap items-center justify-between gap-4">
-        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
-          <input 
-            type="checkbox" 
-            checked={rellenoGuiones} 
-            onChange={(e) => setRellenoGuiones(e.target.checked)}
-            className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
-          />
-          <span>Autorrellenar líneas vacías con guiones (----)</span>
-        </label>
-        {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-          <div className="flex items-center gap-2">
-            <span className="text-amber-400 font-bold text-[10px]">Texto Lomo:</span>
-            <input
-              type="text"
-              value={protocoloTextoVertical}
-              onChange={(e) => setProtocoloTextoVertical(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-white text-[10px] px-2 py-1 rounded w-64 outline-none focus:border-[#FF3131]"
-            />
-          </div>
-        )}
-      </div>
-
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 215.9mm x 355.6mm) */}
-      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-950 print:p-0 print:m-0 print:block print:bg-white">
+      <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-100 print:p-0 print:m-0 print:block print:bg-white">
         {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Espaciado, Guía, Guardar e Imprimir) */}
         <div className="barra-controles-notarial mb-4 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200 shadow-xl print:hidden w-full max-w-7xl">
           {/* Bloque Izquierdo: Calibración, Tipografía y Espaciados */}
@@ -1514,6 +1507,36 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               <Printer className="w-4 h-4" />
               <span>IMPRIMIR HOJA</span>
             </button>
+          </div>
+
+          {/* PARTE INFERIOR DE LA BARRA DE TAREAS: REGISTROS PÚBLICOS Y AUTORRELLENO */}
+          <div className="w-full pt-2.5 mt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-300 hover:text-white transition-colors">
+              <input 
+                type="checkbox" 
+                checked={rellenoGuiones} 
+                onChange={(e) => setRellenoGuiones(e.target.checked)}
+                className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
+              />
+              <span>Autorrellenar líneas vacías con guiones (----)</span>
+            </label>
+
+            {tipoDocumento === 'Sellado Notarial - Protocolo' && (
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold text-xs uppercase tracking-wide whitespace-nowrap">
+                  registros publicos :
+                </span>
+                <input
+                  type="text"
+                  value={textoRegistrosPublicos}
+                  onFocus={handleFocusRegistros}
+                  onClick={handleFocusRegistros}
+                  onChange={(e) => handleChangeRegistros(e.target.value)}
+                  placeholder=""
+                  className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-1.5 rounded-xl w-64 sm:w-80 md:w-96 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -2623,7 +2646,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                         value={textoPagina}
                         onChange={(e) => handleTextareaChange(index, e)}
                         onKeyDown={(e) => handleKeyDown(index, e)}
-                        placeholder={`Redacte aquí la ${isAnverso ? 'cara frontal (Anverso)' : 'cara trasera (Reverso)'}...`}
+                        placeholder="Ingrese aquí su texto, o comience a escribir aquí..."
                         className="absolute z-20 bg-transparent text-black font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
                         style={{
                           position: 'absolute',
