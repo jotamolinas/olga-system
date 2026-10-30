@@ -1,4 +1,5 @@
 import { Persona, Pagare, TipoPersona, TipoDocumento } from '../types';
+import { formatearRUCConDV } from './dnitService';
 
 export const PERSONAS_STORAGE_KEY = 'olga_directorio_personas';
 export const PAGARES_STORAGE_KEY = 'olga_pagares';
@@ -140,13 +141,15 @@ export function sincronizarOAutoRegistrarPersona(
     }
   }
 
+  const docConDv = formatearRUCConDV(docLimpio) || docLimpio;
+
   const nuevaPersona: Persona = {
     id: `p-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     tipo_persona: tipoPersona,
     nombre: nombreParte,
     apellido: apellidoParte,
     tipo_documento: tipoDocumento,
-    nro_documento: docLimpio,
+    nro_documento: docConDv,
     domicilio: (firmante.domicilio || '').trim(),
     telefono: '',
     email: '',

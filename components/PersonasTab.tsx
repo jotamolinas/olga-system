@@ -33,7 +33,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { Persona, TipoPersona, TipoDocumento, Pagare } from '../types';
-import { consultarRUC } from '../services/dnitService';
+import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { useTrialStatus } from '../hooks/useTrialStatus';
 
 interface PersonasTabProps {
@@ -119,16 +119,27 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         const esJuridica = rucLimpio.startsWith('800');
         setTipoPersona(esJuridica ? 'jurídica' : 'física');
 
+        // GESTIÓN DEL DÍGITO VERIFICADOR OBLIGATORIA:
+        // Cargar siempre el documento formateado con su Dígito Verificador (-DV)
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setNroDocumento(docConDv);
+
         if (!esJuridica) {
           const raw = res.nombre_o_razon_social.trim();
-          const parts = raw.split(/\s+/);
-          if (parts.length >= 2) {
-            const mid = Math.ceil(parts.length / 2);
-            setNombre(parts.slice(0, mid).join(' '));
-            setApellido(parts.slice(mid).join(' '));
+          if (raw.includes(',')) {
+            const [apellidosPart, nombresPart] = raw.split(',');
+            setApellido(apellidosPart.trim());
+            setNombre(nombresPart.trim());
           } else {
-            setNombre(raw);
-            setApellido('');
+            const parts = raw.split(/\s+/);
+            if (parts.length >= 2) {
+              const mid = Math.ceil(parts.length / 2);
+              setNombre(parts.slice(0, mid).join(' '));
+              setApellido(parts.slice(mid).join(' '));
+            } else {
+              setNombre(raw);
+              setApellido('');
+            }
           }
         } else {
           setNombre(res.nombre_o_razon_social);
@@ -136,14 +147,27 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         }
         if (res.direccion) setDomicilio(res.direccion);
         if (res.telefono) setTelefono(res.telefono);
-        setFeedbackDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackDnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackDnit(null), 4000);
       } else {
-        setFeedbackDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        // Aunque no esté en el padrón tributario remoto, autocalcular y cargar el Dígito Verificador oficial Módulo 11
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setNroDocumento(docConDv);
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackDnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        }
         setTimeout(() => setFeedbackDnit(null), 3500);
       }
     } catch (err) {
       console.warn('Consulta DNIT no completada:', err);
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) {
+        setNroDocumento(docConDv);
+      }
       setFeedbackDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackDnit(null), 3500);
     } finally {
@@ -473,13 +497,20 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
+    // Asegurar Dígito Verificador oficial para personas y empresas
+    const docFinal = formatearRUCConDV(nroDocumento.trim()) || nroDocumento.trim();
+
     // Validar duplicado de documento
-    const docClean = nroDocumento.trim().toLowerCase();
-    const duplicado = listaPersonas.find(
-      p => p.nro_documento.trim().toLowerCase() === docClean && p.id !== editingId
-    );
+    const docClean = docFinal.toLowerCase();
+    const docCleanBase = docClean.split('-')[0];
+    const duplicado = listaPersonas.find(p => {
+      if (p.id === editingId) return false;
+      const pDoc = (p.nro_documento || '').trim().toLowerCase();
+      const pDocBase = pDoc.split('-')[0];
+      return pDoc === docClean || (pDocBase && docCleanBase && pDocBase === docCleanBase);
+    });
     if (duplicado) {
-      setErrorMsg(`Error: El número de documento "${nroDocumento.trim()}" ya está registrado a nombre de "${duplicado.nombre}".`);
+      setErrorMsg(`Error: El número de documento "${docFinal}" ya está registrado a nombre de "${duplicado.nombre}".`);
       return;
     }
 
@@ -499,8 +530,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         tipo_persona: tipoPersona,
         nombre: nombreFinal,
         apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
-        tipo_documento: tipoPersona === 'física' ? (nroDocumento.includes('-') ? 'RUC' : 'CI') : 'RUC',
-        nro_documento: nroDocumento.trim(),
+        tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
+        nro_documento: docFinal,
         telefono: telefono.trim(),
         email: email.trim(),
         domicilio: domicilio.trim(),
@@ -547,8 +578,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       tipo_persona: tipoPersona,
       nombre: nombreFinal,
       apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
-      tipo_documento: tipoPersona === 'física' ? (nroDocumento.includes('-') ? 'RUC' : 'CI') : 'RUC',
-      nro_documento: nroDocumento.trim(),
+      tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
+      nro_documento: docFinal,
       telefono: telefono.trim(),
       email: email.trim(),
       domicilio: domicilio.trim(),

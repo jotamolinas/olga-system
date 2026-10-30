@@ -7,7 +7,7 @@ import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNego
 import { Plus, Trash2, Calendar, DollarSign, Users, FileText, Banknote, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
-import { consultarRUC } from '../services/dnitService';
+import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { useTrialStatus } from '../hooks/useTrialStatus';
 import { 
   sincronizarFirmantesDePagare, 
@@ -274,17 +274,29 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setAcreedorDocumentoRaw(docConDv);
         setAcreedorNombreRaw(res.nombre_o_razon_social.trim());
         if (res.direccion) setAcreedorDomicilioRaw(res.direccion.trim());
         setAcreedorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackAcreedorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackAcreedorDnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackAcreedorDnit(null), 4000);
       } else {
-        setFeedbackAcreedorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setAcreedorDocumentoRaw(docConDv);
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackAcreedorDnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackAcreedorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        }
         setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
       }
     } catch (err) {
       console.warn('Consulta DNIT Acreedor no completada:', err);
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) setAcreedorDocumentoRaw(docConDv);
       setFeedbackAcreedorDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackAcreedorDnit(null), 3500);
     } finally {
@@ -309,17 +321,29 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setDeudorDocumentoRaw(docConDv);
         setDeudorNombreRaw(res.nombre_o_razon_social.trim());
         if (res.direccion) setDeudorDomicilioRaw(res.direccion.trim());
         setDeudorOrigen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackDeudorDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackDeudorDnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackDeudorDnit(null), 4000);
       } else {
-        setFeedbackDeudorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setDeudorDocumentoRaw(docConDv);
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackDeudorDnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackDeudorDnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        }
         setTimeout(() => setFeedbackDeudorDnit(null), 3500);
       }
     } catch (err) {
       console.warn('Consulta DNIT Deudor no completada:', err);
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) setDeudorDocumentoRaw(docConDv);
       setFeedbackDeudorDnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackDeudorDnit(null), 3500);
     } finally {
@@ -344,17 +368,29 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setCodeudor1DocumentoRaw(docConDv);
         setCodeudor1NombreRaw(res.nombre_o_razon_social.trim());
         if (res.direccion) setCodeudor1DomicilioRaw(res.direccion.trim());
         setCodeudor1Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackCodeudor1Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackCodeudor1Dnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor1Dnit(null), 4000);
       } else {
-        setFeedbackCodeudor1Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setCodeudor1DocumentoRaw(docConDv);
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackCodeudor1Dnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackCodeudor1Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        }
         setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
       }
     } catch (err) {
       console.warn('Consulta DNIT Codeudor 1 no completada:', err);
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) setCodeudor1DocumentoRaw(docConDv);
       setFeedbackCodeudor1Dnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackCodeudor1Dnit(null), 3500);
     } finally {
@@ -379,17 +415,29 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setCodeudor2DocumentoRaw(docConDv);
         setCodeudor2NombreRaw(res.nombre_o_razon_social.trim());
         if (res.direccion) setCodeudor2DomicilioRaw(res.direccion.trim());
         setCodeudor2Origen(res.origen === 'FICHERO' ? 'MANUAL' : 'DNIT');
-        setFeedbackCodeudor2Dnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackCodeudor2Dnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackCodeudor2Dnit(null), 4000);
       } else {
-        setFeedbackCodeudor2Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setCodeudor2DocumentoRaw(docConDv);
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackCodeudor2Dnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackCodeudor2Dnit('No encontrado en DNIT. Puede completar los datos manualmente.');
+        }
         setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
       }
     } catch (err) {
       console.warn('Consulta DNIT Codeudor 2 no completada:', err);
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) setCodeudor2DocumentoRaw(docConDv);
       setFeedbackCodeudor2Dnit('No encontrado en DNIT. Ingrese los datos manualmente.');
       setTimeout(() => setFeedbackCodeudor2Dnit(null), 3500);
     } finally {
@@ -403,7 +451,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const persona = personas.find(p => p.id === pId);
     if (persona) {
       setAcreedorNombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
-      setAcreedorDocumentoRaw(persona.nro_documento || '');
+      const docConDv = persona.nro_documento ? (formatearRUCConDV(persona.nro_documento) || persona.nro_documento) : '';
+      setAcreedorDocumentoRaw(docConDv);
       setAcreedorDomicilioRaw(persona.domicilio || '');
       setAcreedorOrigen('MANUAL');
     }
@@ -415,7 +464,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const persona = personas.find(p => p.id === pId);
     if (persona) {
       setDeudorNombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
-      setDeudorDocumentoRaw(persona.nro_documento || '');
+      const docConDv = persona.nro_documento ? (formatearRUCConDV(persona.nro_documento) || persona.nro_documento) : '';
+      setDeudorDocumentoRaw(docConDv);
       setDeudorDomicilioRaw(persona.domicilio || '');
       setDeudorOrigen('MANUAL');
     }
@@ -427,7 +477,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const persona = personas.find(p => p.id === pId);
     if (persona) {
       setCodeudor1NombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
-      setCodeudor1DocumentoRaw(persona.nro_documento || '');
+      const docConDv = persona.nro_documento ? (formatearRUCConDV(persona.nro_documento) || persona.nro_documento) : '';
+      setCodeudor1DocumentoRaw(docConDv);
       setCodeudor1DomicilioRaw(persona.domicilio || '');
     }
   };
@@ -438,7 +489,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     const persona = personas.find(p => p.id === pId);
     if (persona) {
       setCodeudor2NombreRaw(`${persona.nombre} ${persona.apellido || ''}`.trim());
-      setCodeudor2DocumentoRaw(persona.nro_documento || '');
+      const docConDv = persona.nro_documento ? (formatearRUCConDV(persona.nro_documento) || persona.nro_documento) : '';
+      setCodeudor2DocumentoRaw(docConDv);
       setCodeudor2DomicilioRaw(persona.domicilio || '');
     }
   };
@@ -486,28 +538,51 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     try {
       const res = await consultarRUC(ruc);
       if (res && res.nombre_o_razon_social) {
+        const docConDv = res.ruc || (res.dv ? `${res.documento_numero}-${res.dv}` : formatearRUCConDV(ruc));
+        setQuickNroDoc(docConDv);
+        setQuickTipoDoc('RUC');
         if (quickTipoPersona === 'física') {
           const raw = res.nombre_o_razon_social.trim();
-          const parts = raw.split(/\s+/);
-          if (parts.length >= 2) {
-            const mid = Math.ceil(parts.length / 2);
-            setQuickNombre(parts.slice(0, mid).join(' '));
-            setQuickApellido(parts.slice(mid).join(' '));
+          if (raw.includes(',')) {
+            const [apellidosPart, nombresPart] = raw.split(',');
+            setQuickApellido(apellidosPart.trim());
+            setQuickNombre(nombresPart.trim());
           } else {
-            setQuickNombre(raw);
+            const parts = raw.split(/\s+/);
+            if (parts.length >= 2) {
+              const mid = Math.ceil(parts.length / 2);
+              setQuickNombre(parts.slice(0, mid).join(' '));
+              setQuickApellido(parts.slice(mid).join(' '));
+            } else {
+              setQuickNombre(raw);
+            }
           }
         } else {
           setQuickNombre(res.nombre_o_razon_social);
         }
         if (res.direccion) setQuickDom(res.direccion);
         if (res.telefono) setQuickTel(res.telefono);
-        setFeedbackQuickDnit(`Datos obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
+        setFeedbackQuickDnit(`Datos y Dígito Verificador (-${res.dv}) obtenidos de ${res.origen === 'FICHERO' ? 'Fichero' : 'DNIT'}`);
         setTimeout(() => setFeedbackQuickDnit(null), 4000);
       } else {
-        setFeedbackQuickDnit('No encontrado en DNIT. Complete manualmente.');
+        const docConDv = formatearRUCConDV(ruc);
+        if (docConDv) {
+          setQuickNroDoc(docConDv);
+          setQuickTipoDoc('RUC');
+          const numBase = ruc.split('-')[0].replace(/\D/g, '');
+          const dvCalc = calcularDVParaguay(numBase);
+          setFeedbackQuickDnit(`Dígito verificador asignado: ${docConDv} (DV: ${dvCalc}). Complete los datos.`);
+        } else {
+          setFeedbackQuickDnit('No encontrado en DNIT. Complete manualmente.');
+        }
         setTimeout(() => setFeedbackQuickDnit(null), 3500);
       }
     } catch {
+      const docConDv = formatearRUCConDV(ruc);
+      if (docConDv) {
+        setQuickNroDoc(docConDv);
+        setQuickTipoDoc('RUC');
+      }
       setFeedbackQuickDnit('No encontrado en DNIT.');
       setTimeout(() => setFeedbackQuickDnit(null), 3500);
     } finally {
@@ -1479,13 +1554,15 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       return;
     }
 
+    const docConDv = formatearRUCConDV(quickNroDoc.trim()) || quickNroDoc.trim();
+
     const newQuick: Persona = {
       id: 'p-' + Date.now(),
       tipo_persona: quickTipoPersona,
       nombre: quickNombre.trim(),
       apellido: quickTipoPersona === 'física' ? quickApellido.trim() : undefined,
       tipo_documento: quickTipoDoc,
-      nro_documento: quickNroDoc.trim(),
+      nro_documento: docConDv,
       telefono: quickTel.trim(),
       email: quickMail.trim(),
       domicilio: quickDom.trim(),

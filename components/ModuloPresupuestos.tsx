@@ -48,7 +48,7 @@ import {
   MEMBRETE_DEFAULT,
 } from '../types/presupuesto';
 import { Persona, TipoPersona } from '../types';
-import { consultarRUC } from '../services/dnitService';
+import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
 
@@ -424,14 +424,24 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           origen: res.origen === 'FICHERO' ? 'FICHERO' : 'DNIT',
         });
       } else {
+        const docFormateado = formatearRUCConDV(doc);
+        if (docFormateado) {
+          setEncabezado(prev => ({ ...prev, clienteRucCI: docFormateado }));
+        }
         setFeedbackDnit({
           tipo: 'warning',
-          mensaje: 'Documento no localizado en el padrón de contribuyentes de la DNIT. Puede ingresar los datos manualmente.',
+          mensaje: docFormateado 
+            ? `Dígito verificador asignado: ${docFormateado}. No figura en el padrón DNIT, complete datos.` 
+            : 'Documento no localizado en el padrón de contribuyentes de la DNIT. Puede ingresar los datos manualmente.',
         });
         setTimeout(() => setFeedbackDnit(null), 4000);
       }
     } catch (err) {
       console.warn('Consulta DNIT no completada:', err);
+      const docFormateado = formatearRUCConDV(doc);
+      if (docFormateado) {
+        setEncabezado(prev => ({ ...prev, clienteRucCI: docFormateado }));
+      }
       setFeedbackDnit({
         tipo: 'warning',
         mensaje: 'No fue posible conectar con el servicio DNIT. Complete los datos manualmente.',

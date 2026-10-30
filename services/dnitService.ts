@@ -113,6 +113,13 @@ const PADRON_DEMO_DNIT: Record<
     telefono: '+595 21 600-123',
     email: 'juan.molinas@olga-notarial.com',
   },
+  '2173796': {
+    nombre: 'JUAN ALBERTO MOLINAS IHARA',
+    dv: '7',
+    direccion: 'Asunción, Barrio Herrera',
+    telefono: '+595 21 600-123',
+    email: 'juan.molinas@olga-notarial.com',
+  },
   '80012345': {
     nombre: 'CONSTRUCCIONES & ASOCIADOS S.A.',
     dv: '6',

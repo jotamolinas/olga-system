@@ -4,12 +4,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>O.L.G.A. | Software Legal-Tech para Pagarés y Cobros</title>
-    <meta name="description" content="Automatiza, emite y controla pagarés con Inteligencia Artificial. La plataforma legal-tech definitiva para playas de vehículos, inmobiliarias y profesionales en Paraguay." />
-    <meta name="keywords" content="software pagarés, legal-tech paraguay, gestión de cobros, automatización legal, escribanía digital" />
-    <meta property="og:title" content="O.L.G.A | Software Integral de Pagarés y Gestión Administrativa">
-    <meta property="og:description" content="Automatiza la gestión de tus pagarés, directorio de clientes y documentos legales con IA. La solución definitiva para profesionales y negocios.">
-    <meta name="robots" content="index, follow">
+    <title>O.L.G.A. | Software para Escribanías, Pagarés y Gestión Notarial en Paraguay</title>
+    <meta name="description" content="Software Legal-Tech líder en Paraguay para Escribanías, Playas de Vehículos, Inmobiliarias y Estudios Jurídicos. Automatiza pagarés a la orden, calibra hojas de seguridad notarial (Certificación de Firmas, Concuerda, Legalización) y genera presupuestos exactos bajo Ley 879/81." />
+    <meta name="keywords" content="Software para Escribanías en Paraguay, Sistema de Generación de Pagarés, Software Legal-Tech Paraguay, Programa para Notarías y Estudios Jurídicos, Impresión de Hojas de Seguridad Notarial, Certificación de Firmas y Concuerda Corte Suprema de Justicia, Cálculo de Presupuestos Notariales Ley 879/81, Software para Playas de Autos, Inmobiliarias y Loteadoras, pagarés electrónicos paraguay, escribanía digital paraguay" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://olgatech.com.py/" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://olgatech.com.py/" />
+    <meta property="og:title" content="O.L.G.A. | Software para Escribanías, Pagarés y Gestión Notarial en Paraguay" />
+    <meta property="og:description" content="Automatiza tus pagarés a la orden, calibra hojas de seguridad notarial oficiales de la CSJ y genera presupuestos con Arancel Notarial Ley 879/81 en segundos." />
+    <meta property="og:site_name" content="O.L.G.A. Legal-Tech" />
+    <meta property="og:locale" content="es_PY" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://olgatech.com.py/" />
+    <meta name="twitter:title" content="O.L.G.A. | Software para Escribanías, Pagarés y Gestión Notarial en Paraguay" />
+    <meta name="twitter:description" content="Software Legal-Tech líder en Paraguay: Pagarés con rigor jurídico, lienzo notarial milimétrico y presupuestos bajo Ley 879/81." />
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "O.L.G.A. Legal-Tech",
+      "alternateName": ["OLGA", "O.L.G.A.", "olgatech.com.py"],
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "All",
+      "url": "https://olgatech.com.py",
+      "description": "Software Legal-Tech líder en Paraguay para Escribanías, Playas de Vehículos, Inmobiliarias y Notarías. Automatización de pagarés a la orden, calibración milimétrica de hojas de seguridad notarial de la CSJ y cálculo de presupuestos bajo Arancel Notarial Ley 879/81.",
+      "inLanguage": "es-PY",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Plan Básico",
+          "price": "250000",
+          "priceCurrency": "PYG",
+          "description": "2 Usuarios, 20 Consultas IA/mes, Pagarés a la Orden, Fichero de Personas."
+        },
+        {
+          "@type": "Offer",
+          "name": "Plan Pro",
+          "price": "575000",
+          "priceCurrency": "PYG",
+          "description": "5 Usuarios, 50 Consultas IA/mes, Gestión de Escritos Libre, Plantillas Legales, Exportación Limpia."
+        },
+        {
+          "@type": "Offer",
+          "name": "Plan Empresa",
+          "price": "1000000",
+          "priceCurrency": "PYG",
+          "description": "10 Usuarios, 100 Consultas IA/mes, Lienzo Notarial Oficial (Certificación, Concuerda, Legalización), Oráculo Legal IA."
+        },
+        {
+          "@type": "Offer",
+          "name": "Plan Full",
+          "price": "1350000",
+          "priceCurrency": "PYG",
+          "description": "15 Usuarios, 300 Consultas IA/mes, Presupuestos Notariales Ley 879/81, Lienzo Notarial Milimétrico Completo, Edición Glow Gold."
+        }
+      ],
+      "creator": {
+        "@type": "Organization",
+        "name": "Ihara Outsourcing",
+        "url": "https://olgatech.com.py"
+      }
+    }
+    </script>
     
     <!-- PWA Meta Tags -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2" />
@@ -37,8 +100,10 @@
         }
       }
       try {
+        // La Landing Page pública ('/') siempre debe mantenerse con fondo blanco puro institucional
+        const isPublicLanding = window.location.pathname === '/' || window.location.pathname === '';
         const storedTheme = localStorage.getItem('olga_theme');
-        if (storedTheme === 'dark') {
+        if (!isPublicLanding && storedTheme === 'dark') {
           document.documentElement.classList.add('dark');
         } else {
           document.documentElement.classList.remove('dark');
@@ -52,11 +117,12 @@
         }
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8fafc;
+            background-color: #ffffff;
+            color: #1e293b;
         }
-        html.dark, html.dark body {
-            background-color: #0D0E12 !important;
-            color: #e2e8f0 !important;
+        html.dark:not(.force-light), html.dark:not(.force-light) body:not(.force-light) {
+            background-color: #0D0E12;
+            color: #e2e8f0;
         }
         h1, h2, h3, .brand {
             font-family: 'Playfair Display', serif;
