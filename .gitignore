@@ -9,6 +9,31 @@ lerna-debug.log*
 node_modules
 *.local
 
+# Environment variables & secrets (CRÍTICO: nunca subir a repositorios)
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase Service Account & Private Keys (Peligro crítico de filtración)
+*serviceAccount*.json
+*service-account*.json
+*-adminsdk-*.json
+*.pem
+*.key
+*.cert
+credentials.json
+
+# Build and cache
+dist
+dist-ssr
+*.local
+.vite
+.cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -19,6 +44,4 @@ node_modules
 *.njsproj
 *.sln
 *.sw?
-.env
-.env.local
-firebase-applet-config.json
+

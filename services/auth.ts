@@ -3,14 +3,18 @@ import { getAuth, onAuthStateChanged, User, signInAnonymously, RecaptchaVerifier
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
+const envMeta = (import.meta as any).env || {};
+
 const firebaseConfig = {
-  apiKey: "AIzaSyDGxd8nQTXTRpmwTKAw9xLl9uiTZuRT2UM",
-  authDomain: "nipponguay.firebaseapp.com",
-  projectId: "nipponguay",
-  storageBucket: "nipponguay.firebasestorage.app",
-  messagingSenderId: "933976114072",
-  appId: "1:933976114072:web:ee8106d228b40ad09961ed"
+  apiKey: envMeta.VITE_FIREBASE_API_KEY || "AIzaSyDGxd8nQTXTRpmwTKAw9xLl9uiTZuRT2UM",
+  authDomain: envMeta.VITE_FIREBASE_AUTH_DOMAIN || "nipponguay.firebaseapp.com",
+  projectId: envMeta.VITE_FIREBASE_PROJECT_ID || "nipponguay",
+  storageBucket: envMeta.VITE_FIREBASE_STORAGE_BUCKET || "nipponguay.firebasestorage.app",
+  messagingSenderId: envMeta.VITE_FIREBASE_MESSAGING_SENDER_ID || "933976114072",
+  appId: envMeta.VITE_FIREBASE_APP_ID || "1:933976114072:web:ee8106d228b40ad09961ed"
 };
+
+
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
