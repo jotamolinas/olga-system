@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
   FileText, Search, ShieldCheck, ChevronDown, Check, Zap, Scale, 
   ArrowRight, Users, MessageSquare, Activity, Settings, Building, 
@@ -1179,12 +1179,19 @@ export const LandingPage: React.FC = () => {
             <a href="#casos-de-uso" className="hover:text-white transition-colors">Casos de Uso</a>
             <a href="#planes" className="hover:text-white transition-colors">Planes y Precios</a>
             <a href="#faq" className="hover:text-white transition-colors">Preguntas Frecuentes</a>
+            <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
+            <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
             <button onClick={() => navigate('/consola')} className="hover:text-white transition-colors cursor-pointer text-slate-300">Acceso Consola</button>
           </div>
         </div>
 
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>© 2026 O.L.G.A. Legal-Tech (olgatech.com.py). Todos los derechos reservados.</p>
+          <div className="flex items-center gap-4 text-xs text-slate-400">
+            <Link to="/privacidad" className="hover:text-white transition-colors">Política de Privacidad</Link>
+            <span>•</span>
+            <Link to="/terminos" className="hover:text-white transition-colors">Términos y Condiciones</Link>
+          </div>
           <p>Desarrollado por <strong className="text-slate-400">Ihara Outsourcing</strong> • Asunción, Paraguay</p>
         </div>
       </footer>

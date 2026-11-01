@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
+import { PrivacidadPage } from './components/PrivacidadPage';
+import { TerminosPage } from './components/TerminosPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
 import { Persona, GlobalConfig, Pagare, KnowledgeDoc } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
@@ -2436,6 +2438,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/privacidad" element={<PrivacidadPage />} />
+      <Route path="/terminos" element={<TerminosPage />} />
       <Route path="/admin" element={<AdminLoginRoute />} />
       <Route
         path="/admin/sifen-onboarding"
