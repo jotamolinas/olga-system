@@ -76,6 +76,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         await emailSignUp(cleanEmail, cleanPassword);
       }
       onLogin();
+      if (cleanEmail === 'jotamolinas@gmail.com') {
+        navigate('/consola/admin');
+      } else {
+        navigate('/consola');
+      }
     } catch (err: any) {
       console.error('Error email auth:', err);
       let errorMessage = err.message || 'Error de autenticación';
@@ -207,6 +212,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
 
       await confirmationResult.confirm(cleanCode);
       onLogin();
+      if (auth.currentUser?.email === 'jotamolinas@gmail.com') {
+        navigate('/consola/admin');
+      } else {
+        navigate('/consola');
+      }
     } catch (err: any) {
       console.error('Error confirmando OTP:', err);
       let msg = 'Código inválido o expirado. Verifica el mensaje e intenta nuevamente.';
@@ -264,14 +274,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           userRole = data?.role || data?.rol || 'titular';
         }
 
+        const user = result.user;
         onLogin();
 
-        // Redirección según rol
-        if (userRole === 'SUPERADMIN' || userRole === 'admin' || result.user.email === 'jotamolinas@gmail.com') {
+        // Forzar Redirección de Super Admin (Fallback Seguro):
+        if (user.email === 'jotamolinas@gmail.com') {
           navigate('/consola/admin');
-        } else {
-          navigate('/consola');
+          return;
         }
+
+        // Redirección si se detecta rol de superadmin
+        const normalizedRole = String(userRole || '').toUpperCase();
+        if (normalizedRole === 'SUPERADMIN' || normalizedRole === 'ADMIN') {
+          navigate('/consola/admin');
+          return;
+        }
+
+        // Redirección estricta para usuarios normales
+        navigate('/consola');
       }
     } catch (err: any) {
       console.error('Error Google sign in:', err);
