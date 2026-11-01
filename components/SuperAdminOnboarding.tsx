@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { 
   ShieldCheck, ShieldAlert, KeyRound, Building2, 
   FileKey, UploadCloud, CheckCircle2, AlertCircle, 
-  Loader2, Eye, EyeOff, FileCheck, RefreshCw, Server
+  Loader2, Eye, EyeOff, FileCheck, RefreshCw, Server,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 
 interface FormState {
@@ -122,7 +123,7 @@ export const SuperAdminOnboarding: React.FC = () => {
     e.preventDefault();
     setNotification(null);
 
-    // 1. Validaciones locales obligatorias
+    // Validaciones obligatorias
     if (!formState.ruc.trim()) {
       setNotification({
         type: 'error',
@@ -154,7 +155,7 @@ export const SuperAdminOnboarding: React.FC = () => {
       setNotification({
         type: 'error',
         title: 'Campo Requerido',
-        message: 'Por favor, ingrese el Identificador de CSC (ID CSC, ej: 0001).'
+        message: 'Por favor, ingrese el Identificador de CSC (ej: 0001).'
       });
       return;
     }
@@ -172,7 +173,7 @@ export const SuperAdminOnboarding: React.FC = () => {
       setNotification({
         type: 'error',
         title: 'Campo Requerido',
-        message: 'Por favor, ingrese la Llave Maestra (SUPERADMIN_API_KEY) para autorizar el onboarding.'
+        message: 'Por favor, ingrese la Llave Maestra (SUPERADMIN_API_KEY).'
       });
       return;
     }
@@ -189,7 +190,6 @@ export const SuperAdminOnboarding: React.FC = () => {
     setLoading(true);
 
     try {
-      // 2. Empaquetar formulario con FormData
       const payload = new FormData();
       payload.append('ruc', formState.ruc.trim());
       payload.append('razonSocial', formState.razonSocial.trim());
@@ -198,7 +198,6 @@ export const SuperAdminOnboarding: React.FC = () => {
       payload.append('claveCertificado', formState.claveCertificado.trim());
       payload.append('ambiente', formState.ambiente);
 
-      // Campos opcionales si fueron provistos
       if (formState.establecimiento?.trim()) payload.append('establecimiento', formState.establecimiento.trim());
       if (formState.puntoExpedicion?.trim()) payload.append('puntoExpedicion', formState.puntoExpedicion.trim());
       if (formState.timbradoNumero?.trim()) payload.append('timbradoNumero', formState.timbradoNumero.trim());
@@ -207,17 +206,14 @@ export const SuperAdminOnboarding: React.FC = () => {
       if (formState.telefono?.trim()) payload.append('telefono', formState.telefono.trim());
       if (formState.correo?.trim()) payload.append('correo', formState.correo.trim());
 
-      // Archivo binario .p12
       payload.append('certificado', archivoCertificado);
 
-      // 3. Petición POST al endpoint Cloud Run
       const endpoint = 'https://olga-sifen-api-933976114072.us-central1.run.app/api/admin/onboarding';
 
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'x-superadmin-api-key': formState.llaveMaestra.trim()
-          // Nota: NO definir 'Content-Type', el navegador adjunta automáticamente el boundary de multipart/form-data
         },
         body: payload
       });
@@ -252,381 +248,347 @@ export const SuperAdminOnboarding: React.FC = () => {
   };
 
   return (
-    <div className="p-4 md:p-8 animate-fade-in w-full box-border max-w-5xl mx-auto text-slate-200">
-      {/* Header del Panel */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+    <div className="p-3 md:p-6 animate-fade-in w-full box-border max-w-4xl mx-auto text-slate-200">
+      {/* Header Compacto */}
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 mb-3">
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-            Superadmin · SIFEN Paraguay
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 mb-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+            Superadmin · SIFEN
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             Onboarding de Inquilinos SaaS
           </h1>
-          <p className="text-slate-400 mt-2 font-medium text-sm">
-            Alta de empresas emisoras, almacenamiento seguro de certificados .p12 en Cloud Storage y sincronización multi-tenant en Firestore.
+          <p className="text-slate-400 text-xs font-normal mt-0.5">
+            Alta de empresas emisoras, guardado seguro de certificados .p12 y sincronización Firestore.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 self-start md:self-auto text-xs text-slate-400">
-          <Server className="w-4 h-4 text-emerald-400" />
-          <span>Cloud Run: <strong className="text-slate-200">olga-sifen-api</strong></span>
+        <div className="flex items-center gap-2 bg-[#0B1120] border border-gray-800 rounded-lg px-3 py-1.5 self-start sm:self-auto text-xs text-slate-400">
+          <Server className="w-3.5 h-3.5 text-emerald-400" />
+          <span>API: <strong className="text-slate-200">olga-sifen-api</strong></span>
         </div>
       </div>
 
-      {/* Notificaciones Visuales de Éxito o Error */}
+      {/* Notificaciones Visuales */}
       {notification && (
-        <div className={`mb-8 p-5 rounded-2xl border transition-all animate-fade-in ${
+        <div className={`mb-5 p-4 rounded-xl border transition-all animate-fade-in text-xs ${
           notification.type === 'success' 
-            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 shadow-lg shadow-emerald-950/50' 
-            : 'bg-rose-950/40 border-rose-500/40 text-rose-200 shadow-lg shadow-rose-950/50'
+            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 shadow-sm' 
+            : 'bg-rose-950/40 border-rose-500/40 text-rose-200 shadow-sm'
         }`}>
-          <div className="flex items-start gap-4">
-            <div className={`p-2 rounded-xl mt-0.5 ${
+          <div className="flex items-start gap-3">
+            <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
               notification.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
             }`}>
-              {notification.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+              {notification.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
             </div>
-            <div className="flex-1">
-              <h3 className="font-bold text-base text-white">{notification.title}</h3>
-              <p className="mt-1 text-sm opacity-90">{notification.message}</p>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-white text-sm">{notification.title}</h3>
+              <p className="mt-0.5 opacity-90">{notification.message}</p>
               
               {notification.details && (
-                <div className="mt-4 p-3 bg-black/40 rounded-xl border border-white/5 font-mono text-xs text-slate-300 space-y-1">
+                <div className="mt-2.5 p-2.5 bg-black/40 rounded-lg border border-white/5 font-mono text-[11px] text-slate-300 grid grid-cols-2 gap-2">
                   <p><span className="text-slate-500">RUC:</span> <strong className="text-white">{notification.details.ruc}</strong></p>
                   <p><span className="text-slate-500">Razón Social:</span> <strong className="text-white">{notification.details.razonSocial}</strong></p>
-                  <p><span className="text-slate-500">Storage:</span> <span className="text-emerald-400">{notification.details.rutaCertificadoStorage}</span></p>
-                  <p><span className="text-slate-500">Ambiente:</span> <span className="uppercase text-blue-400">{notification.details.ambiente}</span></p>
+                  <p className="col-span-2 truncate"><span className="text-slate-500">Storage:</span> <span className="text-emerald-400">{notification.details.rutaCertificadoStorage}</span></p>
                 </div>
               )}
             </div>
             <button 
               onClick={() => setNotification(null)}
-              className="text-slate-400 hover:text-white text-xs font-semibold px-2 py-1"
+              className="text-slate-400 hover:text-white font-semibold px-2 py-0.5 shrink-0"
             >
-              Cerrar
+              ×
             </button>
           </div>
         </div>
       )}
 
-      {/* Formulario Principal */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Formulario Compacto - Bento Box 2 Columnas */}
+      <form onSubmit={handleSubmit} className="bg-[#0B1120] border border-gray-800 rounded-xl p-4 md:p-5 shadow-sm space-y-4">
         
-        {/* Bloque 1: Credencial Maestra de Superadmin */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20 text-amber-400">
-              <KeyRound className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Autorización Superadmin</h2>
-              <p className="text-xs text-slate-400">Clave secreta configurada en el servidor (SUPERADMIN_API_KEY)</p>
-            </div>
-          </div>
-
-          <div className="relative">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Fila 1: RUC y Razón Social */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              RUC del Emisor <span className="text-rose-400">*</span>
+            </label>
             <input
-              type={mostrarLlaveMaestra ? 'text' : 'password'}
-              name="llaveMaestra"
-              value={formState.llaveMaestra}
+              type="text"
+              name="ruc"
+              value={formState.ruc}
               onChange={handleInputChange}
-              placeholder="Ingrese la Llave Maestra del Superadmin"
+              placeholder="Ej: 80001234-5"
               required
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors pr-12 font-mono"
+              className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors font-mono"
             />
-            <button
-              type="button"
-              onClick={() => setMostrarLlaveMaestra(!mostrarLlaveMaestra)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
-              title={mostrarLlaveMaestra ? 'Ocultar llave' : 'Mostrar llave'}
-            >
-              {mostrarLlaveMaestra ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Bloque 2: Datos de la Empresa Contribuyente */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20 text-blue-400">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Datos del Contribuyente (Emisor)</h2>
-              <p className="text-xs text-slate-400">Identificación fiscal registrada en el SIFEN / SET</p>
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              Razón Social <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              name="razonSocial"
+              value={formState.razonSocial}
+              onChange={handleInputChange}
+              placeholder="Ej: MI EMPRESA S.A."
+              required
+              className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors uppercase"
+            />
+          </div>
+
+          {/* Fila 2: CSC e ID CSC + Ambiente */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              Código de Seguridad (CSC) <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              name="csc"
+              value={formState.csc}
+              onChange={handleInputChange}
+              placeholder="Código provisto por la SET"
+              required
+              className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors font-mono"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                RUC del Emisor <span className="text-rose-400">*</span>
+              <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                ID CSC <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
-                name="ruc"
-                value={formState.ruc}
+                name="idCsc"
+                value={formState.idCsc}
                 onChange={handleInputChange}
-                placeholder="Ej: 80001234-5"
+                placeholder="0001"
                 required
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono"
+                className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors font-mono text-center"
               />
             </div>
-
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Razón Social <span className="text-rose-400">*</span>
+              <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Ambiente
               </label>
-              <input
-                type="text"
-                name="razonSocial"
-                value={formState.razonSocial}
+              <select
+                name="ambiente"
+                value={formState.ambiente}
                 onChange={handleInputChange}
-                placeholder="Ej: MI EMPRESA S.A."
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors uppercase"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Código de Seguridad del Contribuyente (CSC) <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                name="csc"
-                value={formState.csc}
-                onChange={handleInputChange}
-                placeholder="Código alfanumérico provisto por la SET"
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  ID CSC <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="idCsc"
-                  value={formState.idCsc}
-                  onChange={handleInputChange}
-                  placeholder="0001"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-center"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Ambiente
-                </label>
-                <select
-                  name="ambiente"
-                  value={formState.ambiente}
-                  onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-semibold"
-                >
-                  <option value="test">🧪 Test (Pruebas)</option>
-                  <option value="prod">🚀 Prod (Producción)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bloque 3: Certificado Digital (.p12) y Contraseña */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-emerald-400">
-              <FileKey className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Certificado Digital PKCS#12</h2>
-              <p className="text-xs text-slate-400">Archivo criptográfico (.p12) para firma digital en SIFEN</p>
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            {/* Dropzone de Archivo */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Archivo de Certificado (.p12 / .pfx) <span className="text-rose-400">*</span>
-              </label>
-
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
-                  archivoCertificado
-                    ? 'border-emerald-500/50 bg-emerald-950/20 text-emerald-200 hover:border-emerald-400'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:bg-slate-950'
-                }`}
+                className="w-full h-10 py-2 px-2 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors font-semibold"
               >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".p12,.pfx,application/x-pkcs12"
-                  className="hidden"
-                />
-
-                {archivoCertificado ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400">
-                      <FileCheck className="w-6 h-6" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-sm text-white">{archivoCertificado.name}</p>
-                      <p className="text-xs text-emerald-400">{(archivoCertificado.size / 1024).toFixed(1)} KB · Listo para subir</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <UploadCloud className="w-10 h-10 text-slate-500 mb-2" />
-                    <p className="text-sm font-semibold text-slate-300">Arrastre aquí su archivo .p12 o haga clic para examinar</p>
-                    <p className="text-xs text-slate-500 mt-1">Formato soportado: Certificado Digital PKCS#12 (máximo 10 MB)</p>
-                  </div>
-                )}
-              </div>
+                <option value="test">🧪 Test</option>
+                <option value="prod">🚀 Prod</option>
+              </select>
             </div>
+          </div>
 
-            {/* Contraseña del Certificado */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Contraseña del Certificado <span className="text-rose-400">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={mostrarClaveCertificado ? 'text' : 'password'}
-                  name="claveCertificado"
-                  value={formState.claveCertificado}
-                  onChange={handleInputChange}
-                  placeholder="Clave privada para abrir el certificado .p12"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors pr-12 font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setMostrarClaveCertificado(!mostrarClaveCertificado)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
-                  title={mostrarClaveCertificado ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                >
-                  {mostrarClaveCertificado ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+          {/* Fila 3: Contraseña del Certificado y Llave Maestra */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              Contraseña del Certificado (.p12) <span className="text-rose-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={mostrarClaveCertificado ? 'text' : 'password'}
+                name="claveCertificado"
+                value={formState.claveCertificado}
+                onChange={handleInputChange}
+                placeholder="Clave para abrir el .p12"
+                required
+                className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors pr-10 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarClaveCertificado(!mostrarClaveCertificado)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
+                title={mostrarClaveCertificado ? 'Ocultar' : 'Mostrar'}
+              >
+                {mostrarClaveCertificado ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              Llave Maestra (Superadmin API Key) <span className="text-rose-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={mostrarLlaveMaestra ? 'text' : 'password'}
+                name="llaveMaestra"
+                value={formState.llaveMaestra}
+                onChange={handleInputChange}
+                placeholder="Clave SUPERADMIN_API_KEY"
+                required
+                className="w-full h-10 py-2 px-3 text-sm bg-slate-950 border border-gray-800 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition-colors pr-10 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarLlaveMaestra(!mostrarLlaveMaestra)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
+                title={mostrarLlaveMaestra ? 'Ocultar' : 'Mostrar'}
+              >
+                {mostrarLlaveMaestra ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Fila 4 (Ancho completo): Archivo de Certificado PKCS#12 */}
+          <div className="md:col-span-2">
+            <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              Archivo de Certificado (.p12 / .pfx) <span className="text-rose-400">*</span>
+            </label>
+
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border border-dashed rounded-lg p-3 text-center cursor-pointer transition-all ${
+                archivoCertificado
+                  ? 'border-emerald-500/50 bg-emerald-950/20 text-emerald-200'
+                  : 'border-gray-800 bg-slate-950/60 text-slate-400 hover:border-gray-700'
+              }`}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".p12,.pfx,application/x-pkcs12"
+                className="hidden"
+              />
+
+              {archivoCertificado ? (
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <FileCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div className="text-left truncate">
+                      <p className="font-semibold text-xs text-white truncate">{archivoCertificado.name}</p>
+                      <p className="text-[10px] text-emerald-400">{(archivoCertificado.size / 1024).toFixed(1)} KB · Certificado cargado</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-slate-400 hover:text-white font-medium underline shrink-0 ml-2">Cambiar</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2 py-1">
+                  <UploadCloud className="w-5 h-5 text-slate-500" />
+                  <span className="text-xs font-medium text-slate-300">Arrastre aquí su archivo .p12 o haga clic para seleccionar</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Botón de Campos Opcionales / Avanzados */}
-        <div className="pt-2">
+        {/* Campos Opcionales Desplegables */}
+        <div className="pt-1 border-t border-gray-800/60">
           <button
             type="button"
             onClick={() => setMostrarCamposAvanzados(!mostrarCamposAvanzados)}
-            className="text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
+            className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <span>{mostrarCamposAvanzados ? '▲ Ocultar campos avanzados de timbrado' : '▼ Ver campos avanzados de timbrado y establecimiento (opcional)'}</span>
+            {mostrarCamposAvanzados ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            <span>{mostrarCamposAvanzados ? 'Ocultar campos opcionales de timbrado' : 'Configurar campos opcionales (Timbrado, Establecimiento, Dirección)'}</span>
           </button>
         </div>
 
         {mostrarCamposAvanzados && (
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1 text-xs animate-fade-in">
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Establecimiento (ej: 001)</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Establecimiento</label>
               <input
                 type="text"
                 name="establecimiento"
                 value={formState.establecimiento}
                 onChange={handleInputChange}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Punto de Expedición (ej: 001)</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Punto Expedición</label>
               <input
                 type="text"
                 name="puntoExpedicion"
                 value={formState.puntoExpedicion}
                 onChange={handleInputChange}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Número de Timbrado</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Nº Timbrado</label>
               <input
                 type="text"
                 name="timbradoNumero"
                 value={formState.timbradoNumero || ''}
                 onChange={handleInputChange}
                 placeholder="12345678"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Fecha de Timbrado</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Fecha Timbrado</label>
               <input
                 type="date"
                 name="timbradoFecha"
                 value={formState.timbradoFecha || ''}
                 onChange={handleInputChange}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Dirección del Emisor</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Dirección</label>
               <input
                 type="text"
                 name="direccion"
                 value={formState.direccion || ''}
                 onChange={handleInputChange}
                 placeholder="Av. Principal 123"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white"
               />
             </div>
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Correo Electrónico</label>
+              <label className="block text-[10px] font-medium text-slate-400 uppercase mb-1">Correo Notificaciones</label>
               <input
                 type="email"
                 name="correo"
                 value={formState.correo || ''}
                 onChange={handleInputChange}
-                placeholder="contacto@empresa.com.py"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white"
+                placeholder="empresa@correo.com"
+                className="w-full h-9 py-1.5 px-3 text-xs bg-slate-950 border border-gray-800 rounded-lg text-white"
               />
             </div>
           </div>
         )}
 
-        {/* Botón de Envío y Reseteo */}
-        <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-4">
+        {/* Fila de Acciones */}
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-800/80">
           <button
             type="button"
             onClick={() => resetFormulario(true)}
             disabled={loading}
-            className="w-full sm:w-auto px-5 py-3 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
+            className="h-10 px-4 rounded-lg border border-gray-800 text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
           >
-            <RefreshCw className="w-4 h-4" />
-            Limpiar Formulario
+            <RefreshCw className="w-3.5 h-3.5" />
+            Limpiar
           </button>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-600 text-white font-bold text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="h-10 px-6 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {loading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Registrando Inquilino...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Registrando...</span>
               </>
             ) : (
               <>
-                <ShieldCheck className="w-5 h-5" />
-                <span>Completar Onboarding</span>
+                <ShieldCheck className="w-4 h-4" />
+                <span>Registrar Inquilino SIFEN</span>
               </>
             )}
           </button>

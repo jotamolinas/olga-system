@@ -475,56 +475,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 4. PIE DEL SIDEBAR: TARJETA DE ASISTENCIA + BOTÓN EXPANDIR/CERRAR*/}
         {/* ============================================================== */}
         <div className="p-3 border-t border-slate-800 shrink-0">
-          {/* Tarjeta de Asistencia (Solo visible cuando está desplegado) */}
-          {isExpanded && (
-            <div className={`relative overflow-hidden rounded-2xl p-3.5 mb-2.5 text-center shrink-0 border ${
-              esPlanFull 
-                ? 'bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-slate-900 border-amber-500/30 shadow-[0_8px_24px_-6px_rgba(251,191,36,0.15)]' 
-                : 'bg-slate-800/80 border-slate-700/70 shadow-lg'
-            }`}>
-              {/* Esfera / Icono */}
-              {esPlanFull ? (
-                <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 shadow-[0_6px_20px_rgba(251,191,36,0.55)] ring-4 ring-amber-400/20 transition-transform duration-300 hover:scale-105" />
-              ) : (
-                <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300">
-                  <Sparkles className="w-5 h-5 text-slate-300" />
-                </div>
-              )}
-              <p className="text-xs font-semibold text-white">
-                {tieneOraculo ? 'El Oráculo' : 'Asistente IA'}
-              </p>
-              <p className="text-[11px] text-slate-400 mb-2.5 mt-0.5">
-                {tieneOraculo ? 'Inteligencia Notarial y Auditoría' : 'Consultas y cálculos notariales'}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('chat');
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  esSkinDorado 
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold shadow-[0_4px_14px_rgba(245,158,11,0.35)]' 
-                    : 'bg-slate-700 hover:bg-slate-600 text-white border border-slate-600 shadow-sm'
-                }`}
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${esSkinDorado ? 'text-slate-950' : 'text-white/90'}`} />
-                <span>{tieneOraculo ? 'Consultar al Oráculo →' : 'Consultar Asistente IA →'}</span>
-              </button>
-            </div>
-          )}
-
-          {/* Logotipo O.L.G.A. permanente en el Menú Lateral */}
-          <div className="flex items-center justify-center py-2.5 px-1 mb-1.5 transition-all">
-            <img
-              src="/logo-olga.png?v=3"
-              alt="Logo O.L.G.A."
-              className={`object-contain drop-shadow-[0_2px_8px_rgba(251,49,49,0.25)] transition-all duration-300 ${
-                isExpanded ? 'max-h-12 max-w-[150px]' : 'w-11 h-11'
-              }`}
-            />
-          </div>
-
           {/* Fila de controles inferiores: Expandir/Fijar + Cerrar Sesión */}
           <div
             className={`flex items-center gap-1.5 ${
