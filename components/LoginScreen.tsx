@@ -234,7 +234,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   };
 
   // Inicio de sesión con Google
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     try {
       setLoading(true);
       setError('');
@@ -564,7 +568,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         {/* Botón de Google de ancho completo */}
         <button
           type="button"
-          onClick={handleGoogleSignIn}
+          onClick={(e) => handleGoogleSignIn(e)}
           disabled={loading}
           className="w-full bg-white/5 border border-white/10 text-white hover:bg-white/10 h-10 rounded-lg flex items-center justify-center gap-3 transition-colors cursor-pointer text-xs font-semibold relative z-10 disabled:opacity-50"
         >
