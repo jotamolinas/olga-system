@@ -42,7 +42,6 @@ import { RegistroOperador } from './components/RegistroOperador';
 import { EditorNotarialOficial } from './components/EditorNotarialOficial';
 import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 import { Sidebar } from './components/Sidebar';
-import { AuthActionHandler } from './components/AuthActionHandler';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -2446,8 +2445,6 @@ export default function App() {
           </SuperAdminGuard>
         }
       />
-      <Route path="/auth/accion" element={<AuthActionHandler />} />
-      <Route path="/auth/action" element={<AuthActionHandler />} />
       <Route path="/consola" element={<ConsolaApp />} />
       <Route path="/consola/admin" element={<ConsolaApp forceAdmin={true} />} />
       <Route path="/registro-operador" element={<RegistroOperador />} />
