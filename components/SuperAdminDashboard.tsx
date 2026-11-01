@@ -453,7 +453,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
   };
 
   return (
-    <div className="p-4 md:p-8 animate-fade-in w-full box-border max-w-7xl mx-auto text-slate-200">
+    <div className="p-4 md:p-6 animate-fade-in w-full box-border max-w-7xl mx-auto text-slate-200">
       <div className="mb-8">
         <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
           <Activity className="w-8 h-8 text-blue-500" />
@@ -495,7 +495,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
       ) : (
         <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:border-blue-500/30 transition-colors">
+        <div className="bg-slate-900/90 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-blue-500/40 transition-all border border-gray-700/50">
           <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
             <Users className="w-32 h-32 text-blue-400" />
           </div>
@@ -506,11 +506,11 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Usuarios Totales</h2>
           </div>
           <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-4xl font-black text-white tracking-tight">{metrics.totalUsers}</p>}
+            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-3xl font-bold text-white tracking-tight">{metrics.totalUsers}</p>}
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+        <div className="bg-slate-900/90 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-emerald-500/40 transition-all border border-gray-700/50">
           <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
             <FileText className="w-32 h-32 text-emerald-400" />
           </div>
@@ -521,11 +521,11 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pagarés Emitidos</h2>
           </div>
           <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-4xl font-black text-white tracking-tight">{metrics.totalPagares}</p>}
+            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-3xl font-bold text-white tracking-tight">{metrics.totalPagares}</p>}
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:border-purple-500/30 transition-colors">
+        <div className="bg-slate-900/90 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-purple-500/40 transition-all border border-gray-700/50">
           <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
             <Activity className="w-32 h-32 text-purple-400" />
           </div>
@@ -536,11 +536,11 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Consultas IA</h2>
           </div>
           <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-4xl font-black text-white tracking-tight">{metrics.aiQueries}</p>}
+            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-3xl font-bold text-white tracking-tight">{metrics.aiQueries}</p>}
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:border-orange-500/30 transition-colors">
+        <div className="bg-slate-900/90 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-orange-500/40 transition-all border border-gray-700/50">
           <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
             <AlertTriangle className="w-32 h-32 text-orange-400" />
           </div>
@@ -554,15 +554,15 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             {loadingPayments ? (
               <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div>
             ) : (
-              <p className={`text-4xl font-black tracking-tight ${pendingPayments.length > 0 ? 'text-orange-500' : 'text-white'}`}>{pendingPayments.length}</p>
+              <p className={`text-3xl font-bold tracking-tight ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>{pendingPayments.length}</p>
             )}
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2"><FileText className="w-4 h-4"/> Emisión de Pagarés (Últimos 6 Meses)</h3>
+        <div className="bg-slate-900/90 p-4 rounded-xl border border-gray-700/50 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><FileText className="w-4 h-4"/> Emisión de Pagarés (Últimos 6 Meses)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -579,8 +579,8 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2"><DollarSign className="w-4 h-4"/> Volumen Notariado (Gs)</h3>
+        <div className="bg-slate-900/90 p-4 rounded-xl border border-gray-700/50 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4"/> Volumen Notariado (Gs)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={lineData} margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
@@ -598,9 +598,9 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         </div>
       </div>
 
-      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="p-6 border-b border-slate-800">
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+      <div className="mt-6 bg-slate-900/90 rounded-xl border border-gray-700/50 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-700/50">
+          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-emerald-500" />
             Comprobantes Pendientes de Aprobación
           </h2>
@@ -696,15 +696,15 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
       {/* ============================================================== */}
       {/* CONTENEDOR: USUARIOS INSCRIPTOS CON PLAN Y EN PRUEBA (EN VIVO) */}
       {/* ============================================================== */}
-      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-6 border-b border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="mt-6 bg-slate-900/90 rounded-xl border border-gray-700/50 shadow-sm overflow-hidden shadow-xl">
+        <div className="p-4 border-b border-gray-700/50 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
                 <Users className="w-5 h-5 text-blue-400" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2.5">
                   Directorio de Usuarios Registrados y en Prueba
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -983,10 +983,10 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         </div>
       </div>
 
-      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-6">
-        <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+      <div className="mt-6 bg-slate-900/90 rounded-xl border border-gray-700/50 shadow-sm overflow-hidden mb-6">
+        <div className="p-4 border-b border-gray-700/50 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
               <Shield className="w-5 h-5 text-blue-500" />
               Monitor Global de Pagarés
             </h2>
@@ -1082,8 +1082,8 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
 
       {auditoriaSeleccionada && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full box-border max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+          <div className="bg-slate-900/90 rounded-2xl w-full box-border max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-4 border-b border-gray-700/50 flex justify-between items-center bg-slate-950/50">
               <h2 className="text-xl font-black text-white flex items-center gap-3">
                 {renderRiesgoIcon(auditoriaSeleccionada.reporte.riesgo)}
                 Reporte de Auditoría IA

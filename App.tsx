@@ -4,7 +4,7 @@ import { LandingPage } from './components/LandingPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
 import { Persona, GlobalConfig, Pagare, KnowledgeDoc } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
-import { User, signOut } from 'firebase/auth';
+import { User, signOut, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, logout, getAccessToken } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore,
@@ -101,7 +101,8 @@ import {
   ShieldCheck,
   User as UserIcon, LogOut,
   AlertTriangle, LifeBuoy , Award, Download, HelpCircle,
-  Stamp
+  Stamp,
+  Loader2
 } from 'lucide-react';
 
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
@@ -562,7 +563,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen'>(forceAdmin ? 'monitor' : 'tablero');
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -2312,6 +2313,90 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   );
 };
 
+// Guardia de seguridad para rutas exclusivas de Super Admin
+const SuperAdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [loading, setLoading] = useState(true);
+  const [isSuper, setIsSuper] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setIsSuper(false);
+        setLoading(false);
+        return;
+      }
+
+      const rawAdminUids = (import.meta as any).env?.VITE_ADMIN_UID || "";
+      const envAdminUids = rawAdminUids.split(',').map((uid: string) => uid.trim());
+      const ADMIN_UIDS = [
+        ...envAdminUids,
+        "sjqCJTQ1lNMRIMk31VRwz9Rwhud2", 
+        "SDzZ9vL9y4cGQc4sHatRI2QugBr2",
+        "SDzZ9vL9y4cGQc4sHatRl2QugBr2",
+        "SDzZ9yL9y4cGQc4sHatRI2QugBr2",
+        "SDzZ9yL9y4cGQc4sHatRl2QugBr2",
+        "5DzZ9vL9y4cGQc4sHatRI2QugBr2",
+        "SDz29yL9y4cG0c4sHatRl20ugRc2"
+      ];
+
+      let superAdminDetected = ADMIN_UIDS.includes(user.uid) || user.email === 'jotamolinas@gmail.com';
+
+      if (!superAdminDetected) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const r = String(data?.role || '').toUpperCase();
+            if (r === 'SUPERADMIN' || r === 'ADMIN') {
+              superAdminDetected = true;
+            }
+          }
+        } catch (_) {}
+      }
+
+      setIsSuper(superAdminDetected);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+        <p className="text-xs font-semibold text-slate-400">Verificando credenciales Super Admin...</p>
+      </div>
+    );
+  }
+
+  if (!isSuper) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      <header className="border-b border-gray-800 bg-slate-900/80 px-6 py-3.5 flex items-center justify-between backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <a
+            href="/consola/admin"
+            className="text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
+          >
+            ← Volver al Monitor Central
+          </a>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          Super Admin Autorizado
+        </div>
+      </header>
+      <main className="flex-1 p-4 md:p-8 max-w-6xl w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+};
+
 export default function App() {
   console.log('[App Component] Rendering main App router component');
   useEffect(() => {
@@ -2322,6 +2407,14 @@ export default function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/admin" element={<AdminLoginRoute />} />
+      <Route
+        path="/admin/sifen-onboarding"
+        element={
+          <SuperAdminGuard>
+            <SuperAdminOnboarding />
+          </SuperAdminGuard>
+        }
+      />
       <Route path="/consola" element={<ConsolaApp />} />
       <Route path="/consola/admin" element={<ConsolaApp forceAdmin={true} />} />
       <Route path="/registro-operador" element={<RegistroOperador />} />

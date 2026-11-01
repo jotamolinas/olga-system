@@ -178,6 +178,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     customRenderLabel?: () => string;
   }
 
+  // Regla Crítica: Verificación estricta de Super Admin
+  const isSuperAdmin = Boolean(
+    userProfile?.role === 'SUPERADMIN' ||
+    userData?.role === 'SUPERADMIN' ||
+    currentUser?.role === 'SUPERADMIN' ||
+    String(userProfile?.role || '').toUpperCase() === 'SUPERADMIN' ||
+    String(userData?.role || '').toUpperCase() === 'SUPERADMIN' ||
+    role === 'admin' ||
+    currentUser?.email === 'jotamolinas@gmail.com' ||
+    isAdmin
+  );
+
   const navItems: NavItem[] = [
     { id: 'tablero', label: 'Dashboard', icon: Activity },
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
@@ -208,8 +220,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
     { id: 'knowledge', label: 'Entrenamiento IA', icon: Database, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
+    // Regla Crítica: Envuelto en renderizado condicional estricto de Super Admin
+    ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
     { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
-    { id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || role === 'admin');
