@@ -476,19 +476,20 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
   };
 
   return (
-    <div className="min-h-full bg-[#09090b] text-gray-200 -m-4 md:-m-8 p-4 md:p-8 animate-fade-in w-auto">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="flex-1 overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-2 md:p-4 w-full box-border h-full">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
+        {/* Header / Subtabs */}
+        <div className="mb-3 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
-              <Activity className="w-6 h-6 text-blue-400" />
+            <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+              <Activity className="w-5 h-5 text-blue-400" />
               Monitor Central
             </h1>
-            <p className="text-xs text-gray-400 mt-1">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
           </div>
 
           {/* Switcher de Subpestañas Superadmin */}
-          <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm">
+          <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm shrink-0">
             <button
               type="button"
               onClick={() => setAdminSubTab('metricas')}
@@ -517,75 +518,77 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         </div>
 
         {adminSubTab === 'onboarding' ? (
-          <SuperAdminOnboarding />
+          <div className="flex-1 overflow-y-auto">
+            <SuperAdminOnboarding />
+          </div>
         ) : (
-          <>
+          <div className="flex-1 flex flex-col overflow-hidden gap-3">
             {/* 1. Grid Superior de KPIs (5 Columnas) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
               {/* Card 1: Usuarios Totales */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Usuarios Totales</span>
-                  <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <Users className="w-4 h-4 text-blue-400" />
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Usuarios Totales</span>
+                  <div className="p-1 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                    <Users className="w-3.5 h-3.5 text-blue-400" />
                   </div>
                 </div>
                 <div>
                   {loading ? (
-                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
                   ) : (
-                    <p className="text-3xl font-light text-white mt-1">{metrics.totalUsers}</p>
+                    <p className="text-2xl font-light text-white mt-0.5">{metrics.totalUsers}</p>
                   )}
                 </div>
               </div>
 
               {/* Card 2: Pagarés Emitidos */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Pagarés Emitidos</span>
-                  <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                    <FileText className="w-4 h-4 text-emerald-400" />
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagarés Emitidos</span>
+                  <div className="p-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
                   </div>
                 </div>
                 <div>
                   {loading ? (
-                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
                   ) : (
-                    <p className="text-3xl font-light text-white mt-1">{metrics.totalPagares}</p>
+                    <p className="text-2xl font-light text-white mt-0.5">{metrics.totalPagares}</p>
                   )}
                 </div>
               </div>
 
               {/* Card 3: Consultas IA */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Consultas IA</span>
-                  <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                    <Activity className="w-4 h-4 text-purple-400" />
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Consultas IA</span>
+                  <div className="p-1 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                    <Activity className="w-3.5 h-3.5 text-purple-400" />
                   </div>
                 </div>
                 <div>
                   {loading ? (
-                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
                   ) : (
-                    <p className="text-3xl font-light text-white mt-1">{metrics.aiQueries}</p>
+                    <p className="text-2xl font-light text-white mt-0.5">{metrics.aiQueries}</p>
                   )}
                 </div>
               </div>
 
               {/* Card 4: Pagos Pendientes */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
-                  <div className="p-1.5 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <AlertTriangle className="w-4 h-4 text-orange-400" />
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
+                  <div className="p-1 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
                   </div>
                 </div>
                 <div>
                   {loadingPayments ? (
-                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
                   ) : (
-                    <p className={`text-3xl font-light mt-1 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
+                    <p className={`text-2xl font-light mt-0.5 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
                       {pendingPayments.length}
                     </p>
                   )}
@@ -593,15 +596,15 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
               </div>
 
               {/* Card 5: Buzón de Consultas */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Buzón de Consultas</span>
-                  <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                    <MessageSquare className="w-4 h-4 text-amber-400" />
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between col-span-2 md:col-span-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Buzón de Consultas</span>
+                  <div className="p-1 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                    <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
                   </div>
                 </div>
                 <div>
-                  <p className={`text-3xl font-light mt-1 ${pendingTicketsCount > 0 ? 'text-amber-400 font-normal' : 'text-gray-400'}`}>
+                  <p className={`text-2xl font-light mt-0.5 ${pendingTicketsCount > 0 ? 'text-amber-400 font-normal' : 'text-gray-400'}`}>
                     {pendingTicketsCount}
                   </p>
                 </div>
@@ -609,45 +612,45 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             </div>
 
             {/* 2. Layout Central Asimétrico (Izquierda y Derecha) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-              {/* 3. Contenedor Único de Gráficos (Lado Izquierdo: col-span-1 lg:col-span-2) */}
-              <div className="col-span-1 lg:col-span-2 bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 shrink-0">
+              {/* Contenedor Único de Gráficos (Lado Izquierdo: col-span-1 lg:col-span-2) */}
+              <div className="col-span-1 lg:col-span-2 bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
                 {/* Gráfico 1: Emisión de Pagarés */}
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <FileText className="w-3 h-3 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
                     </span>
-                    <span className="text-[10px] text-gray-400 font-mono">
+                    <span className="text-[9px] text-gray-400 font-mono">
                       {metrics.totalPagares} docs
                     </span>
                   </div>
-                  <div className="h-36 bg-transparent">
+                  <div className="h-28 bg-transparent">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                      <BarChart data={chartData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
                         <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                        <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} allowDecimals={false} />
                         <Tooltip 
                           cursor={{ fill: '#27272a', opacity: 0.3 }}
-                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '11px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
                         />
-                        <Bar dataKey="cantidad" fill="#3b82f6" barSize={16} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="cantidad" fill="#3b82f6" barSize={14} radius={[3, 3, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
                 {/* Línea divisoria sutil */}
-                <div className="border-t border-white/5 my-4 pt-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
+                <div className="border-t border-white/5 my-2 pt-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <DollarSign className="w-3 h-3 text-emerald-400" /> Volumen Notariado (Gs)
                     </span>
                   </div>
-                  <div className="h-36 bg-transparent">
+                  <div className="h-28 bg-transparent">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={lineData} margin={{ top: 5, right: 5, left: 10, bottom: 0 }}>
+                      <AreaChart data={lineData} margin={{ top: 2, right: 5, left: 10, bottom: 0 }}>
                         <defs>
                           <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
@@ -655,10 +658,10 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                           </linearGradient>
                         </defs>
                         <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                        <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
                         <Tooltip 
-                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '11px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
                           formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
                         />
                         <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
@@ -668,14 +671,14 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                 </div>
               </div>
 
-              {/* 4. Módulo Gestión de Cobros (Lado Derecho: col-span-1) */}
-              <div className="col-span-1 bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <CreditCard className="w-3.5 h-3.5 text-orange-400" /> Gestión de Cobros
+              {/* Módulo Gestión de Cobros (Lado Derecho: col-span-1) */}
+              <div className="col-span-1 bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between overflow-hidden">
+                <div className="flex flex-col h-full overflow-hidden">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
+                    <span className="flex items-center gap-1.5">
+                      <CreditCard className="w-3 h-3 text-orange-400" /> Gestión de Cobros
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-mono ${
                       pendingPayments.length > 0 
                         ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20 font-bold' 
                         : 'text-gray-500 bg-white/5'
@@ -684,16 +687,16 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                     </span>
                   </div>
 
-                  <div className="max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-2">
+                  <div className="flex-1 max-h-[225px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
                     {loadingPayments ? (
-                      <div className="p-8 flex justify-center items-center">
-                        <div className="w-6 h-6 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+                      <div className="p-6 flex justify-center items-center">
+                        <div className="w-5 h-5 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
                       </div>
                     ) : pendingPayments.length === 0 ? (
-                      <div className="py-12 text-center flex flex-col items-center justify-center">
-                        <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-2" />
+                      <div className="py-8 text-center flex flex-col items-center justify-center">
+                        <CheckCircle className="w-6 h-6 text-emerald-500/30 mb-1.5" />
                         <p className="text-xs text-gray-400 font-medium">Al día con las suscripciones</p>
-                        <p className="text-[10px] text-gray-600 mt-0.5">No hay pagos pendientes de revisión</p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">Sin pagos pendientes</p>
                       </div>
                     ) : (
                       pendingPayments.map((pago) => {
@@ -705,37 +708,37 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                         return (
                           <div 
                             key={pago.id}
-                            className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
+                            className="flex items-center justify-between py-2 px-2.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm text-gray-200 font-medium truncate" title={nombreEscribano}>
+                              <p className="text-xs text-gray-200 font-medium truncate" title={nombreEscribano}>
                                 {nombreEscribano}
                               </p>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-white font-medium text-xs font-mono">
+                                <span className="text-white font-medium text-[11px] font-mono">
                                   {montoFormatted}
                                 </span>
-                                <span className="text-[10px] text-gray-500 truncate">• {pago.planSolicitado}</span>
+                                <span className="text-[9px] text-gray-500 truncate">• {pago.planSolicitado}</span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0">
                               {pago.urlComprobante ? (
                                 <button
                                   onClick={() => setReciboSeleccionado(pago.urlComprobante)}
-                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
                                   title="Ver comprobante adjunto"
                                 >
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-2.5 h-2.5" />
                                   Revisar
                                 </button>
                               ) : null}
                               <button
                                 onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '')}
-                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
                                 title="Aprobar suscripción del cliente"
                               >
-                                <CheckCircle className="w-3 h-3" />
+                                <CheckCircle className="w-2.5 h-2.5" />
                                 Aprobar
                               </button>
                             </div>
@@ -749,25 +752,25 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             </div>
 
             {/* 3. División de Listas Inferiores (Izquierda y Derecha) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
               {/* Columna Izquierda: Usuarios Activos */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Users className="w-3.5 h-3.5 text-blue-400" /> Usuarios Activos & Registrados
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col h-full overflow-hidden">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3 h-3 text-blue-400" /> Usuarios Activos & Registrados
                   </span>
-                  <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                  <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
                     {registeredUsers.length} total
                   </span>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
                   {loadingUsers ? (
-                    <div className="p-8 flex justify-center items-center">
-                      <div className="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                    <div className="p-6 flex justify-center items-center">
+                      <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
                     </div>
                   ) : registeredUsers.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-gray-500">
+                    <div className="py-6 text-center text-xs text-gray-500">
                       No hay usuarios registrados aún.
                     </div>
                   ) : (
@@ -780,31 +783,31 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                       const isPendiente = user.estadoSuscripcion === 'pendiente';
 
                       return (
-                        <div key={user.id} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors">
-                          <div className="flex items-center gap-3 min-w-0 mr-3">
-                            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-medium text-gray-300 shrink-0">
+                        <div key={user.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors">
+                          <div className="flex items-center gap-2.5 min-w-0 mr-2">
+                            <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
                               {inicial}
                             </div>
                             <div className="min-w-0 truncate">
-                              <p className="text-sm text-gray-200 font-medium truncate">{nombreDisplay}</p>
-                              <p className="text-xs text-gray-500 truncate">{subInfo}</p>
+                              <p className="text-xs text-gray-200 font-medium truncate">{nombreDisplay}</p>
+                              <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
                             </div>
                           </div>
                           <div className="shrink-0">
                             {isActivo ? (
-                              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full font-medium border border-emerald-500/20">
+                              <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
                                 Activo
                               </span>
                             ) : isPrueba ? (
-                              <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-medium border border-cyan-500/20">
+                              <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
                                 Prueba ({user.diasRestantes ?? 5}d)
                               </span>
                             ) : isPendiente ? (
-                              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-1 rounded-full font-medium border border-amber-500/20">
+                              <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
                                 Pendiente
                               </span>
                             ) : (
-                              <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-1 rounded-full font-medium border border-red-500/20">
+                              <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
                                 Vencido
                               </span>
                             )}
@@ -817,23 +820,23 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
               </div>
 
               {/* Columna Derecha: Emisión de Pagarés */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-emerald-400" /> Emisión Reciente de Pagarés
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col h-full overflow-hidden">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="w-3 h-3 text-emerald-400" /> Emisión Reciente de Pagarés
                   </span>
-                  <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                  <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
                     {pagaresGlobal.length} docs
                   </span>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
                   {loading ? (
-                    <div className="p-8 flex justify-center items-center">
-                      <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <div className="p-6 flex justify-center items-center">
+                      <div className="w-5 h-5 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
                     </div>
                   ) : pagaresGlobal.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-gray-500">
+                    <div className="py-6 text-center text-xs text-gray-500">
                       No hay pagarés registrados aún.
                     </div>
                   ) : (
@@ -848,25 +851,25 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                         <div 
                           key={pagare.id} 
                           onClick={() => handleAuditoria(pagare)}
-                          className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors cursor-pointer group"
+                          className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors cursor-pointer group"
                           title="Click para auditar detalle"
                         >
-                          <div className="min-w-0 mr-3">
-                            <p className="text-sm text-gray-200 font-medium truncate group-hover:text-emerald-400 transition-colors">
+                          <div className="min-w-0 mr-2">
+                            <p className="text-xs text-gray-200 font-medium truncate group-hover:text-emerald-400 transition-colors">
                               {emisor}
                             </p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                            <div className="flex items-center gap-1.5 text-[10px] text-gray-500 mt-0.5">
                               <span>{fecha}</span>
                               {pagare.deudor_nombre && (
                                 <>
                                   <span>•</span>
-                                  <span className="truncate max-w-[140px] text-gray-400">{pagare.deudor_nombre}</span>
+                                  <span className="truncate max-w-[120px] text-gray-400">{pagare.deudor_nombre}</span>
                                 </>
                               )}
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <span className="text-sm font-medium text-white font-mono">
+                            <span className="text-xs font-medium text-white font-mono">
                               {montoFormatted}
                             </span>
                           </div>
@@ -877,7 +880,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                 </div>
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* Modal Recibo */}
@@ -886,7 +889,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             <div className="relative max-w-4xl max-h-screen overflow-hidden flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl p-4">
               <button
                 onClick={() => setReciboSeleccionado(null)}
-                className="absolute top-4 right-4 bg-zinc-900/80 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10"
+                className="absolute top-4 right-4 bg-zinc-900/80 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10 cursor-pointer"
                 aria-label="Cerrar modal"
               >
                 <XCircle className="w-5 h-5" />
@@ -911,7 +914,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                 </h2>
                 <button
                   onClick={() => setAuditoriaSeleccionada(null)}
-                  className="text-gray-500 hover:text-gray-300 transition-colors"
+                  className="text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
@@ -968,7 +971,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
               <div className="p-4 border-t border-white/5 bg-[#09090b]/50 flex justify-end gap-3">
                 <button
                   onClick={() => setAuditoriaSeleccionada(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                 >
                   Cerrar Reporte
                 </button>
@@ -978,7 +981,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                       alert('Usuario bloqueado por prevención de fraude.');
                       setAuditoriaSeleccionada(null);
                     }}
-                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-red-900/20"
+                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-red-900/20 cursor-pointer"
                   >
                     <ShieldAlert className="w-4 h-4" />
                     Bloquear Usuario (Posible Fraude)

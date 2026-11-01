@@ -1403,7 +1403,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   return (
     <div 
-      className={`flex flex-col md:flex-row h-[100dvh] overflow-hidden font-sans ${esPlanFull ? 'bg-[#ECECE8] dark:bg-[#0D0E12]' : 'bg-[#F6F7F9] dark:bg-[#0D0E12]'} text-slate-800 dark:text-slate-100 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+      className={`flex flex-col md:flex-row h-screen overflow-hidden font-sans bg-[#09090b] text-slate-800 dark:text-slate-100 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
         !isSidebarPinned ? 'md:pl-[72px]' : ''
       }`} 
       id="main-panel-container"
@@ -1550,7 +1550,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   );
 })()}
 
-            {currentUser?.role !== 'operador' && !isOperador && (() => {
+            {role !== 'admin' && (currentUser as any)?.role !== 'SUPERADMIN' && userProfile?.role !== 'SUPERADMIN' && currentUser?.role !== 'operador' && !isOperador && (() => {
               const planActivoBtn = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
               const isPagoAprobado = String(userData?.estadoPago || userProfile?.estadoPago || '').toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
               const hasActivePlan = planActivoBtn.includes('pro') || planActivoBtn.includes('empresa') || planActivoBtn.includes('full') || planActivoBtn.includes('basico') || planActivoBtn.includes('básico') || isPagoAprobado;
@@ -1584,8 +1584,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </header>
 
         {/* Scrollable container for tab body content */}
-        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col' : 'p-4 md:p-8'}`}>
-          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : 'pb-24'}`}>
+        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
+          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'h-full flex-1 overflow-hidden pb-0' : 'pb-24'}`}>
             
             {(() => {
               const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
@@ -2105,9 +2105,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </div>
 
         {/* Dynamic bottom bar info */}
+        {role !== 'admin' && activeTab !== 'monitor' && (
         <footer className={`bg-white/90 dark:bg-[#16171E] border-t border-slate-200/80 dark:border-white/10 text-slate-400 p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
           SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL
         </footer>
+      )}
       </main>
 
       {/* DETAILED PRINTABLE NOTARY CERTIFICATE PDF PREVIEW COMPONENT */}
