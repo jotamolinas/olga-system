@@ -7,7 +7,7 @@ const envMeta = (import.meta as any).env || {};
 
 const firebaseConfig = {
   apiKey: envMeta.VITE_FIREBASE_API_KEY || "AIzaSyDGxd8nQTXTRpmwTKAw9xLl9uiTZuRT2UM",
-  authDomain: envMeta.VITE_FIREBASE_AUTH_DOMAIN || "nipponguay.firebaseapp.com",
+  authDomain: "olgatech.com.py",
   projectId: envMeta.VITE_FIREBASE_PROJECT_ID || "nipponguay",
   storageBucket: envMeta.VITE_FIREBASE_STORAGE_BUCKET || "nipponguay.firebasestorage.app",
   messagingSenderId: envMeta.VITE_FIREBASE_MESSAGING_SENDER_ID || "933976114072",
