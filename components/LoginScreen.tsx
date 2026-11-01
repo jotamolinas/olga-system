@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth, emailSignIn, emailSignUp, resetPassword } from '../services/auth';
-import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2 } from 'lucide-react';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -15,6 +15,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   
   // Estado para autenticación por Correo
   const [email, setEmail] = useState('');
@@ -99,6 +100,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   // Restablecer contraseña
   const handleResetPassword = async () => {
     if (!email) {
+      setSuccessMessage('');
       setError('Por favor, ingresa tu correo electrónico para restablecer la contraseña.');
       return;
     }
@@ -106,10 +108,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     try {
       setLoading(true);
       setError('');
+      setSuccessMessage('');
       await resetPassword(email);
-      setError('Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada o spam.');
+      setSuccessMessage('Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada o spam.');
     } catch (err: any) {
       console.error('Error reset password:', err);
+      setSuccessMessage('');
       setError(err.message || 'Error al enviar el correo de restablecimiento.');
     } finally {
       setLoading(false);
@@ -241,7 +245,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         <div className="w-full box-border grid grid-cols-2 p-1 bg-slate-900/80 rounded-xl mb-4 border border-slate-800 relative z-10 shadow-inner">
           <button
             type="button"
-            onClick={() => { setIsLogin(true); setError(''); }}
+            onClick={() => { setIsLogin(true); setError(''); setSuccessMessage(''); }}
             className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               isLogin 
                 ? 'bg-blue-600 text-white shadow-md' 
@@ -252,7 +256,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           </button>
           <button
             type="button"
-            onClick={() => { setIsLogin(false); setError(''); }}
+            onClick={() => { setIsLogin(false); setError(''); setSuccessMessage(''); }}
             className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               !isLogin 
                 ? 'bg-[#FF3131] text-white shadow-md' 
@@ -267,7 +271,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         <div className="w-full box-border grid grid-cols-2 p-1 bg-slate-900/60 rounded-xl mb-6 border border-slate-800/80 relative z-10">
           <button
             type="button"
-            onClick={() => { setAuthMethod('email'); setError(''); setOtpSent(false); }}
+            onClick={() => { setAuthMethod('email'); setError(''); setSuccessMessage(''); setOtpSent(false); }}
             className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${
               authMethod === 'email'
                 ? 'bg-slate-800 text-white shadow-sm border border-slate-700'
@@ -279,7 +283,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           </button>
           <button
             type="button"
-            onClick={() => { setAuthMethod('phone'); setError(''); }}
+            onClick={() => { setAuthMethod('phone'); setError(''); setSuccessMessage(''); }}
             className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${
               authMethod === 'phone'
                 ? 'bg-slate-800 text-white shadow-sm border border-slate-700'
@@ -304,11 +308,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           </div>
         )}
 
-        {/* Mensaje de error general */}
-        {error && (
-          <div className="w-full box-border bg-red-950/40 text-red-300 text-xs font-semibold p-4 rounded-xl mb-6 border border-red-800/50 relative z-10 text-left">
-            {error}
+        {/* Mensaje de confirmación de éxito */}
+        {successMessage && (
+          <div className="w-full box-border bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs font-semibold p-4 rounded-xl mb-6 relative z-10 text-left flex items-start gap-2.5 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+            <span>{successMessage}</span>
           </div>
+        )}
+
+        {/* Mensaje de error o confirmación */}
+        {error && (
+          error.includes('Te hemos enviado un correo') ? (
+            <div className="w-full box-border bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs font-semibold p-4 rounded-xl mb-6 relative z-10 text-left flex items-start gap-2.5 animate-fade-in">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+              <span>{error}</span>
+            </div>
+          ) : (
+            <div className="w-full box-border bg-red-950/40 text-red-300 text-xs font-semibold p-4 rounded-xl mb-6 border border-red-800/50 relative z-10 text-left">
+              {error}
+            </div>
+          )
         )}
 
         {/* Vista A: Autenticación por Correo Electrónico */}
