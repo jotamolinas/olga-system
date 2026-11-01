@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line
+  LineChart, Line, AreaChart, Area
 } from 'recharts';
 
 export interface RegisteredUser {
@@ -494,111 +494,130 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         <SuperAdminOnboarding />
       ) : (
         <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#0B1120] border border-gray-800 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-gray-700 transition-all">
-          <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
-            <Users className="w-32 h-32 text-blue-400" />
-          </div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="p-2.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <Users className="w-5 h-5 text-blue-400" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* 1. Usuarios Totales */}
+            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Usuarios Totales</span>
+                <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                  <Users className="w-4 h-4 text-blue-400" />
+                </div>
+              </div>
+              <div>
+                {loading ? (
+                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-2xl font-semibold text-white mt-1">{metrics.totalUsers}</p>
+                )}
+              </div>
             </div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Usuarios Totales</h2>
-          </div>
-          <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-2xl lg:text-3xl font-medium tracking-tight text-white">{metrics.totalUsers}</p>}
-          </div>
-        </div>
 
-        <div className="bg-[#0B1120] border border-gray-800 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-gray-700 transition-all">
-          <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
-            <FileText className="w-32 h-32 text-emerald-400" />
-          </div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="p-2.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-              <FileText className="w-5 h-5 text-emerald-400" />
+            {/* 2. Pagarés Emitidos */}
+            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pagarés Emitidos</span>
+                <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                </div>
+              </div>
+              <div>
+                {loading ? (
+                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-2xl font-semibold text-white mt-1">{metrics.totalPagares}</p>
+                )}
+              </div>
             </div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pagarés Emitidos</h2>
-          </div>
-          <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-2xl lg:text-3xl font-medium tracking-tight text-white">{metrics.totalPagares}</p>}
-          </div>
-        </div>
 
-        <div className="bg-[#0B1120] border border-gray-800 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-gray-700 transition-all">
-          <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
-            <Activity className="w-32 h-32 text-purple-400" />
-          </div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="p-2.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
-              <Activity className="w-5 h-5 text-purple-400" />
+            {/* 3. Consultas IA */}
+            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Consultas IA</span>
+                <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                  <Activity className="w-4 h-4 text-purple-400" />
+                </div>
+              </div>
+              <div>
+                {loading ? (
+                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-2xl font-semibold text-white mt-1">{metrics.aiQueries}</p>
+                )}
+              </div>
             </div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Consultas IA</h2>
-          </div>
-          <div className="mt-auto relative z-10">
-            {loading ? <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div> : <p className="text-2xl lg:text-3xl font-medium tracking-tight text-white">{metrics.aiQueries}</p>}
-          </div>
-        </div>
 
-        <div className="bg-[#0B1120] border border-gray-800 rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden group hover:border-gray-700 transition-all">
-          <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
-            <AlertTriangle className="w-32 h-32 text-orange-400" />
-          </div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="p-2.5 bg-orange-500/10 rounded-lg border border-orange-500/20">
-              <AlertTriangle className="w-5 h-5 text-orange-400" />
+            {/* 4. Pagos Pendientes */}
+            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pagos Pendientes</span>
+                <div className="p-1.5 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                  <AlertTriangle className="w-4 h-4 text-orange-400" />
+                </div>
+              </div>
+              <div>
+                {loadingPayments ? (
+                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
+                ) : (
+                  <p className={`text-2xl font-semibold mt-1 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
+                    {pendingPayments.length}
+                  </p>
+                )}
+              </div>
             </div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pagos Pendientes</h2>
-          </div>
-          <div className="mt-auto relative z-10">
-            {loadingPayments ? (
-              <div className="h-10 w-24 bg-slate-800 rounded animate-pulse"></div>
-            ) : (
-              <p className={`text-2xl lg:text-3xl font-medium tracking-tight ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>{pendingPayments.length}</p>
-            )}
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-        <div className="bg-[#0B1120] border border-gray-800 p-4 rounded-xl shadow-sm">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2"><FileText className="w-4 h-4"/> Emisión de Pagarés (Últimos 6 Meses)</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="name" stroke="#475569" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip 
-                  cursor={{ fill: '#1e293b' }}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#f1f5f9' }}
-                />
-                <Bar dataKey="cantidad" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+            {/* Modernización y Fusión de Gráficos (col-span-1 md:col-span-4) */}
+            <div className="col-span-1 md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Emisión de Pagarés */}
+              <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm">
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid stroke="#1f2937" vertical={false} />
+                      <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip 
+                        cursor={{ fill: '#1e293b' }}
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1f2937', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px' }}
+                      />
+                      <Bar dataKey="cantidad" fill="#3b82f6" barSize={20} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
 
-        <div className="bg-[#0B1120] border border-gray-800 p-4 rounded-xl shadow-sm">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4"/> Volumen Notariado (Gs)</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData} margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="name" stroke="#475569" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#f1f5f9' }}
-                  formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
-                />
-                <Line type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 0 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+              {/* Volumen Notariado */}
+              <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm">
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={lineData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#1f2937" vertical={false} />
+                      <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1f2937', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px' }}
+                        formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
+                      />
+                      <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
 
-      <div className="mt-6 bg-[#0B1120] border border-gray-800 rounded-xl shadow-sm overflow-hidden">
+            {/* Comprobantes Pendientes de Aprobación */}
+            <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-800">
           <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -696,7 +715,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
       {/* ============================================================== */}
       {/* CONTENEDOR: USUARIOS INSCRIPTOS CON PLAN Y EN PRUEBA (EN VIVO) */}
       {/* ============================================================== */}
-      <div className="mt-6 bg-[#0B1120] border border-gray-800 rounded-xl shadow-sm overflow-hidden shadow-xl">
+      <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden shadow-xl">
         <div className="p-4 border-b border-gray-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
@@ -983,7 +1002,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         </div>
       </div>
 
-      <div className="mt-6 bg-[#0B1120] border border-gray-800 rounded-xl shadow-sm overflow-hidden mb-6">
+      <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 border-b border-gray-800 flex justify-between items-center">
           <div>
             <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
@@ -1060,6 +1079,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
           )}
         </div>
       </div>
+          </div>
 
       {reciboSeleccionado && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
