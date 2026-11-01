@@ -475,6 +475,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 4. PIE DEL SIDEBAR: TARJETA DE ASISTENCIA + BOTÓN EXPANDIR/CERRAR*/}
         {/* ============================================================== */}
         <div className="p-3 border-t border-slate-800 shrink-0">
+          {/* Logo / Isotipo gráfico minimalista de O.L.G.A. */}
+          <div className="flex items-center justify-center py-2 mb-1 bg-transparent">
+            <img
+              src="/logo-olga.png?v=3"
+              alt="Logo O.L.G.A."
+              className="h-8 w-auto opacity-70 object-contain hover:opacity-100 transition-opacity duration-300 select-none pointer-events-none"
+            />
+          </div>
           {/* Fila de controles inferiores: Expandir/Fijar + Cerrar Sesión */}
           <div
             className={`flex items-center gap-1.5 ${
