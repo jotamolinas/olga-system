@@ -21,7 +21,8 @@ import {
   Building,
   Sliders,
   ShieldCheck,
-  Download
+  Download,
+  KeyRound
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 
@@ -208,6 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'knowledge', label: 'Entrenamiento IA', icon: Database, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
     { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
+    { id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || role === 'admin');

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/auth';
+import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
-  CheckCircle, XCircle, AlertTriangle, Users, FileText, 
+  KeyRound, CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion
@@ -66,6 +67,7 @@ interface Metrics {
 }
 
 export const SuperAdminDashboard: React.FC = () => {
+  const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
   
@@ -460,6 +462,38 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
         <p className="text-slate-400 mt-2 font-medium">Vista global del sistema, métricas, aprobaciones y auditoría en tiempo real.</p>
       </div>
 
+      {/* Switcher de Subpestañas Superadmin */}
+      <div className="flex items-center gap-2 border-b border-slate-800 mb-8">
+        <button
+          type="button"
+          onClick={() => setAdminSubTab('metricas')}
+          className={`pb-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            adminSubTab === 'metricas'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-blue-400" />
+          Métricas y Monitoreo
+        </button>
+        <button
+          type="button"
+          onClick={() => setAdminSubTab('onboarding')}
+          className={`pb-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            adminSubTab === 'onboarding'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <KeyRound className="w-4 h-4 text-emerald-400" />
+          Onboarding SIFEN (Multi-Tenant)
+        </button>
+      </div>
+
+      {adminSubTab === 'onboarding' ? (
+        <SuperAdminOnboarding />
+      ) : (
+        <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:border-blue-500/30 transition-colors">
           <div className="absolute -top-6 -right-6 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110">
@@ -1132,6 +1166,8 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
