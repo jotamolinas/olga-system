@@ -453,160 +453,169 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
   };
 
   return (
-    <div className="p-4 md:p-6 animate-fade-in w-full box-border max-w-7xl mx-auto text-slate-200">
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-          <Activity className="w-8 h-8 text-blue-500" />
-          Panel de Control - SuperAdmin
-        </h1>
-        <p className="text-slate-400 mt-2 font-medium">Vista global del sistema, métricas, aprobaciones y auditoría en tiempo real.</p>
-      </div>
+    <div className="min-h-full bg-[#09090b] text-gray-200 -m-4 md:-m-8 p-4 md:p-8 animate-fade-in w-auto">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
+              <Activity className="w-6 h-6 text-blue-400" />
+              Monitor Central
+            </h1>
+            <p className="text-xs text-gray-400 mt-1">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
+          </div>
 
-      {/* Switcher de Subpestañas Superadmin */}
-      <div className="flex items-center gap-2 border-b border-gray-800 mb-5">
-        <button
-          type="button"
-          onClick={() => setAdminSubTab('metricas')}
-          className={`pb-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            adminSubTab === 'metricas'
-              ? 'border-blue-500 text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Activity className="w-4 h-4 text-blue-400" />
-          Métricas y Monitoreo
-        </button>
-        <button
-          type="button"
-          onClick={() => setAdminSubTab('onboarding')}
-          className={`pb-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            adminSubTab === 'onboarding'
-              ? 'border-blue-500 text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <KeyRound className="w-4 h-4 text-emerald-400" />
-          Onboarding SIFEN (Multi-Tenant)
-        </button>
-      </div>
+          {/* Switcher de Subpestañas Superadmin */}
+          <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setAdminSubTab('metricas')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                adminSubTab === 'metricas'
+                  ? 'bg-white/10 text-white shadow-xs'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-blue-400" />
+              Métricas
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminSubTab('onboarding')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                adminSubTab === 'onboarding'
+                  ? 'bg-white/10 text-white shadow-xs'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+              Onboarding SIFEN
+            </button>
+          </div>
+        </div>
 
-      {adminSubTab === 'onboarding' ? (
-        <SuperAdminOnboarding />
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* 1. Usuarios Totales */}
-            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Usuarios Totales</span>
-                <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                  <Users className="w-4 h-4 text-blue-400" />
+        {adminSubTab === 'onboarding' ? (
+          <SuperAdminOnboarding />
+        ) : (
+          <>
+            {/* 1. Top KPIs (Grid de 4) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Usuarios Totales */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Usuarios Totales</span>
+                  <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                    <Users className="w-4 h-4 text-blue-400" />
+                  </div>
+                </div>
+                <div>
+                  {loading ? (
+                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                  ) : (
+                    <p className="text-3xl font-light text-white mt-1">{metrics.totalUsers}</p>
+                  )}
                 </div>
               </div>
-              <div>
-                {loading ? (
-                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
-                ) : (
-                  <p className="text-2xl font-semibold text-white mt-1">{metrics.totalUsers}</p>
-                )}
+
+              {/* Card 2: Pagarés Emitidos */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Pagarés Emitidos</span>
+                  <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                  </div>
+                </div>
+                <div>
+                  {loading ? (
+                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                  ) : (
+                    <p className="text-3xl font-light text-white mt-1">{metrics.totalPagares}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 3: Consultas IA */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Consultas IA</span>
+                  <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                    <Activity className="w-4 h-4 text-purple-400" />
+                  </div>
+                </div>
+                <div>
+                  {loading ? (
+                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                  ) : (
+                    <p className="text-3xl font-light text-white mt-1">{metrics.aiQueries}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 4: Pagos Pendientes */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
+                  <div className="p-1.5 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                    <AlertTriangle className="w-4 h-4 text-orange-400" />
+                  </div>
+                </div>
+                <div>
+                  {loadingPayments ? (
+                    <div className="h-8 w-20 bg-zinc-800/60 rounded animate-pulse"></div>
+                  ) : (
+                    <p className={`text-3xl font-light mt-1 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
+                      {pendingPayments.length}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* 2. Pagarés Emitidos */}
-            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pagarés Emitidos</span>
-                <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                  <FileText className="w-4 h-4 text-emerald-400" />
-                </div>
-              </div>
-              <div>
-                {loading ? (
-                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
-                ) : (
-                  <p className="text-2xl font-semibold text-white mt-1">{metrics.totalPagares}</p>
-                )}
-              </div>
-            </div>
-
-            {/* 3. Consultas IA */}
-            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Consultas IA</span>
-                <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                  <Activity className="w-4 h-4 text-purple-400" />
-                </div>
-              </div>
-              <div>
-                {loading ? (
-                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
-                ) : (
-                  <p className="text-2xl font-semibold text-white mt-1">{metrics.aiQueries}</p>
-                )}
-              </div>
-            </div>
-
-            {/* 4. Pagos Pendientes */}
-            <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pagos Pendientes</span>
-                <div className="p-1.5 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                  <AlertTriangle className="w-4 h-4 text-orange-400" />
-                </div>
-              </div>
-              <div>
-                {loadingPayments ? (
-                  <div className="h-8 w-20 bg-slate-800/60 rounded animate-pulse"></div>
-                ) : (
-                  <p className={`text-2xl font-semibold mt-1 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
-                    {pendingPayments.length}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Modernización y Fusión de Gráficos (col-span-1 md:col-span-4) */}
-            <div className="col-span-1 md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 2. Gráficos (Grid de 2) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
               {/* Emisión de Pagarés */}
-              <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm">
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
-                </h3>
-                <div className="h-64">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
+                  </span>
+                </div>
+                <div className="h-60 bg-transparent">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid stroke="#1f2937" vertical={false} />
-                      <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <BarChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                      <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
+                      <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                       <Tooltip 
-                        cursor={{ fill: '#1e293b' }}
-                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1f2937', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px' }}
+                        cursor={{ fill: '#27272a', opacity: 0.3 }}
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
                       />
-                      <Bar dataKey="cantidad" fill="#3b82f6" barSize={20} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="cantidad" fill="#3b82f6" barSize={18} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               {/* Volumen Notariado */}
-              <div className="bg-[#0B1120] border border-gray-800/60 rounded-xl p-4 shadow-sm">
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
-                </h3>
-                <div className="h-64">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
+                  </span>
+                </div>
+                <div className="h-60 bg-transparent">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={lineData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                    <AreaChart data={lineData} margin={{ top: 5, right: 5, left: 10, bottom: 0 }}>
                       <defs>
                         <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="#1f2937" vertical={false} />
-                      <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
+                      <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
+                      <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
                       <Tooltip 
-                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1f2937', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px' }}
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
                         formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
                       />
                       <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
@@ -616,579 +625,319 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
               </div>
             </div>
 
-            {/* Comprobantes Pendientes de Aprobación */}
-            <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-800">
-          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-emerald-500" />
-            Comprobantes Pendientes de Aprobación
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">Revisa y aprueba los pagos de los usuarios para activar sus planes.</p>
-        </div>
-        <div className="overflow-x-auto">
-          {loadingPayments ? (
-            <div className="p-12 flex justify-center">
-              <div className="w-8 h-8 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-            </div>
-          ) : pendingPayments.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center">
-              <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
-                <CheckCircle className="w-8 h-8 text-emerald-500/50" />
-              </div>
-              <p className="text-slate-400 font-medium">No hay comprobantes pendientes</p>
-              <p className="text-sm text-slate-500 mt-1">Todos los pagos han sido procesados.</p>
-            </div>
-          ) : (
-            <table className="w-full box-border text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-950/50 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-black">
-                  <th className="p-4 pl-6">Cliente</th>
-                  <th className="p-4">Fecha</th>
-                  <th className="p-4">Plan Solicitado</th>
-                  <th className="p-4 text-center">Comprobante</th>
-                  <th className="p-4 pr-6 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {pendingPayments.map((cliente) => (
-                  <tr key={cliente.id} className="hover:bg-slate-800/50 transition-colors">
-                    <td className="p-4 pl-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold shrink-0">
-                          {(cliente.nombreCliente || cliente.email).charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-white text-base">{cliente.nombreCliente}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{cliente.email}</p>
-                          <p className="text-[10px] text-slate-600 font-mono mt-0.5">ID: {cliente.id}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm text-slate-300">
-                      {formatDate(cliente.fechaSolicitud)}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-col">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 w-fit">
-                          {cliente.planSolicitado}
-                        </span>
-                        <span className="text-xs text-slate-500 mt-1 font-medium">{cliente.modalidadPago} (Gs. {cliente.montoAPagar.toLocaleString('es-PY')})</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      {cliente.urlComprobante ? (
-                        <button 
-                          onClick={() => setReciboSeleccionado(cliente.urlComprobante)}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs rounded-xl transition-colors border border-slate-700 hover:border-slate-600"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Ver Recibo
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-500 italic">Sin archivo</span>
-                      )}
-                    </td>
-                    <td className="p-4 pr-6 text-right space-x-2">
-                      <button
-                        onClick={() => handleAprobar(cliente.id, cliente.planSolicitado || '')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white font-bold text-xs rounded-xl transition-all border border-emerald-500/20 hover:border-emerald-500"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        Aprobar
-                      </button>
-                      <button
-                        onClick={() => handleRechazar(cliente.id)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white font-bold text-xs rounded-xl transition-all border border-rose-500/20 hover:border-rose-500"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Rechazar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      {/* ============================================================== */}
-      {/* CONTENEDOR: USUARIOS INSCRIPTOS CON PLAN Y EN PRUEBA (EN VIVO) */}
-      {/* ============================================================== */}
-      <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-gray-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
-                <Users className="w-5 h-5 text-blue-400" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2.5">
-                  Directorio de Usuarios Registrados y en Prueba
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    En Vivo
+            {/* 3. División de Listas (Izquierda y Derecha) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+              {/* Columna Izquierda: Usuarios Activos */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Users className="w-3.5 h-3.5 text-blue-400" /> Usuarios Activos & Registrados
                   </span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1 font-medium">
-                  Monitoreo de suscripciones activas, cuentas en prueba y nuevos registros. Los usuarios más nuevos se incorporan siempre arriba de forma automática.
-                </p>
-              </div>
-            </div>
-          </div>
+                  <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                    {registeredUsers.length} total
+                  </span>
+                </div>
 
-          {/* Buscador + Filtros por Píldoras */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={userSearchTerm}
-                onChange={(e) => setUserSearchTerm(e.target.value)}
-                placeholder="Buscar por email, teléfono o nombre..."
-                className="w-full sm:w-64 pl-9 pr-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
-              />
-            </div>
-            
-            <div className="flex items-center gap-1 p-1 bg-slate-800/80 rounded-xl border border-slate-700 text-xs shrink-0 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setUserFilter('todos')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                  userFilter === 'todos' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Todos ({registeredUsers.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserFilter('activos')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                  userFilter === 'activos' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Con Plan ({registeredUsers.filter(u => u.estadoSuscripcion === 'activo').length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserFilter('prueba')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                  userFilter === 'prueba' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                En Prueba ({registeredUsers.filter(u => u.estadoSuscripcion === 'prueba').length})
-              </button>
-              {registeredUsers.some(u => u.estadoSuscripcion === 'pendiente') && (
-                <button
-                  type="button"
-                  onClick={() => setUserFilter('pendientes')}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                    userFilter === 'pendientes' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Pendientes ({registeredUsers.filter(u => u.estadoSuscripcion === 'pendiente').length})
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Tabla en Tiempo Real */}
-        <div className="overflow-x-auto">
-          {loadingUsers ? (
-            <div className="p-12 flex flex-col items-center justify-center gap-3">
-              <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-              <p className="text-xs text-slate-400">Sincronizando usuarios con Firestore...</p>
-            </div>
-          ) : registeredUsers.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center">
-              <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
-                <Users className="w-8 h-8 text-slate-500" />
-              </div>
-              <p className="text-slate-300 font-bold">No hay usuarios registrados</p>
-              <p className="text-xs text-slate-500 mt-1">Los nuevos usuarios que se registren aparecerán aquí automáticamente.</p>
-            </div>
-          ) : (
-            <table className="w-full box-border text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-950/50 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-black">
-                  <th className="p-4 pl-6">Usuario / Escribanía</th>
-                  <th className="p-4">Contacto Suscrito (Mail / Teléfono)</th>
-                  <th className="p-4">Plan Asignado</th>
-                  <th className="p-4">Estado Suscripción</th>
-                  <th className="p-4 pr-6 text-right">Fecha Ingreso (Más nuevo a viejo)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {registeredUsers
-                  .filter((u) => {
-                    if (userFilter === 'activos' && u.estadoSuscripcion !== 'activo') return false;
-                    if (userFilter === 'prueba' && u.estadoSuscripcion !== 'prueba') return false;
-                    if (userFilter === 'pendientes' && u.estadoSuscripcion !== 'pendiente') return false;
-                    if (userSearchTerm.trim() !== '') {
-                      const term = userSearchTerm.toLowerCase();
-                      const matchName = (u.nombre || '').toLowerCase().includes(term);
-                      const matchEmail = (u.email || '').toLowerCase().includes(term);
-                      const matchTel = (u.telefono || '').toLowerCase().includes(term);
-                      const matchPlan = (u.plan || '').toLowerCase().includes(term);
-                      const matchId = (u.id || '').toLowerCase().includes(term);
-                      return matchName || matchEmail || matchTel || matchPlan || matchId;
-                    }
-                    return true;
-                  })
-                  .map((user, idx) => {
-                    const p = (user.plan || '').toLowerCase();
-                    const isFull = p.includes('full');
-                    const isEmpresa = p.includes('empresa');
-                    const isPro = p.includes('pro');
-                    const isBasico = p.includes('basico') || p.includes('básico');
-
-                    return (
-                      <tr 
-                        key={user.id} 
-                        className={`hover:bg-slate-800/40 transition-colors ${
-                          user.isRecent ? 'bg-blue-500/[0.03]' : ''
-                        }`}
-                      >
-                        {/* 1. Usuario / Escribanía */}
-                        <td className="p-4 pl-6">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
-                              user.estadoSuscripcion === 'activo'
-                                ? isFull
-                                  ? 'bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 text-slate-950 border-amber-400/40 shadow-xs'
-                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                : user.estadoSuscripcion === 'prueba'
-                                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
-                                  : user.estadoSuscripcion === 'pendiente'
-                                    ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
-                                    : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                            }`}>
-                              {(user.nombre || user.email || 'U').charAt(0).toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-white text-sm truncate max-w-[220px]">
-                                {user.nombre}
-                              </p>
-                              {user.razonSocial && user.razonSocial !== user.nombre && (
-                                <p className="text-xs text-slate-400 truncate max-w-[220px]">
-                                  {user.razonSocial}
-                                </p>
-                              )}
-                              <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-[220px]">
-                                ID: {user.id}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 2. Contacto Suscrito (Mail / Teléfono) */}
-                        <td className="p-4">
-                          <div className="space-y-1">
-                            {user.email ? (
-                              <div className="flex items-center gap-1.5 text-xs text-slate-100 font-medium">
-                                <Mail className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                <span className="truncate max-w-[260px] select-all font-mono" title={user.email}>
-                                  {user.email}
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5 text-xs text-slate-500 italic">
-                                <Mail className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                                <span>Sin email registrado</span>
-                              </div>
-                            )}
-
-                            {user.telefono ? (
-                              <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono font-bold">
-                                <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                <span className="truncate select-all" title={user.telefono}>
-                                  {user.telefono}
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 italic">
-                                <Phone className="w-3 h-3 text-slate-600 shrink-0" />
-                                <span>Sin teléfono</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 3. Plan Asignado */}
-                        <td className="p-4">
-                          <div className="flex flex-col gap-1 items-start">
-                            {isFull ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_8px_rgba(245,158,11,0.25)]">
-                                <Crown className="w-3 h-3 text-slate-950" /> PLAN FULL
-                              </span>
-                            ) : isEmpresa ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-800 text-white border border-slate-700 shadow-sm">
-                                <Building className="w-3 h-3 text-slate-300" /> PLAN EMPRESA
-                              </span>
-                            ) : isPro ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                                <Zap className="w-3 h-3 text-blue-400" /> PLAN PRO
-                              </span>
-                            ) : isBasico ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> PLAN BÁSICO
-                              </span>
-                            ) : user.estadoSuscripcion === 'prueba' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                                <Clock className="w-3 h-3 text-cyan-400" /> PRUEBA ({user.diasRestantes ?? 5}D)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
-                                {user.plan || 'Sin Plan'}
-                              </span>
-                            )}
-
-                            {user.modalidadPago && user.modalidadPago !== 'Desconocido' && (
-                              <span className="text-[11px] text-slate-400 font-medium">
-                                {user.modalidadPago}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 4. Estado Suscripción */}
-                        <td className="p-4">
-                          {user.estadoSuscripcion === 'activo' && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              Con Plan Activo
-                            </span>
-                          )}
-                          {user.estadoSuscripcion === 'prueba' && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                              En Prueba Activa
-                            </span>
-                          )}
-                          {user.estadoSuscripcion === 'pendiente' && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-                              Pendiente Verificación
-                            </span>
-                          )}
-                          {user.estadoSuscripcion === 'vencido' && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                              Prueba Vencida
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 5. Fecha de Registro (Ordenado más nuevo a viejo) */}
-                        <td className="p-4 pr-6 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
-                            {user.isRecent && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500 text-white shadow-xs">
-                                <Sparkles className="w-2.5 h-2.5" /> Nuevo
-                              </span>
-                            )}
-                            <span className="text-xs text-slate-300 font-mono">
-                              {user.fechaFormateada}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="col-span-1 md:col-span-4 bg-[#0B1120] border border-gray-800/60 rounded-xl shadow-sm overflow-hidden mb-6">
-        <div className="p-4 border-b border-gray-800 flex justify-between items-center">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <Shield className="w-5 h-5 text-blue-500" />
-              Monitor Global de Pagarés
-            </h2>
-            <p className="text-sm text-slate-400 mt-1">Auditoría centralizada con IA de todos los documentos emitidos en la plataforma.</p>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          {loading ? (
-             <div className="p-12 flex justify-center">
-               <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-             </div>
-          ) : pagaresGlobal.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center">
-              <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
-                <FileText className="w-8 h-8 text-blue-500/50" />
-              </div>
-              <p className="text-slate-400 font-medium">No hay pagarés registrados</p>
-            </div>
-          ) : (
-            <table className="w-full box-border text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-950/50 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400 font-black">
-                  <th className="p-4 pl-6">Fecha</th>
-                  <th className="p-4">CREADO POR</th>
-                  <th className="p-4">Emisor (Usuario)</th>
-                  <th className="p-4">Deudor</th>
-                  <th className="p-4 text-right">Monto</th>
-                  <th className="p-4 text-center">Auditoría IA</th>
-                  <th className="p-4 pr-6 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {pagaresGlobal.map((pagare) => {
-                  const riesgo = evaluarRiesgo(pagare).riesgo;
-                  return (
-                    <tr key={pagare.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="p-4 pl-6 text-xs text-slate-400 whitespace-nowrap">
-                        {pagare.fecha_emision}
-                      </td>
-                      <td className="p-4">
-                        <p className="font-bold text-slate-200 text-sm truncate max-w-[120px] sm:max-w-[150px]">{pagare.userEmail || 'Email no registrado'}</p>
-                      </td>
-                      <td className="p-4">
-                        <p className="font-bold text-slate-200 text-sm truncate max-w-[120px] sm:max-w-[150px]">{pagare.acreedor_nombre || 'Sin nombre'}</p>
-                        <p className="text-xs text-slate-500 truncate max-w-[120px] sm:max-w-[150px]">{pagare.userEmail}</p>
-                      </td>
-                      <td className="p-4">
-                        <p className="font-bold text-slate-200 text-sm truncate max-w-[120px] sm:max-w-[150px]">{pagare.deudor_nombre || 'Sin nombre'}</p>
-                        <p className="text-xs text-slate-500 font-mono truncate max-w-[120px] sm:max-w-[150px]">{pagare.deudor_cedula || 'Sin documento'}</p>
-                      </td>
-                      <td className="p-4 text-right font-mono text-sm text-slate-300">
-                        {typeof pagare.monto === 'number' ? `Gs. ${pagare.monto.toLocaleString('es-PY')}` : pagare.monto}
-                      </td>
-                      <td className="p-4 text-center">
-                        {renderRiesgoBadge(riesgo)}
-                      </td>
-                      <td className="p-4 pr-6 text-right">
-                        <button
-                          onClick={() => handleAuditoria(pagare)}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs rounded-xl transition-colors border border-slate-700 hover:border-blue-500/50"
-                        >
-                          <Search className="w-4 h-4" />
-                          Auditar Detalle
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-          </div>
-
-      {reciboSeleccionado && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="relative max-w-4xl max-h-screen overflow-hidden flex flex-col items-center justify-center">
-            <button
-              onClick={() => setReciboSeleccionado(null)}
-              className="absolute top-4 right-4 bg-slate-900/80 hover:bg-slate-900 text-white p-2 rounded-full transition-colors z-10 border border-slate-700"
-              aria-label="Cerrar modal"
-            >
-              <XCircle className="w-6 h-6" />
-            </button>
-            <img 
-              src={reciboSeleccionado} 
-              alt="Comprobante de Pago" 
-              className="max-w-full box-border max-h-[90vh] object-contain rounded-lg shadow-2xl" 
-            />
-          </div>
-        </div>
-      )}
-
-      {auditoriaSeleccionada && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900/90 rounded-2xl w-full box-border max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-slate-950/50">
-              <h2 className="text-xl font-black text-white flex items-center gap-3">
-                {renderRiesgoIcon(auditoriaSeleccionada.reporte.riesgo)}
-                Reporte de Auditoría IA
-              </h2>
-              <button
-                onClick={() => setAuditoriaSeleccionada(null)}
-                className="text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                <XCircle className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[70vh] space-y-6">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Nivel de Riesgo Detectado</h3>
-                <div className="flex items-center gap-4">
-                  {renderRiesgoBadge(auditoriaSeleccionada.reporte.riesgo)}
-                  {auditoriaSeleccionada.reporte.riesgo === 'Normal' ? (
-                    <p className="text-sm text-slate-400">El documento cumple con los parámetros habituales de la plataforma. No se detectaron anomalías estructurales.</p>
+                <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                  {loadingUsers ? (
+                    <div className="p-8 flex justify-center items-center">
+                      <div className="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                    </div>
+                  ) : registeredUsers.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-500">
+                      No hay usuarios registrados aún.
+                    </div>
                   ) : (
-                    <ul className="text-sm text-slate-400 space-y-1 list-disc list-inside">
-                      {auditoriaSeleccionada.reporte.razones.map((razon, i) => (
-                        <li key={i} className={auditoriaSeleccionada.reporte.riesgo === 'Critico' ? 'text-red-400 font-medium' : 'text-yellow-400 font-medium'}>{razon}</li>
-                      ))}
-                    </ul>
+                    registeredUsers.map((user) => {
+                      const inicial = (user.nombre || user.razonSocial || user.email || 'U').charAt(0).toUpperCase();
+                      const nombreDisplay = user.razonSocial || user.nombre || user.email;
+                      const subInfo = user.email || user.telefono || '';
+                      const isActivo = user.estadoSuscripcion === 'activo';
+                      const isPrueba = user.estadoSuscripcion === 'prueba';
+                      const isPendiente = user.estadoSuscripcion === 'pendiente';
+
+                      return (
+                        <div key={user.id} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors">
+                          <div className="flex items-center gap-3 min-w-0 mr-3">
+                            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-medium text-gray-300 shrink-0">
+                              {inicial}
+                            </div>
+                            <div className="min-w-0 truncate">
+                              <p className="text-sm text-gray-200 font-medium truncate">{nombreDisplay}</p>
+                              <p className="text-xs text-gray-500 truncate">{subInfo}</p>
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            {isActivo ? (
+                              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full font-medium border border-emerald-500/20">
+                                Activo
+                              </span>
+                            ) : isPrueba ? (
+                              <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-medium border border-cyan-500/20">
+                                Prueba ({user.diasRestantes ?? 5}d)
+                              </span>
+                            ) : isPendiente ? (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-1 rounded-full font-medium border border-amber-500/20">
+                                Pendiente
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-1 rounded-full font-medium border border-red-500/20">
+                                Vencido
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Datos del Emisor</h3>
-                  <p className="text-sm font-bold text-slate-200">{auditoriaSeleccionada.pagare.acreedor_nombre || 'N/A'}</p>
-                  <p className="text-xs text-slate-400">{auditoriaSeleccionada.pagare.userEmail}</p>
+              {/* Columna Derecha: Emisión de Pagarés */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" /> Emisión Reciente de Pagarés
+                  </span>
+                  <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                    {pagaresGlobal.length} docs
+                  </span>
                 </div>
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Datos del Deudor</h3>
-                  <p className="text-sm font-bold text-slate-200">{auditoriaSeleccionada.pagare.deudor_nombre || 'N/A'}</p>
-                  <p className="text-xs font-mono text-slate-400">CI/RUC: {auditoriaSeleccionada.pagare.deudor_cedula || 'N/A'}</p>
-                </div>
-              </div>
 
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 grid grid-cols-3 gap-4">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Monto</h3>
-                  <p className="text-sm font-mono font-bold text-slate-200">
-                    {typeof auditoriaSeleccionada.pagare.monto === 'number' ? `Gs. ${auditoriaSeleccionada.pagare.monto.toLocaleString('es-PY')}` : auditoriaSeleccionada.pagare.monto}
-                  </p>
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Emisión</h3>
-                  <p className="text-sm text-slate-300">{auditoriaSeleccionada.pagare.fecha_emision || 'N/A'}</p>
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Vencimiento</h3>
-                  <p className="text-sm text-slate-300">{auditoriaSeleccionada.pagare.fecha_vencimiento || 'N/A'}</p>
+                <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                  {loading ? (
+                    <div className="p-8 flex justify-center items-center">
+                      <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                    </div>
+                  ) : pagaresGlobal.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-500">
+                      No hay pagarés registrados aún.
+                    </div>
+                  ) : (
+                    pagaresGlobal.map((pagare) => {
+                      const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
+                      const fecha = pagare.fecha_emision || 'Fecha no registrada';
+                      const montoFormatted = typeof pagare.monto === 'number' 
+                        ? `Gs. ${pagare.monto.toLocaleString('es-PY')}` 
+                        : pagare.monto;
+
+                      return (
+                        <div 
+                          key={pagare.id} 
+                          onClick={() => handleAuditoria(pagare)}
+                          className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors cursor-pointer group"
+                          title="Click para auditar detalle"
+                        >
+                          <div className="min-w-0 mr-3">
+                            <p className="text-sm text-gray-200 font-medium truncate group-hover:text-emerald-400 transition-colors">
+                              {emisor}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                              <span>{fecha}</span>
+                              {pagare.deudor_nombre && (
+                                <>
+                                  <span>•</span>
+                                  <span className="truncate max-w-[140px] text-gray-400">{pagare.deudor_nombre}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="text-sm font-medium text-white font-mono">
+                              {montoFormatted}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="p-6 border-t border-slate-800 bg-slate-950/50 flex justify-end gap-3">
+            {/* 4. Comprobantes Pendientes de Aprobación */}
+            {pendingPayments.length > 0 && (
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] mt-6">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="w-3.5 h-3.5 text-orange-400" /> Comprobantes Pendientes de Aprobación ({pendingPayments.length})
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full box-border text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+                        <th className="py-3 px-4">Cliente</th>
+                        <th className="py-3 px-4">Fecha</th>
+                        <th className="py-3 px-4">Plan Solicitado</th>
+                        <th className="py-3 px-4 text-center">Comprobante</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {pendingPayments.map((cliente) => (
+                        <tr key={cliente.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 px-4">
+                            <p className="font-medium text-white text-sm">{cliente.nombreCliente}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{cliente.email}</p>
+                          </td>
+                          <td className="py-3 px-4 text-xs text-gray-400">
+                            {formatDate(cliente.fechaSolicitud)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {cliente.planSolicitado}
+                            </span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5">{cliente.modalidadPago} (Gs. {cliente.montoAPagar.toLocaleString('es-PY')})</span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {cliente.urlComprobante ? (
+                              <button 
+                                onClick={() => setReciboSeleccionado(cliente.urlComprobante)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-blue-400 font-medium text-xs rounded-xl transition-colors border border-white/10"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                Ver
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-500 italic">Sin archivo</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleAprobar(cliente.id, cliente.planSolicitado || '')}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white font-medium text-xs rounded-xl transition-all border border-emerald-500/20"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Aprobar
+                            </button>
+                            <button
+                              onClick={() => handleRechazar(cliente.id)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-medium text-xs rounded-xl transition-all border border-rose-500/20"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Rechazar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Modal Recibo */}
+        {reciboSeleccionado && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="relative max-w-4xl max-h-screen overflow-hidden flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl p-4">
               <button
-                onClick={() => setAuditoriaSeleccionada(null)}
-                className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                onClick={() => setReciboSeleccionado(null)}
+                className="absolute top-4 right-4 bg-zinc-900/80 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10"
+                aria-label="Cerrar modal"
               >
-                Cerrar Reporte
+                <XCircle className="w-5 h-5" />
               </button>
-              {(auditoriaSeleccionada.reporte.riesgo === 'Sospechoso' || auditoriaSeleccionada.reporte.riesgo === 'Critico') && (
-                <button
-                  onClick={() => {
-                    alert('Usuario bloqueado por prevención de fraude.');
-                    setAuditoriaSeleccionada(null);
-                  }}
-                  className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-red-900/20"
-                >
-                  <ShieldAlert className="w-5 h-5" />
-                  Bloquear Usuario (Posible Fraude)
-                </button>
-              )}
+              <img 
+                src={reciboSeleccionado} 
+                alt="Comprobante de Pago" 
+                className="max-w-full box-border max-h-[85vh] object-contain rounded-xl shadow-2xl" 
+              />
             </div>
           </div>
-        </div>
-      )}
-        </>
-      )}
+        )}
+
+        {/* Modal Auditoría */}
+        {auditoriaSeleccionada && (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#121214] border border-white/10 rounded-2xl w-full box-border max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+              <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#09090b]/50">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
+                  {renderRiesgoIcon(auditoriaSeleccionada.reporte.riesgo)}
+                  Reporte de Auditoría IA
+                </h2>
+                <button
+                  onClick={() => setAuditoriaSeleccionada(null)}
+                  className="text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto max-h-[70vh] space-y-5">
+                <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
+                  <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Nivel de Riesgo Detectado</h3>
+                  <div className="flex items-center gap-4">
+                    {renderRiesgoBadge(auditoriaSeleccionada.reporte.riesgo)}
+                    {auditoriaSeleccionada.reporte.riesgo === 'Normal' ? (
+                      <p className="text-xs text-gray-400">El documento cumple con los parámetros habituales de la plataforma. No se detectaron anomalías estructurales.</p>
+                    ) : (
+                      <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
+                        {auditoriaSeleccionada.reporte.razones.map((razon, i) => (
+                          <li key={i} className={auditoriaSeleccionada.reporte.riesgo === 'Critico' ? 'text-red-400 font-medium' : 'text-yellow-400 font-medium'}>{razon}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
+                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">Datos del Emisor</h3>
+                    <p className="text-sm font-semibold text-gray-200">{auditoriaSeleccionada.pagare.acreedor_nombre || 'N/A'}</p>
+                    <p className="text-xs text-gray-500">{auditoriaSeleccionada.pagare.userEmail}</p>
+                  </div>
+                  <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
+                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">Datos del Deudor</h3>
+                    <p className="text-sm font-semibold text-gray-200">{auditoriaSeleccionada.pagare.deudor_nombre || 'N/A'}</p>
+                    <p className="text-xs font-mono text-gray-500">CI/RUC: {auditoriaSeleccionada.pagare.deudor_cedula || 'N/A'}</p>
+                  </div>
+                </div>
+
+                <div className="bg-[#09090b] p-4 rounded-xl border border-white/5 grid grid-cols-3 gap-4">
+                  <div>
+                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Monto</h3>
+                    <p className="text-sm font-mono font-semibold text-white">
+                      {typeof auditoriaSeleccionada.pagare.monto === 'number' ? `Gs. ${auditoriaSeleccionada.pagare.monto.toLocaleString('es-PY')}` : auditoriaSeleccionada.pagare.monto}
+                    </p>
+                  </div>
+                  <div>
+                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Emisión</h3>
+                    <p className="text-sm text-gray-300">{auditoriaSeleccionada.pagare.fecha_emision || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Vencimiento</h3>
+                    <p className="text-sm text-gray-300">{auditoriaSeleccionada.pagare.fecha_vencimiento || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-white/5 bg-[#09090b]/50 flex justify-end gap-3">
+                <button
+                  onClick={() => setAuditoriaSeleccionada(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  Cerrar Reporte
+                </button>
+                {(auditoriaSeleccionada.reporte.riesgo === 'Sospechoso' || auditoriaSeleccionada.reporte.riesgo === 'Critico') && (
+                  <button
+                    onClick={() => {
+                      alert('Usuario bloqueado por prevención de fraude.');
+                      setAuditoriaSeleccionada(null);
+                    }}
+                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-red-900/20"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    Bloquear Usuario (Posible Fraude)
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
