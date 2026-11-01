@@ -1164,21 +1164,24 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   };
 
   const handleUpdatePagare = async (updatedPagare: Pagare) => {
-    if (!workspaceId) {
-      console.error("Operación abortada: Workspace no identificado.");
-      return;
-    }
     const updated = pagares.map(p => p.id === updatedPagare.id ? updatedPagare : p);
     setPagares(updated);
+    if (selectedPagareForPreview && selectedPagareForPreview.id === updatedPagare.id) {
+      setSelectedPagareForPreview(updatedPagare);
+    }
     try {
       localStorage.setItem('olga_pagares', JSON.stringify(updated));
+      localStorage.setItem('ihara_pagares', JSON.stringify(updated));
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
-    await updatePagareInFirestore(workspaceId, {
-      ...updatedPagare,
-      userId: workspaceId
-    }).catch(e => console.error("Error updating pagare:", e));
+    const effectiveWs = workspaceId || updatedPagare.userId || currentUser?.uid;
+    if (effectiveWs) {
+      await updatePagareInFirestore(effectiveWs, {
+        ...updatedPagare,
+        userId: effectiveWs
+      }).catch(e => console.error("Error updating pagare in Firestore:", e));
+    }
   };
 
   const handleDeletePagare = (id: string) => {
@@ -2109,6 +2112,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           config={config}
           onClose={() => setSelectedPagareForPreview(null)}
           userData={userProfile}
+          onUpdatePagare={handleUpdatePagare}
         />
       )}
 

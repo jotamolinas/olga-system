@@ -77,8 +77,8 @@ export const updatePagareInFirestore = async (userId: string, pagare: Pagare) =>
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
   const effectiveUserId = userId || auth.currentUser.uid;
   
-  // Usamos updateDoc para asegurar que solo se actualizan los campos provistos
-  await updateDoc(docRef, { ...cleanPagare, userId: effectiveUserId });
+  // Usamos setDoc con { merge: true } para garantizar que guarde incluso si el documento no existía previamente
+  await setDoc(docRef, { ...cleanPagare, userId: effectiveUserId }, { merge: true });
 };
 
 export const fetchPagaresFromFirestore = async (userId?: string): Promise<Pagare[]> => {

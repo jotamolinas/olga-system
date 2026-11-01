@@ -36,6 +36,16 @@ export interface PaymentScheduleItem {
   estado?: 'cobrado' | 'pendiente';
   pagado?: boolean;
   fecha_cobro?: string;
+  texto_personalizado?: string;
+  textoPersonalizado?: string;
+  textoCuerpo?: string;
+  contenido?: string;
+  ciudad?: string;
+  ciudadEmision?: string;
+  ciudad_emision?: string;
+  tasaInteres?: string;
+  tasa_interes?: string;
+  interesPersonalizado?: string;
 }
 
 export interface Pagare {
@@ -49,6 +59,21 @@ export interface Pagare {
   valor_total: number;
   frecuencia_id: string;
   fecha_primer_pago: string; // YYYY-MM-DD
+  tasaInteres?: string;
+  tasa_interes?: string;
+  interesPersonalizado?: string;
+  ciudad?: string;
+  ciudad_emision?: string;
+  ciudadEmision?: string;
+  fechaLugarEmision?: string;
+  clausulaPenal?: string;
+  moraAutomatica?: string;
+  dispensaProtesto?: string;
+  texto_personalizado?: string;
+  textoPersonalizado?: string;
+  textoCuerpo?: string;
+  contenido?: string;
+  textosCuotas?: string[] | { [key: string]: string };
 
   // Entrega inicial (solo si tipo_negociacion incluye entrega)
   entrega_inicial: number;
@@ -111,6 +136,7 @@ export interface EscribaniaConfig {
   nombre: string;
   nro_registro: string; // Matrícula o identificador oficial
   direccion: string;
+  ciudad?: string;
   localidad: string;
   telefono: string;
   email: string;

@@ -41,6 +41,7 @@ export interface ConfiguracionInstitucionalData {
   ruc: string;
   registroNotarial: string;
   direccion?: string;
+  ciudad?: string;
   telefono?: string;
   email?: string;
   timbradoNumero?: string;
@@ -306,6 +307,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [direccion, setDireccion] = useState(
     membreteUsuario.direccion || userData?.direccion || 'Avda. Carlos Antonio López 450, Asunción'
   );
+  const [ciudad, setCiudad] = useState(
+    membreteUsuario.ciudad || userData?.ciudad || (initialData as any)?.ciudad || ''
+  );
   const [telefono, setTelefono] = useState(
     membreteUsuario.telefono || userData?.telefono || '+595 21 445 000'
   );
@@ -555,6 +559,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       ruc: overrides?.ruc ?? ruc,
       registroNotarial: overrides?.registroNotarial ?? registroNotarial,
       direccion: overrides?.direccion ?? direccion,
+      ciudad: overrides?.ciudad ?? ciudad,
       telefono: overrides?.telefono ?? telefono,
       email: overrides?.email ?? email,
       timbradoNumero: overrides?.timbradoNumero ?? timbradoNumero,
@@ -600,6 +605,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       registroNotarial,
       nombreEscribania: nombreInstitucion,
       direccion,
+      ciudad,
       telefono,
       email,
       ruc,
@@ -623,6 +629,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           registroNotarial,
           ruc,
           direccion,
+          ciudad,
           telefono,
           correo: email,
           email,
@@ -641,6 +648,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             registroNotarial,
             ruc,
             direccion,
+            ciudad,
             telefono,
             correo: email,
             email,
@@ -1010,8 +1018,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <Mail className="w-3.5 h-3.5 text-blue-500" />
                 Ubicación y Canales de Contacto
               </h5>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="col-span-1">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Dirección Comercial / Sede *
                   </label>
@@ -1019,12 +1027,25 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     type="text"
                     value={direccion}
                     onChange={(e) => setDireccion(e.target.value)}
-                    placeholder="Ej. Avda. Carlos A. López 450, Asunción"
+                    placeholder="Ej. Avda. Carlos A. López 450"
                     className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
                   />
                 </div>
 
-                <div className="md:col-span-1">
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
+                    Ciudad *
+                  </label>
+                  <input
+                    type="text"
+                    value={ciudad}
+                    onChange={(e) => setCiudad(e.target.value)}
+                    placeholder="Ej. Asunción, Hernandarias, etc."
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="col-span-1">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Teléfono / Celular *
                   </label>
@@ -1037,7 +1058,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   />
                 </div>
 
-                <div className="md:col-span-1">
+                <div className="col-span-1">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5">
                     Correo Electrónico Notarial *
                   </label>

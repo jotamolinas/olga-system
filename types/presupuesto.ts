@@ -44,6 +44,7 @@ export interface MembreteEscribaniaConfig {
   registroNotarial: string;        // Número de Registro Notarial (Ej. Reg. Nº 1.292)
   nombreEscribania?: string;       // Nombre de la escribanía o firma (Ej. Escribanía Molinas & Asociados)
   direccion: string;               // Dirección comercial / sede
+  ciudad?: string;                 // Ciudad de la sede notarial
   telefono: string;                // Teléfono de contacto
   email: string;                   // Correo electrónico institucional
   ruc: string;                     // RUC de la escribanía / notario
@@ -58,6 +59,7 @@ export const MEMBRETE_DEFAULT: MembreteEscribaniaConfig = {
   registroNotarial: 'Reg. Nº 1.292',
   nombreEscribania: 'Escribanía Notarial Sandra Molinas & Asociados',
   direccion: 'Avda. Carlos Antonio López 450 c/ Colón, Asunción',
+  ciudad: '',
   telefono: '+595 21 445 000 / +595 981 123 456',
   email: 'contacto@escribaniamolinas.com.py',
   ruc: '80012345-6',

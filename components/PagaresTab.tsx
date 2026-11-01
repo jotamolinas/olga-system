@@ -78,8 +78,19 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   // Transición no bloqueante para abrir previsualización de pagarés sin congelar la UI
   const handleAbrirPagare = (pagare: Pagare) => {
+    let freshest = pagares.find(p => p.id === pagare.id) || pagare;
+    try {
+      const stored = localStorage.getItem('olga_pagares');
+      if (stored) {
+        const list = JSON.parse(stored);
+        const fromStorage = list.find((p: any) => p.id === pagare.id);
+        if (fromStorage) {
+          freshest = { ...freshest, ...fromStorage };
+        }
+      }
+    } catch {}
     startTransition(() => {
-      onSelectPagareForPreview(pagare);
+      onSelectPagareForPreview(freshest);
     });
   };
 
@@ -100,6 +111,16 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
   const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
   const [selectedPagareForDetail, setSelectedPagareForDetail] = useState<Pagare | null>(null);
+
+  // Mantener actualizado el pagaré seleccionado en detalle si cambia en la lista principal
+  useEffect(() => {
+    if (selectedPagareForDetail) {
+      const refreshed = pagares.find(p => p.id === selectedPagareForDetail.id);
+      if (refreshed && (refreshed !== selectedPagareForDetail || refreshed.ciudad_emision !== selectedPagareForDetail.ciudad_emision || refreshed.tasaInteres !== selectedPagareForDetail.tasaInteres)) {
+        setSelectedPagareForDetail(refreshed);
+      }
+    }
+  }, [pagares]);
 
   // Menú de 3 puntitos para acciones secundarias de tarjetas (estilo Google Drive)
   const [activePagareMenuId, setActivePagareMenuId] = useState<string | null>(null);
@@ -1424,31 +1445,41 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       fecha_entrega_inicial: tipoNegociacion.includes('entrega') ? fechaEntregaInicial : '',
       concepto_entrega_inicial: tipoNegociacion.includes('entrega') ? conceptoEntregaInicial : '',
       acreedor_id: acreedorIdFinal,
-      acreedor_nombre_raw: acreedorNombreRaw.trim(),
+      acreedor_nombre_raw: (acreedorNombreRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       acreedor_documento_raw: acreedorDocumentoRaw.trim(),
-      acreedor_domicilio_raw: acreedorDomicilioRaw.trim(),
+      acreedor_domicilio_raw: (acreedorDomicilioRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       acreedor_origen: acreedorOrigen,
       deudor_id: deudorIdFinal,
-      deudor_nombre_raw: deudorNombreRaw.trim(),
+      deudor_nombre_raw: (deudorNombreRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       deudor_documento_raw: deudorDocumentoRaw.trim(),
-      deudor_domicilio_raw: deudorDomicilioRaw.trim(),
+      deudor_domicilio_raw: (deudorDomicilioRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       deudor_origen: deudorOrigen,
       codeudor1_id: codeudor1IdFinal,
-      codeudor1_nombre_raw: codeudor1NombreRaw.trim(),
+      codeudor1_nombre_raw: (codeudor1NombreRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       codeudor1_documento_raw: codeudor1DocumentoRaw.trim(),
-      codeudor1_domicilio_raw: codeudor1DomicilioRaw.trim(),
+      codeudor1_domicilio_raw: (codeudor1DomicilioRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       codeudor1_origen: codeudor1Origen,
       codeudor2_id: codeudor2IdFinal,
-      codeudor2_nombre_raw: codeudor2NombreRaw.trim(),
+      codeudor2_nombre_raw: (codeudor2NombreRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       codeudor2_documento_raw: codeudor2DocumentoRaw.trim(),
-      codeudor2_domicilio_raw: codeudor2DomicilioRaw.trim(),
+      codeudor2_domicilio_raw: (codeudor2DomicilioRaw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
       cronograma: cronograma.map(item => ({ 
         ...item, 
         monto: (item as any).monto !== undefined && (item as any).monto !== null && (item as any).monto !== ''
           ? Number((item as any).monto)
           : ((item as any).importe !== undefined ? Number((item as any).importe) : (Number((item as any).valor) || 0)),
-        pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now() 
+        pagare_id: existingPagare ? item.pagare_id || existingPagare.id : 'pag-' + Date.now(),
+        texto_personalizado: (item as any).texto_personalizado || (existingPagare?.cronograma?.find(c => c.id === item.id) as any)?.texto_personalizado || undefined
       })),
+      tasaInteres: (existingPagare as any)?.tasaInteres || undefined,
+      tasa_interes: (existingPagare as any)?.tasa_interes || (existingPagare as any)?.tasaInteres || undefined,
+      ciudad_emision: (existingPagare as any)?.ciudad_emision || (existingPagare as any)?.ciudadEmision || undefined,
+      ciudadEmision: (existingPagare as any)?.ciudadEmision || (existingPagare as any)?.ciudad_emision || undefined,
+      fechaLugarEmision: (existingPagare as any)?.fechaLugarEmision || undefined,
+      clausulaPenal: (existingPagare as any)?.clausulaPenal || undefined,
+      moraAutomatica: (existingPagare as any)?.moraAutomatica || undefined,
+      dispensaProtesto: (existingPagare as any)?.dispensaProtesto || undefined,
+      texto_personalizado: (existingPagare as any)?.texto_personalizado || undefined,
       created_at: existingPagare?.created_at || new Date().toISOString(),
       creator_role: existingPagare?.creator_role || (auth?.currentUser as any)?.role || (auth?.currentUser as any)?.rol || (isAdmin ? 'admin' : 'titular'),
       creator_name: existingPagare?.creator_name || (auth?.currentUser as any)?.displayName || (auth?.currentUser as any)?.nombre || auth?.currentUser?.email?.split('@')[0] || 'Usuario',

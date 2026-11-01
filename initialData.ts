@@ -11,6 +11,7 @@ export const INITIAL_CONFIG: GlobalConfig = {
     nombre: '',
     nro_registro: '',
     direccion: '',
+    ciudad: '',
     localidad: '',
     telefono: '',
     email: '',

@@ -180,7 +180,18 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Ciudad *</label>
+                <input 
+                  type="text"
+                  disabled={!isAdmin}
+                  value={escribania.ciudad || ''}
+                  onChange={(e) => setEscribania({ ...escribania, ciudad: e.target.value })}
+                  placeholder="Ej. Asunción"
+                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-[#FF3131]"
+                />
+              </div>
               <div>
                 <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Localidad / País</label>
                 <input 
@@ -192,7 +203,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
                 />
               </div>
               <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Correo Electrónico de Contacto</label>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Correo Electrónico</label>
                 <input 
                   type="email"
                   disabled={!isAdmin}
