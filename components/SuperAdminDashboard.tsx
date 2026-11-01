@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
@@ -70,6 +70,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
+  const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -349,9 +350,31 @@ export const SuperAdminDashboard: React.FC = () => {
 
     fetchPagaresData();
 
+    // 3. Listener en tiempo real de tickets de soporte para Buzón de Consultas
+    let unsubscribeTickets: (() => void) | null = null;
+    try {
+      const qTickets = query(collection(db, 'support_tickets'));
+      unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
+        let count = 0;
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.estado === 'pendiente' || !data.estado) {
+            count++;
+          }
+        });
+        setPendingTicketsCount(count);
+      }, (err) => {
+        console.error("Error en snapshot de tickets de soporte:", err);
+      });
+    } catch (err) {
+      console.error("Error inicializando listener de tickets:", err);
+    }
+
+
     return () => {
       isMounted = false;
       if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeTickets) unsubscribeTickets();
     };
   }, []);
 
@@ -497,8 +520,8 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
           <SuperAdminOnboarding />
         ) : (
           <>
-            {/* 1. Top KPIs (Grid de 4) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Grid Superior de KPIs (5 Columnas) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
               {/* Card 1: Usuarios Totales */}
               <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-4">
@@ -568,65 +591,165 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* 2. Gráficos (Grid de 2) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-              {/* Emisión de Pagarés */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
-                  </span>
+              {/* Card 5: Buzón de Consultas */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Buzón de Consultas</span>
+                  <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                    <MessageSquare className="w-4 h-4 text-amber-400" />
+                  </div>
                 </div>
-                <div className="h-60 bg-transparent">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                      <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                      <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip 
-                        cursor={{ fill: '#27272a', opacity: 0.3 }}
-                        contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
-                      />
-                      <Bar dataKey="cantidad" fill="#3b82f6" barSize={18} radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Volumen Notariado */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
-                  </span>
-                </div>
-                <div className="h-60 bg-transparent">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={lineData} margin={{ top: 5, right: 5, left: 10, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                      <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
-                        formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
-                      />
-                      <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                <div>
+                  <p className={`text-3xl font-light mt-1 ${pendingTicketsCount > 0 ? 'text-amber-400 font-normal' : 'text-gray-400'}`}>
+                    {pendingTicketsCount}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* 3. División de Listas (Izquierda y Derecha) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+            {/* 2. Layout Central Asimétrico (Izquierda y Derecha) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+              {/* 3. Contenedor Único de Gráficos (Lado Izquierdo: col-span-1 lg:col-span-2) */}
+              <div className="col-span-1 lg:col-span-2 bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                {/* Gráfico 1: Emisión de Pagarés */}
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono">
+                      {metrics.totalPagares} docs
+                    </span>
+                  </div>
+                  <div className="h-36 bg-transparent">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                        <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip 
+                          cursor={{ fill: '#27272a', opacity: 0.3 }}
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
+                        />
+                        <Bar dataKey="cantidad" fill="#3b82f6" barSize={16} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Línea divisoria sutil */}
+                <div className="border-t border-white/5 my-4 pt-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Volumen Notariado (Gs)
+                    </span>
+                  </div>
+                  <div className="h-36 bg-transparent">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={lineData} margin={{ top: 5, right: 5, left: 10, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
+                          formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
+                        />
+                        <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Módulo Gestión de Cobros (Lado Derecho: col-span-1) */}
+              <div className="col-span-1 bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <CreditCard className="w-3.5 h-3.5 text-orange-400" /> Gestión de Cobros
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                      pendingPayments.length > 0 
+                        ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20 font-bold' 
+                        : 'text-gray-500 bg-white/5'
+                    }`}>
+                      {pendingPayments.length} pendientes
+                    </span>
+                  </div>
+
+                  <div className="max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-2">
+                    {loadingPayments ? (
+                      <div className="p-8 flex justify-center items-center">
+                        <div className="w-6 h-6 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+                      </div>
+                    ) : pendingPayments.length === 0 ? (
+                      <div className="py-12 text-center flex flex-col items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-2" />
+                        <p className="text-xs text-gray-400 font-medium">Al día con las suscripciones</p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">No hay pagos pendientes de revisión</p>
+                      </div>
+                    ) : (
+                      pendingPayments.map((pago) => {
+                        const nombreEscribano = pago.nombreCliente || pago.email || 'Escribano';
+                        const montoFormatted = pago.montoAPagar && pago.montoAPagar > 0 
+                          ? `Gs. ${pago.montoAPagar.toLocaleString('es-PY')}` 
+                          : pago.planSolicitado || 'Plan';
+
+                        return (
+                          <div 
+                            key={pago.id}
+                            className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-gray-200 font-medium truncate" title={nombreEscribano}>
+                                {nombreEscribano}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-white font-medium text-xs font-mono">
+                                  {montoFormatted}
+                                </span>
+                                <span className="text-[10px] text-gray-500 truncate">• {pago.planSolicitado}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {pago.urlComprobante ? (
+                                <button
+                                  onClick={() => setReciboSeleccionado(pago.urlComprobante)}
+                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                                  title="Ver comprobante adjunto"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Revisar
+                                </button>
+                              ) : null}
+                              <button
+                                onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '')}
+                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                                title="Aprobar suscripción del cliente"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Aprobar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. División de Listas Inferiores (Izquierda y Derecha) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
               {/* Columna Izquierda: Usuarios Activos */}
               <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
@@ -754,78 +877,6 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                 </div>
               </div>
             </div>
-
-            {/* 4. Comprobantes Pendientes de Aprobación */}
-            {pendingPayments.length > 0 && (
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] mt-6">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500 mb-4 flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <CheckCircle className="w-3.5 h-3.5 text-orange-400" /> Comprobantes Pendientes de Aprobación ({pendingPayments.length})
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full box-border text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
-                        <th className="py-3 px-4">Cliente</th>
-                        <th className="py-3 px-4">Fecha</th>
-                        <th className="py-3 px-4">Plan Solicitado</th>
-                        <th className="py-3 px-4 text-center">Comprobante</th>
-                        <th className="py-3 px-4 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {pendingPayments.map((cliente) => (
-                        <tr key={cliente.id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="py-3 px-4">
-                            <p className="font-medium text-white text-sm">{cliente.nombreCliente}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{cliente.email}</p>
-                          </td>
-                          <td className="py-3 px-4 text-xs text-gray-400">
-                            {formatDate(cliente.fechaSolicitud)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              {cliente.planSolicitado}
-                            </span>
-                            <span className="block text-[11px] text-gray-500 mt-0.5">{cliente.modalidadPago} (Gs. {cliente.montoAPagar.toLocaleString('es-PY')})</span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {cliente.urlComprobante ? (
-                              <button 
-                                onClick={() => setReciboSeleccionado(cliente.urlComprobante)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-blue-400 font-medium text-xs rounded-xl transition-colors border border-white/10"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                Ver
-                              </button>
-                            ) : (
-                              <span className="text-xs text-gray-500 italic">Sin archivo</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-right space-x-2">
-                            <button
-                              onClick={() => handleAprobar(cliente.id, cliente.planSolicitado || '')}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white font-medium text-xs rounded-xl transition-all border border-emerald-500/20"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              Aprobar
-                            </button>
-                            <button
-                              onClick={() => handleRechazar(cliente.id)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-medium text-xs rounded-xl transition-all border border-rose-500/20"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              Rechazar
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </>
         )}
 
