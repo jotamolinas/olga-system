@@ -340,6 +340,35 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
+
+  // Estado reactivo de tema (Claro / Oscuro)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      const storedTheme = localStorage.getItem('olga_theme');
+      if (storedTheme) return storedTheme === 'dark';
+      const storedFondo = localStorage.getItem('olga_facturacion_fondo_blanco');
+      if (storedFondo !== null) return !JSON.parse(storedFondo);
+    } catch {}
+    return false; // Por defecto modo claro (fondo blanco)
+  });
+
+  useEffect(() => {
+    const handleThemeChange = (e: any) => {
+      if (e?.detail?.isDark !== undefined) {
+        setIsDarkMode(Boolean(e.detail.isDark));
+      } else {
+        try {
+          setIsDarkMode(localStorage.getItem('olga_theme') === 'dark');
+        } catch {}
+      }
+    };
+    window.addEventListener('olga_theme_changed', handleThemeChange);
+    window.addEventListener('storage', handleThemeChange);
+    return () => {
+      window.removeEventListener('olga_theme_changed', handleThemeChange);
+      window.removeEventListener('storage', handleThemeChange);
+    };
+  }, []);
   const [olgaDocsCount, setOlgaDocsCount] = useState<number>(0);
   const [sessionKickedAlert, setSessionKickedAlert] = useState<string | null>(null);
 
@@ -1401,9 +1430,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // En el workspace compartido, los pagarés pertenecen a la notaría
   const visiblePagares = pagares;
 
+  const isSuperAdminView = role === 'admin' && (activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos');
+  const isDarkLayout = isDarkMode || isSuperAdminView;
+  const layoutBg = isDarkLayout ? 'bg-[#09090b]' : 'bg-gray-50';
+  const layoutText = isDarkLayout ? 'text-gray-200' : 'text-gray-900';
+
   return (
     <div 
-      className={`flex flex-col md:flex-row h-screen overflow-hidden font-sans bg-[#09090b] text-slate-800 dark:text-slate-100 transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+      className={`flex flex-col md:flex-row h-screen overflow-hidden font-sans ${layoutBg} ${layoutText} transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
         !isSidebarPinned ? 'md:pl-[72px]' : ''
       }`} 
       id="main-panel-container"
@@ -1447,9 +1481,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         
         {/* Dynamic header display */}
         <header className={`${
-          esPlanFull 
-            ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border-b border-amber-200/40 dark:border-amber-500/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-            : 'bg-white/90 dark:bg-[#16171E] border-b border-slate-200/70 dark:border-white/10 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)]'
+          isDarkLayout
+            ? 'bg-[#12141C]/80 border-b border-white/10 text-gray-100 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.4)]'
+            : esPlanFull 
+              ? 'bg-[#F4F4F0]/80 border-b border-amber-200/40 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] text-gray-900' 
+              : 'bg-white/95 border-b border-slate-200/70 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)] text-gray-900'
         } p-4 md:p-5 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl print:hidden`}>
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button (solo en pantallas móviles) */}
@@ -1468,7 +1504,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-sm md:text-lg font-serif font-black text-slate-900 tracking-tight leading-none truncate">
+              <h1 className={`text-sm md:text-lg font-serif font-black ${isDarkLayout ? "text-white" : "text-slate-900"} tracking-tight leading-none truncate`}>
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
                   : (customBranding.nombreInstitucion || userData?.razonSocial || workspaceName || config.escribania.nombre)
@@ -1833,24 +1869,16 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
               return (
                 /* Conversational assistance with O.L.G.A. IA */
-                <div className={`p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message ${
-                  esPlanFullSkin 
-                    ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-                    : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
-                }`} id="chat-assistant-container">
-                  <div className={`pb-4 shrink-0 border-b ${esPlanFullSkin ? 'border-amber-100' : 'border-slate-800'}`}>
+                <div className="p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message bg-slate-900 border border-slate-800 shadow-xl text-white" id="chat-assistant-container">
+                  <div className="pb-4 shrink-0 border-b border-slate-800">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                          esPlanFullSkin 
-                            ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
-                            : 'bg-slate-800 border border-slate-700 text-slate-300'
-                        }`}>
-                          {tieneOraculoChat ? <Sparkles className={`w-6 h-6 ${esPlanFullSkin ? 'text-amber-600' : 'text-amber-400'}`} /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
+                          {tieneOraculoChat ? <Sparkles className="w-6 h-6 text-amber-400" /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h2 className={`${esPlanFullSkin ? 'text-slate-900' : 'text-white'} font-serif font-bold text-2xl tracking-tight`}>
+                            <h2 className="text-white font-serif font-bold text-2xl tracking-tight">
                               {tieneOraculoChat ? 'El Oráculo de O.L.G.A.' : 'Asistente IA - O.L.G.A.'}
                             </h2>
                             <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow-xs ${
@@ -1863,7 +1891,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                               {tieneOraculoChat ? 'EL ORÁCULO' : 'ASISTENTE IA'}
                             </span>
                           </div>
-                          <p className={`text-xs mt-1 ${esPlanFullSkin ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <p className="text-xs mt-1 text-slate-400">
                             {tieneOraculoChat 
                               ? 'Supervisión, auditoría y análisis documental avanzado con El Oráculo.' 
                               : 'Consultas sobre legislación, pagarés, personas, redacción de escritos y cálculos notariales.'}
@@ -2106,7 +2134,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
         {/* Dynamic bottom bar info */}
         {role !== 'admin' && activeTab !== 'monitor' && (
-        <footer className={`bg-white/90 dark:bg-[#16171E] border-t border-slate-200/80 dark:border-white/10 text-slate-400 p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
+        <footer className={`${isDarkLayout ? 'bg-[#16171E] border-white/10 text-slate-400' : 'bg-white/90 border-slate-200/80 text-slate-500'} border-t p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
           SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL
         </footer>
       )}

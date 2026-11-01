@@ -81,44 +81,28 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
 
   return (
     <div className="space-y-8 animate-message" id="config-tab-panel">
-      {/* Header Info: Glow UI Dorado para Plan Full / Bloque Oscuro Institucional para Planes Estándar */}
-      <div className={`flex flex-col md:flex-row md:items-center md:justify-between p-6 rounded-3xl gap-4 transition-all ${
-        esPlanFull 
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
-      }`}>
+      {/* Header Info: Bloque Oscuro Azul Noche */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between p-6 rounded-3xl gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-            esPlanFull 
-              ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
-              : 'bg-slate-800 border border-slate-700 text-slate-300'
-          }`}>
-            <Settings className={`w-6 h-6 ${esPlanFull ? 'text-amber-600' : 'text-slate-300'}`} />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
+            <Settings className="w-6 h-6 text-slate-300" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className={`text-2xl font-bold font-serif tracking-tight ${esPlanFull ? 'text-slate-900' : 'text-white'}`}>
+              <h2 className="text-2xl font-bold font-serif tracking-tight text-white">
                 Configuración del Sistema
               </h2>
-              <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
-                esPlanFull 
-                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-xs' 
-                  : 'bg-red-600 text-white'
-              }`}>
+              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
                 O.L.G.A.
               </span>
             </div>
-            <p className={`text-sm mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className="text-sm mt-1 text-slate-400">
               Parámetros jurídicos, institucionales y financieros para la escribanía y la emisión automatizada de documentos.
             </p>
           </div>
         </div>
         {!isAdmin && (
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold leading-none w-fit border ${
-            esPlanFull 
-              ? 'bg-amber-50 border border-amber-200 text-amber-700' 
-              : 'bg-slate-800 border border-slate-700 text-slate-300'
-          }`}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold leading-none w-fit border bg-slate-800 border border-slate-700 text-slate-300">
             <Info className="w-4 h-4" />
             <span>SOLO LECTURA (Acceso Restringido a Admin)</span>
           </div>

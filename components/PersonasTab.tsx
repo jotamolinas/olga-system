@@ -782,44 +782,28 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-transparent">
-      {/* Encabezado del Módulo: Glow UI Dorado para Plan Full / Bloque Oscuro Institucional para Planes Estándar */}
-      <div className={`p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6 transition-all ${
-        isFull 
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
-      }`}>
+      {/* Encabezado del Módulo: Bloque Oscuro Azul Noche */}
+      <div className="p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-            isFull 
-              ? 'bg-amber-50 border border-amber-200/70 text-amber-600' 
-              : 'bg-slate-800 border border-slate-700 text-slate-300'
-          }`}>
-            <Users className={`w-6 h-6 ${isFull ? 'text-amber-600' : 'text-slate-300'}`} />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
+            <Users className="w-6 h-6 text-slate-300" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className={`font-serif font-bold text-2xl tracking-tight ${isFull ? 'text-slate-900' : 'text-white'}`}>
+              <h2 className="font-serif font-bold text-2xl tracking-tight text-white">
                 Directorio de Personas & Expedientes 360°
               </h2>
-              <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
-                isFull 
-                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-xs' 
-                  : 'bg-red-600 text-white'
-              }`}>
+              <span className="font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-red-600 text-white">
                 O.L.G.A.
               </span>
             </div>
-            <p className={`text-sm mt-1 font-medium ${isFull ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className="text-sm mt-1 font-medium text-slate-400">
               Fichero unificado con consulta de historial crediticio, resumen de obligaciones y notas notariales.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`px-3.5 py-1.5 rounded-full text-xs font-bold border ${
-            isFull 
-              ? 'bg-amber-50 text-amber-900 border-amber-300/60' 
-              : 'bg-slate-800 text-slate-300 border-slate-700'
-          }`}>
+          <span className="px-3.5 py-1.5 rounded-full text-xs font-bold border bg-slate-800 text-slate-300 border-slate-700">
             {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente Registrado' : 'Clientes Registrados'}
           </span>
         </div>

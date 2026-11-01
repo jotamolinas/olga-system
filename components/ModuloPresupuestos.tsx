@@ -1070,57 +1070,33 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   return (
     <div className="w-full space-y-6 font-sans transition-colors duration-200 print:space-y-4 print:p-0 print:m-0 print:bg-white print:text-black" id="modulo-presupuestos-root">
       {/* Cabecera Principal del Módulo (oculta al imprimir) */}
-      <header className={`${
-        esFull 
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 border border-slate-800 shadow-xl'
-      } rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden`}>
-        {esFull && (
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
-        )}
-
+      <header className="bg-slate-900 border border-slate-800 shadow-xl rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
         <div className="relative z-10 flex items-center gap-4">
           {onVolver && (
             <button
               onClick={onVolver}
               type="button"
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border flex items-center gap-2 cursor-pointer shadow-xs ${
-                esFull 
-                  ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200' 
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-              }`}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border flex items-center gap-2 cursor-pointer shadow-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Volver</span>
             </button>
           )}
 
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-            esFull 
-              ? 'bg-amber-50 text-amber-600 border border-amber-200/70' 
-              : 'bg-slate-800 text-slate-300 border border-slate-700/80'
-          }`}>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 text-slate-300 border border-slate-700/80">
             <Banknote className="w-6 h-6" />
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`${
-                esFull ? 'text-slate-900' : 'text-white'
-              } font-serif font-bold text-2xl tracking-tight`}>
+              <h1 className="text-white font-serif font-bold text-2xl tracking-tight">
                 Presupuestos y Facturación Notarial
               </h1>
-              <span className={`text-[10px] px-2.5 py-0.5 rounded-full shadow-xs ${
-                esFull 
-                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold' 
-                  : 'bg-red-600 text-white font-bold'
-              }`}>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
                 O.L.G.A.
               </span>
             </div>
-            <p className={`${
-              esFull ? 'text-slate-500' : 'text-slate-400'
-            } text-sm mt-1 font-medium`}>
+            <p className="text-slate-400 text-sm mt-1 font-medium">
               Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.
             </p>
           </div>

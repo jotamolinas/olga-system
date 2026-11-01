@@ -1175,51 +1175,28 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       `}</style>
 
       {/* Cabecera Principal */}
-      <header className={`${
-        esPlanFull 
-          ? 'bg-white border border-amber-200/80 shadow-[0_8px_30px_-4px_rgba(251,191,36,0.12)]' 
-          : 'bg-slate-900 border border-slate-800 shadow-2xl'
-      } rounded-3xl p-6 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden`}>
-        {esPlanFull && (
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
-        )}
+      <header className="bg-slate-900 border border-slate-800 shadow-2xl rounded-3xl p-6 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
         <div className="relative z-10 flex items-center gap-3">
           {onVolver && (
             <button
               onClick={onVolver}
               type="button"
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border shadow-xs cursor-pointer ${
-                esPlanFull 
-                  ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200' 
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-              }`}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border shadow-xs cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
             >
               ← Volver
             </button>
           )}
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-            esPlanFull 
-              ? 'bg-amber-50 text-amber-600 border border-amber-200/70' 
-              : 'bg-slate-800 text-slate-300 border border-slate-700/80'
-          }`}>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 text-slate-300 border border-slate-700/80">
             <Stamp className="w-6 h-6" />
           </div>
           <div>
-            <h1 className={`${
-              esPlanFull ? 'text-slate-900' : 'text-white'
-            } font-serif font-bold text-2xl tracking-tight flex items-center gap-2`}>
+            <h1 className="text-white font-serif font-bold text-2xl tracking-tight flex items-center gap-2">
               <span>Sección Notarial</span>
-              <span className={`text-[10px] px-2.5 py-0.5 rounded-full shadow-xs ${
-                esPlanFull 
-                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold' 
-                  : 'bg-red-600 text-white font-bold'
-              }`}>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
                 O.L.G.A.
               </span>
             </h1>
-            <p className={`${
-              esPlanFull ? 'text-slate-500' : 'text-slate-400'
-            } text-sm mt-1 font-medium`}>
+            <p className="text-slate-400 text-sm mt-1 font-medium">
               Plantillas oficiales de la Corte Suprema de Justicia generadas puramente en HTML/CSS milimétrico.
             </p>
           </div>

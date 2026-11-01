@@ -71,44 +71,28 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
 
   return (
     <div className="w-full box-border max-w-7xl mx-auto mt-8 space-y-6">
-      <div className={`p-6 rounded-3xl flex items-center justify-between gap-4 transition-all ${
-        esPlanFull 
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
-      }`}>
+      <div className="p-6 rounded-3xl flex items-center justify-between gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-            esPlanFull 
-              ? 'bg-amber-50 border border-amber-200/70 text-amber-600 shadow-xs' 
-              : 'bg-slate-800 border border-slate-700 text-slate-300'
-          }`}>
-            <Mail className={`w-6 h-6 ${esPlanFull ? 'text-amber-600' : 'text-slate-300'}`} />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
+            <Mail className="w-6 h-6 text-slate-300" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className={`font-serif font-bold text-2xl tracking-tight ${esPlanFull ? 'text-slate-900' : 'text-white'}`}>
+              <h2 className="font-serif font-bold text-2xl tracking-tight text-white">
                 Buzón de Consultas Notariales
               </h2>
-              <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
-                esPlanFull 
-                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-xs' 
-                  : 'bg-red-600 text-white'
-              }`}>
+              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
                 O.L.G.A.
               </span>
             </div>
-            <p className={`text-sm mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className="text-sm mt-1 text-slate-400">
               Gestión de mensajes y solicitudes de soporte de los usuarios del sistema.
             </p>
           </div>
         </div>
       </div>
 
-      <div className={`rounded-3xl overflow-hidden transition-all ${
-        esPlanFull
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]'
-          : 'bg-slate-900 border border-slate-800 shadow-xl text-white'
-      }`}>
+      <div className="rounded-3xl overflow-hidden transition-all bg-slate-900 border border-slate-800 shadow-xl text-white">
         {tickets.length === 0 ? (
           <div className={`p-12 text-center flex flex-col items-center ${
             esPlanFull ? 'text-slate-500' : 'text-slate-400'

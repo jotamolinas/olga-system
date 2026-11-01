@@ -247,13 +247,13 @@ export const KnowledgeBaseTab: React.FC<KnowledgeBaseTabProps> = ({ docs, setDoc
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 md:items-center justify-between">
+      <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 border border-slate-800 shadow-xl flex flex-col md:flex-row gap-6 md:items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold font-serif text-slate-800 flex items-center gap-3">
+          <h2 className="text-2xl font-bold font-serif text-white flex items-center gap-3">
             <Database className="w-6 h-6 text-[#FF3131]" />
             Entrenamiento de IA (O.L.G.A.)
           </h2>
-          <p className="text-xs text-slate-500 mt-2 max-w-2xl leading-relaxed">
+          <p className="text-xs text-slate-400 mt-2 max-w-2xl leading-relaxed">
             Sube documentos físicos, PDFs, manuales o leyes para entrenar la Base de Conocimiento local de O.L.G.A. Los documentos subidos aquí actúan como memoria permanente y la IA basará sus respuestas contextuales utilizando esta información.
           </p>
         </div>

@@ -418,15 +418,15 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   return (
     <div className="w-full box-border flex flex-col gap-8 w-full animate-fade-in pb-12">
-      <div className={`${esPlanFull ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' : 'bg-white rounded-2xl p-6 md:p-7 border border-slate-200/70 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]'} flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden`}>
+      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 md:p-7 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
         <div className="relative z-10 text-center md:text-left w-full box-border">
-          <h2 className="text-slate-900 text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center border border-orange-200/60 shadow-xs">
+          <h2 className="text-white text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center border border-slate-700 shadow-xs">
               <Activity className="w-5 h-5" />
             </div>
             Tablero Principal
           </h2>
-          <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-md mx-auto md:mx-0">
+          <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-md mx-auto md:mx-0">
             Resumen de actividad y volumen notariado de {config.escribania.nombre}.
           </p>
         </div>

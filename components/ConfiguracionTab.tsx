@@ -800,49 +800,30 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-slate-100 dark:bg-[#0B0F17] min-h-screen transition-colors duration-200">
-            {/* Cabecera Principal Estilo Enterprise con Campana Interactiva */}
-      <div className={`p-6 rounded-3xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden transition-all ${
-        isFull 
-          ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]' 
-          : 'bg-slate-900 text-white shadow-xl border border-slate-800'
-      }`}>
-        {isFull && (
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 blur-[100px] rounded-full pointer-events-none"></div>
-        )}
+    <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 bg-transparent min-h-screen transition-colors duration-200">
+      {/* Cabecera Principal Estilo Enterprise Azul Noche */}
+      <div className="p-6 rounded-3xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
         <div className="relative z-10 flex items-center gap-3">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-            isFull 
-              ? 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.15)]' 
-              : 'bg-slate-800 border border-slate-700 text-slate-300'
-          }`}>
-            <Settings className={`w-6 h-6 ${isFull ? 'text-amber-600' : 'text-slate-300'}`} />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
+            <Settings className="w-6 h-6 text-slate-300" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className={`font-serif font-bold text-2xl tracking-tight ${isFull ? 'text-slate-900' : 'text-white'}`}>
+              <h2 className="font-serif font-bold text-2xl tracking-tight text-white">
                 Configuración del Sistema
               </h2>
-              <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
-                isFull 
-                  ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_10px_rgba(245,158,11,0.3)]' 
-                  : 'bg-red-600 text-white'
-              }`}>
+              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
                 O.L.G.A.
               </span>
             </div>
-            <p className={`text-sm mt-1 font-medium ${isFull ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className="text-sm mt-1 font-medium text-slate-400">
               Parámetros institucionales, sincronización en tiempo real y directivas de seguridad.
             </p>
           </div>
         </div>
         {/* Panel de Acciones Superiores */}
         <div className="relative z-10 flex items-center gap-3 self-end md:self-auto">
-          <span className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold border ${
-            isFull 
-              ? 'bg-amber-50/80 text-amber-900 border-amber-300/60' 
-              : 'bg-slate-800 text-slate-300 border-slate-700'
-          }`}>
+          <span className="rounded-xl px-3.5 py-1.5 text-xs font-semibold border bg-slate-800 text-slate-300 border-slate-700">
             {pagaresEfectivos.length} Pagarés Monitoreados
           </span>
         </div>

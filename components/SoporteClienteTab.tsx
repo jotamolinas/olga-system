@@ -47,35 +47,21 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
   };
 
   return (
-    <div className={`rounded-3xl p-6 md:p-8 animate-fade-in w-full box-border max-w-3xl mx-auto mt-8 transition-all ${
-      esPlanFull
-        ? 'bg-[#F4F4F0]/80 dark:bg-[#12141C]/80 backdrop-blur-xl border border-amber-200/40 dark:border-amber-500/30 rounded-3xl p-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)]'
-        : 'bg-slate-900 text-white shadow-xl border border-slate-800'
-    }`}>
-      <div className={`flex items-center gap-4 mb-8 pb-6 border-b ${
-        esPlanFull ? 'border-amber-100' : 'border-slate-800'
-      }`}>
-        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
-          esPlanFull
-            ? 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
-            : 'bg-slate-800 border border-slate-700 text-slate-300'
-        }`}>
-          <LifeBuoy className={`w-7 h-7 ${esPlanFull ? 'text-amber-600' : 'text-slate-300'}`} />
+    <div className="rounded-3xl p-6 md:p-8 animate-fade-in w-full box-border max-w-3xl mx-auto mt-8 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
+      <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-800">
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
+          <LifeBuoy className="w-7 h-7 text-slate-300" />
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h2 className={`text-xl font-bold font-serif ${esPlanFull ? 'text-slate-900' : 'text-white'}`}>
+            <h2 className="text-xl font-bold font-serif text-white">
               Buzón de Consultas
             </h2>
-            <span className={`font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
-              esPlanFull
-                ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_2px_10px_rgba(245,158,11,0.3)]'
-                : 'bg-red-600 text-white'
-            }`}>
+            <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
               O.L.G.A.
             </span>
           </div>
-          <p className={`text-sm mt-1 ${esPlanFull ? 'text-slate-500' : 'text-slate-400'}`}>
+          <p className="text-sm mt-1 text-slate-400">
             Comunícate directamente con el administrador para resolver dudas, reportar problemas o solicitar asistencia técnica.
           </p>
         </div>
@@ -104,9 +90,7 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
           )}
 
           <div>
-            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
-              esPlanFull ? 'text-slate-600' : 'text-slate-300'
-            }`}>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-300">
               Asunto / Motivo de la Consulta
             </label>
             <input 
@@ -115,18 +99,12 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
               onChange={(e) => setAsunto(e.target.value)}
               placeholder="Ej: Consulta sobre timbrado, duda legal sobre pagaré, etc."
               required
-              className={`w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors focus:outline-none ${
-                esPlanFull
-                  ? 'bg-slate-50 border border-slate-200 text-slate-800 focus:border-amber-400'
-                  : 'bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500'
-              }`}
+              className="w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors focus:outline-none bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500"
             />
           </div>
 
           <div>
-            <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
-              esPlanFull ? 'text-slate-600' : 'text-slate-300'
-            }`}>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-300">
               Mensaje Detallado
             </label>
             <textarea
@@ -135,11 +113,7 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
               onChange={(e) => setMensaje(e.target.value)}
               placeholder="Describe detalladamente tu situación o requerimiento..."
               required
-              className={`w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors resize-none focus:outline-none ${
-                esPlanFull
-                  ? 'bg-slate-50 border border-slate-200 text-slate-800 focus:border-amber-400'
-                  : 'bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500'
-              }`}
+              className="w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors resize-none focus:outline-none bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500"
             />
           </div>
 
