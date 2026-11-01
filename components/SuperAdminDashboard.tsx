@@ -6,7 +6,8 @@ import {
   KeyRound, CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
-  Building, Zap, CheckCircle2, UserCheck, ShieldQuestion
+  Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
+  MessageSquare, CreditCard
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,

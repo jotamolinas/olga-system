@@ -298,18 +298,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         navigate('/consola');
       }
     } catch (err: any) {
-      console.error('Error Google sign in:', err);
-      let msg = 'Error al iniciar sesión con Google.';
-      if (err.code === 'auth/popup-closed-by-user') {
-        msg = 'Se cerró la ventana emergente de Google antes de completar el inicio de sesión.';
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        msg = 'La solicitud de inicio de sesión con Google fue cancelada.';
-      } else if (err.code === 'auth/popup-blocked') {
-        msg = 'La ventana emergente de Google fue bloqueada por el navegador. Por favor, habilita popups.';
-      } else if (err.message) {
-        msg = err.message;
+      const errCode = err?.code;
+      if (errCode === 'auth/popup-closed-by-user' || errCode === 'auth/cancelled-popup-request') {
+        // Interrupción voluntaria del popup por parte del usuario o cierre de ventana.
+        // No constituye un error de sistema ni debe registrarse con console.error.
+        console.warn('Inicio de sesión con Google cancelado o ventana cerrada por el usuario.');
+        setError('');
+      } else if (errCode === 'auth/popup-blocked') {
+        console.warn('Ventana emergente de Google bloqueada por el navegador.');
+        setError('La ventana emergente de Google fue bloqueada por el navegador. Por favor, habilita popups para continuar.');
+      } else if (errCode === 'auth/unauthorized-domain') {
+        console.error('Dominio no autorizado en Firebase Auth:', err);
+        setError('El dominio actual no está autorizado en Firebase Authentication. Agrégalo en la consola de Firebase.');
+      } else {
+        console.error('Error Google sign in:', err);
+        setError(err?.message || 'Error al iniciar sesión con Google.');
       }
-      setError(msg);
     } finally {
       setLoading(false);
     }
