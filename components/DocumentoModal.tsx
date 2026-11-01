@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Edit3, CheckCircle } from 'lucide-react';
+import { X, Printer, Save, Edit3, CheckCircle, AlertCircle } from 'lucide-react';
 import { db, auth } from '../services/auth';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
@@ -43,6 +43,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const { workspaceId } = useWorkspace(currentUser || auth.currentUser, userData);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const plan = (userData?.planActual || userData?.plan || '').toLowerCase();
   const isAprobado = String(userData?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma).toUpperCase() === 'APROBADO';
   const hasPaidPlan = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isAprobado;
@@ -177,6 +178,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     
     isSavingRef.current = true;
     setIsSaving(true);
+    setSaveError(null);
     try {
       if (!workspaceId) {
         console.error("Operación abortada: Workspace no identificado.");
@@ -217,8 +219,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error guardando documento:', error);
+      setSaveError(error?.message || 'Error al guardar el documento. Por favor, intente nuevamente.');
+      setTimeout(() => setSaveError(null), 5000);
     } finally {
       isSavingRef.current = false;
       setIsSaving(false);

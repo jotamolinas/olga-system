@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
-import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check, Save } from 'lucide-react';
+import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check, Save, AlertCircle, X } from 'lucide-react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useTrialStatus } from '../hooks/useTrialStatus';
 import { auth, db } from '../services/auth';
@@ -486,10 +486,12 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleGuardarPagare = async (andClose = false) => {
     if (!pagare) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       const cleanCiudad = sanitizeNotarialText(ciudadEmisionRef.current ?? ciudadEmision);
       const fullFechaLugarEmision = cleanCiudad.trim() 
@@ -604,24 +606,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         cronograma: updatedCronograma
       } as any;
 
-      // 1. Guardar en Firestore con setDoc y merge: true
-      const effectiveWorkspaceId = workspaceId || pagare.userId || auth?.currentUser?.uid;
-      if (effectiveWorkspaceId) {
-        try {
-          const docRef = doc(db, 'pagares', pagare.id);
-          const clean = JSON.parse(JSON.stringify(updatedPagare));
-          await setDoc(docRef, { ...clean, userId: effectiveWorkspaceId }, { merge: true });
-        } catch (dbErr) {
-          console.warn('Error al actualizar en Firestore:', dbErr);
-        }
-      }
-
-      // 2. Notificar al componente padre para actualizar estado React inmediatamente
-      if (onUpdatePagare) {
-        onUpdatePagare(updatedPagare);
-      }
-
-      // 3. Persistir en localStorage
+      // 1. Respaldo prioritario en localStorage
       try {
         const stored = localStorage.getItem('olga_pagares');
         if (stored) {
@@ -639,14 +624,34 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         console.warn('Error local storage update:', err);
       }
 
+      // 2. Notificar al componente padre para actualizar estado React inmediatamente
+      if (onUpdatePagare) {
+        onUpdatePagare(updatedPagare);
+      }
+
+      // 3. Guardar en Firestore con setDoc y merge: true (con timeout de protección)
+      const effectiveWorkspaceId = workspaceId || pagare.userId || auth?.currentUser?.uid;
+      if (effectiveWorkspaceId) {
+        const docRef = doc(db, 'pagares', pagare.id);
+        const clean = JSON.parse(JSON.stringify(updatedPagare));
+        const firestorePromise = setDoc(docRef, { ...clean, userId: effectiveWorkspaceId }, { merge: true });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con el servidor')), 15000)
+        );
+        await Promise.race([firestorePromise, timeoutPromise]);
+      }
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
 
       if (andClose) {
         onClose();
       }
-    } catch (err) {
-      console.error('Error al guardar pagaré:', err);
+    } catch (err: any) {
+      console.error('Error al guardar documento notarial:', err);
+      const errMsg = err?.message || 'Ocurrió un error al guardar el documento. Por favor, reintente.';
+      setSaveError(errMsg);
+      setTimeout(() => setSaveError(null), 6000);
     } finally {
       setIsSaving(false);
     }
@@ -1251,6 +1256,12 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 </>
               )}
             </button>
+            {saveError && (
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold animate-in fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span className="truncate max-w-[200px]" title={saveError}>{saveError}</span>
+              </div>
+            )}
             <button
               onClick={() => handleGuardarPagare(true)}
               disabled={isSaving}
@@ -1258,7 +1269,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
               title="Guardar todos los cambios y cerrar vista previa"
             >
               <Check className="w-4 h-4" />
-              <span>Aceptar & Cerrar Vista</span>
+              <span>{isSaving ? 'Guardando...' : 'Aceptar & Cerrar Vista'}</span>
             </button>
             <button
               onClick={handlePrint}
@@ -1524,6 +1535,23 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
           <div className="fixed bottom-6 right-6 z-[250] bg-slate-900 text-white border border-slate-700 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-bottom-2">
             <Check className="w-4 h-4 text-[#FF3131]" />
             <span>Código de soporte copiado</span>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="fixed bottom-6 right-6 z-[250] bg-red-950/95 text-red-200 border border-red-500/40 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 backdrop-blur-md">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+            <div className="flex flex-col">
+              <span className="font-black uppercase tracking-wider text-red-300">Error al guardar</span>
+              <span className="text-red-200/90 font-normal">{saveError}</span>
+            </div>
+            <button
+              onClick={() => setSaveError(null)}
+              className="ml-2 text-red-400 hover:text-white transition-colors cursor-pointer"
+              title="Cerrar alerta"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
