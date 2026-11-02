@@ -484,14 +484,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
 
   // =========================================================================
-  // =========================================================================
-  // SISTEMA DE PAGINACIÓN FLUIDA TIPO WORD / DOCS (OFICIO / LEGAL)
+  // SISTEMA DE PAGINACIÓN VISUAL TIPO WORD / DOCS (OFICIO / LEGAL NOTARIAL)
   // =========================================================================
   const [totalPaginasVisuales, setTotalPaginasVisuales] = useState<number>(1);
   const debounceTimerRef = useRef<any>(null);
 
   const ALTURA_HOJA_OFICIO = 1056; // Altura estándar hoja Oficio / Legal (1056px)
-  const ALTURA_TEXTO_UTIL = 780;   // Área de texto disponible por carilla (aprox. 25-30 líneas de 10.4mm)
+  const ALTURA_TEXTO_UTIL = 820;   // Altura de texto útil por carilla (aprox. 22-25 líneas notariales)
 
   // Desempaquetador de seguridad: si un texto viejo fue fragmentado en divs hoja-notarial-pagina,
   // lo extrae de vuelta a un bloque de texto fluido continuo
@@ -524,25 +523,73 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return rawHtml;
   };
 
-  // Cálculo real de paginación basado en altura de carilla notarial y saltos de página manuales
-  const actualizarNumeracionPaginas = (editorEl: HTMLElement) => {
+  // Recálculo inteligente de paginación visual tipo Word / Google Docs
+  const recalcularPaginacionVisual = (editorEl: HTMLElement) => {
     if (!editorEl) return 1;
-    const manualBreaks = editorEl.querySelectorAll('.salto-de-pagina').length;
-    const scrollHeight = editorEl.scrollHeight;
-    // 275px corresponde al padding-top (180px) + padding-bottom (95px)
-    const paginasPorAltura = Math.max(1, Math.ceil(Math.max(0, scrollHeight - 275) / ALTURA_TEXTO_UTIL));
-    const total = Math.max(1, manualBreaks + 1, paginasPorAltura);
-    setTotalPaginasVisuales(total);
-    return total;
+
+    // 1. Limpiar los saltos automáticos generados previamente para reevaluar la distribución exacta
+    // Se preservan intactos los saltos manuales insertados por el usuario (data-page-break="manual")
+    const saltosAuto = Array.from(editorEl.querySelectorAll<HTMLElement>('.salto-automatico'));
+    saltosAuto.forEach(s => s.remove());
+
+    const children = Array.from(editorEl.children) as HTMLElement[];
+    if (children.length === 0) {
+      setTotalPaginasVisuales(1);
+      return 1;
+    }
+
+    let alturaAcumulada = 0;
+    let numPagina = 1;
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+
+      // Salto manual: reinicia la cuenta para la nueva página
+      if (child.classList.contains('salto-de-pagina')) {
+        alturaAcumulada = 0;
+        numPagina++;
+        const badgeSpan = child.querySelector('.salto-de-pagina-badge span');
+        if (badgeSpan) badgeSpan.textContent = `--- PÁGINA ${numPagina} (Manual) ---`;
+        continue;
+      }
+
+      // Altura del bloque de texto o línea
+      // Nota: un párrafo vacío con <br> tiene min-height: 10.4mm (~39px)
+      const h = child.offsetHeight || 39;
+      alturaAcumulada += h;
+
+      // Si el elemento sobrepasa la capacidad de la carilla notarial
+      // (y no es el único elemento al inicio de la página)
+      if (alturaAcumulada > ALTURA_TEXTO_UTIL && (alturaAcumulada - h) > 0) {
+        numPagina++;
+
+        const autoBreak = document.createElement('div');
+        autoBreak.className = 'salto-de-pagina salto-automatico';
+        autoBreak.setAttribute('contenteditable', 'false');
+        autoBreak.setAttribute('data-page-break', 'auto');
+        autoBreak.innerHTML = `
+          <div class="salto-de-pagina-badge">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+            <span>--- PÁGINA ${numPagina} ---</span>
+          </div>
+        `;
+
+        editorEl.insertBefore(autoBreak, child);
+        alturaAcumulada = h;
+      }
+    }
+
+    setTotalPaginasVisuales(numPagina);
+    return numPagina;
   };
 
   const debouncedVerificarPaginacion = () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       if (editorContentRef.current) {
-        actualizarNumeracionPaginas(editorContentRef.current);
+        recalcularPaginacionVisual(editorContentRef.current);
       }
-    }, 300);
+    }, 200);
   };
 
   // Inserción limpia de Salto de Página manual tipo Word / Docs
@@ -563,7 +610,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     separator.innerHTML = `
       <div class="salto-de-pagina-badge">
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-        <span>--- Salto de Página ---</span>
+        <span>--- Salto de Página (Manual) ---</span>
       </div>
     `;
 
@@ -580,7 +627,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     selection.removeAllRanges();
     selection.addRange(newRange);
 
-    actualizarNumeracionPaginas(editor);
+    recalcularPaginacionVisual(editor);
     setEditorText(editor.innerHTML);
     nextP.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -588,12 +635,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Callback ref para el contentEditable con desempaquetado de seguridad
   const setEditorRef = (el: HTMLDivElement | null) => {
     (editorContentRef as any).current = el;
-    if (el && editorText) {
-      const limpio = desempaquetarContenidoFluido(editorText);
-      if (el.innerHTML !== limpio) {
-        el.innerHTML = limpio;
+    if (el) {
+      try {
+        document.execCommand('defaultParagraphSeparator', false, 'p');
+      } catch (e) {}
+      if (editorText) {
+        const limpio = desempaquetarContenidoFluido(editorText);
+        if (el.innerHTML !== limpio) {
+          el.innerHTML = limpio;
+        }
+        setTimeout(() => {
+          recalcularPaginacionVisual(el);
+        }, 50);
       }
-      actualizarNumeracionPaginas(el);
     }
   };
 
@@ -2296,27 +2350,39 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     if (directElements.length > 0) {
       directElements.forEach(el => {
+        // Ignorar nodos internos de la insignia del salto de página
+        if (el.closest('.salto-de-pagina') && !el.classList.contains('salto-de-pagina')) {
+          return;
+        }
+
         if (el.classList.contains('salto-de-pagina')) {
           cleanParagraphs.push('<div class="salto-de-pagina-print" style="break-after: page; page-break-after: always; height: 0; line-height: 0; margin: 0; padding: 0;"></div>');
           return;
         }
+
         const isContainerWithBlocks = (el.tagName.toLowerCase() === 'div' || el.tagName.toLowerCase() === 'section') && el.querySelector('p, div, li');
         if (isContainerWithBlocks) return;
 
         const inner = el.innerHTML.trim();
         const plainText = el.textContent?.trim() || '';
+
+        // Preservar párrafos con texto Y líneas en blanco (Enters) para respetar el interlineado y los folios
         if (plainText.length > 0) {
           cleanParagraphs.push(el.tagName.toLowerCase() === 'p' ? el.outerHTML : `<p>${inner}</p>`);
+        } else if (inner === '<br>' || inner === '<br/>' || inner === '' || el.querySelector('br')) {
+          cleanParagraphs.push('<p><br></p>');
         }
       });
     }
 
     if (cleanParagraphs.length === 0) {
-      const rawLines = content.split(/(?:<br\s*\/?>\s*)+|\n+/i).map(t => t.trim()).filter(t => t.length > 0);
+      const rawLines = content.split('\n');
       rawLines.forEach(l => {
         const plain = l.replace(/<[^>]*>/g, '').trim();
         if (plain.length > 0) {
-          cleanParagraphs.push(`<p>${l}</p>`);
+          cleanParagraphs.push(`<p>${plain}</p>`);
+        } else {
+          cleanParagraphs.push('<p><br></p>');
         }
       });
     }
@@ -2395,6 +2461,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     p {
       margin: 0 !important;
       padding: 0 !important;
+      min-height: 10.2mm !important;
       font-family: "Times New Roman", Times, serif;
       font-size: 14pt;
       line-height: 10.2mm !important;
@@ -3390,7 +3457,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>Hoja de Protocolo Notarial (Oficio)</span>
+                  <span>Hoja de Protocolo Notarial (Oficio) • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
                 </div>
               </div>
             )}
@@ -3482,7 +3549,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     font-family: inherit;
                   }
                   #editor-notarial-activo p,
-                  .editor-notarial-papel p {
+                  #editor-notarial-activo div:not(.salto-de-pagina):not(.salto-de-pagina-badge),
+                  .editor-notarial-papel p,
+                  .editor-notarial-papel div:not(.salto-de-pagina):not(.salto-de-pagina-badge) {
                     color: #000000 !important;
                     margin-top: 0 !important;
                     margin-bottom: 0 !important;
@@ -3564,9 +3633,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     setEditorText(e.currentTarget.innerHTML);
                     debouncedVerificarPaginacion();
                   }}
-                  onKeyUp={checkFormatStates}
+                  onKeyUp={(e) => {
+                    checkFormatStates();
+                    if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+                      debouncedVerificarPaginacion();
+                    }
+                  }}
                   onMouseUp={checkFormatStates}
-                  onFocus={checkFormatStates}
+                  onFocus={() => {
+                    checkFormatStates();
+                    try {
+                      document.execCommand('defaultParagraphSeparator', false, 'p');
+                    } catch (err) {}
+                  }}
                   className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
                     previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
                   }`}
