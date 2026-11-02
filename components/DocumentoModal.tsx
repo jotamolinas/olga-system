@@ -108,6 +108,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             }
             p, div, blockquote { orphans: 3; widows: 3; }
             table, tr, td { page-break-inside: avoid; break-inside: avoid; }
+            .salto-de-pagina, .salto-de-pagina-print { break-after: page !important; page-break-after: always !important; height: 0 !important; margin: 0 !important; padding: 0 !important; display: block !important; }
+            .salto-de-pagina * { display: none !important; }
+            .hoja-notarial-pagina { break-after: page !important; page-break-after: always !important; }
+            .hoja-notarial-pagina:last-of-type { break-after: avoid !important; page-break-after: avoid !important; }
             ${isWatermarkRequired ? `
             .watermark {
               display: block !important;
