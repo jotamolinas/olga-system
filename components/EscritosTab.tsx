@@ -484,134 +484,68 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
 
   // =========================================================================
-  // SISTEMA DE PAGINACIÓN VISUAL TIPO WORD / DOCS (OFICIO / LEGAL)
+  // =========================================================================
+  // SISTEMA DE PAGINACIÓN FLUIDA TIPO WORD / DOCS (OFICIO / LEGAL)
   // =========================================================================
   const [totalPaginasVisuales, setTotalPaginasVisuales] = useState<number>(1);
   const debounceTimerRef = useRef<any>(null);
 
-  const MAX_PAGE_HEIGHT = 1056; // Altura estándar para Oficio/Legal (1056px)
+  const ALTURA_HOJA_OFICIO = 1056; // Altura estándar hoja Oficio / Legal (1056px)
+  const ALTURA_TEXTO_UTIL = 780;   // Área de texto disponible por carilla (aprox. 25-30 líneas de 10.4mm)
 
-  const normalizarContenidoConPaginas = (rawHtml: string): string => {
-    if (!rawHtml || !rawHtml.trim()) {
-      return '<div class="hoja-notarial-pagina editor-notarial-papel" data-pagina="1" data-page-label="Página 1"><p><br></p></div>';
+  // Desempaquetador de seguridad: si un texto viejo fue fragmentado en divs hoja-notarial-pagina,
+  // lo extrae de vuelta a un bloque de texto fluido continuo
+  const desempaquetarContenidoFluido = (rawHtml: string): string => {
+    if (!rawHtml || !rawHtml.trim()) return '';
+    if (!rawHtml.includes('hoja-notarial-pagina')) return rawHtml;
+
+    try {
+      const temp = document.createElement('div');
+      temp.innerHTML = rawHtml;
+      const paginas = Array.from(temp.querySelectorAll('.hoja-notarial-pagina'));
+      if (paginas.length > 0) {
+        const fragment = document.createDocumentFragment();
+        Array.from(temp.childNodes).forEach(node => {
+          if ((node as HTMLElement).classList?.contains('hoja-notarial-pagina')) {
+            while (node.firstChild) {
+              fragment.appendChild(node.firstChild);
+            }
+          } else {
+            fragment.appendChild(node);
+          }
+        });
+        const result = document.createElement('div');
+        result.appendChild(fragment);
+        return result.innerHTML;
+      }
+    } catch (e) {
+      console.warn('Error desempaquetando páginas:', e);
     }
-    if (rawHtml.includes('hoja-notarial-pagina')) {
-      return rawHtml;
-    }
-    return `<div class="hoja-notarial-pagina editor-notarial-papel" data-pagina="1" data-page-label="Página 1">${rawHtml}</div>`;
+    return rawHtml;
   };
 
+  // Cálculo real de paginación basado en altura de carilla notarial y saltos de página manuales
   const actualizarNumeracionPaginas = (editorEl: HTMLElement) => {
     if (!editorEl) return 1;
-    const paginas = Array.from(editorEl.querySelectorAll<HTMLElement>('.hoja-notarial-pagina'));
-    const total = Math.max(1, paginas.length);
-    paginas.forEach((pag, index) => {
-      const num = index + 1;
-      pag.setAttribute('data-pagina', String(num));
-      pag.setAttribute('data-page-label', total > 1 ? `Página ${num} de ${total}` : 'Página 1');
-    });
+    const manualBreaks = editorEl.querySelectorAll('.salto-de-pagina').length;
+    const scrollHeight = editorEl.scrollHeight;
+    // 275px corresponde al padding-top (180px) + padding-bottom (95px)
+    const paginasPorAltura = Math.max(1, Math.ceil(Math.max(0, scrollHeight - 275) / ALTURA_TEXTO_UTIL));
+    const total = Math.max(1, manualBreaks + 1, paginasPorAltura);
     setTotalPaginasVisuales(total);
     return total;
-  };
-
-  const verificarPaginacion = (editorEl: HTMLElement) => {
-    if (!editorEl) return false;
-    let paginas = Array.from(editorEl.querySelectorAll<HTMLElement>('.hoja-notarial-pagina'));
-
-    if (paginas.length === 0) {
-      const primeraPagina = document.createElement('div');
-      primeraPagina.className = 'hoja-notarial-pagina editor-notarial-papel';
-      primeraPagina.setAttribute('data-pagina', '1');
-      primeraPagina.setAttribute('data-page-label', 'Página 1');
-
-      while (editorEl.firstChild) {
-        primeraPagina.appendChild(editorEl.firstChild);
-      }
-      editorEl.appendChild(primeraPagina);
-      paginas = [primeraPagina];
-    }
-
-    let huboCambios = false;
-
-    for (let i = 0; i < paginas.length; i++) {
-      const pag = paginas[i];
-      if (pag.scrollHeight > MAX_PAGE_HEIGHT + 25) {
-        const hijos = Array.from(pag.children) as HTMLElement[];
-        let corteIndex = -1;
-
-        for (let j = 0; j < hijos.length; j++) {
-          const hijo = hijos[j];
-          const bottomRelativo = hijo.offsetTop + hijo.offsetHeight;
-          if (bottomRelativo > MAX_PAGE_HEIGHT - 60 && j > 0) {
-            corteIndex = j;
-            break;
-          }
-        }
-
-        if (corteIndex !== -1) {
-          const elementosSobrantes = hijos.slice(corteIndex);
-          let siguienteSeparador = pag.nextElementSibling as HTMLElement | null;
-          let siguientePagina: HTMLElement | null = null;
-
-          if (siguienteSeparador && siguienteSeparador.classList.contains('salto-de-pagina')) {
-            siguientePagina = siguienteSeparador.nextElementSibling as HTMLElement | null;
-          }
-
-          if (!siguientePagina || !siguientePagina.classList.contains('hoja-notarial-pagina')) {
-            siguienteSeparador = document.createElement('div');
-            siguienteSeparador.className = 'salto-de-pagina salto-automatico';
-            siguienteSeparador.setAttribute('contenteditable', 'false');
-            siguienteSeparador.setAttribute('data-page-break', 'auto');
-            siguienteSeparador.innerHTML = `
-              <div class="salto-de-pagina-badge">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-                <span>Salto de Página Automático</span>
-              </div>
-            `;
-
-            siguientePagina = document.createElement('div');
-            siguientePagina.className = 'hoja-notarial-pagina editor-notarial-papel';
-
-            if (pag.nextSibling) {
-              editorEl.insertBefore(siguienteSeparador, pag.nextSibling);
-              editorEl.insertBefore(siguientePagina, siguienteSeparador.nextSibling);
-            } else {
-              editorEl.appendChild(siguienteSeparador);
-              editorEl.appendChild(siguientePagina);
-            }
-          }
-
-          const primerHijoSiguiente = siguientePagina.firstChild;
-          elementosSobrantes.forEach(el => {
-            if (primerHijoSiguiente) {
-              siguientePagina!.insertBefore(el, primerHijoSiguiente);
-            } else {
-              siguientePagina!.appendChild(el);
-            }
-          });
-
-          huboCambios = true;
-          paginas = Array.from(editorEl.querySelectorAll<HTMLElement>('.hoja-notarial-pagina'));
-        }
-      }
-    }
-
-    actualizarNumeracionPaginas(editorEl);
-    return huboCambios;
   };
 
   const debouncedVerificarPaginacion = () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       if (editorContentRef.current) {
-        const cambio = verificarPaginacion(editorContentRef.current);
-        if (cambio) {
-          setEditorText(editorContentRef.current.innerHTML);
-        }
+        actualizarNumeracionPaginas(editorContentRef.current);
       }
-    }, 450);
+    }, 300);
   };
 
+  // Inserción limpia de Salto de Página manual tipo Word / Docs
   const handleInsertarSaltoPagina = () => {
     const editor = editorContentRef.current;
     if (!editor) return;
@@ -622,172 +556,85 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     const range = selection.getRangeAt(0);
 
-    let currentTarget: Node | null = range.startContainer;
-    while (currentTarget && currentTarget !== editor) {
-      if ((currentTarget as HTMLElement).classList?.contains('hoja-notarial-pagina')) {
-        break;
-      }
-      currentTarget = currentTarget.parentNode;
-    }
-
-    let currentPage = (currentTarget && currentTarget !== editor) 
-      ? (currentTarget as HTMLElement) 
-      : editor.querySelector<HTMLElement>('.hoja-notarial-pagina:last-of-type') || editor;
-
-    if (!currentPage.classList.contains('hoja-notarial-pagina')) {
-      verificarPaginacion(editor);
-      currentPage = editor.querySelector<HTMLElement>('.hoja-notarial-pagina:last-of-type') || editor;
-    }
-
-    const newPage = document.createElement('div');
-    newPage.className = 'hoja-notarial-pagina editor-notarial-papel';
-
     const separator = document.createElement('div');
-    separator.className = 'salto-de-pagina salto-manual';
+    separator.className = 'salto-de-pagina';
     separator.setAttribute('contenteditable', 'false');
     separator.setAttribute('data-page-break', 'manual');
     separator.innerHTML = `
       <div class="salto-de-pagina-badge">
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-        <span>Salto de Página</span>
+        <span>--- Salto de Página ---</span>
       </div>
     `;
 
-    let nodeToMove: Node | null = range.endContainer;
-    while (nodeToMove && nodeToMove.parentNode !== currentPage && nodeToMove !== currentPage) {
-      nodeToMove = nodeToMove.parentNode;
-    }
+    const nextP = document.createElement('p');
+    nextP.innerHTML = '<br>';
 
-    if (nodeToMove && nodeToMove.parentNode === currentPage) {
-      let nextSibling = nodeToMove.nextSibling;
-      
-      if (range.endOffset > 0 && range.endOffset < (nodeToMove.textContent || '').length) {
-        try {
-          const subRange = range.cloneRange();
-          subRange.setEndAfter(currentPage.lastChild || nodeToMove);
-          const extracted = subRange.extractContents();
-          newPage.appendChild(extracted);
-        } catch (e) {
-          console.warn('Subrange extract error:', e);
-        }
-      }
+    range.deleteContents();
+    range.insertNode(nextP);
+    range.insertNode(separator);
 
-      while (nextSibling) {
-        const toAppend = nextSibling;
-        nextSibling = nextSibling.nextSibling;
-        newPage.appendChild(toAppend);
-      }
-    }
-
-    if (!newPage.hasChildNodes() || !newPage.textContent?.trim()) {
-      const p = document.createElement('p');
-      p.innerHTML = '<br>';
-      newPage.appendChild(p);
-    }
-
-    if (currentPage.nextSibling) {
-      editor.insertBefore(separator, currentPage.nextSibling);
-      editor.insertBefore(newPage, separator.nextSibling);
-    } else {
-      editor.appendChild(separator);
-      editor.appendChild(newPage);
-    }
+    const newRange = document.createRange();
+    newRange.setStart(nextP, 0);
+    newRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
 
     actualizarNumeracionPaginas(editor);
-
-    setTimeout(() => {
-      const targetElement = newPage.querySelector('p') || newPage.firstChild;
-      if (targetElement) {
-        const newRange = document.createRange();
-        newRange.setStart(targetElement, 0);
-        newRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-      }
-      newPage.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 40);
-
     setEditorText(editor.innerHTML);
+    nextP.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Backspace') {
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
-      const range = selection.getRangeAt(0);
-
-      if (range.collapsed && range.startOffset === 0) {
-        let node: Node | null = range.startContainer;
-        while (node && !((node as HTMLElement).classList?.contains('hoja-notarial-pagina'))) {
-          if (node === editorContentRef.current) break;
-          node = node.parentNode;
-        }
-
-        if (node && (node as HTMLElement).classList?.contains('hoja-notarial-pagina')) {
-          const curPage = node as HTMLElement;
-          const pageNum = parseInt(curPage.getAttribute('data-pagina') || '1', 10);
-
-          if (pageNum > 1) {
-            const prevSep = curPage.previousElementSibling as HTMLElement | null;
-            const prevPage = prevSep?.previousElementSibling as HTMLElement | null;
-
-            const isAtPageStart = (range.startContainer === curPage || range.startContainer === curPage.firstElementChild || range.startContainer.parentNode === curPage.firstElementChild);
-
-            if (isAtPageStart && prevPage && prevPage.classList.contains('hoja-notarial-pagina')) {
-              e.preventDefault();
-              while (curPage.firstChild) {
-                prevPage.appendChild(curPage.firstChild);
-              }
-              if (prevSep) prevSep.remove();
-              curPage.remove();
-
-              if (editorContentRef.current) {
-                actualizarNumeracionPaginas(editorContentRef.current);
-                setEditorText(editorContentRef.current.innerHTML);
-              }
-            }
-          }
-        }
-      }
-    }
-  };
-
-  // Callback ref para garantizar la inyección inmediata del HTML al montar el nodo contentEditable
+  // Callback ref para el contentEditable con desempaquetado de seguridad
   const setEditorRef = (el: HTMLDivElement | null) => {
     (editorContentRef as any).current = el;
     if (el && editorText) {
-      if (el.innerHTML !== editorText) {
-        el.innerHTML = editorText;
+      const limpio = desempaquetarContenidoFluido(editorText);
+      if (el.innerHTML !== limpio) {
+        el.innerHTML = limpio;
       }
+      actualizarNumeracionPaginas(el);
     }
   };
 
-  // Sincronización garantizada del contenido en el editor visual al abrir o alternar documento
+  // Sincronización garantizada del contenido en el editor visual al abrir documento
   useEffect(() => {
     if (mostrarEditor && editorContentRef.current) {
-      if (editorText && editorContentRef.current.innerHTML !== editorText) {
-        editorContentRef.current.innerHTML = editorText;
+      if (editorText) {
+        const limpio = desempaquetarContenidoFluido(editorText);
+        if (editorContentRef.current.innerHTML !== limpio) {
+          editorContentRef.current.innerHTML = limpio;
+        }
+        actualizarNumeracionPaginas(editorContentRef.current);
       }
     }
   }, [mostrarEditor, editorText]);
 
-  // Estado de la Lista de Escritos Guardados
-  const [escritos, setEscritos] = useState<Escrito[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Todos');
-  const [searchFilter, setSearchFilter] = useState('');
-  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const [movingDoc, setMovingDoc] = useState<Escrito | null>(null);
-  const [targetCategory, setTargetCategory] = useState<string>('');
-  const [docToDelete, setDocToDelete] = useState<Escrito | null>(null);
-
-  // Fase 8: Trazabilidad UX - Código de Soporte Técnico
-  const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
-  const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
-  const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
-  const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
+  // Sincronización del contentEditable con el estado de React editorText
+  useEffect(() => {
+    if (editorContentRef.current && editorText !== undefined) {
+      const currentHtml = editorContentRef.current.innerHTML;
+      const currentText = editorContentRef.current.innerText;
+      const limpio = desempaquetarContenidoFluido(editorText);
+      if (currentHtml !== limpio && currentText !== editorText) {
+        if (
+          editorText.includes('<p>') || 
+          editorText.includes('<div>') || 
+          editorText.includes('<br>') || 
+          editorText.includes('<b>') || 
+          editorText.includes('<i>') || 
+          editorText.includes('<u>') ||
+          editorText.includes('<span') ||
+          editorText.includes('id="espacio-activo"')
+        ) {
+          editorContentRef.current.innerHTML = limpio;
+          actualizarNumeracionPaginas(editorContentRef.current);
+        } else {
+          editorContentRef.current.innerText = editorText;
+        }
+      }
+    }
+  }, [editorText]);
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -2440,49 +2287,38 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     const title = documentTitle.trim() || 'Escrito Notarial';
 
-    // 1. Limpieza y Normalización de Párrafos con Salto de Página
+    // 1. Limpieza y Normalización de Párrafos con Flujo Notarial Continuo
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
 
-    const paginas = Array.from(tempDiv.querySelectorAll('.hoja-notarial-pagina'));
-    let cleanParagraphs: string[] = [];
+    const cleanParagraphs: string[] = [];
+    const directElements = Array.from(tempDiv.querySelectorAll('p, div, li, h1, h2, h3, h4, .salto-de-pagina'));
 
-    if (paginas.length > 0) {
-      paginas.forEach((pag, pIndex) => {
-        if (pIndex > 0) {
+    if (directElements.length > 0) {
+      directElements.forEach(el => {
+        if (el.classList.contains('salto-de-pagina')) {
           cleanParagraphs.push('<div class="salto-de-pagina-print" style="break-after: page; page-break-after: always; height: 0; line-height: 0; margin: 0; padding: 0;"></div>');
+          return;
         }
-        const blockElements = Array.from(pag.querySelectorAll('p, li, h1, h2, h3, h4'));
-        if (blockElements.length > 0) {
-          blockElements.forEach(el => {
-            const inner = el.innerHTML.trim();
-            const plainText = el.textContent?.trim() || '';
-            if (plainText.length > 0 || /<img|<table|<hr/i.test(inner)) {
-              cleanParagraphs.push(el.tagName.toLowerCase() === 'p' ? el.outerHTML : `<p>${inner}</p>`);
-            }
-          });
-        } else {
-          const inner = pag.innerHTML.trim();
-          if (inner) cleanParagraphs.push(`<p>${inner}</p>`);
+        const isContainerWithBlocks = (el.tagName.toLowerCase() === 'div' || el.tagName.toLowerCase() === 'section') && el.querySelector('p, div, li');
+        if (isContainerWithBlocks) return;
+
+        const inner = el.innerHTML.trim();
+        const plainText = el.textContent?.trim() || '';
+        if (plainText.length > 0) {
+          cleanParagraphs.push(el.tagName.toLowerCase() === 'p' ? el.outerHTML : `<p>${inner}</p>`);
         }
       });
-    } else {
-      const blockElements = Array.from(tempDiv.querySelectorAll('p, div, li, h1, h2, h3, h4'));
-      if (blockElements.length > 0) {
-        blockElements.forEach(el => {
-          if (el.classList.contains('salto-de-pagina')) {
-            cleanParagraphs.push('<div class="salto-de-pagina-print" style="break-after: page; page-break-after: always; height: 0; line-height: 0; margin: 0; padding: 0;"></div>');
-            return;
-          }
-          const isContainerWithBlocks = (el.tagName.toLowerCase() === 'div' || el.tagName.toLowerCase() === 'section') && el.querySelector('p, div, li');
-          if (isContainerWithBlocks) return;
-          const inner = el.innerHTML.trim();
-          const plainText = el.textContent?.trim() || '';
-          if (plainText.length > 0) {
-            cleanParagraphs.push(el.tagName.toLowerCase() === 'p' ? el.outerHTML : `<p>${inner}</p>`);
-          }
-        });
-      }
+    }
+
+    if (cleanParagraphs.length === 0) {
+      const rawLines = content.split(/(?:<br\s*\/?>\s*)+|\n+/i).map(t => t.trim()).filter(t => t.length > 0);
+      rawLines.forEach(l => {
+        const plain = l.replace(/<[^>]*>/g, '').trim();
+        if (plain.length > 0) {
+          cleanParagraphs.push(`<p>${l}</p>`);
+        }
+      });
     }
 
     if (cleanParagraphs.length === 0) {
@@ -3564,29 +3400,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
             <div className={`flex flex-col ${showSplitScreen ? '2xl:flex-row' : ''} gap-6 items-start`}>
               
-              {/* LADO IZQUIERDO: Visualizador de Páginas Notariales (tipo Word/Docs) */}
+              {/* LADO IZQUIERDO: Hoja Notarial de Protocolo con Flujo Fluido Continuo */}
               <div className={`w-full bg-slate-200/60 dark:bg-[#111217] py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 dark:border-white/10 overflow-x-auto flex flex-col items-center shadow-inner ${showSplitScreen ? '2xl:w-1/2' : ''}`}>
                 <style>{`
-                  #editor-notarial-activo {
-                    width: 100% !important;
-                    max-width: 850px !important;
-                    background-color: transparent !important;
-                    box-shadow: none !important;
-                    padding: 0 !important;
-                    margin: 0 auto !important;
-                    outline: none !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                    align-items: center !important;
-                  }
-
-                  .hoja-notarial-pagina,
+                  #editor-notarial-activo,
                   .editor-notarial-papel {
                     width: 100% !important;
                     max-width: 850px !important;
                     min-height: 1056px !important;
                     background-color: #ffffff !important;
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
                     border-radius: 4px !important;
                     color: #000000 !important;
                     padding-top: 180px !important;
@@ -3598,68 +3421,53 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     line-height: 10.4mm !important;
                     text-align: justify !important;
                     text-justify: inter-word !important;
+                    white-space: pre-wrap !important;
+                    word-break: break-word !important;
                     box-sizing: border-box !important;
                     position: relative !important;
                     outline: none !important;
                   }
 
-                  /* Indicador sutil de número de página en la esquina superior */
-                  .hoja-notarial-pagina::before {
-                    content: attr(data-page-label);
-                    position: absolute;
-                    top: 24px;
-                    right: 36px;
-                    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: #94a3b8;
-                    letter-spacing: 0.1em;
-                    text-transform: uppercase;
-                    pointer-events: none;
-                    user-select: none;
-                  }
-
-                  /* Separador visual de salto de página tipo Word / Docs */
+                  /* Salto de Página Visual tipo Word / Docs */
                   .salto-de-pagina {
-                    width: 100% !important;
-                    max-width: 850px !important;
-                    height: 48px !important;
-                    margin: 28px 0 !important;
-                    display: flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
+                    display: block !important;
+                    width: calc(100% + 200px) !important;
+                    margin-left: -140px !important;
+                    margin-right: -60px !important;
+                    margin-top: 48px !important;
+                    margin-bottom: 48px !important;
+                    height: 44px !important;
+                    background-color: #cbd5e1 !important;
                     position: relative !important;
                     user-select: none !important;
                     cursor: default !important;
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) inset, 0 -10px 15px -3px rgba(0, 0, 0, 0.1) inset !important;
+                    break-after: page !important;
+                    page-break-after: always !important;
                   }
 
-                  .salto-de-pagina::before {
-                    content: "";
-                    position: absolute;
-                    left: 0;
-                    right: 0;
-                    top: 50%;
-                    height: 1px;
-                    border-top: 2px dashed #94a3b8;
-                    opacity: 0.6;
+                  .dark .salto-de-pagina {
+                    background-color: #111217 !important;
                   }
 
                   .salto-de-pagina-badge {
-                    position: relative;
-                    z-index: 2;
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
                     display: inline-flex;
                     align-items: center;
                     gap: 6px;
-                    padding: 6px 14px;
+                    padding: 5px 14px;
                     border-radius: 9999px;
                     font-size: 11px;
                     font-weight: 800;
                     text-transform: uppercase;
                     letter-spacing: 0.05em;
-                    background-color: #f1f5f9;
+                    background-color: #ffffff;
                     color: #475569;
                     border: 1px solid #cbd5e1;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
                   }
 
                   .dark .salto-de-pagina-badge {
@@ -3718,13 +3526,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                   /* Reglas estrictas para impresión */
                   @media print {
-                    #editor-notarial-activo {
-                      background: transparent !important;
-                      padding: 0 !important;
-                      margin: 0 !important;
-                      width: 100% !important;
-                    }
-                    .hoja-notarial-pagina,
+                    #editor-notarial-activo,
                     .editor-notarial-papel {
                       box-shadow: none !important;
                       border-radius: 0 !important;
@@ -3732,26 +3534,24 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       height: auto !important;
                       padding: 0 !important;
                       margin: 0 !important;
-                      break-after: page !important;
-                      page-break-after: always !important;
+                      background: transparent !important;
+                      color: #000000 !important;
+                      white-space: pre-wrap !important;
                     }
-                    .hoja-notarial-pagina:last-of-type {
-                      break-after: avoid !important;
-                      page-break-after: avoid !important;
-                    }
-                    .hoja-notarial-pagina::before,
-                    .indicador-pagina {
-                      display: none !important;
-                      content: none !important;
-                    }
+
                     .salto-de-pagina {
-                      display: none !important;
+                      display: block !important;
                       height: 0 !important;
                       margin: 0 !important;
                       padding: 0 !important;
                       border: none !important;
+                      background: transparent !important;
                       break-after: page !important;
                       page-break-after: always !important;
+                    }
+
+                    .salto-de-pagina * {
+                      display: none !important;
                     }
                   }
                 `}</style>
@@ -3767,9 +3567,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   onKeyUp={checkFormatStates}
                   onMouseUp={checkFormatStates}
                   onFocus={checkFormatStates}
-                  onKeyDown={handleEditorKeyDown}
-                  className={`w-full max-w-[850px] mx-auto outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
-                    previewMode ? 'select-text cursor-default' : 'cursor-text'
+                  className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                    previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
                   }`}
                 />
               </div>
