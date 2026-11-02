@@ -300,6 +300,55 @@ export const NotarialTextarea: React.FC<NotarialTextareaProps> = ({
   );
 };
 
+
+export function mostrarToastNotarial(mensaje: string, tipo: 'success' | 'error' = 'success') {
+  if (typeof document === 'undefined') return;
+
+  const toastId = 'olga-notarial-bg-toast';
+  const existingToast = document.getElementById(toastId);
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  const toastContainer = document.createElement('div');
+  toastContainer.id = toastId;
+  toastContainer.className = `fixed bottom-6 right-6 z-[99999] max-w-md px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold backdrop-blur-md transition-all duration-300 transform translate-y-0 opacity-100 ${
+    tipo === 'success'
+      ? 'bg-slate-900/95 text-white border border-emerald-500/40 shadow-emerald-500/10'
+      : 'bg-red-950/95 text-red-100 border border-red-500/50 shadow-red-500/20'
+  }`;
+
+  const iconSvg = tipo === 'success'
+    ? '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>'
+    : '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>';
+
+  toastContainer.innerHTML = `
+    ${iconSvg}
+    <div class="flex flex-col">
+      <span class="tracking-wide">${mensaje}</span>
+      <span class="text-[10px] font-normal ${tipo === 'success' ? 'text-slate-400' : 'text-red-300/80'}">Matriz de Certificación Notarial</span>
+    </div>
+    <button type="button" class="ml-3 text-slate-400 hover:text-white transition-colors cursor-pointer" onclick="this.parentElement.remove()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+  `;
+
+  document.body.appendChild(toastContainer);
+
+  const duracion = tipo === 'success' ? 3500 : 7000;
+  setTimeout(() => {
+    if (toastContainer.parentNode) {
+      toastContainer.style.opacity = '0';
+      toastContainer.style.transform = 'translateY(10px)';
+      setTimeout(() => {
+        if (toastContainer.parentNode) {
+          toastContainer.parentNode.removeChild(toastContainer);
+        }
+      }, 300);
+    }
+  }, duracion);
+}
+
 export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   pagare,
   personas,
@@ -629,37 +678,53 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         onUpdatePagare(updatedPagare);
       }
 
-      // 3. Guardar en Firestore con setDoc y merge: true (con timeout de protección)
-      const effectiveWorkspaceId = workspaceId || pagare.userId || auth?.currentUser?.uid;
-      if (effectiveWorkspaceId) {
-        const docRef = doc(db, 'pagares', pagare.id);
-        const clean = JSON.parse(JSON.stringify(updatedPagare));
-        const firestorePromise = setDoc(docRef, { ...clean, userId: effectiveWorkspaceId }, { merge: true });
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con el servidor')), 15000)
-        );
-        await Promise.race([firestorePromise, timeoutPromise]);
-      }
-
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-
+      // Cierre Inmediato de la interfaz (0ms de latencia percibida)
       if (andClose) {
         onClose();
       }
+
+      // 3. Guardar en Firestore en segundo plano (Escritura asíncrona segura / Fire-and-forget)
+      (async () => {
+        try {
+          const effectiveWorkspaceId = workspaceId || pagare.userId || auth?.currentUser?.uid;
+          if (effectiveWorkspaceId) {
+            const docRef = doc(db, 'pagares', pagare.id);
+            const clean = JSON.parse(JSON.stringify(updatedPagare));
+            const firestorePromise = setDoc(docRef, { ...clean, userId: effectiveWorkspaceId }, { merge: true });
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar con el servidor')), 15000)
+            );
+            await Promise.race([firestorePromise, timeoutPromise]);
+          }
+
+          mostrarToastNotarial('Guardado en segundo plano exitoso', 'success');
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (bgErr: any) {
+          console.error('Error al guardar documento notarial en segundo plano:', bgErr);
+          const errMsg = bgErr?.message || 'Error de sincronización con el servidor.';
+          mostrarToastNotarial(`Error de sincronización: ${errMsg}`, 'error');
+          setSaveError(errMsg);
+          setTimeout(() => setSaveError(null), 6000);
+        } finally {
+          setIsSaving(false);
+        }
+      })();
     } catch (err: any) {
-      console.error('Error al guardar documento notarial:', err);
-      const errMsg = err?.message || 'Ocurrió un error al guardar el documento. Por favor, reintente.';
+      console.error('Error en proceso local de guardado:', err);
+      const errMsg = err?.message || 'Error al procesar el guardado local.';
       setSaveError(errMsg);
-      setTimeout(() => setSaveError(null), 6000);
-    } finally {
+      mostrarToastNotarial(`Error al guardar: ${errMsg}`, 'error');
       setIsSaving(false);
+      if (andClose) {
+        onClose();
+      }
     }
   };
 
-  const handleCerrarVista = async () => {
-    // Guardar cambios pendientes y cerrar vista
-    await handleGuardarPagare(true);
+  const handleCerrarVista = () => {
+    // Guardar cambios en segundo plano y cerrar inmediatamente
+    handleGuardarPagare(true);
   };
 
   const handleCopiarCodigoSoporte = async () => {
@@ -765,7 +830,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        // Cierre instantáneo y guardado en segundo plano sin bloquear
+        handleGuardarPagare(true);
       }
     };
     if (pagare) {
@@ -774,7 +840,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [pagare, onClose]);
+  }, [pagare]);
 
   if (!pagare) return null;
 
