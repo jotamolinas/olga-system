@@ -583,6 +583,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return numPagina;
   };
 
+  const actualizarNumeracionPaginas = recalcularPaginacionVisual;
+
   const debouncedVerificarPaginacion = () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
@@ -659,7 +661,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         if (editorContentRef.current.innerHTML !== limpio) {
           editorContentRef.current.innerHTML = limpio;
         }
-        actualizarNumeracionPaginas(editorContentRef.current);
+        recalcularPaginacionVisual(editorContentRef.current);
       }
     }
   }, [mostrarEditor, editorText]);
@@ -805,7 +807,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           editorText.includes('id="espacio-activo"')
         ) {
           editorContentRef.current.innerHTML = limpio;
-          actualizarNumeracionPaginas(editorContentRef.current);
+          recalcularPaginacionVisual(editorContentRef.current);
         } else {
           editorContentRef.current.innerText = editorText;
         }
