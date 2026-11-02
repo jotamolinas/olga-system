@@ -664,31 +664,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   }, [mostrarEditor, editorText]);
 
-  // Sincronización del contentEditable con el estado de React editorText
-  useEffect(() => {
-    if (editorContentRef.current && editorText !== undefined) {
-      const currentHtml = editorContentRef.current.innerHTML;
-      const currentText = editorContentRef.current.innerText;
-      const limpio = desempaquetarContenidoFluido(editorText);
-      if (currentHtml !== limpio && currentText !== editorText) {
-        if (
-          editorText.includes('<p>') || 
-          editorText.includes('<div>') || 
-          editorText.includes('<br>') || 
-          editorText.includes('<b>') || 
-          editorText.includes('<i>') || 
-          editorText.includes('<u>') ||
-          editorText.includes('<span') ||
-          editorText.includes('id="espacio-activo"')
-        ) {
-          editorContentRef.current.innerHTML = limpio;
-          actualizarNumeracionPaginas(editorContentRef.current);
-        } else {
-          editorContentRef.current.innerText = editorText;
-        }
-      }
-    }
-  }, [editorText]);
+  // Estado de la Lista de Escritos Guardados
+  const [escritos, setEscritos] = useState<Escrito[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeCategory, setActiveCategory] = useState('Todos');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [movingDoc, setMovingDoc] = useState<Escrito | null>(null);
+  const [targetCategory, setTargetCategory] = useState<string>('');
+  const [docToDelete, setDocToDelete] = useState<Escrito | null>(null);
+
+  // Fase 8: Trazabilidad UX - Código de Soporte Técnico
+  const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
+  const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
+  const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
+  const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -797,10 +789,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Sincronización del contentEditable con el estado de React editorText
   useEffect(() => {
-    if (editorContentRef.current) {
+    if (editorContentRef.current && editorText !== undefined) {
       const currentHtml = editorContentRef.current.innerHTML;
       const currentText = editorContentRef.current.innerText;
-      if (currentHtml !== editorText && currentText !== editorText) {
+      const limpio = desempaquetarContenidoFluido(editorText);
+      if (currentHtml !== limpio && currentText !== editorText) {
         if (
           editorText.includes('<p>') || 
           editorText.includes('<div>') || 
@@ -811,7 +804,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           editorText.includes('<span') ||
           editorText.includes('id="espacio-activo"')
         ) {
-          editorContentRef.current.innerHTML = editorText;
+          editorContentRef.current.innerHTML = limpio;
+          actualizarNumeracionPaginas(editorContentRef.current);
         } else {
           editorContentRef.current.innerText = editorText;
         }
