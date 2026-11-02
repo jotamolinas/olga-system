@@ -18,6 +18,17 @@ export const TerminosPage: React.FC = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    document.title = 'Términos y Condiciones de Uso | O.L.G.A. Legal-Tech';
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      canonical.setAttribute('href', 'https://olgatech.com.py/terminos');
+    }
+    return () => {
+      document.title = 'O.L.G.A. | Software para Escribanías, Pagarés y Gestión Notarial en Paraguay';
+      if (canonical) {
+        canonical.setAttribute('href', 'https://olgatech.com.py/');
+      }
+    };
   }, []);
 
   return (

@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Allow: /privacidad
+Allow: /terminos
+Disallow: /admin
+Disallow: /consola/admin
+Disallow: /api/
+
+Sitemap: https://olgatech.com.py/sitemap.xml

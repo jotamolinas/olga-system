@@ -19,6 +19,17 @@ export const PrivacidadPage: React.FC = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    document.title = 'Política de Privacidad y Protección de Datos | O.L.G.A. Legal-Tech';
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      canonical.setAttribute('href', 'https://olgatech.com.py/privacidad');
+    }
+    return () => {
+      document.title = 'O.L.G.A. | Software para Escribanías, Pagarés y Gestión Notarial en Paraguay';
+      if (canonical) {
+        canonical.setAttribute('href', 'https://olgatech.com.py/');
+      }
+    };
   }, []);
 
   return (
