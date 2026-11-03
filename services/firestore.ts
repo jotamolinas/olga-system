@@ -15,7 +15,8 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
   await setDoc(docRef, { 
     ...cleanPersona, 
     id: persona.id,
-    userId: effectiveUserId, 
+    userId: effectiveUserId,
+    ownedByWorkspace: effectiveUserId,
     creator_id: cleanPersona.creator_id || user.uid,
     createdBy: cleanPersona.createdBy || user.uid,
     creator_name: cleanPersona.creator_name || user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
@@ -31,18 +32,14 @@ export const updatePersonaInFirestore = async (userId: string, persona: Persona)
 
 export const fetchPersonasFromFirestore = async (userId?: string): Promise<Persona[]> => {
   if (!auth?.currentUser?.uid) return [];
-  const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
   const effectiveUserId = userId || auth.currentUser.uid;
-  const q = isAdmin 
-    ? query(collection(db, 'personas'))
-    : query(collection(db, 'personas'), where('userId', '==', effectiveUserId));
+  const q = query(collection(db, 'personas'), where('userId', '==', effectiveUserId));
   const snapshot = await getDocs(q);
   const personas: Persona[] = [];
-  snapshot.forEach(doc => {
-    const data = doc.data() as any;
-    personas.push({ ...data, id: doc.id, userId: data.userId || effectiveUserId } as Persona);
+  snapshot.forEach(docSnap => {
+    const data = docSnap.data() as any;
+    personas.push({ ...data, id: docSnap.id, userId: data.userId || effectiveUserId } as Persona);
   });
-  console.log("Personas recuperadas: ", personas);
   return personas;
 };
 

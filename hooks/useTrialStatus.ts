@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../services/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
 export const useTrialStatus = (user?: User | null) => {
@@ -49,9 +49,18 @@ export const useTrialStatus = (user?: User | null) => {
           const fetchedUserData = userSnap.data();
           setUserData(fetchedUserData);
 
+<<<<<<< HEAD
           const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || '').toLowerCase().trim();
           const isOperador = fetchedUserData.rol === 'operador' || fetchedUserData.role === 'operador';
           const esAdmin = currentUser.email === 'jotamolinas@gmail.com' || isOperador || fetchedUserData.rol === 'admin' || fetchedUserData.role === 'admin' || fetchedUserData.rol === 'superadmin' || fetchedUserData.role === 'superadmin';
+=======
+          const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || 'trial').toLowerCase();
+          const roleStr = String(fetchedUserData.rol || fetchedUserData.role || '').toLowerCase();
+          const isOperador = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin';
+          const isWhitelisted = currentUser.email === 'jotamolinas@gmail.com' || isOperador;
+          const isApproved = String(fetchedUserData.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(fetchedUserData.estadoPago || '').toUpperCase() === 'APROBADO';
+          const isPaidPlan = planStr.includes('basico') || planStr.includes('básico') || planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || isApproved;
+>>>>>>> 50dc3a5c945db8fa19c9464414b358460fafd5d9
 
           // Verificación de Plan de Pago Real
           const esPlanPago = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || planStr.includes('mensual');
@@ -122,9 +131,7 @@ export const useTrialStatus = (user?: User | null) => {
 
             if (trialExpirado) {
               if (fetchedUserData.estado_cuenta !== 'expirada') {
-                import('firebase/firestore').then(({ updateDoc }) => {
-                  updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
-                });
+                updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
               }
               setPruebaActiva(false);
               setDiasRestantes(0);

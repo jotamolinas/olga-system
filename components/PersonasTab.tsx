@@ -175,21 +175,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   };
 
-  // 1. Estado de Personas con persistencia en localStorage y deduplicación notarial automática
+  // 1. Estado de Personas aislado estrictamente por usuario/workspace (sin fugas de localStorage global)
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
-    try {
-      const guardado = localStorage.getItem(STORAGE_KEY);
-      if (guardado) {
-        const parsed = JSON.parse(guardado);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const { listaLimpia } = depurarDuplicadosLista(parsed);
-          return listaLimpia;
-        }
-      }
-    } catch (err) {
-      console.warn('Error leyendo directorio desde localStorage:', err);
-    }
-
     if (personas && Array.isArray(personas)) {
       const { listaLimpia } = depurarDuplicadosLista(personas);
       return listaLimpia;
@@ -197,91 +184,22 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     return [];
   });
 
-  // Pagarés del sistema para el Expediente 360° (de props o localStorage)
+  // Pagarés del sistema para el Expediente 360° (estrictamente los del usuario actual)
   const pagaresEfectivos = useMemo<Pagare[]>(() => {
-    if (pagares && Array.isArray(pagares) && pagares.length > 0) {
+    if (pagares && Array.isArray(pagares)) {
       return pagares;
     }
-    try {
-      const stored = localStorage.getItem(PAGARES_STORAGE_KEY) || localStorage.getItem('ihara_pagares');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-
-    // Pagarés muestra vinculados a las personas iniciales
-    return [
-      {
-        id: 'pag-demo-1',
-        correlativo: 1045,
-        certificado_firmas_nro: '900123847',
-        tipo_negociacion: 'cuotas_corridas',
-        moneda: 'PYG',
-        valor_total: 12000000,
-        frecuencia_id: 'mensual',
-        fecha_primer_pago: '2026-05-15',
-        entrega_inicial: 0,
-        fecha_entrega_inicial: '',
-        concepto_entrega_inicial: '',
-        acreedor_id: 'p-2',
-        acreedor_nombre_raw: 'María Elena González Benítez',
-        acreedor_documento_raw: '2.345.678',
-        acreedor_domicilio_raw: 'Palma 850 c/ Montevideo, Asunción',
-        acreedor_origen: 'MANUAL',
-        deudor_id: 'p-1',
-        deudor_nombre_raw: 'Juan Carlos Pérez Gómez',
-        deudor_documento_raw: '1.234.567',
-        deudor_domicilio_raw: 'Avda. Mariscal López 1250, Asunción',
-        deudor_origen: 'MANUAL',
-        estado: 'Pendiente',
-        created_at: '2026-04-10T10:00:00.000Z',
-        creator_role: 'admin',
-        cronograma: [
-          { id: 'c1', pagare_id: 'pag-demo-1', tipo: 'cuota', fecha_pag: '2026-05-15', monto: 4000000, numero_cuota: '1', pagado: true, estado: 'cobrado' },
-          { id: 'c2', pagare_id: 'pag-demo-1', tipo: 'cuota', fecha_pag: '2026-06-15', monto: 4000000, numero_cuota: '2', pagado: true, estado: 'cobrado' },
-          { id: 'c3', pagare_id: 'pag-demo-1', tipo: 'cuota', fecha_pag: '2026-07-15', monto: 4000000, numero_cuota: '3', pagado: false, estado: 'pendiente' }
-        ]
-      },
-      {
-        id: 'pag-demo-2',
-        correlativo: 1046,
-        certificado_firmas_nro: '900123848',
-        tipo_negociacion: 'cuotas_corridas',
-        moneda: 'PYG',
-        valor_total: 45000000,
-        frecuencia_id: 'mensual',
-        fecha_primer_pago: '2026-08-10',
-        entrega_inicial: 5000000,
-        fecha_entrega_inicial: '2026-07-10',
-        concepto_entrega_inicial: 'Seña de trato y conformación de firmas notariales',
-        acreedor_id: 'p-2',
-        acreedor_nombre_raw: 'María Elena González Benítez',
-        acreedor_documento_raw: '2.345.678',
-        acreedor_domicilio_raw: 'Palma 850 c/ Montevideo, Asunción',
-        acreedor_origen: 'MANUAL',
-        deudor_id: 'p-3',
-        deudor_nombre_raw: 'Agroganadera del Este S.A.',
-        deudor_documento_raw: '80012345-6',
-        deudor_domicilio_raw: 'Ruta 2 Km 14, San Lorenzo',
-        deudor_origen: 'DNIT',
-        estado: 'Pendiente',
-        created_at: '2026-07-05T14:30:00.000Z',
-        creator_role: 'admin',
-        cronograma: [
-          { id: 'c4', pagare_id: 'pag-demo-2', tipo: 'cuota', fecha_pag: '2026-08-10', monto: 15000000, numero_cuota: '1', pagado: true, estado: 'cobrado' },
-          { id: 'c5', pagare_id: 'pag-demo-2', tipo: 'cuota', fecha_pag: '2026-09-10', monto: 15000000, numero_cuota: '2', pagado: false, estado: 'pendiente' },
-          { id: 'c6', pagare_id: 'pag-demo-2', tipo: 'cuota', fecha_pag: '2026-10-10', monto: 15000000, numero_cuota: '3', pagado: false, estado: 'pendiente' }
-        ]
-      }
-    ];
+    return [];
   }, [pagares]);
 
-  // Helper para persistir lista en localStorage
+  // Helper para persistir lista en localStorage aislada por workspaceId
   const guardarListaPersistente = (nuevaLista: Persona[]) => {
     setListaPersonas(nuevaLista);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevaLista));
+      const targetUid = workspaceId || currentUser?.uid || auth?.currentUser?.uid;
+      if (targetUid) {
+        localStorage.setItem(`${STORAGE_KEY}_${targetUid}`, JSON.stringify(nuevaLista));
+      }
     } catch (err) {
       console.error('Error persistiendo personas en localStorage:', err);
     }
