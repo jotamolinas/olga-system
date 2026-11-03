@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../services/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
 export const useTrialStatus = (user?: User | null) => {
@@ -44,9 +44,11 @@ export const useTrialStatus = (user?: User | null) => {
           setUserData(fetchedUserData);
 
           const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || 'trial').toLowerCase();
-          const isOperador = fetchedUserData.rol === 'operador' || fetchedUserData.role === 'operador';
+          const roleStr = String(fetchedUserData.rol || fetchedUserData.role || '').toLowerCase();
+          const isOperador = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin';
           const isWhitelisted = currentUser.email === 'jotamolinas@gmail.com' || isOperador;
-          const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || fetchedUserData.estadoPlataforma === 'Aprobado';
+          const isApproved = String(fetchedUserData.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(fetchedUserData.estadoPago || '').toUpperCase() === 'APROBADO';
+          const isPaidPlan = planStr.includes('basico') || planStr.includes('básico') || planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || isApproved;
 
           if (isWhitelisted || isPaidPlan) {
             setPruebaActiva(true);
@@ -91,9 +93,7 @@ export const useTrialStatus = (user?: User | null) => {
 
             if (expired) {
               if (fetchedUserData.estado_cuenta !== 'expirada') {
-                import('firebase/firestore').then(({ updateDoc }) => {
-                  updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
-                });
+                updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
               }
               setPruebaActiva(false);
               setDiasRestantes(0);

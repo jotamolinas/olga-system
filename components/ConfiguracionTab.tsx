@@ -32,6 +32,7 @@ import {
   MembreteEscribaniaConfig,
   cargarMembreteUsuario,
   guardarMembreteUsuario,
+  limpiarValorEjemplo,
   MEMBRETE_DEFAULT,
 } from '../types/presupuesto';
 
@@ -250,22 +251,24 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   // El logo se obtiene EXCLUSIVAMENTE de Firestore (userData.logo_institucional)
   const firestoreLogo = userData?.logo_institucional || userData?.logoUrl || initialData?.logo_institucional || initialData?.logoUrl || null;
 
-  // Helper para inicializar configuración desde localStorage (excluyendo el logo)
+  const userKey = currentUser?.uid || currentUser?.email || userData?.uid || 'default';
+  const userScopedStorageKey = `${STORAGE_KEY}_${userKey}`;
+
+  // Helper para inicializar configuración desde localStorage por usuario (excluyendo el logo y ejemplos demo)
   const loadStoredConfig = (): ConfiguracionInstitucionalData => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(userScopedStorageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Purgar inmediatamente cualquier residuo de logoUrl en localStorage
         if (parsed.logoUrl || parsed.logo_institucional) {
           delete parsed.logoUrl;
           delete parsed.logo_institucional;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          localStorage.setItem(userScopedStorageKey, JSON.stringify(parsed));
         }
         return {
-          nombreInstitucion: userData?.nombreInstitucion || userData?.razonSocial || parsed.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
-          ruc: userData?.ruc || parsed.ruc || '80012345-6',
-          registroNotarial: userData?.registroNotarial || parsed.registroNotarial || 'Registro Notarial N° 742 - Asunción',
+          nombreInstitucion: limpiarValorEjemplo(userData?.nombreInstitucion || userData?.razonSocial || parsed.nombreInstitucion),
+          ruc: limpiarValorEjemplo(userData?.ruc || parsed.ruc),
+          registroNotarial: limpiarValorEjemplo(userData?.registroNotarial || parsed.registroNotarial),
           logoUrl: firestoreLogo,
           notificacionesVencimiento: parsed.notificacionesVencimiento ?? true,
           multasMoraAutomatica: parsed.multasMoraAutomatica ?? true,
@@ -278,9 +281,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }
 
     return {
-      nombreInstitucion: userData?.nombreInstitucion || userData?.razonSocial || initialData?.nombreInstitucion || 'Escribanía Pública Molinas & Asociados',
-      ruc: userData?.ruc || initialData?.ruc || '80012345-6',
-      registroNotarial: userData?.registroNotarial || initialData?.registroNotarial || 'Registro Notarial N° 742 - Asunción',
+      nombreInstitucion: limpiarValorEjemplo(userData?.nombreInstitucion || userData?.razonSocial || initialData?.nombreInstitucion),
+      ruc: limpiarValorEjemplo(userData?.ruc || initialData?.ruc),
+      registroNotarial: limpiarValorEjemplo(userData?.registroNotarial || initialData?.registroNotarial),
       logoUrl: firestoreLogo,
       notificacionesVencimiento: initialData?.notificacionesVencimiento ?? true,
       multasMoraAutomatica: initialData?.multasMoraAutomatica ?? true,
@@ -290,42 +293,61 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   };
 
   const initialValues = loadStoredConfig();
-  const userKey = currentUser?.uid || currentUser?.email || userData?.uid || 'default';
   const membreteUsuario = cargarMembreteUsuario(userKey);
+  const tieneMembreteGuardado = Boolean(membreteUsuario.membreteConfigurado || userData?.membreteConfigurado);
 
-  // Estados Perfil Institucional y Membrete Notarial (Configuración Multi-usuario)
+  // Estados Perfil Institucional y Membrete Notarial (Campos limpios por defecto para cuentas nuevas)
   const [nombreNotario, setNombreNotario] = useState(
-    membreteUsuario.nombreNotario || userData?.nombreTitular || userData?.nombreCompleto || 'Esc. Sandra Molinas'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.nombreNotario || userData?.nombreTitular) : ''
   );
   const [nombreInstitucion, setNombreInstitucion] = useState(
-    membreteUsuario.nombreEscribania || initialValues.nombreInstitucion
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.nombreEscribania || initialValues.nombreInstitucion) : ''
   );
-  const [ruc, setRuc] = useState(membreteUsuario.ruc || initialValues.ruc);
+  const [ruc, setRuc] = useState(
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.ruc || initialValues.ruc) : ''
+  );
   const [registroNotarial, setRegistroNotarial] = useState(
-    membreteUsuario.registroNotarial || initialValues.registroNotarial
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.registroNotarial || initialValues.registroNotarial) : ''
   );
   const [direccion, setDireccion] = useState(
-    membreteUsuario.direccion || userData?.direccion || 'Avda. Carlos Antonio López 450, Asunción'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.direccion || userData?.direccion) : ''
   );
   const [ciudad, setCiudad] = useState(
-    membreteUsuario.ciudad || userData?.ciudad || (initialData as any)?.ciudad || ''
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.ciudad || userData?.ciudad || (initialData as any)?.ciudad) : ''
   );
   const [telefono, setTelefono] = useState(
-    membreteUsuario.telefono || userData?.telefono || '+595 21 445 000'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.telefono || userData?.telefono) : ''
   );
   const [email, setEmail] = useState(
-    membreteUsuario.email || currentUser?.email || 'contacto@escribaniamolinas.com.py'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.email || userData?.correo) : ''
   );
   const [timbradoNumero, setTimbradoNumero] = useState(
-    membreteUsuario.timbradoNumero || '16894321'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoNumero || userData?.timbradoNumero) : ''
   );
   const [timbradoVigenciaInicio, setTimbradoVigenciaInicio] = useState(
-    membreteUsuario.timbradoVigenciaInicio || '2026-01-01'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaInicio || userData?.timbradoVigenciaInicio) : ''
   );
   const [timbradoVigenciaFin, setTimbradoVigenciaFin] = useState(
-    membreteUsuario.timbradoVigenciaFin || '2026-12-31'
+    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : ''
   );
   const [logoPreview, setLogoPreview] = useState<string | null>(firestoreLogo);
+
+  // Sincronizar campos cuando cambia la cuenta activa (userKey)
+  useEffect(() => {
+    const m = cargarMembreteUsuario(userKey);
+    const configurado = Boolean(m.membreteConfigurado || userData?.membreteConfigurado);
+    setNombreNotario(configurado ? limpiarValorEjemplo(m.nombreNotario || userData?.nombreTitular) : '');
+    setNombreInstitucion(configurado ? limpiarValorEjemplo(m.nombreEscribania || userData?.nombreInstitucion) : '');
+    setRuc(configurado ? limpiarValorEjemplo(m.ruc || userData?.ruc) : '');
+    setRegistroNotarial(configurado ? limpiarValorEjemplo(m.registroNotarial || userData?.registroNotarial) : '');
+    setDireccion(configurado ? limpiarValorEjemplo(m.direccion || userData?.direccion) : '');
+    setCiudad(configurado ? limpiarValorEjemplo(m.ciudad || userData?.ciudad) : '');
+    setTelefono(configurado ? limpiarValorEjemplo(m.telefono || userData?.telefono) : '');
+    setEmail(configurado ? limpiarValorEjemplo(m.email || userData?.correo) : '');
+    setTimbradoNumero(configurado ? limpiarValorEjemplo(m.timbradoNumero || userData?.timbradoNumero) : '');
+    setTimbradoVigenciaInicio(configurado ? limpiarValorEjemplo(m.timbradoVigenciaInicio || userData?.timbradoVigenciaInicio) : '');
+    setTimbradoVigenciaFin(configurado ? limpiarValorEjemplo(m.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : '');
+  }, [userKey]);
 
   // Sincronización reactiva del logo directamente desde Firestore (userData)
   useEffect(() => {
@@ -573,6 +595,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     };
 
     try {
+      localStorage.setItem(userScopedStorageKey, JSON.stringify(dataToSave));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
       window.dispatchEvent(new CustomEvent('olga_config_updated', { detail: dataToSave }));
     } catch (err) {
@@ -613,6 +636,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       timbradoVigenciaInicio,
       timbradoVigenciaFin,
       logoUrl: logoPreview || null,
+      membreteConfigurado: true,
     };
     guardarMembreteUsuario(nuevoMembrete, userKey);
 
@@ -636,7 +660,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           timbradoNumero,
           timbradoVigenciaInicio,
           timbradoVigenciaFin,
-          logo_institucional: logoPreview || null
+          logo_institucional: logoPreview || null,
+          membreteConfigurado: true
         });
       } catch (err: any) {
         // En caso de no existir el documento, se inicializa sin alterar campos de plan o roles
@@ -655,7 +680,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             timbradoNumero,
             timbradoVigenciaInicio,
             timbradoVigenciaFin,
-            logo_institucional: logoPreview || null
+            logo_institucional: logoPreview || null,
+            membreteConfigurado: true
           }, { merge: true });
         } else {
           console.error('Error guardando membrete institucional en Firestore:', err);
@@ -961,7 +987,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={nombreNotario}
                     onChange={(e) => setNombreNotario(e.target.value)}
                     placeholder="Ej. Esc. Sandra Molinas"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -974,7 +1000,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={registroNotarial}
                     onChange={(e) => setRegistroNotarial(e.target.value)}
                     placeholder="Ej. Reg. Nº 1.292"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
                   />
                 </div>
 
@@ -987,7 +1013,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={nombreInstitucion}
                     onChange={(e) => setNombreInstitucion(e.target.value)}
                     placeholder="Ej. Escribanía Molinas & Asociados"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -1009,7 +1035,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={direccion}
                     onChange={(e) => setDireccion(e.target.value)}
                     placeholder="Ej. Avda. Carlos A. López 450"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -1022,7 +1048,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={ciudad}
                     onChange={(e) => setCiudad(e.target.value)}
                     placeholder="Ej. Asunción, Hernandarias, etc."
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -1035,7 +1061,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={telefono}
                     onChange={(e) => setTelefono(e.target.value)}
                     placeholder="Ej. +595 21 445 000 / 0981 123 456"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -1048,7 +1074,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Ej. notaria@olgatech.com.py"
-                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                    className="w-full bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -1070,7 +1096,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={ruc}
                     onChange={(e) => setRuc(e.target.value)}
                     placeholder="Ej. 80012345-6"
-                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
+                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
                   />
                 </div>
 
@@ -1083,7 +1109,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     value={timbradoNumero}
                     onChange={(e) => setTimbradoNumero(e.target.value)}
                     placeholder="Ej. 16894321"
-                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors font-mono"
+                    className="w-full bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
                   />
                 </div>
 

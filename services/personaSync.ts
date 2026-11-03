@@ -1,9 +1,20 @@
 import { Persona, Pagare, TipoPersona, TipoDocumento } from '../types';
+import { auth } from './auth';
 import { formatearRUCConDV } from './dnitService';
 import { buscarPersonaDuplicada, extraerDocBase, sonMismaPersona } from './personaDedup';
 
 export const PERSONAS_STORAGE_KEY = 'olga_directorio_personas';
 export const PAGARES_STORAGE_KEY = 'olga_pagares';
+
+export function getPersonasStorageKey(userId?: string | null): string {
+  const uid = userId || auth?.currentUser?.uid;
+  return uid ? `${PERSONAS_STORAGE_KEY}_${uid}` : '';
+}
+
+export function getPagaresStorageKey(userId?: string | null): string {
+  const uid = userId || auth?.currentUser?.uid;
+  return uid ? `${PAGARES_STORAGE_KEY}_${uid}` : '';
+}
 
 /**
  * Normaliza un documento quitando puntos, espacios y guiones para comparaciones precisas.
@@ -14,11 +25,13 @@ export function normalizarDoc(docStr?: string): string {
 }
 
 /**
- * Obtiene la lista actual de personas guardadas en localStorage.
+ * Obtiene la lista actual de personas guardadas en localStorage (aislado por usuario).
  */
-export function getPersonasFromStorage(): Persona[] {
+export function getPersonasFromStorage(userId?: string | null): Persona[] {
   try {
-    const raw = localStorage.getItem(PERSONAS_STORAGE_KEY);
+    const key = getPersonasStorageKey(userId);
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
@@ -30,12 +43,13 @@ export function getPersonasFromStorage(): Persona[] {
 }
 
 /**
- * Guarda la lista de personas en localStorage y emite evento global de sincronización.
+ * Guarda la lista de personas en localStorage (aislado por usuario) y emite evento global.
  */
-export function savePersonasToStorage(personas: Persona[]): void {
+export function savePersonasToStorage(personas: Persona[], userId?: string | null): void {
   try {
-    localStorage.setItem(PERSONAS_STORAGE_KEY, JSON.stringify(personas));
-    // Notificar a otras pestañas/componentes suscritos
+    const key = getPersonasStorageKey(userId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify(personas));
     window.dispatchEvent(new CustomEvent('olga_personas_updated', { detail: personas }));
   } catch (err) {
     console.error('Error guardando personas en localStorage:', err);
@@ -43,11 +57,13 @@ export function savePersonasToStorage(personas: Persona[]): void {
 }
 
 /**
- * Obtiene la lista actual de pagarés guardados en localStorage.
+ * Obtiene la lista actual de pagarés guardados en localStorage (aislado por usuario).
  */
-export function getPagaresFromStorage(): Pagare[] {
+export function getPagaresFromStorage(userId?: string | null): Pagare[] {
   try {
-    const raw = localStorage.getItem(PAGARES_STORAGE_KEY);
+    const key = getPagaresStorageKey(userId);
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
@@ -59,11 +75,13 @@ export function getPagaresFromStorage(): Pagare[] {
 }
 
 /**
- * Guarda la lista de pagarés en localStorage y emite evento global de sincronización.
+ * Guarda la lista de pagarés en localStorage (aislado por usuario) y emite evento global.
  */
-export function savePagaresToStorage(pagares: Pagare[]): void {
+export function savePagaresToStorage(pagares: Pagare[], userId?: string | null): void {
   try {
-    localStorage.setItem(PAGARES_STORAGE_KEY, JSON.stringify(pagares));
+    const key = getPagaresStorageKey(userId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify(pagares));
     window.dispatchEvent(new CustomEvent('olga_pagares_updated', { detail: pagares }));
   } catch (err) {
     console.error('Error guardando pagarés en localStorage:', err);

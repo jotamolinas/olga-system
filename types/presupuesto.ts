@@ -52,21 +52,49 @@ export interface MembreteEscribaniaConfig {
   timbradoVigenciaInicio: string;  // Inicio de Vigencia (YYYY-MM-DD)
   timbradoVigenciaFin: string;     // Fin de Vigencia (YYYY-MM-DD)
   logoUrl?: string | null;         // Logo o insignia notarial
+  membreteConfigurado?: boolean;   // Indica si el usuario guardó explícitamente su membrete
 }
 
 export const MEMBRETE_DEFAULT: MembreteEscribaniaConfig = {
-  nombreNotario: 'Esc. Sandra Molinas',
-  registroNotarial: 'Reg. Nº 1.292',
-  nombreEscribania: 'Escribanía Notarial Sandra Molinas & Asociados',
-  direccion: 'Avda. Carlos Antonio López 450 c/ Colón, Asunción',
+  nombreNotario: '',
+  registroNotarial: '',
+  nombreEscribania: '',
+  direccion: '',
   ciudad: '',
-  telefono: '+595 21 445 000 / +595 981 123 456',
-  email: 'contacto@escribaniamolinas.com.py',
-  ruc: '80012345-6',
-  timbradoNumero: '16894321',
-  timbradoVigenciaInicio: '2026-01-01',
-  timbradoVigenciaFin: '2026-12-31',
+  telefono: '',
+  email: '',
+  ruc: '',
+  timbradoNumero: '',
+  timbradoVigenciaInicio: '',
+  timbradoVigenciaFin: '',
   logoUrl: null,
+  membreteConfigurado: false,
+};
+
+const VALORES_EJEMPLO_LEGACY = new Set([
+  'Esc. Sandra Molinas',
+  'Reg. Nº 1.292',
+  'Registro Notarial N° 742 - Asunción',
+  'Escribanía Notarial Sandra Molinas & Asociados',
+  'Escribanía Pública Molinas & Asociados',
+  'Avda. Carlos Antonio López 450 c/ Colón, Asunción',
+  'Avda. Carlos Antonio López 450, Asunción',
+  '+595 21 445 000 / +595 981 123 456',
+  '+595 21 445 000',
+  'contacto@escribaniamolinas.com.py',
+  '80012345-6',
+  '80012345',
+  '80098765-4',
+  '80098765',
+  '16894321',
+  '2026-01-01',
+  '2026-12-31',
+]);
+
+export const limpiarValorEjemplo = (val?: string | null): string => {
+  if (!val) return '';
+  const trimmed = String(val).trim();
+  return VALORES_EJEMPLO_LEGACY.has(trimmed) ? '' : trimmed;
 };
 
 export const getMembreteStorageKey = (userId?: string | null): string => {
@@ -82,24 +110,24 @@ export const cargarMembreteUsuario = (userId?: string | null): MembreteEscribani
     const data = localStorage.getItem(key);
     if (data) {
       const parsed = JSON.parse(data);
-      return { ...MEMBRETE_DEFAULT, ...parsed };
-    }
-
-    // Fallback retrocompatible al perfil institucional anterior si existía
-    const fallbackInstitucional = localStorage.getItem('olga_configuracion_institucional');
-    if (fallbackInstitucional) {
-      const parsed = JSON.parse(fallbackInstitucional);
+      if (!parsed.membreteConfigurado) {
+        return MEMBRETE_DEFAULT;
+      }
       return {
         ...MEMBRETE_DEFAULT,
-        nombreNotario: parsed.nombreTitular || parsed.nombreInstitucion || MEMBRETE_DEFAULT.nombreNotario,
-        registroNotarial: parsed.registroNotarial || MEMBRETE_DEFAULT.registroNotarial,
-        ruc: parsed.ruc || MEMBRETE_DEFAULT.ruc,
-        direccion: parsed.direccion || MEMBRETE_DEFAULT.direccion,
-        telefono: parsed.telefono || MEMBRETE_DEFAULT.telefono,
-        email: parsed.email || MEMBRETE_DEFAULT.email,
-        timbradoNumero: parsed.timbradoNumero || MEMBRETE_DEFAULT.timbradoNumero,
-        timbradoVigenciaInicio: parsed.timbradoVigenciaInicio || MEMBRETE_DEFAULT.timbradoVigenciaInicio,
-        timbradoVigenciaFin: parsed.timbradoVigenciaFin || MEMBRETE_DEFAULT.timbradoVigenciaFin,
+        ...parsed,
+        nombreNotario: limpiarValorEjemplo(parsed.nombreNotario),
+        registroNotarial: limpiarValorEjemplo(parsed.registroNotarial),
+        nombreEscribania: limpiarValorEjemplo(parsed.nombreEscribania),
+        direccion: limpiarValorEjemplo(parsed.direccion),
+        ciudad: limpiarValorEjemplo(parsed.ciudad),
+        telefono: limpiarValorEjemplo(parsed.telefono),
+        email: limpiarValorEjemplo(parsed.email),
+        ruc: limpiarValorEjemplo(parsed.ruc),
+        timbradoNumero: limpiarValorEjemplo(parsed.timbradoNumero),
+        timbradoVigenciaInicio: limpiarValorEjemplo(parsed.timbradoVigenciaInicio),
+        timbradoVigenciaFin: limpiarValorEjemplo(parsed.timbradoVigenciaFin),
+        membreteConfigurado: true,
       };
     }
   } catch (err) {

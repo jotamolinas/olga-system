@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { auth } from './auth';
 
 /**
  * Estructura de respuesta unificada y estandarizada para consultas DNIT / Fichero Notarial.
@@ -165,8 +166,9 @@ export async function consultarRUC(rucConODv: string): Promise<DnitResponse | nu
   const dvIngresado = rucParts.length > 1 ? rucParts[1].trim() : '';
   const isRuc = numBase.length >= 7 || numBase.startsWith('800') || rucParts.length > 1;
 
-  // 1. PRIORIDAD ABSOLUTA: Búsqueda en el Fichero Notarial Local (localStorage)
-  const keys = ['olga_directorio_personas', 'OLGA_PERSONAS_LIST', 'fichero_personas', 'personas'];
+  // 1. PRIORIDAD ABSOLUTA: Búsqueda en el Fichero Notarial Local del Usuario Autenticado (aislado por UID)
+  const currentUid = auth?.currentUser?.uid;
+  const keys = currentUid ? [`olga_directorio_personas_${currentUid}`] : [];
   const docComparar = numBase.toLowerCase();
 
   for (const k of keys) {

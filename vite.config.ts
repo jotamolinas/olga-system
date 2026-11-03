@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         allowedHosts: true,
+        hmr: false,
         // INICIO DE LA MAGIA DEL PROXY
         proxy: {
           '/api/dnit': {

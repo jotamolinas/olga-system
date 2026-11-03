@@ -476,39 +476,24 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showAdminLoginModal]);
 
-  // Core collections
-  const [personas, setPersonas] = useState<Persona[]>(() => {
-    try {
-      const stored = localStorage.getItem('olga_directorio_personas') || localStorage.getItem('ihara_personas');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const { listaLimpia } = depurarDuplicadosLista(parsed);
-          return listaLimpia;
-        }
-      }
-    } catch (e) {
-      console.warn('Error parsing personas from localStorage:', e);
-    }
-    return [];
-  });
+  // Core collections (Inicializadas vacías y aisladas estrictamente por Workspace autenticado)
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [config, setConfig] = useState<GlobalConfig>(() => {
     const saved = localStorage.getItem('ihara_config');
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
   });
-  const [pagares, setPagares] = useState<Pagare[]>(() => {
-    try {
-      const stored = localStorage.getItem('olga_pagares') || localStorage.getItem('ihara_pagares');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Error parsing pagares from localStorage:', e);
-    }
-    return [];
-  });
+  const [pagares, setPagares] = useState<Pagare[]>([]);
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
+
+  // Purgar claves globales antiguas de localStorage para evitar fugas entre cuentas en el mismo navegador
+  useEffect(() => {
+    try {
+      localStorage.removeItem('olga_directorio_personas');
+      localStorage.removeItem('ihara_personas');
+      localStorage.removeItem('olga_pagares');
+      localStorage.removeItem('ihara_pagares');
+    } catch {}
+  }, []);
 
   // Sincronización Institucional de ConfiguracionTab (Real-time de textos institucionales)
   const [customBranding, setCustomBranding] = useState<{
@@ -863,81 +848,89 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     };
   }, []);
 
-  // FASE 2: Sincronización de Pagarés por Workspace
+  // FASE 2: Sincronización de Pagarés por Workspace (Aislamiento Estricto Multi-Usuario)
   useEffect(() => {
-    // Bloqueo de seguridad: No ejecutar si el ID no está listo
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      setPagares([]);
+      return;
+    }
 
     const q = query(
       collection(db, 'pagares'),
-      where('userId', '==', workspaceId) // Filtro maestro por Tenant
+      where('userId', '==', workspaceId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
-        const item = doc.data() as any;
-        return { ...item, id: doc.id } as Pagare;
+      const data = snapshot.docs.map(docSnap => {
+        const item = docSnap.data() as any;
+        return { ...item, id: docSnap.id } as Pagare;
       });
       setPagares(data);
       try {
-        localStorage.setItem('olga_pagares', JSON.stringify(data));
+        localStorage.setItem(`olga_pagares_${workspaceId}`, JSON.stringify(data));
       } catch {}
     }, (error) => {
       console.error("Fallo en sincronización de pagarés:", error);
     });
 
-    return () => unsubscribe(); // Limpieza estricta de memoria
-  }, [workspaceId]); // Dependencia única
+    return () => unsubscribe();
+  }, [workspaceId]);
 
-  // FASE 2: Sincronización de Personas por Workspace
+  // FASE 2: Sincronización de Personas por Workspace (Confidencialidad Estricta Multi-Usuario)
   useEffect(() => {
-    // Bloqueo de seguridad: No ejecutar si el ID no está listo
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      setPersonas([]);
+      return;
+    }
 
     const q = query(
       collection(db, 'personas'),
-      where('userId', '==', workspaceId) // Filtro maestro por Tenant
+      where('userId', '==', workspaceId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
-        const item = doc.data() as any;
-        return { ...item, id: doc.id } as Persona;
-      });
-      // Sincronización segura y no destructiva: fusionar por ID y depurar duplicados
-      setPersonas(prev => {
-        if (!data || data.length === 0) {
-          if (prev && prev.length > 0) {
-            prev.forEach(p => syncPersonaToFirestore(workspaceId, p).catch(console.error));
-          }
-          return prev;
+      const isSuperAdminAccount = auth.currentUser?.email === 'jotamolinas@gmail.com';
+      const validData: Persona[] = [];
+
+      snapshot.docs.forEach(docSnap => {
+        const item = docSnap.data() as any;
+        const pId = docSnap.id;
+
+        const creatorUid = item.creator_id || item.createdBy;
+        const isCreatedByAdmin = creatorUid && ADMIN_UIDS.includes(creatorUid);
+        const hasVerifiedWorkspaceOwnership = item.ownedByWorkspace === workspaceId;
+
+        // Si NO es la cuenta de Superadmin, filtrar cualquier registro fantasma heredado de localStorage global
+        // y restituirlo a la cuenta de Superadmin en Firestore para mantener confidencialidad absoluta
+        if (!isSuperAdminAccount && (isCreatedByAdmin || !hasVerifiedWorkspaceOwnership)) {
+          const originalAdminUid = (creatorUid && creatorUid !== workspaceId) ? creatorUid : 'sjqCJTQ1lNMRIMk31VRwz9Rwhud2';
+          updateDoc(doc(db, 'personas', pId), {
+            userId: originalAdminUid
+          }).catch(() => {});
+          return;
         }
 
-        const map = new Map<string, Persona>();
-        (prev || []).forEach(p => {
-          if (p && p.id) map.set(p.id, p);
-        });
-        data.forEach(p => {
-          if (p && p.id) map.set(p.id, p);
-        });
-
-        const mergedRaw = Array.from(map.values());
-        const { listaLimpia } = depurarDuplicadosLista(mergedRaw);
-        try {
-          localStorage.setItem('olga_directorio_personas', JSON.stringify(listaLimpia));
-        } catch {}
-        return listaLimpia;
+        validData.push({ ...item, id: pId } as Persona);
       });
+
+      const { listaLimpia } = depurarDuplicadosLista(validData);
+      setPersonas(listaLimpia);
+      try {
+        localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
+      } catch {}
     }, (error) => {
       console.error("Fallo en sincronización de personas:", error);
     });
 
-    return () => unsubscribe(); // Limpieza estricta de memoria
-  }, [workspaceId]); // Dependencia única
+    return () => unsubscribe();
+  }, [workspaceId]);
 
   // FASE 2: Sincronización de Base de Conocimiento por Workspace
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      setKnowledgeDocs([]);
+      return;
+    }
 
     const q = query(
       collection(db, 'knowledge_docs'),
@@ -945,7 +938,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as KnowledgeDoc));
+      const data = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as KnowledgeDoc));
       setKnowledgeDocs(data);
     }, (error) => {
       console.error("Fallo en sincronización de knowledge_docs:", error);
@@ -957,47 +950,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   useEffect(() => {
     localStorage.setItem('ihara_config', JSON.stringify(config));
   }, [config]);
-
-  // One-time migration for old local storage data
-  useEffect(() => {
-    if (currentUser) {
-      try {
-        const localPagaresStr = localStorage.getItem('ihara_pagares');
-        const localPersonasStr = localStorage.getItem('ihara_personas');
-        let migrated = false;
-
-        if (localPagaresStr) {
-          const localPagares = JSON.parse(localPagaresStr);
-          if (Array.isArray(localPagares) && localPagares.length > 0) {
-            localPagares.forEach(p => {
-              syncPagareToFirestore(currentUser.uid, p).catch(console.error);
-            });
-            localStorage.removeItem('ihara_pagares');
-            migrated = true;
-          }
-        }
-
-        if (localPersonasStr) {
-          const localPersonas = JSON.parse(localPersonasStr);
-          if (Array.isArray(localPersonas) && localPersonas.length > 0) {
-            localPersonas.forEach(p => {
-              syncPersonaToFirestore(currentUser.uid, p).catch(console.error);
-            });
-            localStorage.removeItem('ihara_personas');
-            migrated = true;
-          }
-        }
-
-        if (migrated) {
-          console.log("Migrated data from local storage to Firestore!");
-          fetchPagaresFromFirestore(currentUser.uid).then(setPagares).catch(console.error);
-          fetchPersonasFromFirestore(currentUser.uid).then(setPersonas).catch(console.error);
-        }
-      } catch (e) {
-        console.error("Migration error", e);
-      }
-    }
-  }, [currentUser]);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -1146,15 +1098,16 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       responsable: (newPersona.responsable && newPersona.responsable !== 'MONKEY BUSINESS IA') ? newPersona.responsable : null,
       representanteLegal: newPersona.representanteLegal || (newPersona.tipo_persona === 'física' ? 'No aplica' : (newPersona.representante_id ? 'Asignado' : 'Sin Asignar')),
       userId: workspaceId,            // El propietario legal de los datos (Titular)
+      ownedByWorkspace: workspaceId,  // Sello de propiedad verificada del Workspace
       creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
       createdBy: currentUser?.uid,
       creator_name: undefined,
       creator_role: undefined
-    };
+    } as Persona;
     const updated = [...personas, per];
     setPersonas(updated);
     try {
-      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+      localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(updated));
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
@@ -1173,15 +1126,16 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     }
     const per: Persona = {
       ...updatedPersona,
-      userId: workspaceId
-    };
+      userId: workspaceId,
+      ownedByWorkspace: workspaceId
+    } as Persona;
     setPersonas(prev => {
       const exists = prev.some(p => p.id === per.id);
       const updated = exists 
         ? prev.map(p => p.id === per.id ? per : p)
         : [...prev, per];
       try {
-        localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+        localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(updated));
       } catch (e) {
         console.warn('Error saving personas to localStorage:', e);
       }
@@ -1194,7 +1148,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     const updated = personas.filter(p => p.id !== id);
     setPersonas(updated);
     try {
-      localStorage.setItem('olga_directorio_personas', JSON.stringify(updated));
+      if (workspaceId) {
+        localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(updated));
+      }
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
@@ -1510,6 +1466,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           await logout();
           setCurrentUser(null);
           setUserProfile(null);
+          setPersonas([]);
+          setPagares([]);
+          setKnowledgeDocs([]);
           setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
         }}
         isStandalone={isStandalone}
