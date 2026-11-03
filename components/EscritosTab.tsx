@@ -37,6 +37,7 @@ interface EscritosTabProps {
   personas?: any[];
   onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string) => void;
   esPlanFull?: boolean;
+  isSoftBlocked?: boolean;
 }
 
 // =========================================================================
@@ -430,13 +431,30 @@ const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 
-export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull }) => {
+export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
   const { workspaceId } = useWorkspace(currentUser, userProfile);
   // Estado de prueba gratuita / billing
-  const { pruebaActiva, diasRestantes, isTrialExpired } = useTrialStatus(currentUser);
+  const { pruebaActiva, diasRestantes, isTrialExpired, userData: liveUserData } = useTrialStatus(currentUser);
+  const activeUserData = liveUserData || userProfile;
 
-  const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
+  const planUsuario = String(activeUserData?.planActual || activeUserData?.plan || userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
+  const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador' || userProfile?.rol === 'operador' || userProfile?.role === 'operador';
+  const esAdmin = currentUser?.email === 'jotamolinas@gmail.com' || (currentUser as any)?.role === 'SUPERADMIN' || activeUserData?.role === 'SUPERADMIN' || isOperador;
+  const isAprobado = String(activeUserData?.estadoPago || userProfile?.estadoPago || '').toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma || userProfile?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
+  const tienePlanActivo = planUsuario.includes('pro') || planUsuario.includes('empresa') || planUsuario.includes('full') || planUsuario.includes('básico') || planUsuario.includes('basico') || isAprobado || esAdmin;
+
+  let suscripcionVencida = false;
+  const fechaVencimientoPlan = activeUserData?.fecha_vencimiento_plan || userProfile?.fecha_vencimiento_plan;
+  if (tienePlanActivo && fechaVencimientoPlan && !esAdmin) {
+    const vDate = new Date(fechaVencimientoPlan);
+    const diasParaVencimiento = Math.ceil((vDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    if (diasParaVencimiento < 0) suscripcionVencida = true;
+  }
+
+  // Bloqueado únicamente cuando la sesión trial ha expirado (o plan vencido) y no tiene un plan activo vigente
+  const isMenuPlantillasBloqueado = isSoftBlocked || (!tienePlanActivo && (isTrialExpired || !pruebaActiva || diasRestantes <= 0)) || suscripcionVencida;
+
   const esFull = esPlanFull !== undefined ? esPlanFull : (currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full'));
 
   // Modo de navegación: Redacción activa vs Archivo de Documentos
@@ -2085,7 +2103,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Manejo del selector de plantillas:
   // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega inmediatamente el Editor Notarial Activo.
   const handleSelectPlantilla = (plantillaId: string) => {
-    if (!plantillaId) return;
+    if (!plantillaId || isMenuPlantillasBloqueado) return;
     setMostrarEditor(true);
     setEditandoDocumentoExistente(false);
     setSelectedPlantillaId(plantillaId);
@@ -3045,8 +3063,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 Plantilla Notarial / Tipo de Escrito *
               </label>
               <select
-                value={selectedPlantillaId}
+                value={isMenuPlantillasBloqueado ? '' : selectedPlantillaId}
+                disabled={isMenuPlantillasBloqueado}
                 onChange={(e) => {
+                  if (isMenuPlantillasBloqueado) return;
                   const val = e.target.value;
                   setSelectedPlantillaId(val);
                   if (val && val.trim() !== '') {
@@ -3054,20 +3074,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     handleSelectPlantilla(val);
                   }
                 }}
-                className="w-full box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-2xl px-3.5 py-3 text-xs font-bold text-slate-900 outline-none transition-colors shadow-inner cursor-pointer"
+                className={`w-full box-border border rounded-2xl px-3.5 py-3 text-xs font-bold outline-none transition-colors shadow-inner ${
+                  isMenuPlantillasBloqueado
+                    ? 'bg-red-50/80 border-red-200 text-red-700 cursor-not-allowed'
+                    : 'bg-slate-50 border-slate-200 focus:border-[#FF3131] text-slate-900 cursor-pointer'
+                }`}
               >
-                <option value="" disabled>Seleccione un modelo para abrir el editor...</option>
-                <option value="hoja_en_blanco">📄 Hoja en Blanco (Redacción Libre)</option>
-                {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
-                  <option key={plantilla.id} value={plantilla.id}>
-                    📜 {plantilla.nombre}
-                  </option>
-                ))}
+                <option value="" disabled>
+                  {isMenuPlantillasBloqueado
+                    ? '🔒 Sesión de prueba expirada — Adquiera un plan para habilitar'
+                    : 'Seleccione un modelo para abrir el editor...'}
+                </option>
+                {!isMenuPlantillasBloqueado && (
+                  <>
+                    <option value="hoja_en_blanco">📄 Hoja en Blanco (Redacción Libre)</option>
+                    {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
+                      <option key={plantilla.id} value={plantilla.id}>
+                        📜 {plantilla.nombre}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
 
-            <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-              Al seleccionar una plantilla u Hoja en Blanco, se abrirá el editor con autocompletado inteligente de datos.
+            <p className={`text-[11px] font-medium leading-relaxed ${isMenuPlantillasBloqueado ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
+              {isMenuPlantillasBloqueado
+                ? '⚠️ Sesión de prueba expirada. Adquiera un plan para habilitar el menú de plantillas notariales.'
+                : 'Al seleccionar una plantilla u Hoja en Blanco, se abrirá el editor con autocompletado inteligente de datos.'}
             </p>
           </div>
 
