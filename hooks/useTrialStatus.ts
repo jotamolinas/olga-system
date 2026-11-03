@@ -90,6 +90,11 @@ export const useTrialStatus = (user?: User | null) => {
             const expired = fetchedUserData.estado_cuenta === 'expirada' || now.getTime() > expirationDate.getTime() || diasRestantesCalculados <= 0;
 
             if (expired) {
+              if (fetchedUserData.estado_cuenta !== 'expirada') {
+                import('firebase/firestore').then(({ updateDoc }) => {
+                  updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
+                });
+              }
               setPruebaActiva(false);
               setDiasRestantes(0);
               setIsTrialExpired(true);

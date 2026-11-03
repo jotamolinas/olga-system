@@ -17,7 +17,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [trialExpiredToast, setTrialExpiredToast] = useState<string | null>(null);
   
   // Estado para autenticación por Correo
   const [email, setEmail] = useState('');
@@ -54,17 +53,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     }
   };
 
-  // Validación Estricta de Período de Prueba (5 días) para cuentas Trial
-  const validateTrialExpiration = async (userData: any, userId: string): Promise<boolean> => {
+  // Sincronización en segundo plano de expiración trial (sin bloquear acceso ni cerrar sesión)
+  const syncTrialExpirationInBackground = async (userData: any, userId: string) => {
     const userEmail = (userData?.email || auth.currentUser?.email || '').toLowerCase().trim();
     const userRole = String(userData?.role || userData?.rol || '').toLowerCase().trim();
     if (userEmail === 'jotamolinas@gmail.com' || userRole === 'admin' || userRole === 'superadmin' || userRole === 'operador') {
-      return false;
+      return;
     }
 
     const plan = String(userData?.planActual || userData?.plan || '').toLowerCase().trim();
     if (plan !== 'trial') {
-      return false;
+      return;
     }
 
     const now = new Date();
@@ -84,8 +83,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       }
     }
 
-    // 2. Fallback de Seguridad:
-    // Si un usuario antiguo en trial no tiene el campo fecha_expiracion, calcúlalo dinámicamente basándote en su fecha_creacion + 5 días para evaluarlo en el momento.
+    // 2. Fallback de Seguridad: fecha_creacion + 5 días
     if (!expDate || isNaN(expDate.getTime())) {
       const rawCreation = userData?.fecha_creacion || userData?.fechaCreacion || userData?.created_at || userData?.createdAt;
       if (rawCreation) {
@@ -105,36 +103,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       }
     }
 
-    const yaExpiradoPorFecha = expDate ? now.getTime() > expDate.getTime() : false;
-    const yaExpiradoPorEstado = userData?.estado_cuenta === 'expirada';
-
-    if (yaExpiradoPorFecha || yaExpiradoPorEstado) {
-      console.warn(`[Trial Auth] Usuario ${userId} con período trial de 5 días expirado.`);
-
-      // Actualizar automáticamente su campo estado_cuenta a "expirada" en Firestore
+    if (expDate && now.getTime() > expDate.getTime() && userData?.estado_cuenta !== 'expirada') {
       try {
         const { doc, setDoc } = await import('firebase/firestore');
         await setDoc(doc(db, 'users', userId), { estado_cuenta: 'expirada' }, { merge: true });
       } catch (err) {
-        console.error('Error al actualizar estado_cuenta a expirada en Firestore:', err);
+        console.warn('Error al actualizar estado_cuenta a expirada en segundo plano:', err);
       }
-
-      // Cerrar la sesión (signOut)
-      try {
-        await logout();
-      } catch {
-        await auth.signOut().catch(console.error);
-      }
-
-      // Mostrar alerta o Toast rojo
-      const mensajeExpirado = 'Tu período de prueba de 5 días ha finalizado. Por favor, contacta a soporte para activar tu suscripción.';
-      setTrialExpiredToast(mensajeExpirado);
-      setError(mensajeExpirado);
-
-      return true; // Expirado: DETÉN la redirección
     }
-
-    return false;
   };
 
   // Submit autenticación por Correo
@@ -148,7 +124,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       setLoading(true);
       setError('');
       
-      setTrialExpiredToast(null);
       let authUser: any = null;
       if (isLogin) {
         if (typeof sessionStorage !== 'undefined') {
@@ -169,10 +144,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         const userRef = doc(db, 'users', authUser.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
-          if (isExpired) {
-            return; // DETÉN la redirección
-          }
+          syncTrialExpirationInBackground(userSnap.data(), authUser.uid).catch(console.error);
         }
       }
 
@@ -311,7 +283,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         sessionStorage.setItem('olga_auth_flow', isLogin ? 'login' : 'register');
       }
 
-      setTrialExpiredToast(null);
       const res = await confirmationResult.confirm(cleanCode);
       const authUser = res?.user || auth.currentUser;
       if (authUser) {
@@ -319,10 +290,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         const userRef = doc(db, 'users', authUser.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
-          if (isExpired) {
-            return; // DETÉN la redirección
-          }
+          syncTrialExpirationInBackground(userSnap.data(), authUser.uid).catch(console.error);
         }
       }
       onLogin();
@@ -415,11 +383,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           return;
         }
 
-        // Validación Estricta de Período de Prueba antes de redirección a /consola
-        const isExpired = await validateTrialExpiration(userData, user.uid);
-        if (isExpired) {
-          return; // DETÉN la redirección
-        }
+        // Sincronizar en segundo plano si la cuenta expiró
+        syncTrialExpirationInBackground(userData, user.uid).catch(console.error);
 
         onLogin();
         // Redirección estricta para usuarios normales
@@ -450,29 +415,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   return (
     <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 font-sans">
       <div className="bg-[#121214] max-w-md w-full box-border rounded-[2rem] p-8 md:p-10 shadow-2xl flex flex-col items-center text-center border border-white/10 relative max-h-[95vh] overflow-y-auto overflow-x-hidden">
-        {/* Toast / Alerta Roja Flotante de Período de Prueba Expirado */}
-        {trialExpiredToast && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[92%] animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="bg-red-950/95 border-2 border-[#FF3131] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-[#FF3131] flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-red-100 leading-snug">{trialExpiredToast}</p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setTrialExpiredToast(null)}
-                className="text-red-300 hover:text-white p-1 rounded-lg transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Glow decorativo sutil */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
 

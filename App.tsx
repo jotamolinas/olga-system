@@ -742,24 +742,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             }
 
             const yaExpiradoPorFecha = expDate ? Date.now() > expDate.getTime() : false;
-            const yaExpiradoPorEstado = data.estado_cuenta === 'expirada';
-
-            if (yaExpiradoPorFecha || yaExpiradoPorEstado) {
-              console.warn(`[Trial Auth] Usuario ${user.uid} con período trial de 5 días expirado.`);
-              if (data.estado_cuenta !== 'expirada') {
-                updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
-              }
-              if (unsubscribeSnapshot) {
-                unsubscribeSnapshot();
-                unsubscribeSnapshot = null;
-              }
-              setSessionKickedAlert('Tu período de prueba de 5 días ha finalizado. Por favor, contacta a soporte para activar tu suscripción.');
-              signOut(auth).catch(console.error);
-              logout().catch(console.error);
-              setCurrentUser(null);
-              setUserProfile(null);
-              setIsCheckingProfile(false);
-              return;
+            if (yaExpiradoPorFecha && data.estado_cuenta !== 'expirada') {
+              updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
             }
           }
 
@@ -1701,6 +1685,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               return (
                 <>
                   {/* BANNERS PREVENTIVOS Y GUARDIÁN BLANDO */}
+                  {/* Banner Rojo Nativo de 'Solo Lectura' (cuando el trial expiró o diasRestantes <= 0) */}
                   {isSoftBlocked && activeTab !== 'planes' && (
                     <div className="bg-red-50 border-b border-red-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
                       <div className="flex items-center gap-3">
@@ -1718,6 +1703,25 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                     </div>
                   )}
 
+                  {/* Banner Amarillo Temporal: Si diasRestantes > 0 (oculto si diasRestantes <= 0 o isSoftBlocked) */}
+                  {!tienePlanPago && !isSoftBlocked && diasRestantes > 0 && activeTab !== 'planes' && (
+                    <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-100 rounded-lg">
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Modo de prueba activo</p>
+                          <p className="text-xs text-amber-700">⚠️ Modo de prueba. Te quedan <strong>{diasRestantes} {diasRestantes === 1 ? 'día' : 'días'}</strong> de acceso completo para evaluar la plataforma.</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveTab('planes')} className="whitespace-nowrap px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-md">
+                        Ver Planes
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Banner Amarillo de Aviso para Planes Pagos por Vencer */}
                   {isWarning && !isSoftBlocked && activeTab !== 'planes' && (
                     <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
                       <div className="flex items-center gap-3">
