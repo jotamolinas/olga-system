@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { User } from 'firebase/auth';
 import { ShieldCheck, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -54,9 +54,6 @@ export const FichaProfesional: React.FC<FichaProfesionalProps> = ({ currentUser,
     
     try {
       const userRef = doc(db, 'users', user.uid);
-      
-      // 1. Importamos getDoc y serverTimestamp dinámicamente
-      const { getDoc, serverTimestamp } = await import('firebase/firestore');
       const userSnap = await getDoc(userRef);
 
       // 2. Preparamos toda la data del formulario

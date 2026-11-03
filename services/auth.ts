@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, User, signInAnonymously, RecaptchaVerifier, signInWithPhoneNumber, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const envMeta = (import.meta as any).env || {};
@@ -103,7 +103,6 @@ export const registerNewSession = async (uid: string): Promise<string> => {
     : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
   localStorage.setItem('appSessionId', localSessionId);
   try {
-    const { doc, setDoc } = await import('firebase/firestore');
     await setDoc(doc(db, 'users', uid), { activeSessionId: localSessionId }, { merge: true });
   } catch (err) {
     console.warn('Advertencia registrando activeSessionId en Firestore:', err);
@@ -161,7 +160,6 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
     const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     if (result.user) {
       const sessionId = await registerNewSession(result.user.uid);
-      const { doc, getDoc, setDoc, serverTimestamp, Timestamp } = await import('firebase/firestore');
       const userRef = doc(db, 'users', result.user.uid);
       const userSnap = await getDoc(userRef);
 

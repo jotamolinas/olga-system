@@ -711,10 +711,30 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           const data = docSnap.data();
           if (!data) return;
 
+          // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
+          const isGavanah = 
+            (user.email && user.email.toLowerCase().includes('gavanah')) ||
+            (data.email && data.email.toLowerCase().includes('gavanah')) ||
+            (data.nombre && data.nombre.toLowerCase().includes('gavanah'));
+
+          if (isGavanah && (data.role !== 'operador' || data.rol !== 'operador' || data.planActual !== 'Operador Notarial')) {
+            console.log("Restaurando rol y plan de operador para cuenta Gavanah...");
+            await updateDoc(doc(db, 'users', user.uid), {
+              role: 'operador',
+              rol: 'operador',
+              planActual: 'Operador Notarial'
+            }).catch(console.error);
+            data.role = 'operador';
+            data.rol = 'operador';
+            data.planActual = 'Operador Notarial';
+          }
+
           // Validación Estricta de Expiración para cuentas Trial (5 días)
           const planStr = String(data.planActual || data.plan || '').toLowerCase().trim();
-          const isOperadorData = data.role === 'operador' || data.rol === 'operador';
-          const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData;
+          const roleStr = String(data.role || data.rol || '').toLowerCase().trim();
+          const isOperadorData = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin' || isGavanah;
+          const isApprovedAccount = String(data.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(data.estadoPago || '').toUpperCase() === 'APROBADO';
+          const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData || isApprovedAccount;
 
           if (!isPrivilegedUser && planStr === 'trial') {
             let expDate: Date | null = null;
@@ -745,24 +765,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             if (yaExpiradoPorFecha && data.estado_cuenta !== 'expirada') {
               updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
             }
-          }
-
-          // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
-          const isGavanah = 
-            (user.email && user.email.toLowerCase().includes('gavanah')) ||
-            (data.email && data.email.toLowerCase().includes('gavanah')) ||
-            (data.nombre && data.nombre.toLowerCase().includes('gavanah'));
-
-          if (isGavanah && (data.role !== 'operador' || data.rol !== 'operador' || data.planActual !== 'Operador Notarial')) {
-            console.log("Restaurando rol y plan de operador para cuenta Gavanah...");
-            await updateDoc(doc(db, 'users', user.uid), {
-              role: 'operador',
-              rol: 'operador',
-              planActual: 'Operador Notarial'
-            }).catch(console.error);
-            data.role = 'operador';
-            data.rol = 'operador';
-            data.planActual = 'Operador Notarial';
           }
 
           const firestoreSessionId = data.activeSessionId;
