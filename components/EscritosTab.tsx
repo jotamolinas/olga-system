@@ -2628,6 +2628,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Generación asistida por IA
   const handleGenerarConIA = async () => {
+    if (isSoftBlocked) {
+      setAiError('Tu acceso ha expirado. El uso de la IA está bloqueado por vencimiento de suscripción o prueba. Por favor, adquiere o renueva un plan en la sección "Planes y Precios" para continuar.');
+      return;
+    }
+
     const planStr = String(userProfile?.planActual || userProfile?.plan || 'trial').toLowerCase();
     const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador';
     const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;

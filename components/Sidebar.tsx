@@ -22,7 +22,8 @@ import {
   Sliders,
   ShieldCheck,
   Download,
-  KeyRound
+  KeyRound,
+  Lock as LockIcon
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 
@@ -51,6 +52,7 @@ export interface SidebarProps {
   isStandalone?: boolean;
   installMessage?: string | null;
   handleInstallClick?: () => void;
+  isSoftBlocked?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -77,7 +79,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   isStandalone = true,
   installMessage,
-  handleInstallClick
+  handleInstallClick,
+  isSoftBlocked = false
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -355,15 +358,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const isActive = activeTab === item.id;
             const labelText = item.customRenderLabel ? item.customRenderLabel() : item.label;
 
+            // Bloqueo estricto si isSoftBlocked es true para Lienzo Notarial y Presupuesto
+            const isModuleLocked = isSoftBlocked && (item.id === 'lienzo' || item.id === 'facturacion');
+
             return (
               <button
                 key={item.id}
                 type="button"
+                disabled={isModuleLocked}
                 onClick={() => {
+                  if (isModuleLocked) return;
                   setActiveTab(item.id);
                   setIsMobileMenuOpen(false);
                 }}
-                className={`w-full transition-all duration-200 cursor-pointer relative group flex items-center ${
+                className={`w-full transition-all duration-200 relative group flex items-center ${
+                  isModuleLocked ? 'opacity-50 pointer-events-none grayscale cursor-not-allowed' : 'cursor-pointer'
+                } ${
                   isExpanded
                     ? 'px-3 py-2.5 rounded-xl gap-3 text-left'
                     : 'w-10 h-10 mx-auto rounded-xl justify-center'
@@ -374,7 +384,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       : 'bg-slate-800 text-white font-semibold border border-slate-700/80 shadow-sm'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/60 font-medium'
                 }`}
-                title={!isExpanded ? labelText : undefined}
+                title={!isExpanded ? (isModuleLocked ? `${labelText} (Plan Expirado)` : labelText) : undefined}
               >
                 {/* Indicador luminoso lateral */}
                 {isActive && (
@@ -415,17 +425,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                 )}
 
-                {/* Icono ChevronRight a la derecha */}
+                {/* Icono ChevronRight o Lock a la derecha */}
                 {isExpanded && (
-                  <ChevronRight
-                    className={`w-3.5 h-3.5 ml-auto shrink-0 transition-opacity ${
-                      isActive 
-                        ? esPlanFull 
-                          ? 'text-amber-400 opacity-80' 
-                          : 'text-slate-400 opacity-80'
-                        : 'text-slate-600 opacity-40 group-hover:opacity-75'
-                    }`}
-                  />
+                  isModuleLocked ? (
+                    <LockIcon className="w-3.5 h-3.5 ml-auto shrink-0 text-red-400" />
+                  ) : (
+                    <ChevronRight
+                      className={`w-3.5 h-3.5 ml-auto shrink-0 transition-opacity ${
+                        isActive 
+                          ? esPlanFull 
+                            ? 'text-amber-400 opacity-80' 
+                            : 'text-slate-400 opacity-80'
+                          : 'text-slate-600 opacity-40 group-hover:opacity-75'
+                      }`}
+                    />
+                  )
                 )}
 
                 {/* Tooltip flotante minimalista en modo encogido */}

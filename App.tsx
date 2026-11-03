@@ -1229,6 +1229,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Handler for conversational messaging with Olga
   const handleSendChatMessage = async (overrideText?: string) => {
+    if (isSoftBlocked) return;
     const textToSend = typeof overrideText === "string" ? overrideText : chatInput;
     if ((!textToSend.trim() && pendingFiles.length === 0) || chatLoading) return;
 
@@ -1243,11 +1244,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || isApprovedPayment || isWhitelisted;
 
       // 1. BLOQUEO ESTRICTO: Si el usuario no tiene plan de pago y el trial expiró (días restantes <= 0 o expiración de 5 días), bloquear la consulta a la IA sin gastar tokens
-      if (!isPaidPlan && (isTrialExpired || diasRestantes <= 0 || !pruebaActiva)) {
+      if (isSoftBlocked) {
         setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
         setChatMessages(prev => [...prev, { 
           role: 'model', 
-          text: 'Tu período de prueba gratuita de 5 días ha finalizado. Para continuar consultando al Oráculo Jurídico de IA y acceder a todas las funciones sin restricciones, por favor adquiere o renueva un plan en la sección "Planes y Precios".', 
+          text: 'Tu acceso ha expirado. El uso del Oráculo de IA está bloqueado. Por favor, adquiere o renueva un plan en la sección "Planes y Precios" para continuar.', 
           timestamp: new Date() 
         }]);
         setChatInput('');
@@ -1472,6 +1473,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         isStandalone={isStandalone}
         installMessage={installMessage}
         handleInstallClick={handleInstallClick}
+        isSoftBlocked={isSoftBlocked}
       />
 
       {/* Main Content Workspace viewport */}
@@ -1891,7 +1893,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
                       {/* Estado de acceso / Plan badge */}
                       <div className="shrink-0 flex items-center gap-2">
-                        {tienePlanPago ? (
+                        {isSoftBlocked ? (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm bg-red-500/10 text-red-400 border-red-500/30">
+                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                            {tieneOraculoChat ? 'El Oráculo Bloqueado' : 'Asistente IA Bloqueado'}
+                          </div>
+                        ) : tienePlanPago ? (
                           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
                             esPlanFullSkin 
                               ? 'bg-amber-50 text-amber-800 border-amber-200' 
@@ -1980,10 +1987,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                   </div>
 
                   {/* Question Input form bar */}
-                  {tieneAccesoChat ? (
+                  {(tieneAccesoChat || isSoftBlocked) ? (
                     <div className="flex flex-col gap-1 bg-slate-100 p-2 md:rounded-2xl shrink-0">
                       {/* Oracle Admin / Full Plan Chips */}
-                      {(esPlanFull || tieneOraculoChat) && (
+                      {!isSoftBlocked && (esPlanFull || tieneOraculoChat) && (
                         <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2 border-b border-slate-200/60">
                           <button
                             type="button"
@@ -2069,6 +2076,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                         <input
                           type="text"
                           value={chatInput}
+                          disabled={isSoftBlocked}
                           onChange={(e) => setChatInput(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
@@ -2076,17 +2084,21 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                               handleSendChatMessage();
                             }
                           }}
-                          placeholder={tieneOraculoChat ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta al Asistente IA..."}
-                          className="flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold text-slate-700"
+                          placeholder={isSoftBlocked ? "⚠️ Chat deshabilitado. Plan expirado." : (tieneOraculoChat ? "Consulte al Oráculo o anexe documentos a auditar..." : "Escriba su consulta al Asistente IA...")}
+                          className={`flex-grow bg-transparent border-0 outline-none px-4 py-2 text-xs md:text-sm font-bold ${isSoftBlocked ? 'text-slate-400 bg-slate-200/50 rounded-xl cursor-not-allowed placeholder:text-red-500 placeholder:font-bold' : 'text-slate-700'}`}
                         />
                         <button
+                          type="button"
+                          disabled={isSoftBlocked}
                           onClick={() => handleSendChatMessage()}
-                          className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-xl transition-all cursor-pointer flex-shrink-0 ${
-                            esPlanFull 
-                              ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)]' 
-                              : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                          className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-xl transition-all flex-shrink-0 ${
+                            isSoftBlocked 
+                              ? 'bg-slate-400 text-slate-200 cursor-not-allowed shadow-none' 
+                              : esPlanFull 
+                                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] cursor-pointer' 
+                                : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md cursor-pointer'
                           }`}
-                          title="ENVIAR CONSULTA"
+                          title={isSoftBlocked ? "Chat deshabilitado. Plan expirado." : "ENVIAR CONSULTA"}
                         >
                           <Send className="w-4 h-4 ml-0.5" />
                           <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">ENVIAR CONSULTA</span>

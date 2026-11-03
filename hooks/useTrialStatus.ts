@@ -82,13 +82,35 @@ export const useTrialStatus = (user?: User | null) => {
 
           if (esPlanPago) {
             // ESCENARIO B: Usuario de Plan Pago
-            // Cae en isSoftBlocked = true si su estado de pago está vencido, rechazado o no aprobado
+            // Cae en isSoftBlocked = true si su estado de pago está vencido, rechazado, o si la fecha de vencimiento del plan ya pasó
+            let suscripcionVencida = false;
+            const fechaVencimientoPlan = fetchedUserData.fecha_vencimiento_plan || fetchedUserData.fechaVencimientoPlan;
+            if (fechaVencimientoPlan && !esAdmin) {
+              const vDate = new Date(fechaVencimientoPlan);
+              if (!isNaN(vDate.getTime()) && vDate.getTime() < Date.now()) {
+                suscripcionVencida = true;
+              }
+            }
+
+            // También verificar fecha_expiracion genérica si existe
+            const rawExp = fetchedUserData.fecha_expiracion;
+            if (rawExp && !esAdmin) {
+              let expDate: Date | null = null;
+              if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
+              else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
+              else if (typeof rawExp.seconds === 'number') expDate = new Date(rawExp.seconds * 1000);
+              else expDate = new Date(rawExp);
+              if (expDate && !isNaN(expDate.getTime()) && expDate.getTime() < Date.now()) {
+                suscripcionVencida = true;
+              }
+            }
+
             const pagoInvalidoOVencido = !isPagoAprobado || suscripcionVencida;
 
             setTienePlanPago(isPagoAprobado && !suscripcionVencida);
             setPruebaActiva(!pagoInvalidoOVencido);
             setDiasRestantes(pagoInvalidoOVencido ? 0 : 9999);
-            setIsTrialExpired(false);
+            setIsTrialExpired(suscripcionVencida);
             setIsSoftBlocked(pagoInvalidoOVencido);
           } else {
             // ESCENARIO A: Usuario en Trial
