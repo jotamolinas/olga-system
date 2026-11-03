@@ -1740,6 +1740,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 personas={personas}
                 onOpenDocument={handleOpenDocumentModal} 
                 esPlanFull={esPlanFull}
+                isSoftBlocked={isSoftBlocked}
               />
             )}
 
