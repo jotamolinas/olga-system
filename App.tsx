@@ -336,7 +336,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Authentication & Roles state
   const [currentUser, setCurrentUser] = useState<(User & { role?: string; rol?: string; nombre?: string }) | null>(null);
-  const { pruebaActiva, diasRestantes, userData, isTrialExpired } = useTrialStatus(currentUser);
+  const { pruebaActiva, diasRestantes, userData, isTrialExpired, isSoftBlocked, tienePlanPago } = useTrialStatus(currentUser);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [role, setRole] = useState<'admin' | 'usuario'>('usuario');

@@ -49,18 +49,10 @@ export const useTrialStatus = (user?: User | null) => {
           const fetchedUserData = userSnap.data();
           setUserData(fetchedUserData);
 
-<<<<<<< HEAD
           const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || '').toLowerCase().trim();
-          const isOperador = fetchedUserData.rol === 'operador' || fetchedUserData.role === 'operador';
-          const esAdmin = currentUser.email === 'jotamolinas@gmail.com' || isOperador || fetchedUserData.rol === 'admin' || fetchedUserData.role === 'admin' || fetchedUserData.rol === 'superadmin' || fetchedUserData.role === 'superadmin';
-=======
-          const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || 'trial').toLowerCase();
-          const roleStr = String(fetchedUserData.rol || fetchedUserData.role || '').toLowerCase();
-          const isOperador = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin';
-          const isWhitelisted = currentUser.email === 'jotamolinas@gmail.com' || isOperador;
-          const isApproved = String(fetchedUserData.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(fetchedUserData.estadoPago || '').toUpperCase() === 'APROBADO';
-          const isPaidPlan = planStr.includes('basico') || planStr.includes('básico') || planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || isApproved;
->>>>>>> 50dc3a5c945db8fa19c9464414b358460fafd5d9
+          const roleStr = String(fetchedUserData.rol || fetchedUserData.role || '').toLowerCase().trim();
+          const isOperador = roleStr === 'operador';
+          const esAdmin = currentUser.email === 'jotamolinas@gmail.com' || isOperador || roleStr === 'admin' || roleStr === 'superadmin';
 
           // Verificación de Plan de Pago Real
           const esPlanPago = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || planStr.includes('mensual');
@@ -91,7 +83,7 @@ export const useTrialStatus = (user?: User | null) => {
           if (esPlanPago) {
             // ESCENARIO B: Usuario de Plan Pago
             // Cae en isSoftBlocked = true si su estado de pago está vencido, rechazado o no aprobado
-            const pagoInvalidoOVencido = !isPagoAprobado || estadoPagoStr === 'RECHAZADO' || suscripcionVencida;
+            const pagoInvalidoOVencido = !isPagoAprobado || suscripcionVencida;
 
             setTienePlanPago(isPagoAprobado && !suscripcionVencida);
             setPruebaActiva(!pagoInvalidoOVencido);
