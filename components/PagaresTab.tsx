@@ -74,7 +74,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     if (diasParaVencimiento < 0) suscripcionVencida = true;
   }
 
-  const isDnitBlocked = isSoftBlocked || (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
+  const isDnitBlocked = isSoftBlocked;
 
   // Transición no bloqueante para abrir previsualización de pagarés sin congelar la UI
   const handleAbrirPagare = (pagare: Pagare) => {

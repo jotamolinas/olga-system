@@ -39,7 +39,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const { diasRestantes, pruebaActiva, isTrialExpired } = useTrialStatus(currentUser);
+  const { diasRestantes, pruebaActiva, isTrialExpired, isSoftBlocked } = useTrialStatus(currentUser);
   const { workspaceId } = useWorkspace(currentUser || auth.currentUser, userData);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -79,7 +79,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const isOperador = userData?.rol === 'operador' || userData?.role === 'operador';
   const isWhitelisted = currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
   const isPaid = hasPaidPlan;
-  const isWatermarkRequired = !isWhitelisted && !isPaid;
+  const isWatermarkRequired = !isWhitelisted && isSoftBlocked;
 
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;

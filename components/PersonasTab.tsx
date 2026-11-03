@@ -100,7 +100,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     if (diasParaVencimiento < 0) suscripcionVencida = true;
   }
 
-  const isDnitBlocked = isSoftBlocked || (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
+  const isDnitBlocked = isSoftBlocked;
 
   const [loadingDnit, setLoadingDnit] = useState(false);
   const [feedbackDnit, setFeedbackDnit] = useState<string | null>(null);

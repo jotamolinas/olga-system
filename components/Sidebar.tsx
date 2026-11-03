@@ -132,6 +132,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const planLower = planNameStr.toLowerCase();
 
+    // Eliminar por completo el badge de trial: solo mostrar si tiene un plan de pago real
+    if (!planLower || planLower === 'trial' || planLower.includes('trial') || planLower.includes('prueba') || planLower === 'ninguno' || planLower === 'sin plan') {
+      return null;
+    }
+
     if (planLower.includes('full')) {
       return (
         <span

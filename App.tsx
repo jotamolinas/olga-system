@@ -130,7 +130,7 @@ const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ 
   </div>
 );
 
-const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
+const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSoftBlockedUser: boolean = false) => {
   // Use extended profile fields if available on user object
   const nombreCompleto = usuario?.nombreCompleto || usuario?.displayName || 'Escribano/a Sin Nombre Registrado';
   const numeroRegistro = usuario?.numeroRegistro || 'S/N';
@@ -139,12 +139,10 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null) => {
   const ciudad = usuario?.ciudad || 'Ciudad no especificada';
   const telefono = usuario?.telefono || 'Sin teléfono de contacto';
 
-  const plan = String(usuario?.planActual || usuario?.plan || '').toLowerCase();
   const isOperador = usuario?.rol === 'operador' || usuario?.role === 'operador';
   const isWhitelisted = usuario?.email === 'jotamolinas@gmail.com' || isOperador;
-  const isApproved = String(usuario?.estadoPago || '').toUpperCase() === 'APROBADO' || String(usuario?.estadoPlataforma || '').toUpperCase() === 'APROBADO';
-  const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isApproved;
-  const isWatermarkRequired = !isWhitelisted && !isPaid;
+  // La variable unificada isSoftBlocked es la única responsable de activar la marca de agua
+  const isWatermarkRequired = !isWhitelisted && isSoftBlockedUser;
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
@@ -1574,10 +1572,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   }
 
   // Dinamismo Multiusuario: Lectura directa del plan desde el estado global del usuario logueado o perfil
-  const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || 'PLAN FULL';
+  const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || '';
   const planTexto = String(planRaw).trim().toUpperCase();
   const nombrePlan = planTexto.startsWith('PLAN ') ? planTexto : `PLAN ${planTexto}`;
   const planLower = planTexto.toLowerCase();
+
+  // Eliminar el Badge 'PLAN TRIAL' (UI Header): solo mostrar si tiene un plan de pago real
+  if (!planLower || planLower === 'trial' || planLower.includes('trial') || planLower.includes('prueba') || planLower === 'ninguno' || planLower === 'sin plan') {
+    return null;
+  }
 
   if (planLower.includes('full')) {
     return (
@@ -1663,29 +1666,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'h-full flex-1 overflow-hidden pb-0' : 'pb-24'}`}>
             
             {(() => {
-              const rawPlan = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || '').toLowerCase();
-              const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || String(userData?.estadoPago || userProfile?.estadoPago).toUpperCase() === 'APROBADO' || String(userData?.estadoPlataforma || userProfile?.estadoPlataforma).toUpperCase() === 'APROBADO' || role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
-              const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
-
-// 1. Lógica de cálculo de vencimiento
-              let diasParaVencimientoPago = 999;
-              let suscripcionVencida = false;
-              const fechaVencimientoPlan = userProfile?.fecha_vencimiento_plan || userData?.fecha_vencimiento_plan;
-              const esAdmin = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com';
-
-              if (tienePlanPago && fechaVencimientoPlan && !esAdmin) {
-                const vDate = new Date(fechaVencimientoPlan);
-                diasParaVencimientoPago = Math.ceil((vDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                if (diasParaVencimientoPago < 0) suscripcionVencida = true;
-              }
-
-              const isSoftBlocked = (accesoBloqueadoPorTrial && !tienePlanPago) || suscripcionVencida;
-              const isWarning = tienePlanPago && diasParaVencimientoPago <= 5 && diasParaVencimientoPago >= 0 && !esAdmin;
-
               return (
                 <>
-                  {/* BANNERS PREVENTIVOS Y GUARDIÁN BLANDO */}
-                  {/* Banner Rojo Nativo de 'Solo Lectura' (cuando el trial expiró o diasRestantes <= 0) */}
+                  {/* BANNERS UNIFICADOS (Reglas estrictas de 3 estados) */}
+
+                  {/* Estado 1 (Softblocked): Si isSoftBlocked es true (sea ex-trial o ex-pago), muestra UNICAMENTE el banner ROJO */}
                   {isSoftBlocked && activeTab !== 'planes' && (
                     <div className="bg-red-50 border-b border-red-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
                       <div className="flex items-center gap-3">
@@ -1693,8 +1678,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                           <AlertTriangle className="w-5 h-5 text-red-600" />
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-red-900">Tu suscripción ha expirado</p>
-                          <p className="text-xs text-red-700">Modo "Solo Lectura" activado. La creación de documentos y consultas IA están limitadas.</p>
+                          <p className="text-sm font-bold text-red-900">Tu acceso ha expirado</p>
+                          <p className="text-xs text-red-700">Tu acceso ha expirado. Modo Solo Lectura activado. Adquiere o renueva tu plan para restaurar los privilegios.</p>
                         </div>
                       </div>
                       <button onClick={() => setActiveTab('planes')} className="whitespace-nowrap px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-md">
@@ -1703,8 +1688,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                     </div>
                   )}
 
-                  {/* Banner Amarillo Temporal: Si diasRestantes > 0 (oculto si diasRestantes <= 0 o isSoftBlocked) */}
-                  {!tienePlanPago && !isSoftBlocked && diasRestantes > 0 && activeTab !== 'planes' && (
+                  {/* Estado 2 (Prueba Activa): Si isSoftBlocked es false Y no tiene plan de pago, muestra UNICAMENTE el banner AMARILLO */}
+                  {!isSoftBlocked && !tienePlanPago && activeTab !== 'planes' && (
                     <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-amber-100 rounded-lg">
@@ -1721,23 +1706,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                     </div>
                   )}
 
-                  {/* Banner Amarillo de Aviso para Planes Pagos por Vencer */}
-                  {isWarning && !isSoftBlocked && activeTab !== 'planes' && (
-                    <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-amber-100 rounded-lg">
-                          <AlertTriangle className="w-5 h-5 text-amber-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-amber-900">Suscripción próxima a vencer</p>
-                          <p className="text-xs text-amber-700">Tu plan actual vence en <strong>{diasParaVencimientoPago} días</strong>. Por favor, renueva tu plan para evitar interrupciones.</p>
-                        </div>
-                      </div>
-                      <button onClick={() => setActiveTab('planes')} className="whitespace-nowrap px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-md">
-                        Ver Planes
-                      </button>
-                    </div>
-                  )}
+                  {/* Estado 3 (Pago Activo): Si isSoftBlocked es false Y tiene un plan de pago aprobado, no se muestra ningún banner */}
                   
                   {activeTab === 'tablero' && (
               <TableroTab 
@@ -2019,7 +1988,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                                   <button 
                                     onClick={() => {
                                       const elm = document.getElementById(`model-msg-${i}`);
-                                      imprimirDocumentoOficial(elm?.innerHTML || '', userProfile || userData || currentUser);
+                                      imprimirDocumentoOficial(elm?.innerHTML || '', userProfile || userData || currentUser, isSoftBlocked);
                                     }}
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-colors border border-slate-200"
                                   >
