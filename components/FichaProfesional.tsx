@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { User } from 'firebase/auth';
 import { ShieldCheck, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -70,6 +70,7 @@ export const FichaProfesional: React.FC<FichaProfesionalProps> = ({ currentUser,
       // 3. EL ESCUDO DE CONTINGENCIA (Parche 9.2)
       if (!userSnap.data()?.fecha_creacion) {
         dataToUpdate.fecha_creacion = serverTimestamp();
+        dataToUpdate.fecha_expiracion = Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000));
         dataToUpdate.planActual = 'trial';
         dataToUpdate.role = 'titular';
         dataToUpdate.estado_cuenta = 'activa';

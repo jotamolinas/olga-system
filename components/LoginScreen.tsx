@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, db, emailSignIn, emailSignUp, resetPassword } from '../services/auth';
-import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { auth, db, emailSignIn, emailSignUp, resetPassword, logout } from '../services/auth';
+import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2, X } from 'lucide-react';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -17,6 +17,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [trialExpiredToast, setTrialExpiredToast] = useState<string | null>(null);
   
   // Estado para autenticación por Correo
   const [email, setEmail] = useState('');
@@ -53,6 +54,89 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     }
   };
 
+  // Validación Estricta de Período de Prueba (5 días) para cuentas Trial
+  const validateTrialExpiration = async (userData: any, userId: string): Promise<boolean> => {
+    const userEmail = (userData?.email || auth.currentUser?.email || '').toLowerCase().trim();
+    const userRole = String(userData?.role || userData?.rol || '').toLowerCase().trim();
+    if (userEmail === 'jotamolinas@gmail.com' || userRole === 'admin' || userRole === 'superadmin' || userRole === 'operador') {
+      return false;
+    }
+
+    const plan = String(userData?.planActual || userData?.plan || '').toLowerCase().trim();
+    if (plan !== 'trial') {
+      return false;
+    }
+
+    const now = new Date();
+    let expDate: Date | null = null;
+
+    // 1. Obtener fecha_expiracion si existe
+    const rawExp = userData?.fecha_expiracion;
+    if (rawExp) {
+      if (typeof rawExp.toDate === 'function') {
+        expDate = rawExp.toDate();
+      } else if (typeof rawExp.toMillis === 'function') {
+        expDate = new Date(rawExp.toMillis());
+      } else if (typeof rawExp.seconds === 'number') {
+        expDate = new Date(rawExp.seconds * 1000);
+      } else {
+        expDate = new Date(rawExp);
+      }
+    }
+
+    // 2. Fallback de Seguridad:
+    // Si un usuario antiguo en trial no tiene el campo fecha_expiracion, calcúlalo dinámicamente basándote en su fecha_creacion + 5 días para evaluarlo en el momento.
+    if (!expDate || isNaN(expDate.getTime())) {
+      const rawCreation = userData?.fecha_creacion || userData?.fechaCreacion || userData?.created_at || userData?.createdAt;
+      if (rawCreation) {
+        let creationDate: Date | null = null;
+        if (typeof rawCreation.toDate === 'function') {
+          creationDate = rawCreation.toDate();
+        } else if (typeof rawCreation.toMillis === 'function') {
+          creationDate = new Date(rawCreation.toMillis());
+        } else if (typeof rawCreation.seconds === 'number') {
+          creationDate = new Date(rawCreation.seconds * 1000);
+        } else {
+          creationDate = new Date(rawCreation);
+        }
+        if (creationDate && !isNaN(creationDate.getTime())) {
+          expDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+        }
+      }
+    }
+
+    const yaExpiradoPorFecha = expDate ? now.getTime() > expDate.getTime() : false;
+    const yaExpiradoPorEstado = userData?.estado_cuenta === 'expirada';
+
+    if (yaExpiradoPorFecha || yaExpiradoPorEstado) {
+      console.warn(`[Trial Auth] Usuario ${userId} con período trial de 5 días expirado.`);
+
+      // Actualizar automáticamente su campo estado_cuenta a "expirada" en Firestore
+      try {
+        const { doc, setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'users', userId), { estado_cuenta: 'expirada' }, { merge: true });
+      } catch (err) {
+        console.error('Error al actualizar estado_cuenta a expirada en Firestore:', err);
+      }
+
+      // Cerrar la sesión (signOut)
+      try {
+        await logout();
+      } catch {
+        await auth.signOut().catch(console.error);
+      }
+
+      // Mostrar alerta o Toast rojo
+      const mensajeExpirado = 'Tu período de prueba de 5 días ha finalizado. Por favor, contacta a soporte para activar tu suscripción.';
+      setTrialExpiredToast(mensajeExpirado);
+      setError(mensajeExpirado);
+
+      return true; // Expirado: DETÉN la redirección
+    }
+
+    return false;
+  };
+
   // Submit autenticación por Correo
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,17 +148,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       setLoading(true);
       setError('');
       
+      setTrialExpiredToast(null);
+      let authUser: any = null;
       if (isLogin) {
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.setItem('olga_auth_flow', 'login');
         }
-        await emailSignIn(cleanEmail, cleanPassword);
+        const res = await emailSignIn(cleanEmail, cleanPassword);
+        authUser = res?.user || auth.currentUser;
       } else {
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.setItem('olga_auth_flow', 'register');
         }
-        await emailSignUp(cleanEmail, cleanPassword);
+        const res = await emailSignUp(cleanEmail, cleanPassword);
+        authUser = res?.user || auth.currentUser;
       }
+
+      if (authUser) {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const userRef = doc(db, 'users', authUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
+          if (isExpired) {
+            return; // DETÉN la redirección
+          }
+        }
+      }
+
       onLogin();
       if (cleanEmail === 'jotamolinas@gmail.com') {
         navigate('/consola/admin');
@@ -210,7 +311,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         sessionStorage.setItem('olga_auth_flow', isLogin ? 'login' : 'register');
       }
 
-      await confirmationResult.confirm(cleanCode);
+      setTrialExpiredToast(null);
+      const res = await confirmationResult.confirm(cleanCode);
+      const authUser = res?.user || auth.currentUser;
+      if (authUser) {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const userRef = doc(db, 'users', authUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
+          if (isExpired) {
+            return; // DETÉN la redirección
+          }
+        }
+      }
       onLogin();
       if (auth.currentUser?.email === 'jotamolinas@gmail.com') {
         navigate('/consola/admin');
@@ -254,17 +368,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         }
 
         // Consultar o registrar usuario en Firestore para identificar rol
-        const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
+        const { doc, getDoc, setDoc, serverTimestamp, Timestamp } = await import('firebase/firestore');
         const userRef = doc(db, 'users', result.user.uid);
         const userSnap = await getDoc(userRef);
 
         let userRole = 'titular';
+        let userData: any = null;
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
+          const now = new Date();
+          const fechaExpiracion = Timestamp.fromDate(new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000));
+          const newUserDoc = {
             uid: result.user.uid,
             email: result.user.email || '',
             nombre: result.user.displayName || '',
             fecha_creacion: serverTimestamp(),
+            fecha_expiracion: fechaExpiracion,
             planActual: 'trial',
             role: 'titular',
             rol: 'titular',
@@ -272,17 +390,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
             consultasUsadas: 0,
             escritosUsados: 0,
             usoIA: 0
-          });
+          };
+          await setDoc(userRef, newUserDoc);
+          userData = newUserDoc;
         } else {
-          const data = userSnap.data();
-          userRole = data?.role || data?.rol || 'titular';
+          userData = userSnap.data();
+          userRole = userData?.role || userData?.rol || 'titular';
         }
 
         const user = result.user;
-        onLogin();
 
         // Forzar Redirección de Super Admin (Fallback Seguro):
         if (user.email === 'jotamolinas@gmail.com') {
+          onLogin();
           navigate('/consola/admin');
           return;
         }
@@ -290,10 +410,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         // Redirección si se detecta rol de superadmin
         const normalizedRole = String(userRole || '').toUpperCase();
         if (normalizedRole === 'SUPERADMIN' || normalizedRole === 'ADMIN') {
+          onLogin();
           navigate('/consola/admin');
           return;
         }
 
+        // Validación Estricta de Período de Prueba antes de redirección a /consola
+        const isExpired = await validateTrialExpiration(userData, user.uid);
+        if (isExpired) {
+          return; // DETÉN la redirección
+        }
+
+        onLogin();
         // Redirección estricta para usuarios normales
         navigate('/consola');
       }
@@ -322,6 +450,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   return (
     <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 font-sans">
       <div className="bg-[#121214] max-w-md w-full box-border rounded-[2rem] p-8 md:p-10 shadow-2xl flex flex-col items-center text-center border border-white/10 relative max-h-[95vh] overflow-y-auto overflow-x-hidden">
+        {/* Toast / Alerta Roja Flotante de Período de Prueba Expirado */}
+        {trialExpiredToast && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[92%] animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="bg-red-950/95 border-2 border-[#FF3131] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-[#FF3131] flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-bold text-red-100 leading-snug">{trialExpiredToast}</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setTrialExpiredToast(null)}
+                className="text-red-300 hover:text-white p-1 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Glow decorativo sutil */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -421,8 +572,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
               <span>{error}</span>
             </div>
           ) : (
-            <div className="w-full box-border bg-red-950/40 text-red-300 text-xs font-semibold p-4 rounded-xl mb-6 border border-red-800/50 relative z-10 text-left">
-              {error}
+            <div className="w-full box-border bg-red-950/80 text-red-200 text-xs font-bold p-4 rounded-xl mb-6 border border-red-500/70 relative z-10 flex items-center gap-3 text-left shadow-xl animate-fade-in">
+              <AlertTriangle className="w-5 h-5 text-[#FF3131] shrink-0" />
+              <div className="flex-1">
+                <span>{error}</span>
+              </div>
             </div>
           )
         )}

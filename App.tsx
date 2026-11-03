@@ -62,7 +62,7 @@ export interface AdminTramiteRecord {
 
 // Chat & AI
 import { sendMessageToOlga } from './services/gemini';
-import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db, auth } from './services/auth';
 import ReactMarkdown from 'react-markdown';
 
@@ -680,6 +680,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 uid: user.uid,
                 email: user.email || '', 
                 fecha_creacion: serverTimestamp(),
+                fecha_expiracion: Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)),
                 planActual: 'trial',
                 role: 'titular',
                 rol: 'titular',
@@ -709,6 +710,58 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
           const data = docSnap.data();
           if (!data) return;
+
+          // Validación Estricta de Expiración para cuentas Trial (5 días)
+          const planStr = String(data.planActual || data.plan || '').toLowerCase().trim();
+          const isOperadorData = data.role === 'operador' || data.rol === 'operador';
+          const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData;
+
+          if (!isPrivilegedUser && planStr === 'trial') {
+            let expDate: Date | null = null;
+            const rawExp = data.fecha_expiracion;
+            if (rawExp) {
+              if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
+              else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
+              else if (typeof rawExp.seconds === 'number') expDate = new Date(rawExp.seconds * 1000);
+              else expDate = new Date(rawExp);
+            }
+
+            // Fallback de Seguridad: Si un usuario antiguo en trial no tiene fecha_expiracion, calcular fecha_creacion + 5 días
+            if (!expDate || isNaN(expDate.getTime())) {
+              const rawCreation = data.fecha_creacion || data.fechaCreacion || data.created_at || data.createdAt;
+              if (rawCreation) {
+                let creationDate: Date | null = null;
+                if (typeof rawCreation.toDate === 'function') creationDate = rawCreation.toDate();
+                else if (typeof rawCreation.toMillis === 'function') creationDate = new Date(rawCreation.toMillis());
+                else if (typeof rawCreation.seconds === 'number') creationDate = new Date(rawCreation.seconds * 1000);
+                else creationDate = new Date(rawCreation);
+                if (creationDate && !isNaN(creationDate.getTime())) {
+                  expDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+                }
+              }
+            }
+
+            const yaExpiradoPorFecha = expDate ? Date.now() > expDate.getTime() : false;
+            const yaExpiradoPorEstado = data.estado_cuenta === 'expirada';
+
+            if (yaExpiradoPorFecha || yaExpiradoPorEstado) {
+              console.warn(`[Trial Auth] Usuario ${user.uid} con período trial de 5 días expirado.`);
+              if (data.estado_cuenta !== 'expirada') {
+                updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
+              }
+              if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+                unsubscribeSnapshot = null;
+              }
+              setSessionKickedAlert('Tu período de prueba de 5 días ha finalizado. Por favor, contacta a soporte para activar tu suscripción.');
+              signOut(auth).catch(console.error);
+              logout().catch(console.error);
+              setCurrentUser(null);
+              setUserProfile(null);
+              setIsCheckingProfile(false);
+              return;
+            }
+          }
 
           // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
           const isGavanah = 

@@ -161,7 +161,7 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
     const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     if (result.user) {
       const sessionId = await registerNewSession(result.user.uid);
-      const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
+      const { doc, getDoc, setDoc, serverTimestamp, Timestamp } = await import('firebase/firestore');
       const userRef = doc(db, 'users', result.user.uid);
       const userSnap = await getDoc(userRef);
 
@@ -171,6 +171,7 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
           uid: result.user.uid,
           email: result.user.email || cleanEmail,
           fecha_creacion: serverTimestamp(),
+          fecha_expiracion: Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)),
           planActual: 'trial',
           role: 'titular',
           rol: 'titular',
