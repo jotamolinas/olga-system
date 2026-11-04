@@ -654,6 +654,36 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
+        {/* SIFEN & FACTURACIÓN ELECTRÓNICA PARAGUAY */}
+        <section className="py-16 bg-white border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-3xl p-8 sm:p-12 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-8">
+              <div className="space-y-4 max-w-2xl text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-400/20 text-amber-300 text-xs font-bold uppercase tracking-wider rounded-full border border-amber-400/30">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Compatibilidad Tributaria Nacional</span>
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black tracking-tight">
+                  Preparado para Facturación Electrónica SIFEN y DNIT
+                </h3>
+                <p className="text-slate-300 text-sm leading-relaxed">
+                  O.L.G.A. integra validación tributaria y desglose arancelario automatizado para que cada presupuesto notarial, liquidación de honorarios (Ley 879/81) y gestión comercial esté listo para la tributación electrónica en Paraguay.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4 shrink-0">
+                <div className="bg-white/10 border border-white/15 px-6 py-4 rounded-2xl text-center">
+                  <span className="block text-2xl font-black text-amber-400 font-mono">10% / 5%</span>
+                  <span className="text-xs text-slate-300">Desglose IVA Oficial</span>
+                </div>
+                <div className="bg-white/10 border border-white/15 px-6 py-4 rounded-2xl text-center">
+                  <span className="block text-2xl font-black text-emerald-400 font-mono">RUC / DV</span>
+                  <span className="text-xs text-slate-300">Validación Automática</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* 6. PLANES DE SUSCRIPCIÓN (4 NIVELES ACTUALIZADOS) */}
         <section id="planes" className="py-24 bg-white border-b border-slate-200 scroll-mt-20">
           <div className="max-w-7xl mx-auto px-6">
