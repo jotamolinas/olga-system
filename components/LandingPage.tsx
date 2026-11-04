@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { auth } from '../services/auth';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { Testimonials } from './Testimonials';
 
 const Logo: React.FC<{ darkTheme?: boolean }> = ({ darkTheme = false }) => (
   <div className="flex items-center gap-4">
@@ -1094,6 +1095,9 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
         </section>
+
+        {/* TESTIMONIOS Y RESEÑAS GOOGLE */}
+        <Testimonials />
 
         {/* 7. PREGUNTAS FRECUENTES (FAQ OPTIMIZADO PARA PARAGUAY) */}
         <section id="faq" className="py-24 bg-slate-50 border-t border-slate-200">
