@@ -1257,7 +1257,7 @@ export const LandingPage: React.FC = () => {
             </a>
           </div>
 
-          <p>Desarrollado por <strong className="text-slate-400">Ihara Outsourcing</strong> • Asunción, Paraguay</p>
+          <p>Desarrollado por <strong className="text-slate-400">O.L.G.A. Tech</strong> - Paraguay</p>
         </div>
       </footer>
 
