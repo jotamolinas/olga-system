@@ -37,6 +37,21 @@ export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
   margenHorizontal: 0,
 };
 
+export const getNombreHoja = (tipo: TipoDocumentoNotarial): string => {
+  switch (tipo) {
+    case 'Sellado Notarial - Protocolo':
+      return 'Sellado protocolo';
+    case 'Certificación de Firmas':
+      return 'Certificacion de firmas';
+    case 'Concuerda':
+      return 'Hoja de seguridad';
+    case 'Legalización':
+      return 'Legalizacion Notarial';
+    default:
+      return tipo;
+  }
+};
+
 export const getConfigKey = (tipo: TipoDocumentoNotarial): string => {
   switch (tipo) {
     case 'Sellado Notarial - Protocolo':
@@ -60,8 +75,8 @@ export const cargarConfiguracionHoja = (tipo: TipoDocumentoNotarial): Configurac
       return {
         offsetX: typeof parsed.offsetX === 'number' ? parsed.offsetX : 0,
         offsetY: typeof parsed.offsetY === 'number' ? parsed.offsetY : 0,
-        fontSizeGlobal: parsed.fontSizeGlobal || '12pt',
-        fontFamilyGlobal: parsed.fontFamilyGlobal || 'Arial, Helvetica, sans-serif',
+        fontSizeGlobal: parsed.fontSizeGlobal || (tipo === 'Legalización' ? '11pt' : '12pt'),
+        fontFamilyGlobal: parsed.fontFamilyGlobal || (tipo === 'Concuerda' || tipo === 'Certificación de Firmas' ? 'Arial, Helvetica, sans-serif' : '"Times New Roman", Times, serif'),
         interlineadoGlobal: typeof parsed.interlineadoGlobal === 'number' ? parsed.interlineadoGlobal : 8.47,
         margenHorizontal: typeof parsed.margenHorizontal === 'number' ? parsed.margenHorizontal : 0,
       };
@@ -71,6 +86,8 @@ export const cargarConfiguracionHoja = (tipo: TipoDocumentoNotarial): Configurac
     const legacyY = localStorage.getItem(`olga_print_offset_y_${tipo}`);
     return {
       ...CONFIG_POR_DEFECTO,
+      fontSizeGlobal: tipo === 'Legalización' ? '11pt' : '12pt',
+      fontFamilyGlobal: tipo === 'Concuerda' || tipo === 'Certificación de Firmas' ? 'Arial, Helvetica, sans-serif' : '"Times New Roman", Times, serif',
       offsetX: legacyX ? parseFloat(legacyX) : 0,
       offsetY: legacyY ? parseFloat(legacyY) : 0,
     };
@@ -403,6 +420,21 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     }
   };
 
+  const handleAgregarCarillaReverso = () => {
+    if (protocoloPaginas.length < 2) {
+      setProtocoloPaginas([...protocoloPaginas, '']);
+      setTimeout(() => {
+        textareasRefs.current[1]?.focus();
+      }, 50);
+    }
+  };
+
+  const handleEliminarCarillaReverso = () => {
+    if (protocoloPaginas.length > 1) {
+      setProtocoloPaginas([protocoloPaginas[0]]);
+    }
+  };
+
   const imprimirConIframe = (html: string) => {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -554,7 +586,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       document.head.querySelectorAll('style, link[rel="stylesheet"]')
     ).map((node) => node.outerHTML).join('\n');
 
-    const titulo = `Documento Notarial - ${tipoDocumento}`;
+    const titulo = `Documento Notarial - ${getNombreHoja(tipoDocumento)}`;
 
     const htmlImpresion = `<!DOCTYPE html>
 <html lang="es">
@@ -916,10 +948,25 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
           display: inline-block !important;
           white-space: nowrap !important;
         }
-        #notarial-cuerpo-texto, .notarial-cuerpo-texto {
+                .pagina-anverso #notarial-cuerpo-texto,
+        .pagina-anverso .notarial-cuerpo-texto,
+        .pagina-anverso textarea {
           position: absolute !important;
           top: 42.55mm !important;
           left: 30.0mm !important;
+          width: 155.9mm !important;
+          height: 211.75mm !important;
+          line-height: 8.47mm !important;
+          margin: 0mm !important;
+          padding: 0mm !important;
+          box-sizing: border-box !important;
+        }
+        .pagina-reverso #notarial-cuerpo-texto,
+        .pagina-reverso .notarial-cuerpo-texto,
+        .pagina-reverso textarea {
+          position: absolute !important;
+          top: 42.55mm !important;
+          left: 25.0mm !important;
           width: 155.9mm !important;
           height: 211.75mm !important;
           line-height: 8.47mm !important;
@@ -1005,14 +1052,28 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             overflow: hidden !important;
           }
 
-          /* Hoja 0: Cuerpo de Texto de Protocolo (25 renglones exactos) */
-          #notarial-cuerpo-texto,
-          .notarial-cuerpo-texto {
+                    /* Hoja 0: Cuerpo de Texto de Protocolo (Simetría Anverso y Reverso) */
+          .pagina-anverso #notarial-cuerpo-texto,
+          .pagina-anverso .notarial-cuerpo-texto {
             display: block !important;
             visibility: visible !important;
             position: absolute !important;
             top: 42.55mm !important;
             left: 30.0mm !important;
+            width: 155.9mm !important;
+            height: 211.75mm !important;
+            line-height: 8.47mm !important;
+            margin: 0mm !important;
+            padding: 0mm !important;
+            color: #000000 !important;
+          }
+          .pagina-reverso #notarial-cuerpo-texto,
+          .pagina-reverso .notarial-cuerpo-texto {
+            display: block !important;
+            visibility: visible !important;
+            position: absolute !important;
+            top: 42.55mm !important;
+            left: 25.0mm !important;
             width: 155.9mm !important;
             height: 211.75mm !important;
             line-height: 8.47mm !important;
@@ -1220,10 +1281,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 esPlanFull ? 'text-slate-900' : 'text-white'
               }`}
             >
-              <option value="Sellado Notarial - Protocolo">0. Sellado Notarial - Protocolo</option>
-              <option value="Certificación de Firmas">1. Certificación de Firmas</option>
-              <option value="Concuerda">2. Concuerda (Hoja de Seguridad)</option>
-              <option value="Legalización">3. Legalización Notarial</option>
+              <option value="Sellado Notarial - Protocolo">Sellado protocolo</option>
+              <option value="Certificación de Firmas">Certificacion de firmas</option>
+              <option value="Concuerda">Hoja de seguridad</option>
+              <option value="Legalización">Legalizacion Notarial</option>
             </select>
           </div>
         </div>
@@ -1308,20 +1369,21 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 onChange={(e) => setFontSizeGlobal(e.target.value)}
                 className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
               >
-                <option value="12px">12 px</option>
-                <option value="13px">13 px</option>
-                <option value="14px">14 px</option>
-                <option value="15px">15 px</option>
-                <option value="16px">16 px</option>
-                <option value="18px">18 px</option>
-                <option value="20px">20 px</option>
+                <option value="8pt">8 pt</option>
+                <option value="9pt">9 pt</option>
+                <option value="10pt">10 pt</option>
+                <option value="11pt">11 pt</option>
+                <option value="11.5pt">11.5 pt</option>
+                <option value="12pt">12 pt (Oficial)</option>
+                <option value="13pt">13 pt</option>
+                <option value="14pt">14 pt</option>
               </select>
 
               <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
-                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
+                    const sizes = ['8pt', '9pt', '10pt', '11pt', '11.5pt', '12pt', '13pt', '14pt'];
                     const idx = sizes.indexOf(fontSizeGlobal);
                     if (idx > 0) setFontSizeGlobal(sizes[idx - 1]);
                   }}
@@ -1333,7 +1395,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                 <button
                   type="button"
                   onClick={() => {
-                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
+                    const sizes = ['8pt', '9pt', '10pt', '11pt', '11.5pt', '12pt', '13pt', '14pt'];
                     const idx = sizes.indexOf(fontSizeGlobal);
                     if (idx !== -1 && idx < sizes.length - 1) setFontSizeGlobal(sizes[idx + 1]);
                   }}
@@ -1437,7 +1499,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             <button
               type="button"
               onClick={handleLimpiarCampos}
-              title={`Limpiar todos los campos de "${tipoDocumento}"`}
+              title={`Limpiar todos los campos de "${getNombreHoja(tipoDocumento)}"`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border border-slate-700 bg-slate-800 text-slate-300 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 shadow-sm active:scale-95"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -1448,7 +1510,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             <button
               type="button"
               onClick={handleGuardarConfiguracion}
-              title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
+              title={`Guardar tipografía, calibración y márgenes para "${getNombreHoja(tipoDocumento)}"`}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
                 guardadoFeedback
                   ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-emerald-500/20'
@@ -1499,19 +1561,46 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             </label>
 
             {tipoDocumento === 'Sellado Notarial - Protocolo' && (
-              <div className="flex items-center gap-2">
-                <span className="text-amber-400 font-bold text-xs uppercase tracking-wide whitespace-nowrap">
-                  registros publicos :
-                </span>
-                <input
-                  type="text"
-                  value={textoRegistrosPublicos}
-                  onFocus={handleFocusRegistros}
-                  onClick={handleFocusRegistros}
-                  onChange={(e) => handleChangeRegistros(e.target.value)}
-                  placeholder=""
-                  className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-1.5 rounded-xl w-64 sm:w-80 md:w-96 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
-                />
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-800/90 px-3 py-1 rounded-xl border border-slate-700">
+                  <span className="text-amber-400 font-extrabold text-[11px] uppercase tracking-wider">
+                    Carillas:
+                  </span>
+                  {protocoloPaginas.length === 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleAgregarCarillaReverso}
+                      title="Agregar Carilla 2 (Reverso) para escritura y simetría doble faz"
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-sm flex items-center gap-1 active:scale-95"
+                    >
+                      + Añadir Carilla 2 (Reverso)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleEliminarCarillaReverso}
+                      title="Quitar Carilla 2 y trabajar solo con el anverso"
+                      className="px-2.5 py-1 bg-slate-700 hover:bg-rose-900/60 hover:text-rose-200 text-slate-200 font-bold text-xs rounded-lg transition-colors cursor-pointer active:scale-95"
+                    >
+                      - Quitar Carilla 2 (Solo Anverso)
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 font-bold text-xs uppercase tracking-wide whitespace-nowrap">
+                    registros publicos :
+                  </span>
+                  <input
+                    type="text"
+                    value={textoRegistrosPublicos}
+                    onFocus={handleFocusRegistros}
+                    onClick={handleFocusRegistros}
+                    onChange={(e) => handleChangeRegistros(e.target.value)}
+                    placeholder=""
+                    className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-1.5 rounded-xl w-60 sm:w-72 md:w-80 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1704,7 +1793,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   <div>
                     <h2 className="font-black text-sm uppercase tracking-wider text-slate-500">CORTE SUPREMA DE JUSTICIA</h2>
                     <p className="text-[11px] font-bold text-slate-400">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-[10px] font-bold mt-0.5 text-red-400">CERTIFICACIÓN DE FIRMAS (Art. 152 - Ley 879) (Hoja de Seguridad)</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400">CERTIFICACION DE FIRMAS</p>
                   </div>
                   <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
                     <span className="text-[9px] font-mono font-bold text-slate-400">SELLO / QR</span>
@@ -2123,7 +2212,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   <div>
                     <h2 className="font-black text-sm uppercase tracking-wider text-slate-500">CORTE SUPREMA DE JUSTICIA</h2>
                     <p className="text-[11px] font-bold text-slate-400">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-[10px] font-bold mt-0.5 text-red-400">HOJA DE SEGURIDAD NOTARIAL - CONCUERDA</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400">HOJA DE SEGURIDAD</p>
                   </div>
                   <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
                     <span className="text-[9px] font-mono font-bold text-slate-400">SELLO / QR</span>
@@ -2459,7 +2548,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   <div>
                     <h2 className="font-black text-sm uppercase tracking-wider text-slate-500 whitespace-nowrap">CORTE SUPREMA DE JUSTICIA</h2>
                     <p className="text-[11px] font-bold text-slate-400 whitespace-nowrap">REPÚBLICA DEL PARAGUAY</p>
-                    <p className="text-[10px] font-bold mt-0.5 text-red-400 whitespace-nowrap">LEGALIZACIÓN - ACTUACIÓN NOTARIAL (Serie PJH-2022)</p>
+                    <p className="text-[10px] font-bold mt-0.5 text-red-400 whitespace-nowrap">LEGALIZACION NOTARIAL</p>
                   </div>
                   <div className="border border-dashed border-slate-300 p-1.5 text-center w-20 h-16 flex flex-col items-center justify-center bg-slate-50/60 shrink-0">
                     <span className="text-[9px] font-mono font-bold text-slate-400 whitespace-nowrap">QR PJE</span>
@@ -2584,6 +2673,18 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                       className={`hoja-notarial pagina-virtual relative bg-white text-black shrink-0 print:shadow-none print:m-0 print:p-0 shadow-2xl ${isAnverso ? 'pagina-anverso' : 'pagina-reverso'}`}
                       style={{ width: '215.9mm', height: '355.6mm', pageBreakAfter: esUltima ? 'avoid' : 'always' }}
                     >
+                      {/* INDICADOR DE CARILLA EN PANTALLA (Informativo no imprimible) */}
+                      <div className="absolute top-2.5 left-6 right-6 flex items-center justify-between text-xs font-bold border-b border-dashed border-slate-200 pb-1.5 print:hidden pointer-events-none select-none z-30">
+                        <span className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${isAnverso ? 'bg-amber-500 ring-2 ring-amber-300' : 'bg-sky-500 ring-2 ring-sky-300'}`}></span>
+                          <span className={`font-black text-[11px] uppercase tracking-wider ${isAnverso ? 'text-amber-800' : 'text-sky-800'}`}>
+                            {isAnverso ? 'Carilla 1: ANVERSO (Frente • Lomo Izquierdo a 30mm)' : 'Carilla 2: REVERSO (Dorso • Lomo Derecho a 35mm / Margen Izq 25mm)'}
+                          </span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          25 renglones • 8.47mm
+                        </span>
+                      </div>
                       {/* CAPA 0: GRILLA DE 25 RENGLONES EXACTOS A 8.47mm (Invisible al imprimir) */}
                       <div 
                         className={` absolute flex flex-col pointer-events-none z-0 print:hidden ${mostrarGuia ? 'opacity-100' : 'opacity-0'}`}
