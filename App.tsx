@@ -1648,8 +1648,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         </header>
 
         {/* Scrollable container for tab body content */}
-        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-hidden' : activeTab === 'lienzo' ? 'p-0 flex flex-col flex-1' : 'p-4 md:p-8 overflow-y-auto'}`}>
-          <div className={`w-full ${activeTab === 'lienzo' ? 'max-w-none p-0 pb-0' : 'max-w-7xl pb-24'} mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'h-full flex-1 overflow-hidden pb-0' : ''}`}>
+        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
+          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'h-full flex-1 overflow-hidden pb-0' : 'pb-24'}`}>
             
             {(() => {
               return (
