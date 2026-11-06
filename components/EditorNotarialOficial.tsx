@@ -669,20 +669,168 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       box-shadow: none !important;
     }
 
-    /* CUERPO DE TEXTO DE PROTOCOLO (HOJA 0 - 25 RENGLONES EXACTOS A 8.47mm) */
-    #notarial-cuerpo-texto,
-    .notarial-cuerpo-texto {
+    /* CUERPO DE TEXTO DE PROTOCOLO - SIMETRÍA DOBLE FAZ ESTRICTA */
+    /* ANVERSO (Carilla 1 / Frente): Lomo izquierdo a 30mm, margen derecho 30mm */
+    .pagina-anverso #notarial-cuerpo-texto,
+    .pagina-anverso [id^="notarial-cuerpo-texto"],
+    .pagina-anverso .notarial-cuerpo-texto {
       position: absolute !important;
       top: 42.55mm !important;
       left: 30.0mm !important;
       width: 155.9mm !important;
       height: 211.75mm !important;
-      line-height: 8.47mm !important;
+      line-height: ${interlineadoGlobal}mm !important;
+      font-size: ${fontSizeGlobal} !important;
+      font-family: ${fontFamilyGlobal} !important;
       margin: 0mm !important;
       padding: 0mm !important;
       display: block !important;
       box-sizing: border-box !important;
     }
+
+    /* REVERSO (Carilla 2 / Dorso): Margen izquierdo libre 25mm, Lomo derecho a 35mm */
+    .pagina-reverso #notarial-cuerpo-texto,
+    .pagina-reverso [id^="notarial-cuerpo-texto"],
+    .pagina-reverso .notarial-cuerpo-texto {
+      position: absolute !important;
+      top: 42.55mm !important;
+      left: 25.0mm !important;
+      width: 155.9mm !important;
+      height: 211.75mm !important;
+      line-height: ${interlineadoGlobal}mm !important;
+      font-size: ${fontSizeGlobal} !important;
+      font-family: ${fontFamilyGlobal} !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      display: block !important;
+      box-sizing: border-box !important;
+    }
+
+    /* ==========================================================================
+       HOJA 1: CERTIFICACIÓN DE FIRMAS - COORDENADAS MILIMÉTRICAS ESTRICTAS
+       ========================================================================== */
+    #contenedor-hoja-1 {
+      position: relative !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+      max-height: 355.6mm !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-1 .capa-datos-certificacion {
+      position: absolute !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+    }
+
+    #contenedor-hoja-1 span,
+    #contenedor-hoja-1 .campo-hoja-1,
+    #contenedor-hoja-1 .input-impresion {
+      position: absolute !important;
+      white-space: nowrap !important;
+      border: none !important;
+      background: transparent !important;
+      color: #000000 !important;
+      font-weight: bold !important;
+      line-height: 1 !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-1 #titular-notaria-cf, #contenedor-hoja-1 .pos-cert-firmas-t1 { top: 74.0mm !important; left: 99.2mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #registro-notaria-cf, #contenedor-hoja-1 .pos-cert-firmas-t2 { top: 86.0mm !important; left: 69.6mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #ciudad-registro-cf, #contenedor-hoja-1 .pos-cert-firmas-t3 { top: 86.0mm !important; left: 137.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #tipo-contrato-cf, #contenedor-hoja-1 .pos-cert-tramo1 { top: 124.0mm !important; left: 160.6mm !important; font-size: 8pt !important; }
+    #contenedor-hoja-1 #objeto-acto-cf, #contenedor-hoja-1 .pos-cert-tramo2 { top: 134.5mm !important; left: 31.5mm !important; font-size: 8pt !important; }
+
+    #contenedor-hoja-1 #compareciente-nombre-1, #contenedor-hoja-1 .pos-cert-inciso-a-nom { top: 146.0mm !important; left: 37.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-cedula-1, #contenedor-hoja-1 .pos-cert-inciso-a-doc { top: 146.0mm !important; left: 154.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-ciudad-1, #contenedor-hoja-1 .pos-cert-inciso-a-dom { top: 157.0mm !important; left: 63.2mm !important; font-size: 12pt !important; }
+
+    #contenedor-hoja-1 #compareciente-nombre-2, #contenedor-hoja-1 .pos-cert-inciso-b-nom { top: 169.0mm !important; left: 37.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-cedula-2, #contenedor-hoja-1 .pos-cert-inciso-b-doc { top: 169.0mm !important; left: 155.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-ciudad-2, #contenedor-hoja-1 .pos-cert-inciso-b-dom { top: 180.0mm !important; left: 63.2mm !important; font-size: 12pt !important; }
+
+    #contenedor-hoja-1 #compareciente-nombre-3, #contenedor-hoja-1 .pos-cert-inciso-c-nom { top: 192.0mm !important; left: 37.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-cedula-3, #contenedor-hoja-1 .pos-cert-inciso-c-doc { top: 192.0mm !important; left: 155.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-ciudad-3, #contenedor-hoja-1 .pos-cert-inciso-c-dom { top: 203.0mm !important; left: 63.2mm !important; font-size: 12pt !important; }
+
+    #contenedor-hoja-1 #compareciente-nombre-4, #contenedor-hoja-1 .pos-cert-inciso-d-nom { top: 215.5mm !important; left: 37.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-cedula-4, #contenedor-hoja-1 .pos-cert-inciso-d-doc { top: 215.5mm !important; left: 154.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #compareciente-ciudad-4, #contenedor-hoja-1 .pos-cert-inciso-d-dom { top: 225.0mm !important; left: 63.2mm !important; font-size: 12pt !important; }
+
+    #contenedor-hoja-1 #libro-tomo-cf, #contenedor-hoja-1 .pos-cert-tomo { top: 248.0mm !important; left: 80.2mm !important; font-size: 8pt !important; }
+
+    #contenedor-hoja-1 #hora-certificacion, #contenedor-hoja-1 .pos-cert-hora { top: 314.5mm !important; left: 79.4mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #dia-certificacion, #contenedor-hoja-1 .pos-cert-dia { top: 314.5mm !important; left: 119.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #mes-certificacion, #contenedor-hoja-1 .pos-cert-mes { top: 314.5mm !important; left: 143.1mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-1 #anio-letras-cierre, #contenedor-hoja-1 .pos-cert-anio { top: 321.5mm !important; left: 60.6mm !important; font-size: 12pt !important; }
+
+    /* ==========================================================================
+       HOJA 2: CONCUERDA - COORDENADAS MILIMÉTRICAS ESTRICTAS
+       ========================================================================== */
+    #contenedor-hoja-2 {
+      position: relative !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+      max-height: 355.6mm !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-2 .capa-datos-concuerda {
+      position: absolute !important;
+      top: 0mm !important;
+      left: 0mm !important;
+      width: 215.9mm !important;
+      height: 355.6mm !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+    }
+
+    #contenedor-hoja-2 span,
+    #contenedor-hoja-2 .campo-hoja-2,
+    #contenedor-hoja-2 .input-impresion {
+      position: absolute !important;
+      white-space: nowrap !important;
+      border: none !important;
+      background: transparent !important;
+      color: #000000 !important;
+      font-weight: bold !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      line-height: 1 !important;
+      margin: 0mm !important;
+      padding: 0mm !important;
+      box-sizing: border-box !important;
+    }
+
+    #contenedor-hoja-2 #escritura-nro-concuerda, #contenedor-hoja-2 .pos-matriz { top: 84.2mm !important; left: 140.5mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #fojas-concuerda, #contenedor-hoja-2 .pos-folio { top: 95.2mm !important; left: 36.8mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #division-concuerda, #contenedor-hoja-2 .pos-division { top: 95.2mm !important; left: 142.6mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #seccion-concuerda, #contenedor-hoja-2 .pos-seccion { top: 105.2mm !important; left: 47.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #registro-concuerda, #contenedor-hoja-2 .pos-registro { top: 106.0mm !important; left: 108.7mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #ciudad-concuerda, #contenedor-hoja-2 .pos-asiento { top: 115.5mm !important; left: 78.0mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #notario-nombre-concuerda, #contenedor-hoja-2 .pos-autorizante { top: 126.2mm !important; left: 57.9mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #notario-caracter-concuerda, #contenedor-hoja-2 .pos-caracter { top: 137.2mm !important; left: 90.0mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #copia-concuerda, #contenedor-hoja-2 .pos-copia { top: 147.2mm !important; left: 59.0mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #destinatario-concuerda, #contenedor-hoja-2 .pos-destinatario { top: 147.2mm !important; left: 121.4mm !important; font-size: 11.5pt !important; }
+    #contenedor-hoja-2 #linea-adicional-concuerda, #contenedor-hoja-2 .pos-linea-adicional { top: 158.2mm !important; left: 26.2mm !important; font-size: 8pt !important; }
+    #contenedor-hoja-2 #dia-concuerda, #contenedor-hoja-2 .pos-dia { top: 158.2mm !important; left: 100.3mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #mes-concuerda, #contenedor-hoja-2 .pos-mes { top: 168.7mm !important; left: 34.6mm !important; font-size: 12pt !important; }
+    #contenedor-hoja-2 #anio-concuerda, #contenedor-hoja-2 .pos-anio { top: 168.7mm !important; left: 81.2mm !important; font-size: 12pt !important; }
 
     /* CAJA FIJA LOMO (Texto vertical de abajo hacia arriba anclado a 15mm) */
     .caja-fija-lomo {
@@ -1618,15 +1766,18 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
         >
           {/* ESTILOS TIPOGRÁFICOS Y DE CALIBRACIÓN GLOBALES PARA LAS 4 PLANTILLAS */}
           <style>{`
-            .input-impresion,
-            #lienzo-notarial input,
-            #lienzo-notarial textarea,
-            #lienzo-notarial .print\\:block {
+            #notarial-cuerpo-texto,
+            .notarial-cuerpo-texto,
+            #lienzo-notarial textarea {
               font-family: ${fontFamilyGlobal} !important;
               font-size: ${fontSizeGlobal} !important;
             }
+            .input-impresion:not([class*="pos-"]) {
+              font-family: ${fontFamilyGlobal};
+              font-size: ${fontSizeGlobal};
+            }
 
-            /* Ajuste dinámico de interlineado (Espaciado Vertical) */
+/* Ajuste dinámico de interlineado (Espaciado Vertical) */
             #lienzo-notarial textarea,
             #lienzo-notarial .print\\:block,
             #notarial-cuerpo-texto,
