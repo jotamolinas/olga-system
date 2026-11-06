@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../services/auth';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
-export const useTrialStatus = (user?: User | null) => {
-  const [pruebaActiva, setPruebaActiva] = useState<boolean>(true);
-  const [diasRestantes, setDiasRestantes] = useState<number>(5);
+const parseAnyDate = (raw: any): Date | null => {
+  if (!raw) return null;
+  if (typeof raw.toDate === 'function') return raw.toDate();
+  if (typeof raw.toMillis === 'function') return new Date(raw.toMillis());
+  if (typeof raw.seconds === 'number') return new Date(raw.seconds * 1000);
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const useTrialStatus = (user?: User | null, externalProfile?: any) => {
+  const [pruebaActiva, setPruebaActiva] = useState<boolean>(false);
+  const [diasRestantes, setDiasRestantes] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [userData, setUserData] = useState<any>(null);
   const [isTrialExpired, setIsTrialExpired] = useState<boolean>(false);
@@ -15,6 +24,60 @@ export const useTrialStatus = (user?: User | null) => {
   useEffect(() => {
     let unsubscribeUserSnapshot: (() => void) | null = null;
 
+    const evaluateProfile = (fetchedUserData: any, email?: string | null) => {
+      setUserData(fetchedUserData);
+
+      const roleStr = String(fetchedUserData?.rol || fetchedUserData?.role || '').toLowerCase().trim();
+      const isOperador = roleStr === 'operador';
+      const esAdmin = email === 'jotamolinas@gmail.com' || isOperador || roleStr === 'admin' || roleStr === 'superadmin';
+
+      if (esAdmin) {
+        setPruebaActiva(true);
+        setDiasRestantes(9999);
+        setIsTrialExpired(false);
+        setIsSoftBlocked(false);
+        setTienePlanPago(true);
+        setLoading(false);
+        return;
+      }
+
+      const estadoPagoStr = String(fetchedUserData?.estadoPago || fetchedUserData?.estadoPlataforma || '').toUpperCase().trim();
+      const planStr = String(fetchedUserData?.planActual || fetchedUserData?.plan || 'trial').toLowerCase().trim();
+
+      const esPlanDePago =
+        (estadoPagoStr === 'APROBADO' || planStr.includes('basico') || planStr.includes('básico') || planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full')) &&
+        planStr !== 'trial' &&
+        planStr !== 'sin plan' &&
+        planStr !== 'ninguno';
+
+      setTienePlanPago(esPlanDePago);
+
+      // Si es plan de pago, rige fecha_vencimiento_plan (con respaldo en fecha_expiracion si no existe).
+      // Si es trial, rige estrictamente fecha_expiracion.
+      const limiteDate = esPlanDePago
+        ? (parseAnyDate(fetchedUserData?.fecha_vencimiento_plan) || parseAnyDate(fetchedUserData?.fecha_expiracion))
+        : parseAnyDate(fetchedUserData?.fecha_expiracion);
+
+      const ahora = new Date();
+      // Si no hay fecha válida o la fecha actual ya superó el límite, se bloquea
+      const haExpirado = limiteDate ? ahora.getTime() > limiteDate.getTime() : true;
+
+      const diasRestantesVal = haExpirado || !limiteDate
+        ? 0
+        : Math.max(0, Math.ceil((limiteDate.getTime() - ahora.getTime()) / (1000 * 3600 * 24)));
+
+      setIsSoftBlocked(haExpirado);
+      setIsTrialExpired(haExpirado);
+      setPruebaActiva(!haExpirado);
+      setDiasRestantes(diasRestantesVal);
+      setLoading(false);
+    };
+
+    if (externalProfile) {
+      evaluateProfile(externalProfile, user?.email);
+      return;
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (unsubscribeUserSnapshot) {
         unsubscribeUserSnapshot();
@@ -23,162 +86,30 @@ export const useTrialStatus = (user?: User | null) => {
 
       if (!currentUser) {
         setUserData(null);
-        setPruebaActiva(true);
-        setDiasRestantes(5);
-        setIsTrialExpired(false);
-        setIsSoftBlocked(false);
+        setPruebaActiva(false);
+        setDiasRestantes(0);
+        setIsTrialExpired(true);
+        setIsSoftBlocked(true);
         setTienePlanPago(false);
         setLoading(false);
         return;
       }
 
-      try {
-        const userRef = doc(db, 'users', currentUser.uid);
-        unsubscribeUserSnapshot = onSnapshot(userRef, (userSnap) => {
-          if (!userSnap.exists()) {
-            setUserData(null);
-            setPruebaActiva(true);
-            setDiasRestantes(5);
-            setIsTrialExpired(false);
-            setIsSoftBlocked(false);
-            setTienePlanPago(false);
-            setLoading(false);
-            return;
-          }
-
-          const fetchedUserData = userSnap.data();
-          setUserData(fetchedUserData);
-
-          const planStr = String(fetchedUserData.planActual || fetchedUserData.plan || '').toLowerCase().trim();
-          const roleStr = String(fetchedUserData.rol || fetchedUserData.role || '').toLowerCase().trim();
-          const isOperador = roleStr === 'operador';
-          const esAdmin = currentUser.email === 'jotamolinas@gmail.com' || isOperador || roleStr === 'admin' || roleStr === 'superadmin';
-
-          // Verificación de Plan de Pago Real
-          const esPlanPago = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('básico') || planStr.includes('basico') || planStr.includes('mensual');
-          const estadoPagoStr = String(fetchedUserData.estadoPago || fetchedUserData.estadoPlataforma || '').toUpperCase().trim();
-          const isPagoAprobado = estadoPagoStr === 'APROBADO' || estadoPagoStr === 'ACTIVO';
-
-          // Verificación de vencimiento de suscripción
-          let suscripcionVencida = false;
-          const fechaVencimientoPlan = fetchedUserData.fecha_vencimiento_plan || fetchedUserData.fechaVencimientoPlan;
-          if (fechaVencimientoPlan && !esAdmin) {
-            const vDate = new Date(fechaVencimientoPlan);
-            if (!isNaN(vDate.getTime()) && vDate.getTime() < Date.now()) {
-              suscripcionVencida = true;
-            }
-          }
-
-          if (esAdmin) {
-            // Administradores y Operadores nunca están bloqueados
-            setPruebaActiva(true);
-            setDiasRestantes(9999);
-            setIsTrialExpired(false);
-            setIsSoftBlocked(false);
-            setTienePlanPago(true);
-            setLoading(false);
-            return;
-          }
-
-          if (esPlanPago) {
-            // ESCENARIO B: Usuario de Plan Pago
-            // Cae en isSoftBlocked = true si su estado de pago está vencido, rechazado, o si la fecha de vencimiento del plan ya pasó
-            let suscripcionVencida = false;
-            const fechaVencimientoPlan = fetchedUserData.fecha_vencimiento_plan || fetchedUserData.fechaVencimientoPlan;
-            if (fechaVencimientoPlan && !esAdmin) {
-              const vDate = new Date(fechaVencimientoPlan);
-              if (!isNaN(vDate.getTime()) && vDate.getTime() < Date.now()) {
-                suscripcionVencida = true;
-              }
-            }
-
-            // También verificar fecha_expiracion genérica si existe
-            const rawExp = fetchedUserData.fecha_expiracion;
-            if (rawExp && !esAdmin) {
-              let expDate: Date | null = null;
-              if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
-              else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
-              else if (typeof rawExp.seconds === 'number') expDate = new Date(rawExp.seconds * 1000);
-              else expDate = new Date(rawExp);
-              if (expDate && !isNaN(expDate.getTime()) && expDate.getTime() < Date.now()) {
-                suscripcionVencida = true;
-              }
-            }
-
-            const pagoInvalidoOVencido = !isPagoAprobado || suscripcionVencida;
-
-            setTienePlanPago(isPagoAprobado && !suscripcionVencida);
-            setPruebaActiva(!pagoInvalidoOVencido);
-            setDiasRestantes(pagoInvalidoOVencido ? 0 : 9999);
-            setIsTrialExpired(suscripcionVencida);
-            setIsSoftBlocked(pagoInvalidoOVencido);
-          } else {
-            // ESCENARIO A: Usuario en Trial
-            // Cae en isSoftBlocked = true si sus días se agotaron o superó su fecha_expiracion
-            setTienePlanPago(false);
-
-            let expirationDate: Date | null = null;
-            const rawExp = fetchedUserData.fecha_expiracion;
-            if (rawExp) {
-              if (typeof rawExp.toDate === 'function') expirationDate = rawExp.toDate();
-              else if (typeof rawExp.toMillis === 'function') expirationDate = new Date(rawExp.toMillis());
-              else if (typeof rawExp.seconds === 'number') expirationDate = new Date(rawExp.seconds * 1000);
-              else expirationDate = new Date(rawExp);
-            }
-
-            // Fallback: fecha_creacion + 5 días
-            if (!expirationDate || isNaN(expirationDate.getTime())) {
-              const rawDate = fetchedUserData.fecha_creacion || fetchedUserData.fechaCreacion || fetchedUserData.created_at || fetchedUserData.createdAt;
-              let creationDate = new Date();
-              if (rawDate) {
-                if (typeof rawDate.toDate === 'function') creationDate = rawDate.toDate();
-                else if (typeof rawDate.seconds === 'number') creationDate = new Date(rawDate.seconds * 1000);
-                else creationDate = new Date(rawDate);
-              }
-              expirationDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
-            }
-
-            const now = new Date();
-            const diffMsRemaining = expirationDate.getTime() - now.getTime();
-            const diasRestantesCalculados = Math.max(0, Math.ceil(diffMsRemaining / (1000 * 60 * 60 * 24)));
-            const trialExpirado = fetchedUserData.estado_cuenta === 'expirada' || now.getTime() > expirationDate.getTime() || diasRestantesCalculados <= 0;
-
-            if (trialExpirado) {
-              if (fetchedUserData.estado_cuenta !== 'expirada') {
-                updateDoc(userRef, { estado_cuenta: 'expirada' }).catch(console.error);
-              }
-              setPruebaActiva(false);
-              setDiasRestantes(0);
-              setIsTrialExpired(true);
-              setIsSoftBlocked(true);
-            } else {
-              setPruebaActiva(true);
-              setDiasRestantes(diasRestantesCalculados);
-              setIsTrialExpired(false);
-              setIsSoftBlocked(false);
-            }
-          }
-
+      const userRef = doc(db, 'users', currentUser.uid);
+      unsubscribeUserSnapshot = onSnapshot(userRef, (userSnap) => {
+        if (!userSnap.exists()) {
           setLoading(false);
-        }, (error: any) => {
-          if (error.code !== 'permission-denied') {
-            console.error("Error en snapshot de prueba gratuita:", error);
-          }
-          setLoading(false);
-        });
-      } catch (err) {
-        console.error("Error configurando listener de estado de prueba:", err);
-        setLoading(false);
-      }
+          return;
+        }
+        evaluateProfile(userSnap.data(), currentUser.email);
+      });
     });
 
     return () => {
-      if (unsubscribeUserSnapshot) {
-        unsubscribeUserSnapshot();
-      }
+      if (unsubscribeUserSnapshot) unsubscribeUserSnapshot();
       unsubscribeAuth();
     };
-  }, []);
+  }, [user, externalProfile]);
 
   return { pruebaActiva, diasRestantes, loading, userData, isTrialExpired, isSoftBlocked, tienePlanPago };
 };

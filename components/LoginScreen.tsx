@@ -196,8 +196,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         errorMessage = 'Contraseña incorrecta. Puedes restablecerla abajo.';
       } else if (err.code === 'auth/email-already-in-use') {
         errorMessage = 'Este correo ya está registrado. Por favor inicia sesión.';
-      } else if (err.code === 'auth/weak-password') {
-        errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
+      } else if (err.code === 'auth/too-many-requests') {
+        errorMessage = 'Demasiados intentos fallidos. Por seguridad, el acceso temporal está bloqueado. Por favor, espera unos minutos o usa Recuperar Contraseña.';
       }
       setError(errorMessage);
     } finally {

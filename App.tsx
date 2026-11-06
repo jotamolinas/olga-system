@@ -336,8 +336,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Authentication & Roles state
   const [currentUser, setCurrentUser] = useState<(User & { role?: string; rol?: string; nombre?: string }) | null>(null);
-  const { pruebaActiva, diasRestantes, userData, isTrialExpired, isSoftBlocked, tienePlanPago } = useTrialStatus(currentUser);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const { pruebaActiva, diasRestantes, userData, isTrialExpired, isSoftBlocked, tienePlanPago } = useTrialStatus(currentUser, userProfile);
   const [isCheckingProfile, setIsCheckingProfile] = useState(true);
   const [role, setRole] = useState<'admin' | 'usuario'>('usuario');
 
@@ -1652,7 +1652,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                   )}
 
                   {/* Estado 2 (Prueba Activa): Si isSoftBlocked es false Y no tiene plan de pago, muestra UNICAMENTE el banner AMARILLO */}
-                  {!isSoftBlocked && !tienePlanPago && activeTab !== 'planes' && (
+                  {(!tienePlanPago && !isSoftBlocked && activeTab !== 'planes') && (
                     <div className="bg-amber-50 border-b border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 mb-6 rounded-2xl animate-fade-in shadow-sm">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-amber-100 rounded-lg">
@@ -1747,7 +1747,21 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
 
             {activeTab === 'lienzo' && (
-              tieneLienzoYPresupuestos ? (
+              isSoftBlocked ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
+                  <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Acceso Restringido</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    Acceso Restringido. Tu plan ha expirado. Renueva tu suscripción para volver a utilizar el Lienzo Notarial y Presupuestos.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('planes')}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-900/40 cursor-pointer"
+                  >
+                    Ver Planes / Renovar
+                  </button>
+                </div>
+              ) : tieneLienzoYPresupuestos ? (
                 <EditorNotarialOficial 
                   onVolver={() => setActiveTab('escritos')} 
                   esPlanFull={esPlanFull}
@@ -1770,7 +1784,21 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             )}
 
             {activeTab === 'facturacion' && (
-              tieneLienzoYPresupuestos ? (
+              isSoftBlocked ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
+                  <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Acceso Restringido</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    Acceso Restringido. Tu plan ha expirado. Renueva tu suscripción para volver a utilizar el Lienzo Notarial y Presupuestos.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('planes')}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-900/40 cursor-pointer"
+                  >
+                    Ver Planes / Renovar
+                  </button>
+                </div>
+              ) : tieneLienzoYPresupuestos ? (
                 <ModuloPresupuestos 
                   onVolver={() => setActiveTab('lienzo')}
                   userId={currentUser?.uid || currentUser?.email || 'default'}

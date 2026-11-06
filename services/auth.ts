@@ -140,7 +140,27 @@ export const emailSignIn = async (email: string, password: string): Promise<{ us
   try {
     isSigningIn = true;
     const cleanEmail = (email || '').trim().toLowerCase();
-    const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    let result;
+    try {
+      result = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    } catch (signInErr: any) {
+      const errCode = signInErr?.code || '';
+      if (errCode === 'auth/invalid-credential' || errCode === 'auth/user-not-found' || errCode === 'auth/wrong-password') {
+        try {
+          const signUpRes = await emailSignUp(cleanEmail, password);
+          if (signUpRes && signUpRes.user) {
+            return { user: signUpRes.user };
+          }
+        } catch (signUpErr: any) {
+          if (signUpErr?.code === 'auth/email-already-in-use') {
+            throw new Error('Contraseña incorrecta o credenciales inválidas. Por favor verifícalas o usa Recuperar Contraseña.');
+          }
+          throw signUpErr;
+        }
+      }
+      throw signInErr;
+    }
+
     if (result.user) {
       await registerNewSession(result.user.uid);
     }
