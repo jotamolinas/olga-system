@@ -662,6 +662,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               const fallbackProfile = { 
                 uid: user.uid,
                 email: user.email || '', 
+                telefono: user.phoneNumber || '',
+                phoneNumber: user.phoneNumber || '',
+                identificador: user.email || user.phoneNumber || '',
+                proveedorAcceso: user.phoneNumber ? 'telefono' : 'email',
                 fecha_creacion: serverTimestamp(),
                 fecha_expiracion: Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)),
                 planActual: 'trial',
@@ -693,6 +697,25 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
           const data = docSnap.data();
           if (!data) return;
+
+          // Autorreparación de cuentas existentes incompletas
+          const updates: any = {};
+          if (user.phoneNumber && !data.telefono) {
+            updates.telefono = user.phoneNumber;
+            updates.phoneNumber = user.phoneNumber;
+          }
+          if (!data.fecha_creacion) {
+            updates.fecha_creacion = user.metadata?.creationTime ? Timestamp.fromDate(new Date(user.metadata.creationTime)) : serverTimestamp();
+          }
+          if (!data.fecha_expiracion && !data.fecha_vencimiento_plan) {
+            updates.fecha_expiracion = Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000));
+            updates.planActual = data.planActual || 'trial';
+            updates.estado_cuenta = data.estado_cuenta || 'activa';
+          }
+          if (Object.keys(updates).length > 0) {
+            updateDoc(doc(db, 'users', user.uid), updates).catch(console.error);
+            Object.assign(data, updates);
+          }
 
           // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
           const isGavanah = 

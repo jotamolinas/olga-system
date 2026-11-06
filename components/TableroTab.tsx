@@ -222,7 +222,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   const activeWorkspaceId = workspaceId || hookWorkspaceId;
 
   const [escritos, setEscritos] = useState<any[]>([]);
-  const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | null>(null);
+  const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | 'vencidos' | null>(null);
 
   const [isPagareEditorOpen, setIsPagareEditorOpen] = useState(false);
   const [editingPagareId, setEditingPagareId] = useState<string | null>(null);
@@ -307,29 +307,83 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     return { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado };
   }, [pagares, effectivePersonas]);
 
-  const pagaresProximosAVencer = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const targetDate = new Date();
-    targetDate.setDate(today.getDate() + 7);
-    targetDate.setHours(23, 59, 59, 999);
+  const pagaresVencidos = useMemo(() => {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
 
     return pagares.filter(p => {
-      if (p.estado === 'Cobrado') return false;
+      if (p.estado === 'Cobrado' || p.status === 'cobrado' || p.status === 'anulado' || p.estado === 'Anulado') return false;
 
-      // Usamos el cronograma si está disponible
       if (p.cronograma && p.cronograma.length > 0) {
         return p.cronograma.some(c => {
           if ((c as any).estado === 'cobrado' || (c as any).pagado === true) return false;
-          if (!c.fecha_pag) return false;
-          const d = new Date(c.fecha_pag + "T12:00:00");
-          return d >= today && d <= targetDate;
+          const rawDate = c.fecha_pag || (c as any).fecha_vencimiento || (c as any).fecha;
+          if (!rawDate) return false;
+          const partes = rawDate.split('-');
+          if (partes.length !== 3) {
+            const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
+            fallbackDate.setHours(0, 0, 0, 0);
+            return fallbackDate < hoy;
+          }
+          const fechaPago = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+          return fechaPago < hoy;
         });
-      } else if (p.fecha_primer_pago) {
-        const d = new Date(p.fecha_primer_pago + "T12:00:00");
-        return d >= today && d <= targetDate;
+      } else {
+        const rawDate = p.fecha_primer_pago || (p as any).fecha_vencimiento || (p as any).fecha || (p as any).fecha_pago;
+        if (!rawDate) return false;
+        const partes = rawDate.split('-');
+        if (partes.length !== 3) {
+          const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
+          fallbackDate.setHours(0, 0, 0, 0);
+          return fallbackDate < hoy;
+        }
+        const fechaPago = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+        return fechaPago < hoy;
       }
-      return false;
+    });
+  }, [pagares]);
+
+  const pagaresProximosAVencer = useMemo(() => {
+    return pagares.filter(p => {
+      if (p.estado === 'Cobrado' || p.status === 'cobrado' || p.status === 'anulado' || p.estado === 'Anulado') return false;
+
+      const hoy = new Date();
+      hoy.setHours(0,0,0,0);
+      
+      const max = new Date();
+      max.setDate(hoy.getDate() + 7);
+      max.setHours(23,59,59,999);
+
+      if (p.cronograma && p.cronograma.length > 0) {
+        return p.cronograma.some(c => {
+          if ((c as any).estado === 'cobrado' || (c as any).pagado === true) return false;
+          const rawDate = c.fecha_pag || (c as any).fecha_vencimiento || (c as any).fecha;
+          if (!rawDate) return false;
+          const parts = String(rawDate).split('-');
+          if (parts.length !== 3) {
+            const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
+            fallbackDate.setHours(0,0,0,0);
+            return fallbackDate >= hoy && fallbackDate <= max;
+          }
+          const [y, m, d] = parts.map(Number);
+          const fp = new Date(y, m - 1, d);
+          fp.setHours(0,0,0,0);
+          return fp >= hoy && fp <= max;
+        });
+      } else {
+        const rawDate = (p as any).fecha_pago || p.fecha_primer_pago || (p as any).fecha_vencimiento || (p as any).fecha;
+        if (!rawDate) return false;
+        const parts = String(rawDate).split('-');
+        if (parts.length !== 3) {
+          const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
+          fallbackDate.setHours(0,0,0,0);
+          return fallbackDate >= hoy && fallbackDate <= max;
+        }
+        const [y, m, d] = parts.map(Number);
+        const fp = new Date(y, m - 1, d);
+        fp.setHours(0,0,0,0);
+        return fp >= hoy && fp <= max;
+      }
     });
   }, [pagares]);
 
@@ -432,6 +486,33 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         </div>
       </div>
 
+      {pagaresVencidos.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-[2rem] p-6 shadow-sm flex items-start md:items-center gap-4 animate-fade-in relative overflow-hidden">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-red-800 font-bold text-lg">Pagarés Vencidos</h3>
+            <p className="text-red-700/80 text-sm mt-0.5">
+              Hay <span className="font-black text-red-600">{pagaresVencidos.length} pagaré(s)</span> con fecha de vencimiento anterior al día de hoy (incluyendo meses anteriores).
+            </p>
+          </div>
+          <button 
+            onClick={() => setActiveOverlay('vencidos')} 
+            className="hidden md:flex bg-white text-red-700 border border-red-200 hover:bg-red-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest items-center gap-2 transition-colors z-10"
+          >
+            Ver Detalles <ChevronRight className="w-3 h-3" />
+          </button>
+          
+          <button 
+            onClick={() => setActiveOverlay('vencidos')} 
+            className="md:hidden absolute inset-0 w-full box-border h-full opacity-0 z-0"
+          >
+            Ver Detalles
+          </button>
+        </div>
+      )}
+
       {pagaresProximosAVencer.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 shadow-sm flex items-start md:items-center gap-4 animate-fade-in relative overflow-hidden">
           <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
@@ -445,14 +526,14 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           </div>
           <button 
             onClick={() => setActiveOverlay('vencimientos')} 
-            className="hidden md:flex bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest items-center gap-2 transition-colors"
+            className="hidden md:flex bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest items-center gap-2 transition-colors z-10"
           >
             Ver Detalles <ChevronRight className="w-3 h-3" />
           </button>
           
           <button 
             onClick={() => setActiveOverlay('vencimientos')} 
-            className="md:hidden absolute inset-0 w-full box-border h-full opacity-0"
+            className="md:hidden absolute inset-0 w-full box-border h-full opacity-0 z-0"
           >
             Ver Detalles
           </button>
@@ -701,10 +782,23 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           }}
         />
       )}
+      {activeOverlay === 'vencidos' && (
+        <OverlayDetails 
+          title="Pagarés Vencidos"
+          icon={<AlertTriangle className="w-6 h-6 text-red-500" />}
+          onClose={() => setActiveOverlay(null)}
+          items={pagaresVencidos}
+          type="pagares"
+          onSelectPagare={(id) => {
+            setEditingPagareId(id);
+            setIsPagareEditorOpen(true);
+          }}
+        />
+      )}
       {activeOverlay === 'vencimientos' && (
         <OverlayDetails 
           title="Próximos Vencimientos (7 días)"
-          icon={<AlertTriangle className="w-6 h-6" />}
+          icon={<AlertTriangle className="w-6 h-6 text-amber-500" />}
           onClose={() => setActiveOverlay(null)}
           items={pagaresProximosAVencer}
           type="pagares"

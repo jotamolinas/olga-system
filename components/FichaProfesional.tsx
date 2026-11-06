@@ -55,25 +55,29 @@ export const FichaProfesional: React.FC<FichaProfesionalProps> = ({ currentUser,
     try {
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
+      const existingData = userSnap.exists() ? userSnap.data() : (userData || {});
 
       // 2. Preparamos toda la data del formulario
       const dataToUpdate: any = {
         ...formData,
         uid: user.uid,
         email: currentUser.email || user.email || '',
+        telefono: currentUser.phoneNumber || existingData.telefono || userData?.telefono || '',
+        phoneNumber: currentUser.phoneNumber || existingData.phoneNumber || userData?.phoneNumber || '',
         perfilCompletado: true
       };
 
-      // 3. EL ESCUDO DE CONTINGENCIA (Parche 9.2)
-      if (!userSnap.data()?.fecha_creacion) {
+      // 3. EL ESCUDO DE CONTINGENCIA & FECHAS DE TRIAL
+      if (!existingData.fecha_creacion) {
         dataToUpdate.fecha_creacion = serverTimestamp();
+      }
+      if (!existingData.fecha_expiracion && !existingData.fecha_vencimiento_plan) {
         dataToUpdate.fecha_expiracion = Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000));
-        dataToUpdate.planActual = 'trial';
-        dataToUpdate.role = 'titular';
-        dataToUpdate.estado_cuenta = 'activa';
+        dataToUpdate.planActual = existingData.planActual || userData?.planActual || 'trial';
+        dataToUpdate.estado_cuenta = existingData.estado_cuenta || userData?.estado_cuenta || 'activa';
       }
 
-      // 4. Guardado seguro en Firebase
+      // 4. Guardado seguro en Firebase con { merge: true }
       await setDoc(userRef, dataToUpdate, { merge: true });
 
       if (onComplete) {
