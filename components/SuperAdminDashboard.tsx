@@ -612,70 +612,41 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
               </div>
             </div>
 
-            {/* 2. Layout Central Asimétrico (Izquierda y Derecha) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 shrink-0">
-              {/* Contenedor Único de Gráficos (Lado Izquierdo: col-span-1 lg:col-span-2) */}
-              <div className="col-span-1 lg:col-span-2 bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
-                {/* Gráfico 1: Emisión de Pagarés */}
-                <div>
+            {/* Layout en Mitad y Mitad (Split 50/50): Izquierda (Gráficos y Cobros) - Derecha (Panel de Usuarios) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
+              
+              {/* Columna Izquierda: Gráficos Compactos, Cobros y Emisión Reciente */}
+              <div className="flex flex-col gap-3 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                
+                {/* Gráficos (Emisión & Volumen) */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <FileText className="w-3 h-3 text-blue-400" /> Emisión de Pagarés (Últimos 6 Meses)
+                      <FileText className="w-3 h-3 text-blue-400" /> Emisión (6 Meses) & Volumen
                     </span>
                     <span className="text-[9px] text-gray-400 font-mono">
                       {metrics.totalPagares} docs
                     </span>
                   </div>
-                  <div className="h-28 bg-transparent">
+                  <div className="h-20 bg-transparent">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
                         <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                        <XAxis dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={8} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#71717a" fontSize={8} tickLine={false} axisLine={false} allowDecimals={false} />
                         <Tooltip 
                           cursor={{ fill: '#27272a', opacity: 0.3 }}
-                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '11px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '10px' }}
                         />
-                        <Bar dataKey="cantidad" fill="#3b82f6" barSize={14} radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="cantidad" fill="#3b82f6" barSize={12} radius={[3, 3, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Línea divisoria sutil */}
-                <div className="border-t border-white/5 my-2 pt-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <DollarSign className="w-3 h-3 text-emerald-400" /> Volumen Notariado (Gs)
-                    </span>
-                  </div>
-                  <div className="h-28 bg-transparent">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={lineData} margin={{ top: 2, right: 5, left: 10, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="volumenGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
-                        <XAxis dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.08)', borderRadius: '12px', color: '#f4f4f5', fontSize: '11px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}
-                          formatter={(value: number) => [`Gs ${value.toLocaleString('es-PY')}`, 'Volumen']}
-                        />
-                        <Area type="monotone" dataKey="volumen" stroke="#10b981" strokeWidth={2} fill="url(#volumenGrad)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              {/* Módulo Gestión de Cobros (Lado Derecho: col-span-1) */}
-              <div className="col-span-1 bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between overflow-hidden">
-                <div className="flex flex-col h-full overflow-hidden">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
+                {/* Gestión de Cobros */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <CreditCard className="w-3 h-3 text-orange-400" /> Gestión de Cobros
                     </span>
@@ -688,16 +659,15 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                     </span>
                   </div>
 
-                  <div className="flex-1 max-h-[225px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
+                  <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
                     {loadingPayments ? (
-                      <div className="p-6 flex justify-center items-center">
-                        <div className="w-5 h-5 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+                      <div className="p-4 flex justify-center items-center">
+                        <div className="w-4 h-4 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
                       </div>
                     ) : pendingPayments.length === 0 ? (
-                      <div className="py-8 text-center flex flex-col items-center justify-center">
-                        <CheckCircle className="w-6 h-6 text-emerald-500/30 mb-1.5" />
-                        <p className="text-xs text-gray-400 font-medium">Al día con las suscripciones</p>
-                        <p className="text-[10px] text-gray-600 mt-0.5">Sin pagos pendientes</p>
+                      <div className="py-4 text-center flex flex-col items-center justify-center">
+                        <CheckCircle className="w-5 h-5 text-emerald-500/30 mb-1" />
+                        <p className="text-[11px] text-gray-400 font-medium">Al día con las suscripciones</p>
                       </div>
                     ) : (
                       pendingPayments.map((pago) => {
@@ -709,14 +679,14 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                         return (
                           <div 
                             key={pago.id}
-                            className="flex items-center justify-between py-2 px-2.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
+                            className="flex items-center justify-between py-1.5 px-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs text-gray-200 font-medium truncate" title={nombreEscribano}>
+                              <p className="text-[11px] text-gray-200 font-medium truncate" title={nombreEscribano}>
                                 {nombreEscribano}
                               </p>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-white font-medium text-[11px] font-mono">
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-white font-medium text-[10px] font-mono">
                                   {montoFormatted}
                                 </span>
                                 <span className="text-[9px] text-gray-500 truncate">• {pago.planSolicitado}</span>
@@ -724,23 +694,19 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
-                              {pago.urlComprobante ? (
+                              {pago.urlComprobante && (
                                 <button
                                   onClick={() => setReciboSeleccionado(pago.urlComprobante)}
-                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
-                                  title="Ver comprobante adjunto"
+                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
                                 >
-                                  <ExternalLink className="w-2.5 h-2.5" />
-                                  Revisar
+                                  <ExternalLink className="w-2.5 h-2.5" /> Revisar
                                 </button>
-                              ) : null}
+                              )}
                               <button
                                 onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '')}
-                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[10px] px-2 py-1 rounded transition-colors font-medium flex items-center gap-1 cursor-pointer"
-                                title="Aprobar suscripción del cliente"
+                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
                               >
-                                <CheckCircle className="w-2.5 h-2.5" />
-                                Aprobar
+                                <CheckCircle className="w-2.5 h-2.5" /> Aprobar
                               </button>
                             </div>
                           </div>
@@ -749,23 +715,82 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* 3. División de Listas Inferiores (Izquierda y Derecha) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
-              {/* Columna Izquierda: Usuarios Activos */}
+                {/* Emisión Reciente de Pagarés */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <FileText className="w-3 h-3 text-emerald-400" /> Emisión Reciente de Pagarés
+                    </span>
+                    <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                      {pagaresGlobal.length} docs
+                    </span>
+                  </div>
+
+                  <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1">
+                    {loading ? (
+                      <div className="p-4 flex justify-center items-center">
+                        <div className="w-4 h-4 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                      </div>
+                    ) : pagaresGlobal.length === 0 ? (
+                      <div className="py-4 text-center text-[11px] text-gray-500">
+                        No hay pagarés registrados aún.
+                      </div>
+                    ) : (
+                      pagaresGlobal.map((pagare) => {
+                        const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
+                        const fecha = pagare.fecha_emision || 'Fecha no registrada';
+                        const montoFormatted = typeof pagare.monto === 'number' 
+                          ? `Gs. ${pagare.monto.toLocaleString('es-PY')}` 
+                          : pagare.monto;
+
+                        return (
+                          <div 
+                            key={pagare.id} 
+                            onClick={() => handleAuditoria(pagare)}
+                            className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors cursor-pointer group"
+                            title="Click para auditar detalle"
+                          >
+                            <div className="min-w-0 mr-2">
+                              <p className="text-[11px] text-gray-200 font-medium truncate group-hover:text-emerald-400 transition-colors">
+                                {emisor}
+                              </p>
+                              <div className="flex items-center gap-1 text-[9px] text-gray-500 mt-0.5">
+                                <span>{fecha}</span>
+                                {pagare.deudor_nombre && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="truncate max-w-[100px] text-gray-400">{pagare.deudor_nombre}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <span className="text-[11px] font-medium text-white font-mono">
+                                {montoFormatted}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Columna Derecha: Panel de Usuarios Activos & Registrados (Ocupando la mitad derecha completa y scrolleable) */}
               <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col h-full overflow-hidden">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
                   <span className="flex items-center gap-1.5">
-                    <Users className="w-3 h-3 text-blue-400" /> Usuarios Activos & Registrados
+                    <Users className="w-3 h-3 text-blue-400" /> Panel de Usuarios Activos & Registrados
                   </span>
                   <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
                     {registeredUsers.length} total
                   </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
                   {loadingUsers ? (
                     <div className="p-6 flex justify-center items-center">
                       <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
@@ -820,66 +845,6 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                 </div>
               </div>
 
-              {/* Columna Derecha: Emisión de Pagarés */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col h-full overflow-hidden">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
-                  <span className="flex items-center gap-1.5">
-                    <FileText className="w-3 h-3 text-emerald-400" /> Emisión Reciente de Pagarés
-                  </span>
-                  <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
-                    {pagaresGlobal.length} docs
-                  </span>
-                </div>
-
-                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
-                  {loading ? (
-                    <div className="p-6 flex justify-center items-center">
-                      <div className="w-5 h-5 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-                    </div>
-                  ) : pagaresGlobal.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-gray-500">
-                      No hay pagarés registrados aún.
-                    </div>
-                  ) : (
-                    pagaresGlobal.map((pagare) => {
-                      const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
-                      const fecha = pagare.fecha_emision || 'Fecha no registrada';
-                      const montoFormatted = typeof pagare.monto === 'number' 
-                        ? `Gs. ${pagare.monto.toLocaleString('es-PY')}` 
-                        : pagare.monto;
-
-                      return (
-                        <div 
-                          key={pagare.id} 
-                          onClick={() => handleAuditoria(pagare)}
-                          className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors cursor-pointer group"
-                          title="Click para auditar detalle"
-                        >
-                          <div className="min-w-0 mr-2">
-                            <p className="text-xs text-gray-200 font-medium truncate group-hover:text-emerald-400 transition-colors">
-                              {emisor}
-                            </p>
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-500 mt-0.5">
-                              <span>{fecha}</span>
-                              {pagare.deudor_nombre && (
-                                <>
-                                  <span>•</span>
-                                  <span className="truncate max-w-[120px] text-gray-400">{pagare.deudor_nombre}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <span className="text-xs font-medium text-white font-mono">
-                              {montoFormatted}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         )}

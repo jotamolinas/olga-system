@@ -358,7 +358,22 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   onUpdatePagare
 }) => {
   const [pageSize, setPageSize] = useState<'legal' | 'a4'>('legal');
-  const [baseCertificadoNro, setBaseCertificadoNro] = useState(pagare?.certificado_firmas_nro || '000406185');
+  const [baseCertificadoNro, setBaseCertificadoNro] = useState(() => {
+    if (pagare?.certificado_firmas_nro) return pagare.certificado_firmas_nro;
+    try {
+      const saved = localStorage.getItem('olga_ultimo_certificado_firmas');
+      if (saved) return saved;
+    } catch {}
+    return '000406185';
+  });
+
+  useEffect(() => {
+    try {
+      if (baseCertificadoNro && baseCertificadoNro.trim()) {
+        localStorage.setItem('olga_ultimo_certificado_firmas', baseCertificadoNro.trim());
+      }
+    } catch {}
+  }, [baseCertificadoNro]);
 
   // Ciudad de emisión dinámica: extrae de userData o config, sin texto por defecto hardcodeado (elimina 'Hernandarias')
   const configCiudad = sanitizeNotarialText(
@@ -762,10 +777,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   };
 
   const getCertificadoNroForIndex = (index: number) => {
-    if (!baseCertificadoNro) return '';
-    const num = parseInt(baseCertificadoNro, 10);
-    if (isNaN(num)) return baseCertificadoNro;
-    return String(num + index).padStart(baseCertificadoNro.length, '0');
+    return baseCertificadoNro || '';
   };
 
   const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
@@ -1523,7 +1535,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                 {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
                 <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
-                  <div className="text-[12px] uppercase whitespace-nowrap">
+                  <div className="text-[14px] font-black uppercase whitespace-nowrap">
                     LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° <EditableField className={`bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index).trim()} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val.trim()); }} />. SERIE PJE-{new Date().getFullYear()}.- CONSTE.
                   </div>
                 </div>
