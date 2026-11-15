@@ -173,21 +173,24 @@ export const generateMirroredText = (
   const montoLetrasK = numberToWords(targetCuota.monto).trim().toUpperCase();
   const montoSimboloK = `${monInfo.simbolo} ${formatCurrencyValue(targetCuota.monto, monedaCode || 'PYG').trim()}`;
 
-  let mirroredText = masterText;
+  const fechaFmtK = `${diaLetrasK} de ${mesNombreK} del año ${anioLetrasK}`;
+  const montoFmtK = `${monInfo.nombreMayus} ${montoLetrasK} (${montoSimboloK})`;
 
-  // Reemplazo dinámico de la cláusula de vencimiento: "El día ... del año ..., pagaré"
+  let mirroredText = masterText.replace(/<\/?b>/g, '');
+
+  // Reemplazo dinámico de la cláusula de vencimiento
   mirroredText = mirroredText.replace(
-    /^\s*El día\s+[^,]+,\s*pagaré/i,
-    `El día ${diaLetrasK} de ${mesNombreK} del año ${anioLetrasK}, pagaré`
+    /El día\s+[^,]+,\s*pagaremos/i,
+    `El día ${fechaFmtK}, pagaremos`
   );
 
-  // Reemplazo dinámico del monto en letras y números si fuera diferente
+  // Reemplazo dinámico del monto en letras y números
   mirroredText = mirroredText.replace(
-    /la suma de\s+[^(]+\([^)]+\)/i,
-    `la suma de ${monInfo.nombreMayus} ${montoLetrasK} (${montoSimboloK})`
+    /la suma de:\s+[^.]+(?=\. QUEDA)/i,
+    `la suma de: ${montoFmtK}`
   );
 
-  return mirroredText;
+  return mirroredText && mirroredText.trim() ? mirroredText : masterText.replace(/<\/?b>/g, '');
 };
 
 interface NotarialCiudadInputProps {
@@ -227,6 +230,7 @@ export const NotarialCiudadInput: React.FC<NotarialCiudadInputProps> = ({ value,
 
 interface NotarialTextareaProps {
   value: string;
+  htmlValue: string;
   onCommit: (val: string) => void;
   onImmediateChange?: (val: string) => void;
   isMaster: boolean;
@@ -235,11 +239,13 @@ interface NotarialTextareaProps {
 
 export const NotarialTextarea: React.FC<NotarialTextareaProps> = ({
   value,
+  htmlValue,
   onCommit,
   onImmediateChange,
   isMaster,
   onReset
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
   const [localText, setLocalText] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const debounceTimerRef = useRef<any>(null);
@@ -256,8 +262,10 @@ export const NotarialTextarea: React.FC<NotarialTextareaProps> = ({
   };
 
   useEffect(() => {
-    adjustHeight();
-  }, [localText]);
+    if (isEditing) {
+      adjustHeight();
+    }
+  }, [isEditing, localText]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextVal = e.target.value;
@@ -274,27 +282,58 @@ export const NotarialTextarea: React.FC<NotarialTextareaProps> = ({
   const handleBlur = () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     onCommit(localText);
+    setIsEditing(false);
   };
 
   return (
     <div className="print:hidden">
-      <textarea
-        ref={textareaRef}
-        value={localText}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        rows={5}
-        className="w-full bg-transparent outline-none focus:ring-1 focus:ring-blue-400/50 rounded p-1 text-[13px] leading-relaxed text-slate-900 text-justify font-sans resize-none overflow-hidden border border-transparent hover:border-slate-200 focus:border-blue-300 transition-colors cursor-text"
-        placeholder="Ingrese aquí su texto o comience a escribir aquí..."
-      />
-      {onReset && (
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium mt-0.5 cursor-pointer block text-right"
-        >
-          {isMaster ? 'Restablecer todas las cuotas al texto generado' : 'Restablecer texto generado'}
-        </button>
+      {!isEditing ? (
+        <div className="group relative">
+          <div
+            className="text-[13px] leading-relaxed text-slate-900 text-justify font-sans whitespace-pre-wrap cursor-pointer p-1 rounded hover:bg-slate-50/80 transition-colors"
+            onClick={() => setIsEditing(true)}
+            dangerouslySetInnerHTML={{ __html: htmlValue }}
+            title="Hacer clic para editar el texto"
+          />
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded shadow cursor-pointer"
+          >
+            Editar texto
+          </button>
+        </div>
+      ) : (
+        <div>
+          <textarea
+            ref={textareaRef}
+            value={localText}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            rows={5}
+            className="w-full bg-slate-50 outline-none focus:ring-1 focus:ring-blue-400 rounded p-2 text-[13px] leading-relaxed text-slate-900 text-justify font-sans resize-none overflow-hidden border border-blue-300 transition-colors cursor-text"
+            placeholder="Ingrese aquí su texto..."
+            autoFocus
+          />
+          <div className="flex justify-between items-center mt-1">
+            <button
+              type="button"
+              onClick={() => setIsEditing(false)}
+              className="text-[10px] text-emerald-600 hover:text-emerald-800 font-bold cursor-pointer"
+            >
+              ✓ Listo / Vista previa
+            </button>
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
+              >
+                {isMaster ? 'Restablecer todas las cuotas al texto generado' : 'Restablecer texto generado'}
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -477,6 +516,71 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const [copiedSupport, setCopiedSupport] = useState(false);
   const [supportToast, setSupportToast] = useState(false);
 
+  const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
+  const initialDeudorNombre = sanitizeNotarialText(pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : ''));
+  const initialDeudorDocumento = formatDocClean(pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : '')).trim();
+  const rawDeudorDom = sanitizeNotarialText(pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : ''));
+  const initialDeudorDomicilio = (rawDeudorDom && rawDeudorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawDeudorDom : '';
+
+  const initialCodeudor1 = personas.find(p => p.id === pagare?.codeudor1_id);
+  const initialCodeudor1Nombre = sanitizeNotarialText(pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : ''));
+  const initialCodeudor1Documento = formatDocClean(pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : '')).trim();
+  const rawCodeudor1Dom = sanitizeNotarialText(pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : ''));
+  const initialCodeudor1Domicilio = (rawCodeudor1Dom && rawCodeudor1Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor1Dom : '';
+
+  const initialCodeudor2 = personas.find(p => p.id === pagare?.codeudor2_id);
+  const initialCodeudor2Nombre = sanitizeNotarialText(pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : ''));
+  const initialCodeudor2Documento = formatDocClean(pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : '')).trim();
+  const rawCodeudor2Dom = sanitizeNotarialText(pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : ''));
+  const initialCodeudor2Domicilio = (rawCodeudor2Dom && rawCodeudor2Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor2Dom : '';
+
+  const rawAcreedorDom = sanitizeNotarialText(pagare?.acreedor_domicilio_raw || '');
+  const [acreedorNombreEditable, setAcreedorNombreEditable] = useState(sanitizeNotarialText(pagare?.acreedor_nombre_raw || ''));
+  const [acreedorDocumentoEditable, setAcreedorDocumentoEditable] = useState(
+    formatDocClean(pagare?.acreedor_documento_raw || personas.find(p => p.id === pagare?.acreedor_id)?.nro_documento || '')
+  );
+  const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(
+    (rawAcreedorDom && rawAcreedorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawAcreedorDom : ''
+  );
+  const [deudorNombreEditable, setDeudorNombreEditable] = useState(initialDeudorNombre);
+  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(formatDocClean(initialDeudorDocumento));
+  const [deudorDomicilioEditable, setDeudorDomicilioEditable] = useState(initialDeudorDomicilio);
+
+  const [codeudor1NombreEditable, setCodeudor1NombreEditable] = useState(initialCodeudor1Nombre);
+  const [codeudor1DocumentoEditable, setCodeudor1DocumentoEditable] = useState(formatDocClean(initialCodeudor1Documento));
+  const [codeudor1DomicilioEditable, setCodeudor1DomicilioEditable] = useState(initialCodeudor1Domicilio);
+
+  const [codeudor2NombreEditable, setCodeudor2NombreEditable] = useState(initialCodeudor2Nombre);
+  const [codeudor2DocumentoEditable, setCodeudor2DocumentoEditable] = useState(formatDocClean(initialCodeudor2Documento));
+  const [codeudor2DomicilioEditable, setCodeudor2DomicilioEditable] = useState(initialCodeudor2Domicilio);
+
+  const generateDefaultText = (item: any): string => {
+    const diaLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate()).trim().toUpperCase();
+    const mesNombre = getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth()).trim().toUpperCase();
+    const anioLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear()).trim().toUpperCase();
+    
+    const rawAcNombre = (typeof acreedorNombreEditable !== 'undefined' ? acreedorNombreEditable : null) || pagare?.acreedor_nombre_raw || personas.find(p => p.id === pagare?.acreedor_id)?.nombre || '';
+    const acreedorLimpio = sanitizeNotarialText(rawAcNombre).toUpperCase();
+
+    const rawAcDoc = (typeof acreedorDocumentoEditable !== 'undefined' ? acreedorDocumentoEditable : null) || pagare?.acreedor_documento_raw || personas.find(p => p.id === pagare?.acreedor_id)?.nro_documento || '';
+    const acreedorDocLimpio = formatDocClean(rawAcDoc).trim();
+
+    const monInfo = getMonedaInfo(pagare?.moneda);
+    const montoLetras = numberToWords(item.monto).trim().toUpperCase();
+    const montoSimbolo = `${monInfo.simbolo} ${formatCurrencyValue(item.monto, pagare?.moneda || 'PYG').trim()}`;
+    
+    const rawCiudad = (typeof ciudadEmisionRef !== 'undefined' ? ciudadEmisionRef.current : null) || (typeof ciudadEmision !== 'undefined' ? ciudadEmision : null) || (pagare as any)?.ciudadEmision || (pagare as any)?.ciudad || config?.escribania?.ciudad || '';
+    const ciudadStr = sanitizeNotarialText(rawCiudad).toUpperCase() || 'ASUNCIÓN, PARAGUAY';
+
+    const fechaFmt = `${diaLetras} de ${mesNombre} del año ${anioLetras}`;
+    const acreedorFmt = `${acreedorLimpio}`;
+    const acreedorDocFmt = `${acreedorDocLimpio}`;
+    const montoFmt = `${monInfo.nombreMayus} ${montoLetras} (${montoSimbolo})`;
+    const ciudadFmt = `${ciudadStr}`;
+
+    return `El día ${fechaFmt}, pagaremos a ${acreedorFmt}, con Cédula de Identidad Civil N°${acreedorDocFmt}, la suma de: ${montoFmt}. QUEDA EXPRESAMENTE CONVENIDO QUE LA FALTA DE PAGO DEL PRESENTE PAGARÉ (CUOTA) PRODUCIRÁ LA CADUCIDAD DE LOS PLAZOS DE LOS DEMÁS PAGARÉS (CUOTAS). SI POR CUALQUIER CIRCUNSTANCIA NO FUERE ABONADO ESTE DOCUMENTO A SU VENCIMIENTO, DEVENGARÁ DURANTE EL TIEMPO DE LA MORA LA TASA MÁXIMA DE INTERÉS ESTABLECIDA POR EL BANCO CENTRAL DEL PARAGUAY ART. 475 C.C., POR SIMPLE RETARDO, SIN QUE ESTO IMPLIQUE ESPERA NI PRORROGA EN EL PLAZO DE LA OBLIGACIÓN, EL VENCIMIENTO ESTABLECERÁ LA MORA. Para todos los efectos judiciales y extrajudiciales a que dé lugar esta obligación constituimos el domicilio que más abajo se indica. Este PAGARÉ se regirá a todos los efectos por las leyes de Paraguay. Serán competentes para entender en los juicios a que dé lugar esta obligación, los Tribunales competentes de ${ciudadFmt}, Paraguay.-`;
+  };
+
   // Inicialización de textos personalizados desde todas las propiedades alias posibles y textosCuotas
   const getInitialCustomMap = (): { [id: string]: string } => {
     const initialMap: { [id: string]: string } = {};
@@ -492,25 +596,28 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
           text = savedTextosCuotas[it.id] || savedTextosCuotas[idx] || savedTextosCuotas[`cuota_${idx}`];
         }
       }
-      if (text) {
-        initialMap[it.id] = text;
-        initialMap[`idx_${idx}`] = text;
+      if (text && typeof text === 'string' && text.trim()) {
+        const clean = text.replace(/<\/?b>/g, '');
+        initialMap[it.id] = clean;
+        initialMap[`idx_${idx}`] = clean;
       }
     });
 
-    // Si la cuota 0 tiene texto personalizado guardado, asegurar que las siguientes cuotas lo reflejen por efecto espejo
     const cuota0Id = cronograma[0]?.id;
-    const cuota0Text = cuota0Id ? initialMap[cuota0Id] : null;
-    if (cuota0Text && cronograma.length > 1) {
-      for (let i = 1; i < cronograma.length; i++) {
-        const cuotaK = cronograma[i];
-        if (!initialMap[cuotaK.id]) {
-          const mirrored = generateMirroredText(cuota0Text, cuotaK, pagare?.moneda);
+    const cuota0Text = cuota0Id ? (initialMap[cuota0Id] || generateDefaultText(cronograma[0])) : null;
+
+    cronograma.forEach((cuotaK: any, i: number) => {
+      if (!initialMap[cuotaK.id] || !initialMap[cuotaK.id].trim()) {
+        if (i === 0) {
+          initialMap[cuotaK.id] = generateDefaultText(cuotaK);
+          initialMap[`idx_${0}`] = initialMap[cuotaK.id];
+        } else {
+          const mirrored = generateMirroredText(cuota0Text || generateDefaultText(cronograma[0]), cuotaK, pagare?.moneda);
           initialMap[cuotaK.id] = mirrored;
           initialMap[`idx_${i}`] = mirrored;
         }
       }
-    }
+    });
 
     return initialMap;
   };
@@ -652,6 +759,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         textoCuerpo: textoMaestro,
         contenido: textoMaestro,
         acreedor_nombre_raw: sanitizeNotarialText(acreedorNombreEditable),
+        acreedor_documento_raw: formatDocClean(acreedorDocumentoEditable),
         acreedor_domicilio_raw: sanitizeNotarialText(acreedorDomicilioEditable),
         deudor_nombre_raw: sanitizeNotarialText(deudorNombreEditable),
         deudor_documento_raw: formatDocClean(deudorDocumentoEditable),
@@ -780,42 +888,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     return baseCertificadoNro || '';
   };
 
-  const initialDeudor = personas.find(p => p.id === pagare?.deudor_id);
-  const initialDeudorNombre = sanitizeNotarialText(pagare?.deudor_nombre_raw || (initialDeudor ? (initialDeudor.nombre + (initialDeudor.apellido ? ' ' + initialDeudor.apellido : '')) : ''));
-  const initialDeudorDocumento = formatDocClean(pagare?.deudor_documento_raw || (initialDeudor ? initialDeudor.nro_documento : '')).trim();
-  const rawDeudorDom = sanitizeNotarialText(pagare?.deudor_domicilio_raw || (initialDeudor ? initialDeudor.domicilio : ''));
-  const initialDeudorDomicilio = (rawDeudorDom && rawDeudorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawDeudorDom : '';
-
-  const initialCodeudor1 = personas.find(p => p.id === pagare?.codeudor1_id);
-  const initialCodeudor1Nombre = sanitizeNotarialText(pagare?.codeudor1_nombre_raw || (initialCodeudor1 ? (initialCodeudor1.nombre + (initialCodeudor1.apellido ? ' ' + initialCodeudor1.apellido : '')) : ''));
-  const initialCodeudor1Documento = formatDocClean(pagare?.codeudor1_documento_raw || (initialCodeudor1 ? initialCodeudor1.nro_documento : '')).trim();
-  const rawCodeudor1Dom = sanitizeNotarialText(pagare?.codeudor1_domicilio_raw || (initialCodeudor1 ? initialCodeudor1.domicilio : ''));
-  const initialCodeudor1Domicilio = (rawCodeudor1Dom && rawCodeudor1Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor1Dom : '';
-
-  const initialCodeudor2 = personas.find(p => p.id === pagare?.codeudor2_id);
-  const initialCodeudor2Nombre = sanitizeNotarialText(pagare?.codeudor2_nombre_raw || (initialCodeudor2 ? (initialCodeudor2.nombre + (initialCodeudor2.apellido ? ' ' + initialCodeudor2.apellido : '')) : ''));
-  const initialCodeudor2Documento = formatDocClean(pagare?.codeudor2_documento_raw || (initialCodeudor2 ? initialCodeudor2.nro_documento : '')).trim();
-  const rawCodeudor2Dom = sanitizeNotarialText(pagare?.codeudor2_domicilio_raw || (initialCodeudor2 ? initialCodeudor2.domicilio : ''));
-  const initialCodeudor2Domicilio = (rawCodeudor2Dom && rawCodeudor2Dom.toUpperCase() !== 'NO ESPECIFICADO') ? rawCodeudor2Dom : '';
-
   const printAreaRef = useRef<HTMLDivElement>(null);
-
-  const rawAcreedorDom = sanitizeNotarialText(pagare?.acreedor_domicilio_raw || '');
-  const [acreedorNombreEditable, setAcreedorNombreEditable] = useState(sanitizeNotarialText(pagare?.acreedor_nombre_raw || ''));
-  const [acreedorDomicilioEditable, setAcreedorDomicilioEditable] = useState(
-    (rawAcreedorDom && rawAcreedorDom.toUpperCase() !== 'NO ESPECIFICADO') ? rawAcreedorDom : ''
-  );
-  const [deudorNombreEditable, setDeudorNombreEditable] = useState(initialDeudorNombre);
-  const [deudorDocumentoEditable, setDeudorDocumentoEditable] = useState(formatDocClean(initialDeudorDocumento));
-  const [deudorDomicilioEditable, setDeudorDomicilioEditable] = useState(initialDeudorDomicilio);
-
-  const [codeudor1NombreEditable, setCodeudor1NombreEditable] = useState(initialCodeudor1Nombre);
-  const [codeudor1DocumentoEditable, setCodeudor1DocumentoEditable] = useState(formatDocClean(initialCodeudor1Documento));
-  const [codeudor1DomicilioEditable, setCodeudor1DomicilioEditable] = useState(initialCodeudor1Domicilio);
-
-  const [codeudor2NombreEditable, setCodeudor2NombreEditable] = useState(initialCodeudor2Nombre);
-  const [codeudor2DocumentoEditable, setCodeudor2DocumentoEditable] = useState(formatDocClean(initialCodeudor2Documento));
-  const [codeudor2DomicilioEditable, setCodeudor2DomicilioEditable] = useState(initialCodeudor2Domicilio);
 
   // Optimización de Rendimiento: Renderizado Progresivo y Asíncrono del Cronograma
   // Evita congelar el DOM montando 60+ hojas al mismo tiempo en el hilo principal
@@ -883,47 +956,77 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
         const deudorRep = personas.find(p => p.id === deudor?.representante_id);
 
+
+
+  const getRichHtmlForText = (plainText: string, item: any, isPrint: boolean = false): string => {
+    if (!plainText) return '';
+    let text = plainText.replace(/<\/?b>/g, '');
+
+    const diaLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate()).trim().toUpperCase();
+    const mesNombre = getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth()).trim().toUpperCase();
+    const anioLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear()).trim().toUpperCase();
+    const acreedorLimpio = sanitizeNotarialText(acreedorNombreEditable).toUpperCase();
+    const acreedorDocLimpio = formatDocClean(acreedorDocumentoEditable).trim();
+    const monInfo = getMonedaInfo(pagare?.moneda);
+    const montoLetras = numberToWords(item.monto).trim().toUpperCase();
+    const montoSimbolo = `${monInfo.simbolo} ${formatCurrencyValue(item.monto, pagare?.moneda || 'PYG').trim()}`;
+    const ciudadStr = sanitizeNotarialText(ciudadEmisionRef.current ?? ciudadEmision).toUpperCase() || 'ASUNCIÓN, PARAGUAY';
+
+    const fechaFmt = `${diaLetras} de ${mesNombre} del año ${anioLetras}`;
+    const acreedorFmt = `${acreedorLimpio}`;
+    const acreedorDocFmt = `${acreedorDocLimpio}`;
+    const montoFmt = `${monInfo.nombreMayus} ${montoLetras} (${montoSimbolo})`;
+    const ciudadFmt = `${ciudadStr}`;
+
+    const boldOpen = isPrint ? '<strong style="font-weight: 700; color: #0f172a;">' : '<span class="font-bold text-slate-900">';
+    const boldClose = isPrint ? '</strong>' : '</span>';
+
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    if (fechaFmt) text = text.replace(new RegExp(escapeRegExp(fechaFmt), 'g'), `${boldOpen}${fechaFmt}${boldClose}`);
+    if (acreedorFmt) text = text.replace(new RegExp(escapeRegExp(acreedorFmt), 'g'), `${boldOpen}${acreedorFmt}${boldClose}`);
+    if (acreedorDocFmt) text = text.replace(new RegExp(escapeRegExp(acreedorDocFmt), 'g'), `${boldOpen}${acreedorDocFmt}${boldClose}`);
+    if (montoFmt) text = text.replace(new RegExp(escapeRegExp(montoFmt), 'g'), `${boldOpen}${montoFmt}${boldClose}`);
+    if (ciudadFmt) text = text.replace(new RegExp(escapeRegExp(ciudadFmt), 'g'), `${boldOpen}${ciudadFmt}${boldClose}`);
+
+    return text;
+  };
+
   const getTextoPagare = (item: any, index?: number): string => {
     if (!item) return '';
     const idx = index !== undefined ? index : (pagare?.cronograma ? pagare.cronograma.findIndex(c => c.id === item.id) : 0);
 
-    // 1. Textos en memoria del estado React
     if (customTextos[item.id] !== undefined && customTextos[item.id]) {
-      return customTextos[item.id];
+      return customTextos[item.id].replace(/<\/?b>/g, '');
     }
     if (idx >= 0 && customTextos[`idx_${idx}`] !== undefined && customTextos[`idx_${idx}`]) {
-      return customTextos[`idx_${idx}`];
+      return customTextos[`idx_${idx}`].replace(/<\/?b>/g, '');
     }
-
-    // 2. Textos en referencias de escritura inmediata
     if (customTextosRef.current && customTextosRef.current[item.id]) {
-      return customTextosRef.current[item.id];
+      return customTextosRef.current[item.id].replace(/<\/?b>/g, '');
     }
     if (idx >= 0 && customTextosRef.current && customTextosRef.current[`idx_${idx}`]) {
-      return customTextosRef.current[`idx_${idx}`];
+      return customTextosRef.current[`idx_${idx}`].replace(/<\/?b>/g, '');
     }
 
-    // 3. Texto guardado directamente en el ítem de la cuota
     const saved = item.texto_personalizado || item.textoPersonalizado || item.textoCuerpo || item.contenido;
     if (saved && typeof saved === 'string' && saved.trim()) {
-      return saved;
+      return saved.replace(/<\/?b>/g, '');
     }
 
-    // 4. Textos guardados en el array o mapa de textosCuotas del pagaré
     const savedTextosCuotas = (pagare as any)?.textosCuotas;
     if (savedTextosCuotas) {
       if (Array.isArray(savedTextosCuotas) && idx >= 0 && savedTextosCuotas[idx]) {
-        return savedTextosCuotas[idx];
+        return String(savedTextosCuotas[idx]).replace(/<\/?b>/g, '');
       }
       if (typeof savedTextosCuotas === 'object') {
         const byId = savedTextosCuotas[item.id] || savedTextosCuotas[idx] || savedTextosCuotas[`cuota_${idx}`];
         if (byId && typeof byId === 'string' && byId.trim()) {
-          return byId;
+          return byId.replace(/<\/?b>/g, '');
         }
       }
     }
 
-    // 5. Si es una cuota posterior (idx > 0) y la cuota 0 tiene texto personalizado, aplicar efecto espejo
     if (idx > 0 && pagare?.cronograma?.[0]) {
       const cuota0 = pagare.cronograma[0];
       const cuota0Text = 
@@ -933,36 +1036,14 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         customTextosRef.current?.['idx_0'] || 
         cuota0.texto_personalizado || 
         cuota0.textoPersonalizado || 
-        (Array.isArray(savedTextosCuotas) ? savedTextosCuotas[0] : null);
+        generateDefaultText(cuota0);
       if (cuota0Text && typeof cuota0Text === 'string' && cuota0Text.trim()) {
         const mirrored = generateMirroredText(cuota0Text, item, pagare?.moneda);
-        return mirrored;
+        return mirrored.replace(/<\/?b>/g, '');
       }
     }
-    
-    // 6. Generador de plantilla base con inyección de porcentaje dinámico
-    const diaLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getDate()).trim().toUpperCase();
-    const mesNombre = getMesNombre(new Date(item.fecha_pag + 'T12:00:00').getMonth()).trim().toUpperCase();
-    const anioLetras = numberToWords(new Date(item.fecha_pag + 'T12:00:00').getFullYear()).trim().toUpperCase();
-    const acreedorLimpio = sanitizeNotarialText(acreedorNombreEditable).toUpperCase();
-    const domLimpio = sanitizeNotarialText(acreedorDomicilioEditable);
-    const tieneDomicilio = domLimpio && domLimpio.toUpperCase() !== 'NO ESPECIFICADO';
-    const domAcreedor = tieneDomicilio ? `, en su domicilio en ${domLimpio.toUpperCase()}` : '';
-    const monInfo = getMonedaInfo(pagare?.moneda);
-    const montoLetras = numberToWords(item.monto).trim().toUpperCase();
-    const montoSimbolo = `${monInfo.simbolo} ${formatCurrencyValue(item.monto, pagare?.moneda || 'PYG').trim()}`;
-    
-    let rawTasa = (tasaInteresRef.current || tasaInteres || (pagare as any)?.interesPersonalizado || (pagare as any)?.tasaInteres || (pagare as any)?.tasa_interes || '').trim();
-    if (rawTasa.endsWith('%')) {
-      rawTasa = rawTasa.slice(0, -1).trim();
-    }
-    const tasa = rawTasa || '_____';
 
-    const cPenal = (clausulaPenal || '').trim() || '454';
-    const mMora = (moraAutomatica || '').trim() || '424';
-    const dProtesto = (dispensaProtesto || '').trim() || '1349';
-
-    return `El día ${diaLetras} de ${mesNombre} del año ${anioLetras}, pagaré al Señor ${acreedorLimpio}${domAcreedor}, la suma de ${monInfo.nombreMayus} ${montoLetras} (${montoSimbolo}). Si este documento no fuera pagado, devengara un interés del ${tasa}% mensual en concepto de cláusula penal (Art. ${cPenal} C.C) desde la mora, que se producirá automáticamente (Art. ${mMora} C.C) sin necesidad de interpelación judicial o extrajudicial alguna. Este documento lleva la cláusula "sin protesto" y en consecuencia, dispensa al portador de formalizar el protesto por falta de aceptación o de pago, para ejercer la acción de regreso (Art. ${dProtesto} C.C). Las partes constituyen domicilio especial en los lugares fijados más abajo.-`;
+    return generateDefaultText(item);
   };
 
   // Captura inmediata al tipear para sincronía 100% libre de retrasos
@@ -1192,7 +1273,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 <body>`;
 
     pagare.cronograma.forEach((item, index) => {
-      const cuotaText = mergedCustomTextos[item.id] || getTextoPagare(item, index);
+      const rawText = mergedCustomTextos[item.id] || getTextoPagare(item, index);
+      const cuotaText = getRichHtmlForText(rawText, item, true);
       const certNro = getCertificadoNroForIndex(index).trim();
 
       html += `
@@ -1242,7 +1324,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     </div>
 
     <div class="cert-footer">
-      LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° ${certNro}. SERIE PJE-${new Date().getFullYear()}.- CONSTE.
+      LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° ${certNro} QUE SIGUE ANEXA. CONSTE.-
     </div>
 
     ${config.pdf.mostrar_pie ? `
@@ -1480,6 +1562,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   <NotarialTextarea
                     key={`pagare-text-${item.id}`}
                     value={getTextoPagare(item, index)}
+                    htmlValue={getRichHtmlForText(getTextoPagare(item, index), item, false)}
                     isMaster={index === 0}
                     onImmediateChange={(val) => handleImmediateCustomTextChange(index, item, val)}
                     onCommit={(newText) => handleCustomTextChange(index, item, newText)}
@@ -1496,10 +1579,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                     } : undefined}
                   />
 
-                  {/* Vista de Impresión Notarial: Formato texto puro con justificado milimétrico */}
-                  <p className="hidden print:block text-[13px] leading-relaxed text-slate-900 text-justify font-sans whitespace-pre-wrap">
-                    {getTextoPagare(item, index)}
-                  </p>
+                  {/* Vista de Impresión Notarial: Formato texto con campos dinámicos en negrita */}
+                  <div className="hidden print:block text-[13px] leading-relaxed text-slate-900 text-justify font-sans whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: getRichHtmlForText(getTextoPagare(item, index), item, true) }} />
                 </div>
 
                 {/* SIGNATURE BLOCK - Documentos formateados sin puntos */}
@@ -1535,8 +1616,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                 {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
                 <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
-                  <div className="text-[14px] font-black uppercase whitespace-nowrap">
-                    LE CORRESPONDE LA HOJA DE CERTIFICACION DE FIRMAS N° <EditableField className={`bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index).trim()} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val.trim()); }} />. SERIE PJE-{new Date().getFullYear()}.- CONSTE.
+                  <div className="text-[13px] font-black uppercase">
+                    LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° <EditableField className={`bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index).trim()} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val.trim()); }} /> QUE SIGUE ANEXA. CONSTE.-
                   </div>
                 </div>
 
