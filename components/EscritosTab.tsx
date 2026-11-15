@@ -505,6 +505,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // SISTEMA DE PAGINACIÓN VISUAL TIPO WORD / DOCS (OFICIO / LEGAL NOTARIAL)
   // =========================================================================
   const [totalPaginasVisuales, setTotalPaginasVisuales] = useState<number>(1);
+  const [isHeaderMenuExpanded, setIsHeaderMenuExpanded] = useState<boolean>(false);
   const debounceTimerRef = useRef<any>(null);
 
   const ALTURA_HOJA_OFICIO = 1056; // Altura estándar hoja Oficio / Legal (1056px)
@@ -541,64 +542,26 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return rawHtml;
   };
 
-  // Recálculo inteligente de paginación visual tipo Word / Google Docs
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    // Limpia y divide en párrafos reales para que la paginación funcione
+    const cleanHtml = text.split(/\r?\n/)
+      .filter(line => line.trim() !== '')
+      .map(line => `<p>${line.trim()}</p>`)
+      .join('');
+    document.execCommand('insertHTML', false, cleanHtml);
+    debouncedVerificarPaginacion();
+  };
+
   const recalcularPaginacionVisual = (editorEl: HTMLElement) => {
     if (!editorEl) return 1;
-
-    // 1. Limpiar los saltos automáticos generados previamente para reevaluar la distribución exacta
-    // Se preservan intactos los saltos manuales insertados por el usuario (data-page-break="manual")
-    const saltosAuto = Array.from(editorEl.querySelectorAll<HTMLElement>('.salto-automatico'));
-    saltosAuto.forEach(s => s.remove());
-
-    const children = Array.from(editorEl.children) as HTMLElement[];
-    if (children.length === 0) {
-      setTotalPaginasVisuales(1);
-      return 1;
-    }
-
-    let alturaAcumulada = 0;
-    let numPagina = 1;
-
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-
-      // Salto manual: reinicia la cuenta para la nueva página
-      if (child.classList.contains('salto-de-pagina')) {
-        alturaAcumulada = 0;
-        numPagina++;
-        const badgeSpan = child.querySelector('.salto-de-pagina-badge span');
-        if (badgeSpan) badgeSpan.textContent = `--- PÁGINA ${numPagina} (Manual) ---`;
-        continue;
-      }
-
-      // Altura del bloque de texto o línea
-      // Nota: un párrafo vacío con <br> tiene min-height: 10.4mm (~39px)
-      const h = child.offsetHeight || 39;
-      alturaAcumulada += h;
-
-      // Si el elemento sobrepasa la capacidad de la carilla notarial
-      // (y no es el único elemento al inicio de la página)
-      if (alturaAcumulada > ALTURA_TEXTO_UTIL && (alturaAcumulada - h) > 0) {
-        numPagina++;
-
-        const autoBreak = document.createElement('div');
-        autoBreak.className = 'salto-de-pagina salto-automatico';
-        autoBreak.setAttribute('contenteditable', 'false');
-        autoBreak.setAttribute('data-page-break', 'auto');
-        autoBreak.innerHTML = `
-          <div class="salto-de-pagina-badge">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-            <span>--- PÁGINA ${numPagina} ---</span>
-          </div>
-        `;
-
-        editorEl.insertBefore(autoBreak, child);
-        alturaAcumulada = h;
-      }
-    }
-
-    setTotalPaginasVisuales(numPagina);
-    return numPagina;
+    // Cálculo pasivo basado en la altura total sin inyectar divs que rompan el contentEditable
+    const ALTURA_HOJA_OFICIO = 1056; 
+    const pageCount = Math.max(1, Math.ceil(editorEl.scrollHeight / ALTURA_HOJA_OFICIO));
+    setTotalPaginasVisuales(pageCount);
+    return pageCount;
   };
 
   const actualizarNumeracionPaginas = recalcularPaginacionVisual;
@@ -671,18 +634,18 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Sincronización garantizada del contenido en el editor visual al abrir documento
   useEffect(() => {
-    if (mostrarEditor && editorContentRef.current) {
-      if (editorText) {
-        const limpio = desempaquetarContenidoFluido(editorText);
-        if (editorContentRef.current.innerHTML !== limpio) {
-          editorContentRef.current.innerHTML = limpio;
-        }
+    if (editorContentRef.current && editorText !== undefined) {
+      // ABORTO DE SEGURIDAD: Si el editor tiene el foco, React NO debe sobrescribir el DOM
+      if (document.activeElement === editorContentRef.current) return;
+      
+      const limpio = desempaquetarContenidoFluido(editorText);
+      if (editorContentRef.current.innerHTML !== limpio) {
+        editorContentRef.current.innerHTML = limpio;
         recalcularPaginacionVisual(editorContentRef.current);
       }
     }
-  }, [mostrarEditor, editorText]);
+  }, [editorText]);
 
   // Estado de la Lista de Escritos Guardados
   const [escritos, setEscritos] = useState<Escrito[]>([]);
@@ -836,6 +799,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Consulta de formato activo en la selección del editor (queryCommandState)
   const checkFormatStates = () => {
     try {
+      if (!document.hasFocus()) return;
       setActiveFormats({
         bold: document.queryCommandState('bold'),
         italic: document.queryCommandState('italic'),
@@ -848,7 +812,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         insertOrderedList: document.queryCommandState('insertOrderedList'),
       });
     } catch {
-      // Ignorar si la selección se encuentra fuera del área editable
+      // Silencioso, sin console.warn
     }
   };
 
@@ -885,7 +849,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           return;
         }
         setMostrarEditor(false);
-        setShowSplitScreen(false);
         setSelectedPlantillaId('');
       }
     };
@@ -2206,7 +2169,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
-    setShowSplitScreen(false);
     setMemoria({});
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = '';
@@ -2297,7 +2259,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
       // 3. Cerrar Editor Post-Guardado y resetear estado de edición activa
       setMostrarEditor(false);
-      setShowSplitScreen(false);
       setSelectedPlantillaId('');
       setActiveEditingDoc(null);
       setEditandoDocumentoExistente(false);
@@ -3130,7 +3091,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 type="button"
                 onClick={() => {
                   setMostrarEditor(false);
-                  setShowSplitScreen(false);
                   setSelectedPlantillaId('');
                 }}
                 className="py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-colors border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
@@ -3151,8 +3111,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {/* ========================================================================= */}
       {mostrarEditor && (
         <div id="editor-notarial-activo-bloque" className="min-h-screen bg-slate-100 dark:bg-[#0D0E12] relative -m-4 sm:-m-6 md:-m-8 p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
-          {/* CABECERA FLOTANTE FIJA (FIXED TOOLBAR ESTILO WORD) - SIEMPRE ACCESIBLE */}
-          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 dark:bg-[#16171E]/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 shadow-sm px-4 md:px-8 pt-3 pb-3 transition-all space-y-3">
+          {/* CABECERA FLOTANTE FIJA PLEGABLE (MODO ENFOQUE PROLIJO) */}
+          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 dark:bg-[#16171E]/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 shadow-md group -translate-y-[70%] hover:translate-y-0 transition-transform duration-300">
             {/* Fila superior: Botón '⬅ Volver (ESC)', Título del editor y estadísticas */}
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
               <div className="flex items-center gap-3">
@@ -3160,7 +3120,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   type="button"
                   onClick={() => {
                     setMostrarEditor(false);
-                    setShowSplitScreen(false);
                     setSelectedPlantillaId('');
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#242632] hover:bg-slate-100 dark:hover:bg-[#2D303E] text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all border border-slate-300 dark:border-white/10 shadow-xs cursor-pointer active:scale-95 shrink-0"
@@ -3314,6 +3273,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <ShieldCheck className="w-3 h-3"/>
                   <span>{showSplitScreen ? 'Cerrar Hoja CSJ' : 'Anexar Hoja CSJ'}</span>
                 </button>
+
               </div>
 
               <div className="flex items-center gap-2 ml-auto">
@@ -3476,19 +3436,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   </button>
                 </div>
 
-                {/* Salto de Página tipo Word/Docs */}
-                <div className="flex items-center gap-1 pl-2 border-l border-slate-200 dark:border-white/10">
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={handleInsertarSaltoPagina}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs active:scale-95"
-                    title="Insertar Salto de Página tipo Word / Docs (Crea una nueva hoja visual)"
-                  >
-                    <FilePlus className="w-4 h-4 text-indigo-500" />
-                    <span className="hidden sm:inline">Salto de Página</span>
-                  </button>
-                </div>
+                {/* Botón de Salto de Página manual eliminado para modo de enfoque total y cero glitch */}
 
                 <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -3530,26 +3478,29 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     outline: none !important;
                   }
 
-                  /* Salto de Página Visual tipo Word / Docs */
-                  .salto-de-pagina {
+                  /* Salto de Página Visual Limpio y Discreto */
+                  .salto-de-pagina,
+                  .salto-automatico {
                     display: block !important;
-                    width: calc(100% + 200px) !important;
-                    margin-left: -140px !important;
-                    margin-right: -60px !important;
-                    margin-top: 48px !important;
-                    margin-bottom: 48px !important;
-                    height: 44px !important;
-                    background-color: #cbd5e1 !important;
+                    width: 100% !important;
+                    margin-left: 0 !important;
+                    margin-right: 0 !important;
+                    margin-top: 24px !important;
+                    margin-bottom: 24px !important;
+                    height: 32px !important;
+                    background-color: #e2e8f0 !important;
+                    border-radius: 4px !important;
                     position: relative !important;
                     user-select: none !important;
                     cursor: default !important;
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) inset, 0 -10px 15px -3px rgba(0, 0, 0, 0.1) inset !important;
+                    box-shadow: none !important;
                     break-after: page !important;
                     page-break-after: always !important;
                   }
 
-                  .dark .salto-de-pagina {
-                    background-color: #111217 !important;
+                  .dark .salto-de-pagina,
+                  .dark .salto-automatico {
+                    background-color: #1e293b !important;
                   }
 
                   .salto-de-pagina-badge {
@@ -3560,16 +3511,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     display: inline-flex;
                     align-items: center;
                     gap: 6px;
-                    padding: 5px 14px;
+                    padding: 3px 10px;
                     border-radius: 9999px;
-                    font-size: 11px;
-                    font-weight: 800;
+                    font-size: 10px;
+                    font-weight: 700;
                     text-transform: uppercase;
                     letter-spacing: 0.05em;
                     background-color: #ffffff;
                     color: #475569;
                     border: 1px solid #cbd5e1;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
                   }
 
                   .dark .salto-de-pagina-badge {
@@ -3643,7 +3594,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       white-space: pre-wrap !important;
                     }
 
-                    .salto-de-pagina {
+                    .salto-de-pagina,
+                    .salto-automatico {
                       display: block !important;
                       height: 0 !important;
                       margin: 0 !important;
@@ -3654,7 +3606,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       page-break-after: always !important;
                     }
 
-                    .salto-de-pagina * {
+                    .salto-de-pagina *,
+                    .salto-automatico * {
                       display: none !important;
                     }
                   }
@@ -3668,6 +3621,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     setEditorText(e.currentTarget.innerHTML);
                     debouncedVerificarPaginacion();
                   }}
+                  onPaste={handlePaste}
                   onKeyUp={(e) => {
                     checkFormatStates();
                     if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
@@ -4431,7 +4385,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 type="button"
                 onClick={() => {
                   setMostrarEditor(false);
-                  setShowSplitScreen(false);
                   setSelectedPlantillaId('');
                 }}
                 className="text-slate-400 hover:text-slate-700 p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
