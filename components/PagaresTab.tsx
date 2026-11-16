@@ -1130,7 +1130,10 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const handleClearForm = () => {
     setTipoNegociacion('cuotas_corridas');
     setMoneda('PYG');
-    setCertificadoFirmasNro('');
+    const ultimoPagareConCertificado = pagares && pagares.length > 0 
+      ? [...pagares].sort((a, b) => (b.correlativo || 0) - (a.correlativo || 0)).find(p => p.certificado_firmas_nro && p.certificado_firmas_nro.trim() !== '') 
+      : null;
+    setCertificadoFirmasNro(ultimoPagareConCertificado?.certificado_firmas_nro || '');
     setValorTotalStr('');
     setFrecuenciaId('mensual');
     setFechaPrimerPago('');
@@ -1435,7 +1438,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       ...(existingPagare || {}),
       id: editingPagareId || 'pag-' + Date.now(),
       correlativo: nroPaj,
-      certificado_firmas_nro: userData?.tipoPerfil === 'Escribanía Pública' ? certificadoFirmasNro : undefined,
+      certificado_firmas_nro: (activeUserData?.tipoPerfil?.includes('Escribanía') || userData?.tipoPerfil?.includes('Escribanía') || esAdmin) ? certificadoFirmasNro : undefined,
       tipo_negociacion: tipoNegociacion,
       moneda,
       valor_total: declaredTotalVal,
@@ -2310,7 +2313,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                 </div>
 
                 {/* Certificado de firmas N° */}
-                {userData?.tipoPerfil === 'Escribanía Pública' && (
+                {(String(activeUserData?.tipoPerfil || '').includes('Escribanía') || String(userData?.tipoPerfil || '').includes('Escribanía') || esAdmin) && (
                   <div>
                     <label className="block text-xs font-black uppercase text-slate-400 tracking-wider mb-1.5">Nº de Certificado de Firmas</label>
                     <input  autoComplete="nope"

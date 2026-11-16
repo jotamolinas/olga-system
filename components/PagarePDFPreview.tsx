@@ -221,9 +221,9 @@ export const NotarialCiudadInput: React.FC<NotarialCiudadInputProps> = ({ value,
       type="text"
       value={localText}
       onChange={handleChange}
-      placeholder=""
-      className="bg-transparent outline-none border-b border-slate-300 print:border-none hover:border-slate-400 focus:border-slate-500 transition-colors text-sm font-sans text-slate-900 py-0.5 px-0.5 print:p-0 min-w-[90px] print:min-w-0"
-      style={{ width: localText ? `${Math.max(localText.length + 1, 8)}ch` : '110px' }}
+      placeholder="CIUDAD"
+      className="bg-transparent outline-none border-b border-slate-300 hover:border-slate-400 focus:border-slate-500 text-sm font-sans text-slate-900 uppercase print:hidden px-1"
+      style={{ width: localText ? `${Math.max(localText.length + 1, 6)}ch` : '90px' }}
     />
   );
 };
@@ -403,7 +403,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       const saved = localStorage.getItem('olga_ultimo_certificado_firmas');
       if (saved) return saved;
     } catch {}
-    return '000406185';
+    return '';
   });
 
   useEffect(() => {
@@ -1107,6 +1107,11 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isApproved;
   const isWatermarkRequired = false;
 
+  const ciudadFija = (pagare.ciudad_emision || pagare.ciudadEmision || userData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN').trim();
+  const encabezadoCiudadFecha = pagare.fechaLugarEmision 
+    ? pagare.fechaLugarEmision.toUpperCase() 
+    : `${ciudadFija}, ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.-`.toUpperCase();
+
   const executePrint = () => {
     if (!pagare) return;
 
@@ -1155,9 +1160,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     const win = window.open('', '', 'width=900,height=650');
     if (!win) return;
 
-    const lineaFecha = cleanCiudad.trim() 
-      ? `${cleanCiudad.trim()}, ${fechaEmisionSoloTexto}` 
-      : `________, ${fechaEmisionSoloTexto}`;
+    const lineaFecha = encabezadoCiudadFecha;
 
     const monInfo = getMonedaInfo(pagare.moneda);
 
@@ -1235,11 +1238,12 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     .signatures-block {
       padding-top: 16px;
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
       gap: 16px;
     }
     .signature-card {
-      width: 340px;
+      width: 100%;
+      max-width: 340px;
       border-top: 1px solid #000000;
       padding-top: 4px;
       font-size: 14px;
@@ -1254,9 +1258,10 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     }
     .cert-footer {
       margin-top: 24px;
-      font-size: 12px;
+      font-size: 14px;
+      font-weight: bold !important;
       text-transform: uppercase;
-      white-space: nowrap;
+      white-space: normal;
     }
     .doc-footer {
       margin-top: 24px;
@@ -1324,7 +1329,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     </div>
 
     <div class="cert-footer">
-      LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° ${certNro} QUE SIGUE ANEXA. CONSTE.-
+      LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° ${pagare.certificado_firmas_nro || '__________'} QUE SIGUE ANEXA. CONSTE.-
     </div>
 
     ${config.pdf.mostrar_pie ? `
@@ -1537,22 +1542,10 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                     VENCIMIENTO: {new Date(item.fecha_pag + 'T12:00:00').toLocaleDateString('es-PY')}
                   </p>
                   
-                  <div className="flex items-baseline text-sm mb-4 print:mb-3 font-sans">
-                    <div className="print:hidden">
-                      <NotarialCiudadInput
-                        value={ciudadEmision}
-                        onChangeCiudad={(newVal) => {
-                          setCiudadEmision(newVal);
-                          ciudadEmisionRef.current = newVal;
-                        }}
-                      />
-                    </div>
-                    <span className="hidden print:inline font-sans text-sm text-slate-900">
-                      {ciudadEmision.trim() ? `${ciudadEmision.trim()}, ` : ''}
-                    </span>
-                    <span className="text-slate-900 text-sm font-sans whitespace-nowrap">
-                      {ciudadEmision.trim() ? fechaEmisionTexto.replace(/^,\s*/, '') : fechaEmisionTexto}
-                    </span>
+                  <div className="flex items-baseline text-sm mb-4 print:mb-3 font-sans uppercase">
+                   <p className="text-sm font-bold uppercase mt-4 mb-6">
+                     {encabezadoCiudadFecha}
+                   </p>
                   </div>
                 </div>
 
@@ -1584,9 +1577,9 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 </div>
 
                 {/* SIGNATURE BLOCK - Documentos formateados sin puntos */}
-                <div className="pt-6 print:pt-4 relative z-10 flex flex-wrap gap-6 print:gap-4 font-sans break-inside-avoid print:break-inside-avoid">
+                <div className="pt-6 print:pt-4 relative z-10 flex flex-col space-y-6 print:space-y-4 font-sans break-inside-avoid print:break-inside-avoid">
                   {/* Deudor Principal */}
-                  <div className="w-[340px] border-t border-black pt-1">
+                  <div className="w-full max-w-[340px] border-t border-black pt-1">
                     <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Deudor Principal</p>
                     <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={(val: string) => setDeudorNombreEditable(sanitizeNotarialText(val))} /></p>
                     <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(deudorDocumentoEditable)} onChange={(val: string) => setDeudorDocumentoEditable(formatDocClean(val))} /></p>
@@ -1595,7 +1588,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                   {/* Co-deudor 1 (si existe) */}
                   {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
-                    <div className="w-[340px] border-t border-black pt-1">
+                    <div className="w-full max-w-[340px] border-t border-black pt-1">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={(val: string) => setCodeudor1NombreEditable(sanitizeNotarialText(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor1DocumentoEditable)} onChange={(val: string) => setCodeudor1DocumentoEditable(formatDocClean(val))} /></p>
@@ -1605,7 +1598,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                   {/* Co-deudor 2 (si existe) */}
                   {(codeudor2NombreEditable || codeudor2DocumentoEditable) && (
-                    <div className="w-[340px] border-t border-black pt-1">
+                    <div className="w-full max-w-[340px] border-t border-black pt-1">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 2</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={(val: string) => setCodeudor2NombreEditable(sanitizeNotarialText(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor2DocumentoEditable)} onChange={(val: string) => setCodeudor2DocumentoEditable(formatDocClean(val))} /></p>
@@ -1616,8 +1609,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                 {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
                 <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
-                  <div className="text-[13px] font-black uppercase">
-                    LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° <EditableField className={`bg-transparent outline-none border-b border-transparent ${index === 0 ? 'hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 cursor-text' : 'cursor-default'} transition-colors`} value={getCertificadoNroForIndex(index).trim()} onChange={(val: string) => { if (index === 0) setBaseCertificadoNro(val.trim()); }} /> QUE SIGUE ANEXA. CONSTE.-
+                  <div className="text-sm font-black uppercase">
+                    LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° {pagare.certificado_firmas_nro || '__________'} QUE SIGUE ANEXA. CONSTE.-
                   </div>
                 </div>
 

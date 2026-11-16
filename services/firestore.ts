@@ -8,11 +8,10 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
     console.error("syncPersonaToFirestore: ID de persona ausente o inválido", persona);
     return;
   }
-  const docRef = doc(db, 'personas', persona.id);
   const cleanPersona = JSON.parse(JSON.stringify(persona));
   const effectiveUserId = userId || auth.currentUser.uid;
   const user = auth.currentUser as any;
-  await setDoc(docRef, { 
+  const personaPayload = {
     ...cleanPersona, 
     id: persona.id,
     userId: effectiveUserId,
@@ -21,9 +20,13 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
     createdBy: cleanPersona.createdBy || user.uid,
     creator_name: cleanPersona.creator_name || user.displayName || user.nombre || user.email?.split('@')[0] || 'Usuario',
     creator_role: cleanPersona.creator_role || user.role || user.rol || 'titular',
+    created_at: cleanPersona.created_at || new Date().toISOString(),
     fechaCreacion: cleanPersona.fechaCreacion || serverTimestamp(),
     fechaActualizacion: serverTimestamp()
-  }, { merge: true });
+  };
+
+  await setDoc(doc(db, 'personas', persona.id), personaPayload, { merge: true });
+  await setDoc(doc(db, 'directorio_personas', persona.id), personaPayload, { merge: true });
 };
 
 export const updatePersonaInFirestore = async (userId: string, persona: Persona) => {

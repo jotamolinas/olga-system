@@ -905,7 +905,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     }
 
     const q = query(
-      collection(db, 'personas'),
+      collection(db, 'directorio_personas'),
       where('userId', '==', workspaceId)
     );
 
@@ -925,7 +925,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         // y restituirlo a la cuenta de Superadmin en Firestore para mantener confidencialidad absoluta
         if (!isSuperAdminAccount && (isCreatedByAdmin || !hasVerifiedWorkspaceOwnership)) {
           const originalAdminUid = (creatorUid && creatorUid !== workspaceId) ? creatorUid : 'sjqCJTQ1lNMRIMk31VRwz9Rwhud2';
-          updateDoc(doc(db, 'personas', pId), {
+          updateDoc(doc(db, 'directorio_personas', pId), {
             userId: originalAdminUid
           }).catch(() => {});
           return;
@@ -1122,8 +1122,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       ownedByWorkspace: workspaceId,  // Sello de propiedad verificada del Workspace
       creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
       createdBy: currentUser?.uid,
-      creator_name: undefined,
-      creator_role: undefined
+      creator_name: currentUser?.displayName || (currentUser as any)?.nombre || currentUser?.email?.split('@')[0] || 'Usuario',
+      created_at: new Date().toISOString()
     } as Persona;
     const updated = [...personas, per];
     setPersonas(updated);
@@ -1133,6 +1133,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       console.warn('Error saving personas to localStorage:', e);
     }
     syncPersonaToFirestore(workspaceId, per).catch(e => console.error("Error en escritura persona:", e));
+
+    // Forzar persistencia en la colección 'directorio_personas' en la nube
+    try {
+      setDoc(doc(db, 'directorio_personas', per.id), {
+        ...JSON.parse(JSON.stringify(per)),
+        userId: workspaceId,
+        creator_name: currentUser?.displayName || (currentUser as any)?.nombre || currentUser?.email?.split('@')[0] || 'Usuario',
+        created_at: per.created_at || new Date().toISOString()
+      }, { merge: true }).catch(err => console.error("Error al guardar en directorio_personas:", err));
+    } catch (err) {
+      console.error("Error al invocar setDoc en directorio_personas:", err);
+    }
+
     return true;
   };
 

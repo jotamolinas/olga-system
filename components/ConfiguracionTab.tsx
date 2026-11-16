@@ -441,6 +441,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   // Mensaje flotante de confirmación de éxito
   const [mensajeExito, setMensajeExito] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const timeoutMensajeRef = useRef<number | null>(null);
 
   // Estados para Modal de Gestión de Usuarios y Operadores
@@ -690,6 +691,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }
 
     guardarYNotificar(undefined, '¡Membrete institucional y configuración guardados exitosamente!');
+    setSaveSuccess('¡Membrete institucional guardado correctamente!');
+    setTimeout(() => setSaveSuccess(null), 3500);
   };
 
   // Fase 2: Lógica de Invitación Segura de Operadores (Soporte Email / Celular PY)
@@ -863,6 +866,25 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico avanzado. Su validez legal y administrativa plena requiere la revisión, autorización y sello protocolar del <strong className="dark:text-slate-200">Escribano Titular</strong>.
         </div>
       </div>
+
+      {/* Banner / Mensaje Flotante de Éxito de Persistencia */}
+      {saveSuccess && (
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[200] bg-emerald-50 text-emerald-800 border border-emerald-200 px-6 py-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 animate-in fade-in zoom-in duration-300 min-w-[320px]">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0">
+              <Check className="w-4 h-4 stroke-[3]" />
+            </div>
+            <span className="text-sm font-bold tracking-wide">{saveSuccess}</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setSaveSuccess(null)} 
+            className="text-emerald-700 hover:text-emerald-900 p-1 rounded-lg hover:bg-emerald-100/50 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
 
       {/* Banner / Mensaje Flotante de Éxito de Persistencia */}
       {mensajeExito && (

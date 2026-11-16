@@ -9,7 +9,7 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft, Clipboard, ShieldCheck
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard, ShieldCheck, Upload
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
@@ -555,6 +555,98 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     debouncedVerificarPaginacion();
   };
 
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const reader = new FileReader();
+
+    if (fileName.endsWith('.txt')) {
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        if (content) {
+          const cleanHtml = content.split(/\r?\n/)
+            .map(line => `<p>${line.trim() ? line.trim() : '<br>'}</p>`)
+            .join('');
+          setEditorText(cleanHtml);
+          if (editorContentRef.current) {
+            editorContentRef.current.innerHTML = cleanHtml;
+          }
+          debouncedVerificarPaginacion();
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    } else if (fileName.endsWith('.pdf')) {
+      reader.onload = async (event) => {
+        try {
+          const arrayBuffer = event.target?.result as ArrayBuffer;
+          if (arrayBuffer) {
+            const pdfjsLib = await import('pdfjs-dist');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const textContent = await page.getTextContent();
+              const pageText = textContent.items.map((item: any) => item.str).join(' ');
+              fullText += pageText + '\n\n';
+            }
+            const cleanHtml = fullText.split(/\r?\n/)
+              .filter(line => line.trim() !== '')
+              .map(line => `<p>${line.trim()}</p>`)
+              .join('');
+            setEditorText(cleanHtml);
+            if (editorContentRef.current) {
+              editorContentRef.current.innerHTML = cleanHtml;
+            }
+            debouncedVerificarPaginacion();
+          }
+        } catch (err) {
+          console.error("Error al importar PDF:", err);
+          alert("No se pudo extraer texto del archivo PDF.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (fileName.endsWith('.docx')) {
+      reader.onload = async (event) => {
+        try {
+          const arrayBuffer = event.target?.result as ArrayBuffer;
+          if (arrayBuffer) {
+            const uint8Array = new Uint8Array(arrayBuffer);
+            let binary = '';
+            for (let i = 0; i < uint8Array.byteLength; i++) {
+              binary += String.fromCharCode(uint8Array[i]);
+            }
+            const matches = binary.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
+            let text = '';
+            if (matches) {
+              text = matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ');
+            } else {
+              text = binary.replace(/[^\x20-\x7E\n]/g, ' ');
+            }
+            const cleanHtml = text.split(/\r?\n|\. /)
+              .filter(line => line.trim() !== '')
+              .map(line => `<p>${line.trim()}</p>`)
+              .join('');
+            setEditorText(cleanHtml);
+            if (editorContentRef.current) {
+              editorContentRef.current.innerHTML = cleanHtml;
+            }
+            debouncedVerificarPaginacion();
+          }
+        } catch (err) {
+          console.error("Error al importar Word (.docx):", err);
+          alert("No se pudo leer el archivo Word (.docx).");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const recalcularPaginacionVisual = (editorEl: HTMLElement) => {
     if (!editorEl) return 1;
     // Cálculo pasivo basado en la altura total sin inyectar divs que rompan el contentEditable
@@ -658,6 +750,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [movingDoc, setMovingDoc] = useState<Escrito | null>(null);
   const [targetCategory, setTargetCategory] = useState<string>('');
   const [docToDelete, setDocToDelete] = useState<Escrito | null>(null);
+  const [docToRename, setDocToRename] = useState<Escrito | null>(null);
+  const [newDocName, setNewDocName] = useState<string>('');
+
 
   // Fase 8: Trazabilidad UX - Código de Soporte Técnico
   const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
@@ -3216,6 +3311,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <span>Hoja en Blanco</span>
                 </button>
 
+                {selectedPlantillaId === 'hoja_en_blanco' && (
+                  <>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".docx, .pdf, .txt"
+                      className="hidden"
+                      onChange={handleFileImport}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-colors border border-emerald-200 cursor-pointer"
+                      title="Importar documento (.docx, .pdf, .txt)"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Importar Documento</span>
+                    </button>
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setPreviewMode(!previewMode)}
@@ -4036,6 +4152,73 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           carpetasActuales={allCarpetasToAdmin}
           userId={(userProfile?.rol === 'operador' || userProfile?.role === 'operador') ? (userProfile?.tenant_id || userProfile?.tenantId || currentUser.uid) : currentUser.uid}
         />
+      )}
+
+      {/* MODAL RENOMBRAR DOCUMENTO */}
+      {docToRename && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full box-border max-w-sm overflow-hidden border border-slate-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Renombrar Documento</h3>
+              <button
+                type="button"
+                onClick={() => setDocToRename(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
+                Nuevo Nombre / Título *
+              </label>
+              <input
+                type="text"
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+                placeholder="Ej. Contrato de Alquiler..."
+                className="w-full box-border bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-xl p-3 outline-none focus:border-[#FF3131]"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2.5 p-5 border-t border-slate-100 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setDocToRename(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!newDocName.trim()) return;
+                  try {
+                    if (docToRename.id.startsWith('temp-')) {
+                      const tempDocsString = localStorage.getItem('escritos_temporales');
+                      if (tempDocsString) {
+                        const tempDocs = JSON.parse(tempDocsString);
+                        const idx = parseInt(docToRename.id.replace('temp-', ''), 10);
+                        tempDocs[idx].tipo = newDocName.trim();
+                        localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
+                        setEscritos(prev => prev.map(item => item.id === docToRename.id ? { ...item, tipo: newDocName.trim() } : item));
+                      }
+                    } else {
+                      const docRef = doc(db, 'documentos_olga', docToRename.id);
+                      await updateDoc(docRef, { tipo: newDocName.trim() });
+                    }
+                    setDocToRename(null);
+                  } catch (err) {
+                    console.error("Error al renombrar:", err);
+                  }
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5 text-[#FF3131]" />
+                <span>Guardar Nombre</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL MOVER DOCUMENTO DE CARPETA */}
