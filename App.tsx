@@ -35,7 +35,6 @@ import { DocumentoModal } from './components/DocumentoModal';
 import { EscritosTab } from './components/EscritosTab';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { SuperAdminOnboarding } from './components/SuperAdminOnboarding';
-import { AdminPagos } from './components/AdminPagos';
 import { FichaProfesional } from './components/FichaProfesional';
 import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
 import { ConfiguracionTab } from './components/ConfiguracionTab';
@@ -1875,10 +1874,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               <SuperAdminDashboard />
             )}
 
-            {activeTab === 'pagos' && role === 'admin' && (
-              <AdminPagos isAdmin={role === 'admin'}
-                 />
-            )}
 
             {activeTab === 'onboarding-sifen' && role === 'admin' && (
               <SuperAdminOnboarding />

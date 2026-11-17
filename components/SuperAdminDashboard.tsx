@@ -389,28 +389,31 @@ export const SuperAdminDashboard: React.FC = () => {
     return 'Fecha inválida';
   };
 
-const handleAprobar = async (userId: string, planSolicitado: string) => {
+  const handleAprobar = async (userId: string, planSolicitado: string, modalidadPago?: string) => {
     try {
       const userRef = doc(db, 'users', userId);
       
-      // 1. Calculamos la fecha actual y la fecha de vencimiento (+30 días)
       const fechaActual = new Date();
-      const fechaVencimiento = new Date();
-      fechaVencimiento.setDate(fechaActual.getDate() + 30);
+      const esAnual = String(modalidadPago || '').toLowerCase().includes('anual');
+      const diasVigencia = esAnual ? 365 : 30;
+      
+      const fechaVencimientoMs = Date.now() + (diasVigencia * 24 * 60 * 60 * 1000);
+      const fechaVencimiento = new Date(fechaVencimientoMs);
 
-      // 2. Ejecutamos la actualización inyectando la matemática de los planes
       await updateDoc(userRef, {
         planActual: planSolicitado,
+        plan: planSolicitado,
         estadoPago: 'APROBADO',
-        estado_cuenta: 'activa', // Garantiza que la cuenta se desbloquee
-        fecha_inicio_plan: fechaActual.toISOString(), // Fecha nativa, sin errores
-        fecha_vencimiento_plan: fechaVencimiento.toISOString(), // Bloqueo exacto en 30 días
-        fechaAprobacion: fechaActual.toISOString() // Rastro de auditoría
+        estadoPlataforma: 'Aprobado',
+        estado_cuenta: 'activa',
+        modalidadPago: esAnual ? 'Anual (12 meses)' : 'Mensual (1 mes)',
+        fecha_inicio_plan: fechaActual.toISOString(),
+        fecha_vencimiento_plan: fechaVencimiento.toISOString(),
+        fechaAprobacion: fechaActual.toISOString()
       });
 
-      // 3. Limpiamos la UI y avisamos al SuperAdmin
       setPendingPayments(prev => prev.filter(p => p.userId !== userId));
-      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" vencerá automáticamente el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
+      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" (${esAnual ? '12 meses' : '1 mes'}) vencerá el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
       console.error(err);
       alert('Error al aprobar la suscripción.');
@@ -703,7 +706,7 @@ const handleAprobar = async (userId: string, planSolicitado: string) => {
                                 </button>
                               )}
                               <button
-                                onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '')}
+                                onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago)}
                                 className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
                               >
                                 <CheckCircle className="w-2.5 h-2.5" /> Aprobar

@@ -23,7 +23,7 @@ export interface Persona {
   creator_role?: string;
   created_at?: string;
   fechaCreacion?: any;
-  origen?: 'MANUAL' | 'DNIT';
+  origen?: 'MANUAL' | 'DNIT' | 'Presupuesto' | string;
   notas_notariales?: string;
 }
 

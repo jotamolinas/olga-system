@@ -29,6 +29,7 @@ import {
   UserCheck,
   Users,
   ChevronDown,
+  FolderOpen,
 } from 'lucide-react';
 import {
   EncabezadoFacturaPresupuesto,
@@ -50,7 +51,7 @@ import {
 import { Persona, TipoPersona } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { sonMismaPersona, extraerDocBase } from '../services/personaDedup';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
 
 const STORAGE_KEY_PERSONAS = 'olga_directorio_personas';
@@ -174,6 +175,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   const [guardadoExito, setGuardadoExito] = useState(false);
   const [guardandoFirestore, setGuardandoFirestore] = useState(false);
   const [pestañaActiva, setPestañaActiva] = useState<'todo' | 'tasas' | 'servicios' | 'resumen'>('todo');
+
+  // Estados para Historial y Gestión de Presupuestos Guardados
+  const [presupuestoIdActivo, setPresupuestoIdActivo] = useState<string | null>(null);
+  const [modalHistorialAbierto, setModalHistorialAbierto] = useState(false);
+  const [presupuestosGuardados, setPresupuestosGuardados] = useState<any[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [modalSobrescribirAbierto, setModalSobrescribirAbierto] = useState(false);
 
   // Estados para Fichero Notarial y Servicio DNIT (Parte 2)
   const [cargandoDnit, setCargandoDnit] = useState(false);
@@ -545,18 +553,97 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setServicios((prev) => prev.filter((s) => s.id !== id));
   };
 
-  // Guardar presupuesto de forma estructurada en Firestore y respaldo local
-  const handleGuardarPresupuesto = async () => {
+  // Cargar historial de presupuestos guardados desde Firestore
+  const fetchPresupuestosGuardados = async () => {
+    setCargandoHistorial(true);
+    try {
+      const q = query(collection(db, 'presupuestos'), orderBy('creadoEn', 'desc'));
+      const snap = await getDocs(q);
+      const lista: any[] = [];
+      snap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!userId || data.userId === userId || data.userId === 'default') {
+          lista.push({ id: docSnap.id, ...data });
+        }
+      });
+      setPresupuestosGuardados(lista);
+    } catch (e) {
+      console.error('Error al cargar historial de presupuestos:', e);
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
+
+  // Cargar un presupuesto guardado en el formulario
+  const handleCargarPresupuesto = (p: any) => {
+    setEncabezado({
+      tipoComprobante: p.tipoComprobante || 'Presupuesto',
+      numeroComprobante: p.numeroComprobante || '',
+      timbrado: p.timbrado || '',
+      fechaEmision: p.fechaEmision || new Date().toISOString().split('T')[0],
+      fechaVencimientoValidez: p.fechaVencimientoValidez || '',
+      condicionVenta: p.condicionVenta || 'Contado',
+      clienteNombre: p.clienteNombre || '',
+      clienteRucCI: p.clienteRucCI || '',
+      clienteTelefono: p.clienteTelefono || '',
+      clienteDireccion: p.clienteDireccion || '',
+      clienteEmail: p.clienteEmail || '',
+      conceptoGeneral: p.conceptoGeneral || '',
+      localidad: p.localidad || 'Asunción',
+    });
+
+    if (Array.isArray(p.tasas)) {
+      setTasas(p.tasas);
+    }
+    if (Array.isArray(p.servicios)) {
+      setServicios(p.servicios);
+    }
+    if (typeof p.observaciones === 'string') {
+      setObservaciones(p.observaciones);
+    }
+
+    setPresupuestoIdActivo(p.id);
+    setModalHistorialAbierto(false);
+    setGuardadoExito(true);
+    setTimeout(() => setGuardadoExito(false), 2500);
+  };
+
+  // Eliminar un presupuesto guardado
+  const handleEliminarPresupuestoGuardado = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('¿Está seguro de eliminar este presupuesto guardado?')) return;
+    try {
+      await deleteDoc(doc(db, 'presupuestos', id));
+      setPresupuestosGuardados(prev => prev.filter(item => item.id !== id));
+      if (presupuestoIdActivo === id) {
+        setPresupuestoIdActivo(null);
+      }
+    } catch (err) {
+      console.error('Error al eliminar presupuesto:', err);
+      alert('No se pudo eliminar el presupuesto.');
+    }
+  };
+
+  // Guardar presupuesto (con validación de si es edición activa)
+  const handleGuardarPresupuesto = () => {
+    if (presupuestoIdActivo) {
+      setModalSobrescribirAbierto(true);
+    } else {
+      ejecutarGuardadoPresupuesto(false);
+    }
+  };
+
+  // Ejecución real del guardado en Firestore y respaldo local
+  const ejecutarGuardadoPresupuesto = async (sobrescribir: boolean) => {
+    setModalSobrescribirAbierto(false);
     setGuardandoFirestore(true);
     try {
-      // 1. Respaldo local de contingencia
       localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezado));
       localStorage.setItem('olga_presupuesto_tasas', JSON.stringify(tasas));
       localStorage.setItem('olga_presupuesto_servicios', JSON.stringify(servicios));
       localStorage.setItem('olga_presupuesto_observaciones', observaciones);
       autoguardarClienteSilencioso();
 
-      // 2. Persistencia en la colección 'presupuestos' de Firestore
       const docPayload = {
         userId: userId || 'default',
         tipoComprobante: encabezado.tipoComprobante,
@@ -616,7 +703,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         creadoEn: serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'presupuestos'), docPayload);
+      if (sobrescribir && presupuestoIdActivo) {
+        await updateDoc(doc(db, 'presupuestos', presupuestoIdActivo), docPayload);
+      } else {
+        const docRef = await addDoc(collection(db, 'presupuestos'), docPayload);
+        setPresupuestoIdActivo(docRef.id);
+      }
 
       setGuardadoExito(true);
       setTimeout(() => setGuardadoExito(false), 3000);
@@ -1104,6 +1196,26 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
         {/* Botones de Acción Global */}
         <div className="flex flex-wrap items-center gap-2.5 relative z-10 print:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setModalHistorialAbierto(true);
+              fetchPresupuestosGuardados();
+            }}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer ${
+              esFull 
+                ? 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+            title="Ver presupuestos guardados"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">Ver Guardados</span>
+            {presupuestoIdActivo && (
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse ml-0.5" title="Editando presupuesto existente"></span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={handleRestaurarDefecto}
@@ -2060,6 +2172,45 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </section>
 
+        {/* Botones de Acción Global Inferior (para evitar scroll hacia arriba) */}
+        <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-end gap-3 print:hidden">
+          <button
+            type="button"
+            onClick={handleGuardarPresupuesto}
+            disabled={guardandoFirestore}
+            className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-60 ${
+              guardadoExito
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/30'
+                : esFull
+                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+            title="Guardar en base de datos Firestore y respaldo local"
+          >
+            {guardandoFirestore ? (
+              <Loader2 className={`w-4 h-4 animate-spin ${esFull ? 'text-amber-300' : 'text-slate-200'}`} />
+            ) : guardadoExito ? (
+              <Check className="w-4 h-4 text-white" />
+            ) : (
+              <Save className={`w-4 h-4 ${esFull ? 'text-amber-400' : 'text-slate-300'}`} />
+            )}
+            <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleImprimir}
+            className={`px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              esFull 
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)]' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md'
+            }`}
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir Presupuesto</span>
+          </button>
+        </div>
+
         {/* Bloque de Firmas Notariales Oficiales (Exclusivo para Impresión Física) */}
         <div className="hidden print:grid grid-cols-2 gap-12 pt-16 pb-6 text-center text-xs text-black">
           <div className="border-t border-slate-900 pt-2 mx-8">
@@ -2486,6 +2637,116 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   <span className="text-[10px] text-slate-500 block">{membrete.registroNotarial || 'Escribanía Notarial'} • Sello</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HISTORIAL DE PRESUPUESTOS GUARDADOS */}
+      {modalHistorialAbierto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#121214] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl text-gray-200">
+            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#18181b]">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <FolderOpen className="w-5 h-5 text-blue-400" /> Presupuestos Guardados
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalHistorialAbierto(false)}
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {cargandoHistorial ? (
+                <div className="py-12 flex justify-center items-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+                </div>
+              ) : presupuestosGuardados.length === 0 ? (
+                <div className="py-12 text-center text-sm text-gray-400">
+                  No hay presupuestos guardados en la base de datos.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {presupuestosGuardados.map((p) => {
+                    const montoFmt = typeof p.montoTotal === 'number' ? `Gs. ${p.montoTotal.toLocaleString('es-PY')}` : 'Gs. 0';
+                    const fechaFmt = p.fechaEmision || 'Fecha no registrada';
+                    return (
+                      <div
+                        key={p.id}
+                        className="p-3 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded-xl flex items-center justify-between gap-3 transition-colors group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white font-mono">{p.numeroComprobante || 'S/N'}</span>
+                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-medium border border-blue-500/20">{p.tipoComprobante || 'Presupuesto'}</span>
+                            <span className="text-[10px] text-gray-400">{fechaFmt}</span>
+                          </div>
+                          <p className="text-xs text-gray-200 font-medium truncate mt-1">
+                            {p.clienteNombre || 'Cliente sin nombre'} <span className="text-gray-500 font-mono">({p.clienteRucCI || 'Sin RUC/CI'})</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-bold text-emerald-400 font-mono">{montoFmt}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCargarPresupuesto(p)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Abrir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleEliminarPresupuestoGuardado(p.id, e)}
+                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar presupuesto"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SOBRESCRIBIR VS GUARDAR NUEVO */}
+      {modalSobrescribirAbierto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#121214] border border-white/10 rounded-2xl w-full max-w-md p-5 shadow-2xl text-gray-200 space-y-4">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-400" /> Presupuesto Existente
+            </h3>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              Está editando un presupuesto previamente guardado. ¿Desea sobrescribir el registro actual o guardar los cambios como un presupuesto nuevo?
+            </p>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => ejecutarGuardadoPresupuesto(true)}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" /> Sobrescribir (Actualizar Actual)
+              </button>
+              <button
+                type="button"
+                onClick={() => ejecutarGuardadoPresupuesto(false)}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Guardar como Nuevo
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalSobrescribirAbierto(false)}
+                className="w-full py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
