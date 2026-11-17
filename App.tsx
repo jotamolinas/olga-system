@@ -667,17 +667,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                 identificador: user.email || user.phoneNumber || '',
                 proveedorAcceso: user.phoneNumber ? 'telefono' : 'email',
                 fecha_creacion: serverTimestamp(),
-                fecha_expiracion: Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)),
-                planActual: 'trial',
-                role: 'titular',
-                rol: 'titular',
-                estado_cuenta: 'activa',
                 consultasUsadas: 0,
                 escritosUsados: 0,
-                usoIA: 0,
-                diasRestantes: 5
+                usoIA: 0
               };
-              await setDoc(userRef, fallbackProfile, { merge: true }).catch(console.error);
+              // await setDoc(userRef, fallbackProfile, { merge: true }).catch(console.error);
               setUserProfile(fallbackProfile);
               setIsCheckingProfile(false);
               return;
@@ -709,8 +703,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           }
           if (!data.fecha_expiracion && !data.fecha_vencimiento_plan) {
             updates.fecha_expiracion = Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000));
-            updates.planActual = data.planActual || 'trial';
-            updates.estado_cuenta = data.estado_cuenta || 'activa';
+            // Se eliminan las asignaciones forzosas de planActual para no degradar cuentas
           }
           if (Object.keys(updates).length > 0) {
             updateDoc(doc(db, 'users', user.uid), updates).catch(console.error);
@@ -910,26 +903,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const isSuperAdminAccount = auth.currentUser?.email === 'jotamolinas@gmail.com';
       const validData: Persona[] = [];
 
       snapshot.docs.forEach(docSnap => {
         const item = docSnap.data() as any;
         const pId = docSnap.id;
-
-        const creatorUid = item.creator_id || item.createdBy;
-        const isCreatedByAdmin = creatorUid && ADMIN_UIDS.includes(creatorUid);
-        const hasVerifiedWorkspaceOwnership = item.ownedByWorkspace === workspaceId;
-
-        // Si NO es la cuenta de Superadmin, filtrar cualquier registro fantasma heredado de localStorage global
-        // y restituirlo a la cuenta de Superadmin en Firestore para mantener confidencialidad absoluta
-        if (!isSuperAdminAccount && (isCreatedByAdmin || !hasVerifiedWorkspaceOwnership)) {
-          const originalAdminUid = (creatorUid && creatorUid !== workspaceId) ? creatorUid : 'sjqCJTQ1lNMRIMk31VRwz9Rwhud2';
-          updateDoc(doc(db, 'directorio_personas', pId), {
-            userId: originalAdminUid
-          }).catch(() => {});
-          return;
-        }
 
         validData.push({ ...item, id: pId } as Persona);
       });

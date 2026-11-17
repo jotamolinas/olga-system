@@ -184,6 +184,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const [tipoNegociacion, setTipoNegociacion] = useState<TipoNegociacion>('cuotas_corridas');
   const [moneda, setMoneda] = useState(config.monedas.find(m => m.activa)?.codigo || 'PYG');
   const [certificadoFirmasNro, setCertificadoFirmasNro] = useState('');
+  const [ciudadEmision, setCiudadEmision] = useState(() => localStorage.getItem('olga_ultima_ciudad') || activeUserData?.ciudad || config?.escribania?.ciudad || 'CIUDAD DEL ESTE');
+  const [departamentoEmision, setDepartamentoEmision] = useState(() => localStorage.getItem('olga_ultimo_departamento') || activeUserData?.departamento || (config?.escribania as any)?.departamento || 'ALTO PARANA');
   const [valorTotalStr, setValorTotalStr] = useState('');
   const [frecuenciaId, setFrecuenciaId] = useState('mensual');
   const [editingPagareId, setEditingPagareId] = useState<string | null>(initialEditingId);
@@ -634,6 +636,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         if (parsed.tipoNegociacion) setTipoNegociacion(parsed.tipoNegociacion);
         if (parsed.moneda) setMoneda(parsed.moneda);
         if (parsed.certificadoFirmasNro) setCertificadoFirmasNro(parsed.certificadoFirmasNro);
+        if (parsed.ciudadEmision) setCiudadEmision(parsed.ciudadEmision);
+        if (parsed.departamentoEmision) setDepartamentoEmision(parsed.departamentoEmision);
         if (parsed.fechaPrimerPago) setFechaPrimerPago(parsed.fechaPrimerPago);
         if (parsed.entregaInicialStr) setEntregaInicialStr(parsed.entregaInicialStr);
         if (parsed.fechaEntregaInicial) setFechaEntregaInicial(parsed.fechaEntregaInicial);
@@ -674,6 +678,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       tipoNegociacion,
       moneda,
       certificadoFirmasNro,
+      ciudadEmision,
+      departamentoEmision,
       fechaPrimerPago,
       entregaInicialStr,
       fechaEntregaInicial,
@@ -701,7 +707,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   }, [
     hasLoadedDraft, panelView,
-    tipoNegociacion, moneda, certificadoFirmasNro, valorTotalStr,
+    tipoNegociacion, moneda, certificadoFirmasNro, ciudadEmision, departamentoEmision, valorTotalStr,
     frecuenciaId, fechaPrimerPago, entregaInicialStr, fechaEntregaInicial,
     conceptoEntregaInicial, duracionMeses, acreedorId, acreedorNombreRaw, acreedorDocumentoRaw,
     acreedorDomicilioRaw, deudorNombreRaw, deudorDocumentoRaw, deudorDomicilioRaw,
@@ -1134,6 +1140,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       ? [...pagares].sort((a, b) => (b.correlativo || 0) - (a.correlativo || 0)).find(p => p.certificado_firmas_nro && p.certificado_firmas_nro.trim() !== '') 
       : null;
     setCertificadoFirmasNro(ultimoPagareConCertificado?.certificado_firmas_nro || '');
+    setCiudadEmision(localStorage.getItem('olga_ultima_ciudad') || activeUserData?.ciudad || config?.escribania?.ciudad || 'CIUDAD DEL ESTE');
+    setDepartamentoEmision(localStorage.getItem('olga_ultimo_departamento') || activeUserData?.departamento || (config?.escribania as any)?.departamento || 'ALTO PARANA');
     setValorTotalStr('');
     setFrecuenciaId('mensual');
     setFechaPrimerPago('');
@@ -1163,6 +1171,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     setTipoNegociacion(pag.tipo_negociacion);
     setMoneda(pag.moneda);
     setCertificadoFirmasNro(pag.certificado_firmas_nro || '');
+    setCiudadEmision(pag.ciudad_emision || pag.ciudadEmision || activeUserData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN');
+    setDepartamentoEmision((pag as any).departamento_emision || (pag as any).departamentoEmision || activeUserData?.departamento || (config?.escribania as any)?.departamento || 'CAPITAL');
     setValorTotalStr(pag.valor_total.toString());
     setFrecuenciaId(pag.frecuencia_id || 'mensual');
     setFechaPrimerPago(pag.fecha_primer_pago || '');
@@ -1439,6 +1449,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       id: editingPagareId || 'pag-' + Date.now(),
       correlativo: nroPaj,
       certificado_firmas_nro: (activeUserData?.tipoPerfil?.includes('Escribanía') || userData?.tipoPerfil?.includes('Escribanía') || esAdmin) ? certificadoFirmasNro : undefined,
+      ciudad_emision: ciudadEmision.trim(),
+      departamento_emision: departamentoEmision.trim(),
       tipo_negociacion: tipoNegociacion,
       moneda,
       valor_total: declaredTotalVal,
@@ -1476,8 +1488,6 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       })),
       tasaInteres: (existingPagare as any)?.tasaInteres || undefined,
       tasa_interes: (existingPagare as any)?.tasa_interes || (existingPagare as any)?.tasaInteres || undefined,
-      ciudad_emision: (existingPagare as any)?.ciudad_emision || (existingPagare as any)?.ciudadEmision || undefined,
-      ciudadEmision: (existingPagare as any)?.ciudadEmision || (existingPagare as any)?.ciudad_emision || undefined,
       fechaLugarEmision: (existingPagare as any)?.fechaLugarEmision || undefined,
       clausulaPenal: (existingPagare as any)?.clausulaPenal || undefined,
       moraAutomatica: (existingPagare as any)?.moraAutomatica || undefined,
@@ -2329,6 +2339,30 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Ciudad de Jurisdicción */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 tracking-wider mb-1.5">Ciudad de Jurisdicción</label>
+                  <input
+                    type="text"
+                    value={ciudadEmision}
+                    onChange={(e) => { setCiudadEmision(e.target.value); localStorage.setItem('olga_ultima_ciudad', e.target.value); }}
+                    placeholder="Ej. Asunción"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-4 py-2.5 text-sm font-bold outline-none uppercase"
+                  />
+                </div>
+
+                {/* Departamento */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 tracking-wider mb-1.5">Departamento</label>
+                  <input
+                    type="text"
+                    value={departamentoEmision}
+                    onChange={(e) => { setDepartamentoEmision(e.target.value); localStorage.setItem('olga_ultimo_departamento', e.target.value); }}
+                    placeholder="Ej. Capital"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl px-4 py-2.5 text-sm font-bold outline-none uppercase"
+                  />
+                </div>
 
                 {/* Frecuencia de pagos */}
                 <div>

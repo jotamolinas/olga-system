@@ -569,16 +569,18 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     const montoLetras = numberToWords(item.monto).trim().toUpperCase();
     const montoSimbolo = `${monInfo.simbolo} ${formatCurrencyValue(item.monto, pagare?.moneda || 'PYG').trim()}`;
     
-    const rawCiudad = (typeof ciudadEmisionRef !== 'undefined' ? ciudadEmisionRef.current : null) || (typeof ciudadEmision !== 'undefined' ? ciudadEmision : null) || (pagare as any)?.ciudadEmision || (pagare as any)?.ciudad || config?.escribania?.ciudad || '';
-    const ciudadStr = sanitizeNotarialText(rawCiudad).toUpperCase() || 'ASUNCIÓN, PARAGUAY';
+    const rawCiudad = (typeof ciudadEmisionRef !== 'undefined' ? ciudadEmisionRef.current : null) || (typeof ciudadEmision !== 'undefined' ? ciudadEmision : null) || (pagare as any)?.ciudad_emision || (pagare as any)?.ciudadEmision || (pagare as any)?.ciudad || userData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN';
+    const ciudadStr = sanitizeNotarialText(rawCiudad).toUpperCase();
+
+    const rawDepto = (pagare as any)?.departamento_emision || (pagare as any)?.departamentoEmision || userData?.departamento || (config?.escribania as any)?.departamento || 'CAPITAL';
+    const deptoStr = sanitizeNotarialText(rawDepto).toUpperCase();
 
     const fechaFmt = `${diaLetras} de ${mesNombre} del año ${anioLetras}`;
     const acreedorFmt = `${acreedorLimpio}`;
     const acreedorDocFmt = `${acreedorDocLimpio}`;
     const montoFmt = `${monInfo.nombreMayus} ${montoLetras} (${montoSimbolo})`;
-    const ciudadFmt = `${ciudadStr}`;
 
-    return `El día ${fechaFmt}, pagaremos a ${acreedorFmt}, con Cédula de Identidad Civil N°${acreedorDocFmt}, la suma de: ${montoFmt}. QUEDA EXPRESAMENTE CONVENIDO QUE LA FALTA DE PAGO DEL PRESENTE PAGARÉ (CUOTA) PRODUCIRÁ LA CADUCIDAD DE LOS PLAZOS DE LOS DEMÁS PAGARÉS (CUOTAS). SI POR CUALQUIER CIRCUNSTANCIA NO FUERE ABONADO ESTE DOCUMENTO A SU VENCIMIENTO, DEVENGARÁ DURANTE EL TIEMPO DE LA MORA LA TASA MÁXIMA DE INTERÉS ESTABLECIDA POR EL BANCO CENTRAL DEL PARAGUAY ART. 475 C.C., POR SIMPLE RETARDO, SIN QUE ESTO IMPLIQUE ESPERA NI PRORROGA EN EL PLAZO DE LA OBLIGACIÓN, EL VENCIMIENTO ESTABLECERÁ LA MORA. Para todos los efectos judiciales y extrajudiciales a que dé lugar esta obligación constituimos el domicilio que más abajo se indica. Este PAGARÉ se regirá a todos los efectos por las leyes de Paraguay. Serán competentes para entender en los juicios a que dé lugar esta obligación, los Tribunales competentes de ${ciudadFmt}, Paraguay.-`;
+    return `El día ${fechaFmt}, pagaremos a ${acreedorFmt}, con Cédula de Identidad Civil N°${acreedorDocFmt}, la suma de: ${montoFmt}. QUEDA EXPRESAMENTE CONVENIDO QUE LA FALTA DE PAGO DEL PRESENTE PAGARÉ (CUOTA) PRODUCIRÁ LA CADUCIDAD DE LOS PLAZOS DE LOS DEMÁS PAGARÉS (CUOTAS). SI POR CUALQUIER CIRCUNSTANCIA NO FUERE ABONADO ESTE DOCUMENTO A SU VENCIMIENTO, DEVENGARÁ DURANTE EL TIEMPO DE LA MORA LA TASA MÁXIMA DE INTERÉS ESTABLECIDA POR EL BANCO CENTRAL DEL PARAGUAY ART. 475 C.C., POR SIMPLE RETARDO, SIN QUE ESTO IMPLIQUE ESPERA NI PRORROGA EN EL PLAZO DE LA OBLIGACIÓN, EL VENCIMIENTO ESTABLECERÁ LA MORA. PARA TODOS LOS EFECTOS JUDICIALES Y EXTRAJUDICIALES A QUE DÉ LUGAR ESTA OBLIGACIÓN CONSTITUIMOS EL DOMICILIO QUE MÁS ABAJO SE INDICA. ESTE PAGARÉ SE REGIRÁ A TODOS LOS EFECTOS POR LAS LEYES DE PARAGUAY. SERÁN COMPETENTES PARA ENTENDER EN LOS JUICIOS A QUE DÉ LUGAR ESTA OBLIGACIÓN, LOS TRIBUNALES COMPETENTES DE <strong>${ciudadStr}, ${deptoStr}, PARAGUAY.-</strong>`;
   };
 
   // Inicialización de textos personalizados desde todas las propiedades alias posibles y textosCuotas
@@ -1107,7 +1109,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const isPaid = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isApproved;
   const isWatermarkRequired = false;
 
-  const ciudadFija = (pagare.ciudad_emision || pagare.ciudadEmision || userData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN').trim();
+  const ciudadFija = (pagare.ciudad_emision || pagare.ciudadEmision || userData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN').trim().toUpperCase();
+  const departamentoFijo = ((pagare as any).departamento_emision || (pagare as any).departamentoEmision || userData?.departamento || (config?.escribania as any)?.departamento || 'CAPITAL').trim().toUpperCase();
   const encabezadoCiudadFecha = pagare.fechaLugarEmision 
     ? pagare.fechaLugarEmision.toUpperCase() 
     : `${ciudadFija}, ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.-`.toUpperCase();
@@ -1304,7 +1307,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     </div>
 
     <div class="signatures-block">
-      <div class="signature-card">
+      <div class="signature-card" style="margin-bottom: 2rem;">
         <div class="signature-label">Deudor Principal</div>
         <div>Nombre: <span style="text-transform: uppercase;">${sanitizeNotarialText(deudorNombreEditable)}</span></div>
         <div>Documento: C.I.N° <span style="text-transform: uppercase;">${formatDocClean(deudorDocumentoEditable)}</span></div>
@@ -1312,7 +1315,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       </div>
 
       ${(codeudor1NombreEditable || codeudor1DocumentoEditable) ? `
-      <div class="signature-card">
+      <div class="signature-card" style="margin-bottom: 2rem;">
         <div class="signature-label">Co-Deudor Solidario 1</div>
         <div>Nombre: <span style="text-transform: uppercase;">${sanitizeNotarialText(codeudor1NombreEditable)}</span></div>
         <div>Documento: C.I.N° <span style="text-transform: uppercase;">${formatDocClean(codeudor1DocumentoEditable)}</span></div>
@@ -1320,7 +1323,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       </div>` : ''}
 
       ${(codeudor2NombreEditable || codeudor2DocumentoEditable) ? `
-      <div class="signature-card">
+      <div class="signature-card" style="margin-bottom: 2rem;">
         <div class="signature-label">Co-Deudor Solidario 2</div>
         <div>Nombre: <span style="text-transform: uppercase;">${sanitizeNotarialText(codeudor2NombreEditable)}</span></div>
         <div>Documento: C.I.N° <span style="text-transform: uppercase;">${formatDocClean(codeudor2DocumentoEditable)}</span></div>
@@ -1579,7 +1582,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 {/* SIGNATURE BLOCK - Documentos formateados sin puntos */}
                 <div className="pt-6 print:pt-4 relative z-10 flex flex-col space-y-6 print:space-y-4 font-sans break-inside-avoid print:break-inside-avoid">
                   {/* Deudor Principal */}
-                  <div className="w-full max-w-[340px] border-t border-black pt-1">
+                  <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
                     <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Deudor Principal</p>
                     <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={(val: string) => setDeudorNombreEditable(sanitizeNotarialText(val))} /></p>
                     <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(deudorDocumentoEditable)} onChange={(val: string) => setDeudorDocumentoEditable(formatDocClean(val))} /></p>
@@ -1588,7 +1591,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                   {/* Co-deudor 1 (si existe) */}
                   {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
-                    <div className="w-full max-w-[340px] border-t border-black pt-1">
+                    <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={(val: string) => setCodeudor1NombreEditable(sanitizeNotarialText(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor1DocumentoEditable)} onChange={(val: string) => setCodeudor1DocumentoEditable(formatDocClean(val))} /></p>
@@ -1598,7 +1601,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                   {/* Co-deudor 2 (si existe) */}
                   {(codeudor2NombreEditable || codeudor2DocumentoEditable) && (
-                    <div className="w-full max-w-[340px] border-t border-black pt-1">
+                    <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 2</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={(val: string) => setCodeudor2NombreEditable(sanitizeNotarialText(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor2DocumentoEditable)} onChange={(val: string) => setCodeudor2DocumentoEditable(formatDocClean(val))} /></p>
