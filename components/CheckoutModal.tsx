@@ -130,13 +130,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                     <p className="font-bold text-slate-800 mb-2">Datos para Transferencia Bancaria:</p>
                     <div className="grid grid-cols-2 gap-2">
                       <span className="text-slate-500">Banco:</span>
-                      <span className="font-semibold text-slate-800">Ueno</span>
+                      <span className="font-semibold text-slate-800">Banco Atlas</span>
                       
-                      <span className="text-slate-500">Titular:</span>
-                      <span className="font-semibold text-slate-800">Juan Alberto Molinas Ihara</span>
+                      <span className="text-slate-500">Caja de Ahorro:</span>
+                      <span className="font-semibold text-slate-800">1536212</span>
+                      
+                      <span className="text-slate-500">CI:</span>
+                      <span className="font-semibold text-slate-800">2697547</span>
+
+                      <span className="text-slate-500">Beneficiario:</span>
+                      <span className="font-semibold text-slate-800">Federico Ritter Vela</span>
                       
                       <span className="text-slate-500">Alias:</span>
-                      <span className="font-semibold text-slate-800 font-mono">2173790</span>
+                      <span className="font-semibold text-slate-800 font-mono">0983440021</span>
                     </div>
                   </div>
                 )}

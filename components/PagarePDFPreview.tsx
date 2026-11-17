@@ -396,6 +396,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   userData,
   onUpdatePagare
 }) => {
+  const esNotaria = String(userData?.tipoPerfil || config?.escribania?.nombre || '').toLowerCase().includes('escriban') || String(userData?.tipoPerfil || '').toLowerCase().includes('notar');
   const [pageSize, setPageSize] = useState<'legal' | 'a4'>('legal');
   const [baseCertificadoNro, setBaseCertificadoNro] = useState(() => {
     if (pagare?.certificado_firmas_nro) return pagare.certificado_firmas_nro;
@@ -1289,7 +1290,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
       html += `
   <div class="sheet">
-    <div class="title">PAGARE A LA ORDEN</div>
+    <div class="title">${esNotaria ? 'PAGARE A LA ORDEN' : 'INSTRUMENTO PRIVADO - PAGARÉ'}</div>
     
     <div class="header-row">
       <div>N° ${item.numero_cuota}/${pagare.cronograma.length}</div>
@@ -1333,15 +1334,16 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       </div>` : ''}
     </div>
 
+    ${esNotaria ? `
     <div class="cert-footer">
       LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° ${pagare.certificado_firmas_nro || '__________'} QUE SIGUE ANEXA. CONSTE.-
-    </div>
+    </div>` : ''}
 
     ${config.pdf.mostrar_pie ? `
     <div class="doc-footer">
       <div>
         <strong style="text-transform: uppercase; color: #64748b;">${config.pdf.contenido_pie || `${config.escribania.nombre} — ${config.escribania.nro_registro}`}</strong><br/>
-        <span>Certificado emitido digitalmente bajo protocolo de escribanía y timbrado Paraguayo vigente.</span>
+        <span>${esNotaria ? 'Certificado emitido digitalmente bajo protocolo de escribanía y timbrado vigente.' : 'Documento emitido digitalmente bajo términos comerciales vigentes.'}</span>
       </div>
       <div style="text-align: right;">
         <span>Generación: ${currentFormattedDateTime()}</span><br/>
@@ -1389,8 +1391,12 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
           <div className="flex items-center gap-3">
             <Award className="w-6 h-6 text-emerald-400" />
             <div>
-              <h3 className="text-sm font-black uppercase tracking-widest leading-none">Matriz de Certificación Notarial</h3>
-              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">PREVIEW INSTRUMENTO PÚBLICO - SERIE PJE-{config.anio_serie}-{pagare.correlativo}</p>
+              <h3 className="text-sm font-black uppercase tracking-widest leading-none">
+                {esNotaria ? 'MATRIZ DE CERTIFICACIÓN NOTARIAL' : 'INSTRUMENTO PRIVADO - PAGARÉ'}
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">
+                {esNotaria ? 'PREVIEW INSTRUMENTO PÚBLICO' : 'DOCUMENTO COMERCIAL'} - SERIE PJE-{config.anio_serie}-{pagare.correlativo}
+              </p>
             </div>
           </div>
           
@@ -1615,11 +1621,13 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                 </div>
 
                 {/* CERTIFICACION DE FIRMAS FOOTER - Márgenes calibrados para Hoja Verde Oficial */}
-                <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
-                  <div className="text-sm font-black uppercase">
-                    LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° {pagare.certificado_firmas_nro || '__________'} QUE SIGUE ANEXA. CONSTE.-
+                {esNotaria && (
+                  <div className="mt-8 md:mt-10 print:mt-6 relative z-10 break-inside-avoid print:break-inside-avoid font-sans pb-4 print:pb-2">
+                    <div className="text-sm font-black uppercase">
+                      LAS FIRMAS QUE ANTECEDEN HAN SIDO PUESTAS EN MI PRESENCIA Y SE HALLAN CERTIFICADAS EN LA HOJA DE CERTIFICACION DE FIRMAS N° {pagare.certificado_firmas_nro || '__________'} QUE SIGUE ANEXA. CONSTE.-
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* G. PDF Pie footer */}
                 {config.pdf.mostrar_pie && (
@@ -1628,7 +1636,9 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                       <p className="font-bold uppercase text-slate-500">
                         {config.pdf.contenido_pie || `${config.escribania.nombre} — ${config.escribania.nro_registro}`}
                       </p>
-                      <p className="mt-0.5">Certificado emitido digitalmente bajo protocolo de escribanía y timbrado Paraguayo vigente.</p>
+                      <p className="mt-0.5">
+                        {esNotaria ? 'Certificado emitido digitalmente bajo protocolo de escribanía y timbrado vigente.' : 'Documento emitido digitalmente bajo términos comerciales vigentes.'}
+                      </p>
                     </div>
                     <div className="text-right whitespace-nowrap bg-slate-50 p-2 rounded-xl border border-slate-200">
                       <p className="text-slate-500 font-bold">Generación: {currentFormattedDateTime()}</p>
