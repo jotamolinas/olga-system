@@ -9,7 +9,7 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft, Clipboard, ShieldCheck, Upload
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
@@ -462,7 +462,6 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Visibilidad condicional del Editor Notarial (Oculto por defecto según directriz UI/UX)
   const [mostrarEditor, setMostrarEditor] = useState<boolean>(false);
-  const [showSplitScreen, setShowSplitScreen] = useState<boolean>(false);
 
   // Estado del Redactor de Escritos
   const [textoLateral, setTextoLateral] = useState<string>('PARA REGISTROS PÚBLICOS - PROTOCOLO NOTARIAL');
@@ -759,6 +758,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
   const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
   const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
+  const esHojaEnBlanco = selectedPlantillaId === 'hoja_en_blanco' || documentTitle === 'Escrito en Blanco';
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -925,6 +925,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Ejecutor de comandos de formato de texto enriquecido tipo Word (document.execCommand)
   const executeCommand = (command: string, value: string | undefined = undefined) => {
     try {
+      if (editorContentRef.current) {
+        editorContentRef.current.focus();
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || !editorContentRef.current.contains(selection.anchorNode)) {
+          const range = document.createRange();
+          range.selectNodeContents(editorContentRef.current);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }
       document.execCommand(command, false, value);
       if (editorContentRef.current) {
         setEditorText(editorContentRef.current.innerHTML);
@@ -933,6 +944,67 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setTimeout(checkFormatStates, 15);
     } catch (e) {
       console.warn('Error ejecutando comando de formato:', command, e);
+    }
+  };
+
+  const handleAlign = (align: 'left' | 'center' | 'right' | 'justify') => {
+    try {
+      if (!editorContentRef.current) return;
+      if (previewMode) {
+        setPreviewMode(false);
+      }
+      editorContentRef.current.focus();
+
+      const cmdMap = {
+        left: 'justifyLeft',
+        center: 'justifyCenter',
+        right: 'justifyRight',
+        justify: 'justifyFull'
+      };
+
+      try {
+        document.execCommand(cmdMap[align], false, undefined);
+      } catch (e) {
+        // fallback
+      }
+
+      const selection = window.getSelection();
+      let blockEl: HTMLElement | null = null;
+
+      if (selection && selection.rangeCount > 0) {
+        try {
+          const range = selection.getRangeAt(0);
+          let node: Node | null = range.commonAncestorContainer;
+          while (node && node !== editorContentRef.current) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node as HTMLElement;
+              const tag = el.tagName.toLowerCase();
+              if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote'].includes(tag)) {
+                blockEl = el;
+                break;
+              }
+            }
+            node = node.parentNode;
+          }
+        } catch {}
+      }
+
+      if (blockEl) {
+        blockEl.style.textAlign = align;
+      } else {
+        editorContentRef.current.style.textAlign = align;
+        const children = editorContentRef.current.children;
+        if (children.length > 0) {
+          for (let i = 0; i < children.length; i++) {
+            (children[i] as HTMLElement).style.textAlign = align;
+          }
+        }
+      }
+
+      setEditorText(editorContentRef.current.innerHTML);
+      setTimeout(checkFormatStates, 15);
+    } catch (e) {
+      console.warn('Error alineando texto:', e);
     }
   };
 
@@ -2462,6 +2534,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
+    const esHojaEnBlanco = selectedPlantillaId === 'hoja_en_blanco' || documentTitle === 'Escrito en Blanco';
+
     // 2. Arquitectura CSS Nativa de Impresión: Flujo continuo con @page :left y @page :right
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
@@ -2471,11 +2545,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   <style>
     @page {
       size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 45mm;
-      margin-right: 15mm;
+      ${esHojaEnBlanco ? 'margin: 20mm;' : 'margin-top: 55mm; margin-bottom: 25mm; margin-left: 45mm; margin-right: 15mm;'}
     }
+    ${esHojaEnBlanco ? '' : `
     @page :left {
       size: 216mm 330mm portrait;
       margin-top: 55mm;
@@ -2490,6 +2562,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       margin-left: 45mm; /* Lomo en páginas impares / anverso */
       margin-right: 15mm;
     }
+    `}
 
     *, *::before, *::after {
       box-sizing: border-box;
@@ -3376,19 +3449,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <span>Membrete / Imprimir</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowSplitScreen(!showSplitScreen)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border cursor-pointer ${
-                    showSplitScreen 
-                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-inner' 
-                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                  }`}
-                  title="Dividir pantalla para rellenar Hoja de Seguridad CSJ"
-                >
-                  <ShieldCheck className="w-3 h-3"/>
-                  <span>{showSplitScreen ? 'Cerrar Hoja CSJ' : 'Anexar Hoja CSJ'}</span>
-                </button>
+
 
               </div>
 
@@ -3471,7 +3532,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => executeCommand('justifyLeft')}
+                    onClick={() => handleAlign('left')}
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyLeft
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
@@ -3484,7 +3545,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => executeCommand('justifyCenter')}
+                    onClick={() => handleAlign('center')}
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyCenter
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
@@ -3497,7 +3558,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => executeCommand('justifyRight')}
+                    onClick={() => handleAlign('right')}
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyRight
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
@@ -3510,7 +3571,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => executeCommand('justifyFull')}
+                    onClick={() => handleAlign('justify')}
                     className={`p-2 rounded-xl transition-all cursor-pointer ${
                       activeFormats.justifyFull
                         ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
@@ -3564,10 +3625,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
           {/* SIMULACIÓN DE HOJA DE PROTOCOLO NOTARIAL (MESA DE TRABAJO / ESCRITORIO NOTARIAL) */}
           <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
-            <div className={`flex flex-col ${showSplitScreen ? '2xl:flex-row' : ''} gap-6 items-start`}>
+            <div className="flex flex-col gap-6 items-start">
               
               {/* LADO IZQUIERDO: Hoja Notarial de Protocolo con Flujo Fluido Continuo */}
-              <div className={`w-full bg-slate-200/60 dark:bg-[#111217] py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 dark:border-white/10 overflow-x-auto flex flex-col items-center shadow-inner ${showSplitScreen ? '2xl:w-1/2' : ''}`}>
+              <div className="w-full bg-slate-200/60 dark:bg-[#111217] py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 dark:border-white/10 overflow-x-auto flex flex-col items-center shadow-inner">
                 <style>{`
                   #editor-notarial-activo,
                   .editor-notarial-papel {
@@ -3578,14 +3639,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
                     border-radius: 4px !important;
                     color: #000000 !important;
-                    padding-top: 180px !important;
-                    padding-bottom: 95px !important;
-                    padding-left: 140px !important;
+                    padding-top: ${esHojaEnBlanco ? '60px' : '180px'} !important;
+                    padding-bottom: 60px !important;
+                    padding-left: ${esHojaEnBlanco ? '60px' : '140px'} !important;
                     padding-right: 60px !important;
                     font-family: "Times New Roman", Times, serif !important;
                     font-size: 18px !important;
                     line-height: 10.4mm !important;
-                    text-align: justify !important;
+                    text-align: justify;
                     text-justify: inter-word !important;
                     white-space: pre-wrap !important;
                     word-break: break-word !important;
@@ -3658,7 +3719,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     margin-top: 0 !important;
                     margin-bottom: 0 !important;
                     min-height: 10.4mm !important;
-                    text-align: justify !important;
+                    text-align: justify;
                     text-justify: inter-word !important;
                     line-height: 10.4mm !important;
                   }
@@ -3692,7 +3753,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     color: #000000 !important;
                     display: list-item !important;
                     margin-bottom: 0.25rem !important;
-                    text-align: justify !important;
+                    text-align: justify;
                   }
 
                   /* Reglas estrictas para impresión */
@@ -3757,12 +3818,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 />
               </div>
 
-              {/* LADO DERECHO: Editor Notarial Oficial (Hoja Verde) */}
-              {showSplitScreen && (
-                <div className="w-full 2xl:w-1/2 rounded-3xl overflow-hidden shadow-2xl border border-slate-300 animate-in slide-in-from-right-8 duration-300">
-                  <EditorNotarialOficial onVolver={() => setShowSplitScreen(false)} />
-                </div>
-              )}
+
 
             </div>
           </div>

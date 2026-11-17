@@ -773,7 +773,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         codeudor2_documento_raw: formatDocClean(codeudor2DocumentoEditable),
         codeudor2_domicilio_raw: sanitizeNotarialText(codeudor2DomicilioEditable),
         certificado_firmas_nro: baseCertificadoNro,
-        fechaLugarEmision: fullFechaLugarEmision,
+        fechaLugarEmision: encabezadoCiudadFechaEditable,
         clausulaPenal,
         moraAutomatica,
         dispensaProtesto,
@@ -1111,9 +1111,11 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
   const ciudadFija = (pagare.ciudad_emision || pagare.ciudadEmision || userData?.ciudad || config?.escribania?.ciudad || 'ASUNCIÓN').trim().toUpperCase();
   const departamentoFijo = ((pagare as any).departamento_emision || (pagare as any).departamentoEmision || userData?.departamento || (config?.escribania as any)?.departamento || 'CAPITAL').trim().toUpperCase();
-  const encabezadoCiudadFecha = pagare.fechaLugarEmision 
-    ? pagare.fechaLugarEmision.toUpperCase() 
-    : `${ciudadFija}, ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.-`.toUpperCase();
+  const [encabezadoCiudadFechaEditable, setEncabezadoCiudadFechaEditable] = useState<string>(() => {
+    return pagare?.fechaLugarEmision 
+      ? pagare.fechaLugarEmision.toUpperCase() 
+      : `${ciudadFija}, ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.-`.toUpperCase();
+  });
 
   const executePrint = () => {
     if (!pagare) return;
@@ -1163,7 +1165,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     const win = window.open('', '', 'width=900,height=650');
     if (!win) return;
 
-    const lineaFecha = encabezadoCiudadFecha;
+    const lineaFecha = encabezadoCiudadFechaEditable;
 
     const monInfo = getMonedaInfo(pagare.moneda);
 
@@ -1299,7 +1301,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
     </div>
 
     <div class="date-line">
-      ${lineaFecha}
+      ${encabezadoCiudadFechaEditable}
     </div>
 
     <div class="body-text">
@@ -1315,7 +1317,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       </div>
 
       ${(codeudor1NombreEditable || codeudor1DocumentoEditable) ? `
-      <div class="signature-card" style="margin-bottom: 2rem;">
+      <div class="signature-card" style="margin-bottom: 3.5rem;">
         <div class="signature-label">Co-Deudor Solidario 1</div>
         <div>Nombre: <span style="text-transform: uppercase;">${sanitizeNotarialText(codeudor1NombreEditable)}</span></div>
         <div>Documento: C.I.N° <span style="text-transform: uppercase;">${formatDocClean(codeudor1DocumentoEditable)}</span></div>
@@ -1546,9 +1548,11 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   </p>
                   
                   <div className="flex items-baseline text-sm mb-4 print:mb-3 font-sans uppercase">
-                   <p className="text-sm font-bold uppercase mt-4 mb-6">
-                     {encabezadoCiudadFecha}
-                   </p>
+                   <EditableField
+                     className="text-sm font-bold uppercase mt-4 mb-6 w-full"
+                     value={encabezadoCiudadFechaEditable}
+                     onChange={(val: string) => setEncabezadoCiudadFechaEditable(val.toUpperCase())}
+                   />
                   </div>
                 </div>
 
@@ -1591,7 +1595,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
 
                   {/* Co-deudor 1 (si existe) */}
                   {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
-                    <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
+                    <div className="w-full max-w-[340px] border-t border-black pt-1 mb-14">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
                       <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={(val: string) => setCodeudor1NombreEditable(sanitizeNotarialText(val))} /></p>
                       <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor1DocumentoEditable)} onChange={(val: string) => setCodeudor1DocumentoEditable(formatDocClean(val))} /></p>
