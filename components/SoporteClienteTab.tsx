@@ -25,13 +25,17 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
 
     try {
       await addDoc(collection(db, 'support_tickets'), {
-        id_usuario: currentUser.uid,
-        nombre_usuario: userData?.nombreCompleto || currentUser.displayName || 'Usuario Desconocido',
+        userId: currentUser.uid,
+        uid: currentUser.uid,
+        userEmail: currentUser.email || '',
         email: currentUser.email || '',
+        id_usuario: currentUser.uid,
+        nombre_usuario: userData?.nombreCompleto || userData?.nombre || currentUser.displayName || 'Usuario Desconocido',
         telefono: userData?.telefono || currentUser.phoneNumber || '',
         asunto: asunto.trim(),
         mensaje: mensaje.trim(),
         estado: 'pendiente',
+        leidoPorUsuario: false,
         fecha_creacion: Date.now()
       });
       setIsSuccess(true);

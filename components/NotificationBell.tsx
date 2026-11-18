@@ -13,20 +13,34 @@ import { Pagare } from '../types';
 import { calcularAlertasNotariales, AlertaNotarial } from './ConfiguracionTab';
 import { auth, db } from '../services/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const ALERTAS_LEIDAS_KEY = 'olga_alertas_leidas_ids';
 
 export interface NotificationBellProps {
   pagares?: Pagare[];
   onSelectPagare?: (pagareId: string) => void;
+  currentUser?: any;
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   pagares = [],
-  onSelectPagare
+  onSelectPagare,
+  currentUser
 }) => {
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [activeUid, setActiveUid] = useState<string | null>(currentUser?.uid || auth.currentUser?.uid || null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setActiveUid(currentUser?.uid || user?.uid || null);
+    });
+    if (currentUser?.uid) {
+      setActiveUid(currentUser.uid);
+    }
+    return () => unsubscribe();
+  }, [currentUser]);
 
   // Almacenar IDs de alertas marcadas como leídas desde localStorage
   const [alertasLeidasIds, setAlertasLeidasIds] = useState<string[]>(() => {
@@ -40,19 +54,30 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   const [ticketsNotificados, setTicketsNotificados] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const uid = activeUid || currentUser?.uid || auth.currentUser?.uid;
+    if (!uid) {
+      setTicketsNotificados([]);
+      return;
+    }
+
     const q = query(
       collection(db, 'support_tickets'), 
-      where('userId', '==', auth.currentUser.uid),
-      where('estado', 'in', ['en_proceso', 'resuelto'])
+      where('userId', '==', uid)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tickets: any[] = [];
-      snapshot.forEach(doc => tickets.push({ id: doc.id, ...doc.data() }));
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.estado === 'en_proceso' || data.estado === 'resuelto') {
+          tickets.push({ id: docSnap.id, ...data });
+        }
+      });
       setTicketsNotificados(tickets);
+    }, (err) => {
+      console.error("Error listening to support tickets:", err);
     });
     return () => unsubscribe();
-  }, []);
+  }, [activeUid, currentUser]);
 
   // Pagarés activos: de props o de localStorage
   const pagaresEfectivos = useMemo(() => {
@@ -76,10 +101,15 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   // Cantidad real de incidencias no leídas
   const totalAlertasNoLeidas = useMemo(() => {
-    return alertasNotariales.filter(a => !a.leida).length;
-  }, [alertasNotariales]);
+    const noLeidasNotariales = alertasNotariales.filter(a => !a.leida).length;
+    const noLeidasTickets = ticketsNotificados.filter(t => {
+      const ticketKey = `ticket_${t.id}_${t.estado}`;
+      return !alertasLeidasIds.includes(ticketKey);
+    }).length;
+    return noLeidasNotariales + noLeidasTickets;
+  }, [alertasNotariales, ticketsNotificados, alertasLeidasIds]);
 
-  const totalAlertas = totalAlertasNoLeidas + ticketsNotificados.length;
+  const totalAlertas = totalAlertasNoLeidas;
 
   // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
@@ -93,8 +123,23 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   }, []);
 
   const marcarTodasComoLeidas = () => {
-    const allIds = alertasNotariales.map(a => a.id);
-    const updated = Array.from(new Set([...alertasLeidasIds, ...allIds]));
+    const allNotarialIds = alertasNotariales.map(a => a.id);
+    const allTicketIds = ticketsNotificados.map(t => `ticket_${t.id}_${t.estado}`);
+    const updated = Array.from(new Set([...alertasLeidasIds, ...allNotarialIds, ...allTicketIds]));
+    setAlertasLeidasIds(updated);
+    try {
+      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
+    } catch {}
+  };
+
+  const marcarTicketLeido = (ticket: any) => {
+    const ticketKey = `ticket_${ticket.id}_${ticket.estado}`;
+    let updated: string[];
+    if (alertasLeidasIds.includes(ticketKey)) {
+      updated = alertasLeidasIds.filter(item => item !== ticketKey);
+    } else {
+      updated = [...alertasLeidasIds, ticketKey];
+    }
     setAlertasLeidasIds(updated);
     try {
       localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
@@ -170,13 +215,16 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
             {ticketsNotificados.map(ticket => {
               const isResuelto = ticket.estado === 'resuelto';
+              const ticketKey = `ticket_${ticket.id}_${ticket.estado}`;
+              const isLeida = alertasLeidasIds.includes(ticketKey);
               return (
                 <div 
                   key={ticket.id} 
-                  className={`p-4 border-b transition-colors ${
+                  onClick={() => marcarTicketLeido(ticket)}
+                  className={`p-4 border-b transition-colors cursor-pointer ${
                     isResuelto 
-                      ? 'border-emerald-100 bg-emerald-50/60 hover:bg-emerald-50' 
-                      : 'border-blue-100 bg-blue-50/60 hover:bg-blue-50'
+                      ? (isLeida ? 'border-emerald-100 bg-white opacity-70' : 'border-emerald-100 bg-emerald-50/80 hover:bg-emerald-50') 
+                      : (isLeida ? 'border-blue-100 bg-white opacity-70' : 'border-blue-100 bg-blue-50/80 hover:bg-blue-50')
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
@@ -187,6 +235,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     }`}>
                       <MessageSquare className="w-3 h-3"/> {isResuelto ? 'SOPORTE RESUELTO' : 'SOPORTE EN PROCESO'}
                     </span>
+                    {!isLeida ? (
+                      <span className="w-2 h-2 rounded-full bg-[#FF3131] shrink-0" title="No leída" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5 text-slate-400" />
+                    )}
                   </div>
                   <h4 className="text-xs font-bold text-slate-900 mb-1">
                     Actualización sobre tu consulta

@@ -74,11 +74,25 @@ export const SuperAdminDashboard: React.FC = () => {
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
 
+  const handleMarcarEnProceso = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'support_tickets', ticketId), { 
+        estado: 'en_proceso',
+        respuestaAdmin: 'Hemos revisado tu consulta en el buzón y nuestro equipo ya está analizando tu inquietud. Te responderemos a la brevedad.',
+        leidoPorUsuario: false,
+        fechaActualizacion: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error al poner en proceso:", err);
+    }
+  };
+
   const handleResolverTicket = async (ticketId: string) => {
     try {
       await updateDoc(doc(db, 'support_tickets', ticketId), { 
         estado: 'resuelto',
         respuestaAdmin: 'Tu consulta ha sido atendida y marcada como resuelta por nuestro equipo de soporte. Pronto nos contactaremos por correo. Gracias.',
+        leidoPorUsuario: false,
         fechaActualizacion: new Date().toISOString()
       });
     } catch (err) {
@@ -759,6 +773,7 @@ export const SuperAdminDashboard: React.FC = () => {
                     ) : (
                       pendingTickets.map((ticket) => {
                         const isResuelto = ticket.estado === 'resuelto';
+                        const isPendiente = ticket.estado === 'pendiente' || !ticket.estado;
                         return (
                           <div 
                             key={ticket.id}
@@ -778,6 +793,14 @@ export const SuperAdminDashboard: React.FC = () => {
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
+                              {isPendiente && (
+                                <button
+                                  onClick={() => handleMarcarEnProceso(ticket.id)}
+                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-2 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Clock className="w-2.5 h-2.5" /> En Proceso
+                                </button>
+                              )}
                               {!isResuelto && (
                                 <button
                                   onClick={() => handleResolverTicket(ticket.id)}

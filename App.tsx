@@ -1698,6 +1698,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
             {/* Campana de Notificaciones Notariales Global */}
             <NotificationBell 
+              currentUser={currentUser}
               pagares={pagares} 
               onSelectPagare={(id) => {
                 const found = pagares.find(p => p.id === id);
