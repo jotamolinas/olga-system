@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot, query } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
@@ -7,7 +7,7 @@ import {
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard, Check
+  MessageSquare, CreditCard, Check, Trash2
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -29,6 +29,7 @@ export interface RegisteredUser {
   fechaFormateada: string;
   diasRestantes?: number;
   isRecent: boolean;
+  categoriaCuenta: 'cliente' | 'cortesia' | 'equipo';
   raw: any;
 }
 
@@ -65,11 +66,13 @@ interface Metrics {
   totalPagares: number;
   aiQueries: number;
   alerts: number;
+  clientesCount: number;
+  equipoCortesiaCount: number;
 }
 
 export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
-  const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0 });
+  const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0, clientesCount: 0, equipoCortesiaCount: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
@@ -99,6 +102,49 @@ export const SuperAdminDashboard: React.FC = () => {
       console.error("Error al resolver ticket:", err);
     }
   };
+
+  const handleEliminarTicket = async (ticketId: string) => {
+    setPendingTickets(prev => prev.filter(t => t.id !== ticketId));
+    setPendingTicketsCount(prev => Math.max(0, prev - 1));
+    try {
+      await deleteDoc(doc(db, 'support_tickets', ticketId));
+      await deleteDoc(doc(db, 'consultas_soporte', ticketId)).catch(() => {});
+    } catch (err) {
+      console.error("Error al eliminar ticket en SuperAdmin:", err);
+    }
+  };
+
+  const handleCambiarPlanUsuario = async (userId: string, nuevoPlan: string) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const fechaActual = new Date();
+      const fechaVencimientoMs = Date.now() + (30 * 24 * 60 * 60 * 1000);
+      const fechaVencimiento = new Date(fechaVencimientoMs);
+
+      await updateDoc(userRef, {
+        planActual: nuevoPlan,
+        plan: nuevoPlan,
+        estadoPago: 'APROBADO',
+        estadoPlataforma: 'Aprobado',
+        estado_cuenta: 'activa',
+        fecha_inicio_plan: fechaActual.toISOString(),
+        fecha_vencimiento_plan: fechaVencimiento.toISOString()
+      });
+      alert(`Plan actualizado con éxito a "${nuevoPlan}".`);
+    } catch (err) {
+      console.error("Error al actualizar plan:", err);
+      alert('Error al actualizar el plan.');
+    }
+  };
+
+  const handleCambiarCategoriaUsuario = async (userId: string, nuevaCat: 'cliente' | 'cortesia' | 'equipo') => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { categoriaCuenta: nuevaCat });
+    } catch (err) {
+      console.error("Error al actualizar categoría de cuenta:", err);
+      alert('Error al actualizar categoría.');
+    }
+  };
   
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -112,8 +158,26 @@ export const SuperAdminDashboard: React.FC = () => {
 
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [userFilter, setUserFilter] = useState<'todos' | 'activos' | 'prueba' | 'pendientes'>('todos');
+  const [userFilter, setUserFilter] = useState<'todos' | 'clientes' | 'cortesia_equipo' | 'prueba' | 'vencidos'>('todos');
   const [userSearchTerm, setUserSearchTerm] = useState('');
+
+  const filteredUsers = useMemo(() => {
+    return registeredUsers.filter(u => {
+      const term = userSearchTerm.trim().toLowerCase();
+      if (term) {
+        const matchNombre = (u.nombre || '').toLowerCase().includes(term);
+        const matchEmail = (u.email || '').toLowerCase().includes(term);
+        const matchTel = (u.telefono || '').toLowerCase().includes(term);
+        const matchRazon = (u.razonSocial || '').toLowerCase().includes(term);
+        if (!matchNombre && !matchEmail && !matchTel && !matchRazon) return false;
+      }
+      if (userFilter === 'clientes') return u.categoriaCuenta === 'cliente';
+      if (userFilter === 'cortesia_equipo') return u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo';
+      if (userFilter === 'prueba') return u.estadoSuscripcion === 'prueba' && u.categoriaCuenta === 'cliente';
+      if (userFilter === 'vencidos') return u.estadoSuscripcion === 'vencido';
+      return true;
+    });
+  }, [registeredUsers, userSearchTerm, userFilter]);
 
   const getUserTimestamp = (u: any): number => {
     if (!u) return 0;
@@ -163,7 +227,7 @@ export const SuperAdminDashboard: React.FC = () => {
     let unsubscribeUsers: (() => void) | null = null;
     let isMounted = true;
 
-    // 1. Sincronización en TIEMPO REAL de Usuarios (Con Plan, En Prueba y Pendientes)
+    // 1. Sincronización en TIEMPO REAL de Usuarios
     try {
       const usersCol = collection(db, 'users');
       unsubscribeUsers = onSnapshot(usersCol, (usersSnap) => {
@@ -174,13 +238,32 @@ export const SuperAdminDashboard: React.FC = () => {
         let tUsers = 0;
         let aUsers = 0;
         let aiQ = 0;
+        let clientesC = 0;
+        let equipoC = 0;
 
         usersSnap.forEach((docSnap) => {
           const data = docSnap.data();
           const docId = docSnap.id;
           tUsers++;
 
-          if (data.aiConsultationsCount) aiQ += data.aiConsultationsCount;
+          const userAiUsage = Number(data.usoIA || data.consultasUsadas || data.aiConsultationsCount || 0);
+          aiQ += userAiUsage;
+
+          const emailStr = String(data.email || data.correo || '').toLowerCase();
+          let categoriaCuenta: 'cliente' | 'cortesia' | 'equipo' = data.categoriaCuenta;
+          if (!categoriaCuenta) {
+            if (emailStr.includes('jotamolinas') || emailStr.includes('probit.com.py') || emailStr.includes('olga')) {
+              categoriaCuenta = 'equipo';
+            } else {
+              categoriaCuenta = 'cliente';
+            }
+          }
+
+          if (categoriaCuenta === 'cliente') {
+            clientesC++;
+          } else {
+            equipoC++;
+          }
 
           const planStr = String(data.planActual || data.plan || data.planSolicitado || '').toLowerCase();
           const estadoPago = String(data.estadoPago || '').toUpperCase();
@@ -214,7 +297,6 @@ export const SuperAdminDashboard: React.FC = () => {
           } else if (isPaidPlan) {
             estadoSuscripcion = 'activo';
           } else {
-            // Período de prueba de 5 días
             if (timestamp > 0) {
               const diffMs = Date.now() - timestamp;
               const daysPassed = diffMs / (1000 * 60 * 60 * 24);
@@ -247,12 +329,11 @@ export const SuperAdminDashboard: React.FC = () => {
             fechaFormateada: formatUserDate(timestamp),
             diasRestantes,
             isRecent,
+            categoriaCuenta,
             raw: data
           });
         });
 
-        // REGLA CRÍTICA: Orden estricto de arriba para abajo de más nuevo a más viejo siempre.
-        // Los nuevos usuarios que ingresen se posicionan automáticamente en el top del contenedor.
         usersList.sort((a, b) => b.timestamp - a.timestamp);
 
         setRegisteredUsers(usersList);
@@ -265,7 +346,9 @@ export const SuperAdminDashboard: React.FC = () => {
           totalUsers: tUsers,
           activeUsers: aUsers,
           aiQueries: aiQ,
-          alerts: pend.length
+          alerts: pend.length,
+          clientesCount: clientesC,
+          equipoCortesiaCount: equipoC
         }));
       }, (err) => {
         console.error("Error en snapshot en tiempo real de usuarios:", err);
@@ -276,7 +359,7 @@ export const SuperAdminDashboard: React.FC = () => {
       setLoadingUsers(false);
     }
 
-    // 2. Carga de Pagarés Globales para métricas y gráficos
+    // 2. Carga de Pagarés Globales
     const fetchPagaresData = async () => {
       try {
         const pagaresSnap = await getDocs(collection(db, 'pagares'));
@@ -378,7 +461,7 @@ export const SuperAdminDashboard: React.FC = () => {
 
     fetchPagaresData();
 
-    // 3. Listener en tiempo real de tickets de soporte para Buzón de Consultas
+    // 3. Listener de tickets de soporte
     let unsubscribeTickets: (() => void) | null = null;
     try {
       const qTickets = query(collection(db, 'support_tickets'));
@@ -388,9 +471,14 @@ export const SuperAdminDashboard: React.FC = () => {
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
           ticketsList.push({ id: docSnap.id, ...data });
-          if (data.estado === 'pendiente' || !data.estado) {
+          if (data.estado !== 'resuelto') {
             count++;
           }
+        });
+        ticketsList.sort((a, b) => {
+          const aRes = a.estado === 'resuelto' ? 1 : 0;
+          const bRes = b.estado === 'resuelto' ? 1 : 0;
+          return aRes - bRes;
         });
         setPendingTickets(ticketsList);
         setPendingTicketsCount(count);
@@ -400,7 +488,6 @@ export const SuperAdminDashboard: React.FC = () => {
     } catch (err) {
       console.error("Error inicializando listener de tickets:", err);
     }
-
 
     return () => {
       isMounted = false;
@@ -422,11 +509,9 @@ export const SuperAdminDashboard: React.FC = () => {
   const handleAprobar = async (userId: string, planSolicitado: string, modalidadPago?: string) => {
     try {
       const userRef = doc(db, 'users', userId);
-      
       const fechaActual = new Date();
       const esAnual = String(modalidadPago || '').toLowerCase().includes('anual');
       const diasVigencia = esAnual ? 365 : 30;
-      
       const fechaVencimientoMs = Date.now() + (diasVigencia * 24 * 60 * 60 * 1000);
       const fechaVencimiento = new Date(fechaVencimientoMs);
 
@@ -443,23 +528,10 @@ export const SuperAdminDashboard: React.FC = () => {
       });
 
       setPendingPayments(prev => prev.filter(p => p.userId !== userId));
-      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" (${esAnual ? '12 meses' : '1 mes'}) vencerá el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
+      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" vencerá el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
       console.error(err);
       alert('Error al aprobar la suscripción.');
-    }
-  };
-  const handleRechazar = async (userId: string) => {
-    try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        estadoPago: 'RECHAZADO'
-      });
-      setPendingPayments(prev => prev.filter(p => p.userId !== userId));
-      alert('Operación exitosa');
-    } catch (err) {
-      console.error(err);
-      alert('Error al rechazar');
     }
   };
 
@@ -510,8 +582,8 @@ export const SuperAdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-2 md:p-4 w-full box-border h-full">
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-2 md:p-4 w-full box-border h-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden overflow-x-hidden">
         {/* Header / Subtabs */}
         <div className="mb-3 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -522,7 +594,6 @@ export const SuperAdminDashboard: React.FC = () => {
             <p className="text-[11px] text-gray-400 mt-0.5">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
           </div>
 
-          {/* Switcher de Subpestañas Superadmin */}
           <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm shrink-0">
             <button
               type="button"
@@ -557,10 +628,9 @@ export const SuperAdminDashboard: React.FC = () => {
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden gap-3">
-            {/* 1. Grid Superior de KPIs (5 Columnas) */}
+            {/* 1. Grid Superior de KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
-              {/* Card 1: Usuarios Totales */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Usuarios Totales</span>
                   <div className="p-1 bg-blue-500/10 rounded-lg border border-blue-500/20">
@@ -571,13 +641,17 @@ export const SuperAdminDashboard: React.FC = () => {
                   {loading ? (
                     <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
                   ) : (
-                    <p className="text-2xl font-light text-white mt-0.5">{metrics.totalUsers}</p>
+                    <>
+                      <p className="text-2xl font-light text-white mt-0.5">{metrics.totalUsers}</p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {metrics.clientesCount || 0} clientes • {metrics.equipoCortesiaCount || 0} equipo/cortesía
+                      </p>
+                    </>
                   )}
                 </div>
               </div>
 
-              {/* Card 2: Pagarés Emitidos */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagarés Emitidos</span>
                   <div className="p-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
@@ -585,16 +659,11 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  {loading ? (
-                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
-                  ) : (
-                    <p className="text-2xl font-light text-white mt-0.5">{metrics.totalPagares}</p>
-                  )}
+                  {loading ? <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div> : <p className="text-2xl font-light text-white mt-0.5">{metrics.totalPagares}</p>}
                 </div>
               </div>
 
-              {/* Card 3: Consultas IA */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Consultas IA</span>
                   <div className="p-1 bg-purple-500/10 rounded-lg border border-purple-500/20">
@@ -602,16 +671,11 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  {loading ? (
-                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
-                  ) : (
-                    <p className="text-2xl font-light text-white mt-0.5">{metrics.aiQueries}</p>
-                  )}
+                  {loading ? <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div> : <p className="text-2xl font-light text-white mt-0.5">{metrics.aiQueries}</p>}
                 </div>
               </div>
 
-              {/* Card 4: Pagos Pendientes */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
                   <div className="p-1 bg-orange-500/10 rounded-lg border border-orange-500/20">
@@ -619,18 +683,11 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  {loadingPayments ? (
-                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
-                  ) : (
-                    <p className={`text-2xl font-light mt-0.5 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>
-                      {pendingPayments.length}
-                    </p>
-                  )}
+                  {loadingPayments ? <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div> : <p className={`text-2xl font-light mt-0.5 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>{pendingPayments.length}</p>}
                 </div>
               </div>
 
-              {/* Card 5: Buzón de Consultas */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between col-span-2 md:col-span-1">
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Buzón de Consultas</span>
                   <div className="p-1 bg-amber-500/10 rounded-lg border border-amber-500/20">
@@ -645,14 +702,14 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Layout en Mitad y Mitad (Split 50/50): Izquierda (Gráficos y Cobros) - Derecha (Panel de Usuarios) */}
+            {/* Split 50/50 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0 overflow-hidden">
               
-              {/* Columna Izquierda: Gráficos Compactos, Cobros y Emisión Reciente */}
-              <div className="flex flex-col gap-3 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
+              {/* Columna Izquierda */}
+              <div className="flex flex-col gap-3 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-800 pr-1">
                 
-                {/* Gráficos (Emisión & Volumen) */}
-                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                {/* Gráficos */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <FileText className="w-3 h-3 text-blue-400" /> Emisión (6 Meses) & Volumen
@@ -678,7 +735,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
 
                 {/* Gestión de Cobros */}
-                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <CreditCard className="w-3 h-3 text-orange-400" /> Gestión de Cobros
@@ -749,8 +806,8 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Buzón de Consultas (Tickets de Soporte) */}
-                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                {/* Buzón de Consultas */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <MessageSquare className="w-3 h-3 text-amber-400" /> Buzón de Consultas
@@ -809,6 +866,13 @@ export const SuperAdminDashboard: React.FC = () => {
                                   <Check className="w-2.5 h-2.5" /> Resolver
                                 </button>
                               )}
+                              <button
+                                onClick={() => handleEliminarTicket(ticket.id)}
+                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
+                                title="Eliminar ticket"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
                               {isResuelto && (
                                 <span className="text-[9px] text-emerald-400 font-semibold px-1.5 py-0.5">Resuelto</span>
                               )}
@@ -820,8 +884,8 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Emisión Reciente de Pagarés */}
-                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                {/* Emisión Reciente */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <FileText className="w-3 h-3 text-emerald-400" /> Emisión Reciente de Pagarés
@@ -883,15 +947,42 @@ export const SuperAdminDashboard: React.FC = () => {
 
               </div>
 
-              {/* Columna Derecha: Panel de Usuarios Activos & Registrados (Ocupando la mitad derecha completa y scrolleable) */}
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col h-full overflow-hidden">
+              {/* Columna Derecha: Panel de Usuarios Activos & Registrados */}
+              <div className="bg-[#121214] border border-white/5 rounded-2xl p-4 shadow-sm flex flex-col h-full overflow-hidden">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between shrink-0">
                   <span className="flex items-center gap-1.5">
                     <Users className="w-3 h-3 text-blue-400" /> Panel de Usuarios Activos & Registrados
                   </span>
                   <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
-                    {registeredUsers.length} total
+                    {filteredUsers.length} / {registeredUsers.length} total
                   </span>
+                </div>
+
+                {/* Barra de búsqueda y filtros rápidos */}
+                <div className="mb-3 shrink-0 space-y-2">
+                  <input
+                    type="text"
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                    placeholder="Buscar por nombre, email, teléfono..."
+                    className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                    {(['todos', 'clientes', 'cortesia_equipo', 'prueba', 'vencidos'] as const).map((filtro) => (
+                      <button
+                        key={filtro}
+                        type="button"
+                        onClick={() => setUserFilter(filtro)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer shrink-0 ${
+                          userFilter === filtro
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white/5 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {filtro === 'todos' ? 'Todos' : filtro === 'clientes' ? 'Clientes Pagos' : filtro === 'cortesia_equipo' ? 'Cortesía / Equipo' : filtro === 'prueba' ? 'En Prueba' : 'Vencidos'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
@@ -899,12 +990,12 @@ export const SuperAdminDashboard: React.FC = () => {
                     <div className="p-6 flex justify-center items-center">
                       <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
                     </div>
-                  ) : registeredUsers.length === 0 ? (
+                  ) : filteredUsers.length === 0 ? (
                     <div className="py-6 text-center text-xs text-gray-500">
-                      No hay usuarios registrados aún.
+                      No se encontraron usuarios con los filtros seleccionados.
                     </div>
                   ) : (
-                    registeredUsers.map((user) => {
+                    filteredUsers.map((user) => {
                       const inicial = (user.nombre || user.razonSocial || user.email || 'U').charAt(0).toUpperCase();
                       const nombreDisplay = user.razonSocial || user.nombre || user.email;
                       const subInfo = user.email || user.telefono || '';
@@ -913,34 +1004,79 @@ export const SuperAdminDashboard: React.FC = () => {
                       const isPendiente = user.estadoSuscripcion === 'pendiente';
 
                       return (
-                        <div key={user.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors">
-                          <div className="flex items-center gap-2.5 min-w-0 mr-2">
+                        <div key={user.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
                               {inicial}
                             </div>
                             <div className="min-w-0 truncate">
-                              <p className="text-xs text-gray-200 font-medium truncate">{nombreDisplay}</p>
+                              <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
                               <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
                             </div>
                           </div>
-                          <div className="shrink-0">
-                            {isActivo ? (
-                              <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-                                Activo
-                              </span>
-                            ) : isPrueba ? (
-                              <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
-                                Prueba ({user.diasRestantes ?? 5}d)
-                              </span>
-                            ) : isPendiente ? (
-                              <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
-                                Pendiente
-                              </span>
-                            ) : (
-                              <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
-                                Vencido
-                              </span>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {user.telefono && (
+                              <a
+                                href={`https://wa.me/${user.telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hola ' + nombreDisplay + ', nos comunicamos desde Soporte O.L.G.A.')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bg-green-600/20 hover:bg-green-600/35 text-green-400 p-1.5 rounded-lg transition-colors"
+                                title="Contactar por WhatsApp"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </a>
                             )}
+
+                            <select
+                              value={user.categoriaCuenta || 'cliente'}
+                              onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+                              className={`border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer ${
+                                user.categoriaCuenta === 'cortesia' 
+                                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                  : user.categoriaCuenta === 'equipo'
+                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              }`}
+                              title="Clasificación de cuenta"
+                            >
+                              <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+                              <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+                              <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+                            </select>
+
+                            <select
+                              value={user.plan || 'Prueba Gratuita'}
+                              onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+                              className="bg-[#09090b] border border-white/10 rounded-lg text-[10px] text-gray-300 px-2 py-1 outline-none cursor-pointer"
+                              title="Cambiar plan en vivo"
+                            >
+                              <option value="Prueba Gratuita">Prueba (5d)</option>
+                              <option value="Plan Básico">Plan Básico</option>
+                              <option value="Plan Pro">Plan Pro</option>
+                              <option value="Plan Empresa">Plan Empresa</option>
+                              <option value="Plan Full">Plan Full</option>
+                            </select>
+
+                            <div>
+                              {isActivo ? (
+                                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
+                                  Activo
+                                </span>
+                              ) : isPrueba ? (
+                                <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
+                                  Prueba ({user.diasRestantes ?? 5}d)
+                                </span>
+                              ) : isPendiente ? (
+                                <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
+                                  Pendiente
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
+                                  Vencido
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -960,103 +1096,76 @@ export const SuperAdminDashboard: React.FC = () => {
               <button
                 onClick={() => setReciboSeleccionado(null)}
                 className="absolute top-4 right-4 bg-zinc-900/80 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10 cursor-pointer"
-                aria-label="Cerrar modal"
+                title="Cerrar"
               >
-                <XCircle className="w-5 h-5" />
+                ✕
               </button>
-              <img 
-                src={reciboSeleccionado} 
-                alt="Comprobante de Pago" 
-                className="max-w-full box-border max-h-[85vh] object-contain rounded-xl shadow-2xl" 
-              />
+              <h3 className="text-white text-sm font-bold mb-3">Comprobante de Pago Subido por el Usuario</h3>
+              <div className="overflow-auto max-h-[80vh] max-w-full">
+                <img src={reciboSeleccionado} alt="Comprobante de Pago" className="object-contain max-h-[70vh] rounded-xl border border-white/10" />
+              </div>
             </div>
           </div>
         )}
 
         {/* Modal Auditoría */}
         {auditoriaSeleccionada && (
-          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-[#121214] border border-white/10 rounded-2xl w-full box-border max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-              <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#09090b]/50">
-                <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="relative max-w-lg w-full bg-[#121214] border border-white/10 rounded-2xl p-5 space-y-4 shadow-2xl text-white">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
                   {renderRiesgoIcon(auditoriaSeleccionada.reporte.riesgo)}
-                  Reporte de Auditoría IA
-                </h2>
+                  <h3 className="font-bold text-base">Auditoría Automática de Pagaré</h3>
+                </div>
                 <button
                   onClick={() => setAuditoriaSeleccionada(null)}
-                  className="text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+                  className="text-gray-400 hover:text-white text-sm cursor-pointer"
                 >
-                  <XCircle className="w-5 h-5" />
+                  ✕
                 </button>
               </div>
-              
-              <div className="p-6 overflow-y-auto max-h-[70vh] space-y-5">
-                <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
-                  <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Nivel de Riesgo Detectado</h3>
-                  <div className="flex items-center gap-4">
-                    {renderRiesgoBadge(auditoriaSeleccionada.reporte.riesgo)}
-                    {auditoriaSeleccionada.reporte.riesgo === 'Normal' ? (
-                      <p className="text-xs text-gray-400">El documento cumple con los parámetros habituales de la plataforma. No se detectaron anomalías estructurales.</p>
-                    ) : (
-                      <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
-                        {auditoriaSeleccionada.reporte.razones.map((razon, i) => (
-                          <li key={i} className={auditoriaSeleccionada.reporte.riesgo === 'Critico' ? 'text-red-400 font-medium' : 'text-yellow-400 font-medium'}>{razon}</li>
-                        ))}
-                      </ul>
-                    )}
+
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between items-center bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                  <span className="text-gray-400">Nivel de Riesgo Detectado:</span>
+                  {renderRiesgoBadge(auditoriaSeleccionada.reporte.riesgo)}
+                </div>
+
+                <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Detalle del Instrumento:</span>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                    <div><span className="text-gray-500">Emisor:</span> {auditoriaSeleccionada.pagare.acreedor_nombre}</div>
+                    <div><span className="text-gray-500">Deudor:</span> {auditoriaSeleccionada.pagare.deudor_nombre}</div>
+                    <div><span className="text-gray-500">Monto:</span> {typeof auditoriaSeleccionada.pagare.monto === 'number' ? `Gs. ${auditoriaSeleccionada.pagare.monto.toLocaleString('es-PY')}` : auditoriaSeleccionada.pagare.monto}</div>
+                    <div><span className="text-gray-500">Vencimiento:</span> {auditoriaSeleccionada.pagare.fecha_vencimiento || 'No especificado'}</div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
-                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">Datos del Emisor</h3>
-                    <p className="text-sm font-semibold text-gray-200">{auditoriaSeleccionada.pagare.acreedor_nombre || 'N/A'}</p>
-                    <p className="text-xs text-gray-500">{auditoriaSeleccionada.pagare.userEmail}</p>
+                {auditoriaSeleccionada.reporte.razones.length > 0 && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 space-y-1.5 text-red-300">
+                    <span className="font-bold block text-[11px]">Observaciones y Alertas:</span>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                      {auditoriaSeleccionada.reporte.razones.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
                   </div>
-                  <div className="bg-[#09090b] p-4 rounded-xl border border-white/5">
-                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">Datos del Deudor</h3>
-                    <p className="text-sm font-semibold text-gray-200">{auditoriaSeleccionada.pagare.deudor_nombre || 'N/A'}</p>
-                    <p className="text-xs font-mono text-gray-500">CI/RUC: {auditoriaSeleccionada.pagare.deudor_cedula || 'N/A'}</p>
-                  </div>
-                </div>
-
-                <div className="bg-[#09090b] p-4 rounded-xl border border-white/5 grid grid-cols-3 gap-4">
-                  <div>
-                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Monto</h3>
-                    <p className="text-sm font-mono font-semibold text-white">
-                      {typeof auditoriaSeleccionada.pagare.monto === 'number' ? `Gs. ${auditoriaSeleccionada.pagare.monto.toLocaleString('es-PY')}` : auditoriaSeleccionada.pagare.monto}
-                    </p>
-                  </div>
-                  <div>
-                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Emisión</h3>
-                    <p className="text-sm text-gray-300">{auditoriaSeleccionada.pagare.fecha_emision || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Vencimiento</h3>
-                    <p className="text-sm text-gray-300">{auditoriaSeleccionada.pagare.fecha_vencimiento || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-white/5 bg-[#09090b]/50 flex justify-end gap-3">
-                <button
-                  onClick={() => setAuditoriaSeleccionada(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                >
-                  Cerrar Reporte
-                </button>
-                {(auditoriaSeleccionada.reporte.riesgo === 'Sospechoso' || auditoriaSeleccionada.reporte.riesgo === 'Critico') && (
-                  <button
-                    onClick={() => {
-                      alert('Usuario bloqueado por prevención de fraude.');
-                      setAuditoriaSeleccionada(null);
-                    }}
-                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-red-900/20 cursor-pointer"
-                  >
-                    <ShieldAlert className="w-4 h-4" />
-                    Bloquear Usuario (Posible Fraude)
-                  </button>
                 )}
+
+                {auditoriaSeleccionada.reporte.razones.length === 0 && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-emerald-300 text-center">
+                    ✓ Instrumento auditado sin anomalías detectadas. Coherencia jurídica e impositiva válida.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setAuditoriaSeleccionada(null)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar Auditoría
+                </button>
               </div>
             </div>
           </div>

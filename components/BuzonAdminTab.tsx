@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
-import { Mail, CheckCircle2, Circle, Clock, MessageSquare } from 'lucide-react';
+import { Mail, CheckCircle2, Circle, Clock, MessageSquare, Trash2 } from 'lucide-react';
 
 interface Ticket {
   id: string;
@@ -45,6 +45,7 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
       await updateDoc(doc(db, 'support_tickets', ticketId), { 
         estado: 'en_proceso',
         respuestaAdmin: 'Hemos recibido tu consulta y nuestro equipo ya está trabajando en ella. Nos pondremos en contacto contigo a la brevedad.',
+        leidoPorUsuario: false,
         fechaActualizacion: new Date().toISOString()
       });
     } catch (err) {
@@ -52,18 +53,34 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
     }
   };
 
+  const handleResolverTicket = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'support_tickets', ticketId), { 
+        estado: 'resuelto',
+        respuestaAdmin: 'Tu consulta ha sido atendida y marcada como resuelta por nuestro equipo de soporte. Pronto nos contactaremos por correo. Gracias.',
+        leidoPorUsuario: false,
+        fechaActualizacion: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error al resolver ticket:", err);
+    }
+  };
+
   const handleEliminarTicket = async (ticketId: string) => {
-    if(window.confirm("¿Seguro que deseas eliminar este ticket definitivamente?")) {
-      try {
-        await deleteDoc(doc(db, 'support_tickets', ticketId));
-      } catch (err) {
-        console.error("Error al eliminar ticket:", err);
-      }
+    // Actualización optimista inmediata del estado local sin dialogos confirm bloqueantes de iframe
+    setTickets(prev => prev.filter(t => t.id !== ticketId));
+    try {
+      await deleteDoc(doc(db, 'support_tickets', ticketId));
+      await deleteDoc(doc(db, 'consultas_soporte', ticketId)).catch(() => {});
+    } catch (err) {
+      console.error("Error al eliminar ticket:", err);
     }
   };
 
   const formatDate = (timestamp: number) => {
+    if (!timestamp) return 'Fecha no disponible';
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Fecha inválida';
     return date.toLocaleDateString('es-ES', { 
       day: '2-digit', 
       month: 'short', 
@@ -118,105 +135,66 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
           <div className="overflow-x-auto">
             <table className="w-full box-border text-left border-collapse">
               <thead>
-                <tr className={`${
-                  esPlanFull 
-                    ? 'bg-slate-50 border-b border-slate-200' 
-                    : 'bg-slate-800/80 border-b border-slate-800'
-                }`}>
-                  <th className={`p-4 text-xs font-bold uppercase tracking-wider ${
-                    esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Fecha</th>
-                  <th className={`p-4 text-xs font-bold uppercase tracking-wider ${
-                    esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Cliente</th>
-                  <th className={`p-4 text-xs font-bold uppercase tracking-wider ${
-                    esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Consulta</th>
-                  <th className={`p-4 text-xs font-bold uppercase tracking-wider ${
-                    esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Estado</th>
-                  <th className={`p-4 text-xs font-bold uppercase tracking-wider text-right ${
-                    esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Acciones</th>
+                <tr className="bg-slate-800/80 border-b border-slate-800 text-slate-400">
+                  <th className="p-4 text-xs font-bold uppercase tracking-wider">Fecha</th>
+                  <th className="p-4 text-xs font-bold uppercase tracking-wider">Cliente</th>
+                  <th className="p-4 text-xs font-bold uppercase tracking-wider">Consulta</th>
+                  <th className="p-4 text-xs font-bold uppercase tracking-wider">Estado</th>
+                  <th className="p-4 text-xs font-bold uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y ${
-                esPlanFull ? 'divide-slate-100' : 'divide-slate-800'
-              }`}>
+              <tbody className="divide-y divide-slate-800">
                 {tickets.map((ticket) => (
                   <tr 
                     key={ticket.id} 
-                    className={`transition-colors ${
-                      esPlanFull
-                        ? `hover:bg-slate-50 ${ticket.estado === 'pendiente' ? 'bg-amber-50/20' : ''}`
-                        : `hover:bg-slate-800/50 ${ticket.estado === 'pendiente' ? 'bg-slate-800/40' : ''}`
-                    }`}
+                    className={`transition-colors hover:bg-slate-800/50 ${ticket.estado === 'pendiente' ? 'bg-slate-800/40' : ''}`}
                   >
                     <td className="p-4 align-top">
-                      <span className={`text-xs font-mono ${
-                        esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                      }`}>
+                      <span className="text-xs font-mono text-slate-300">
                         {formatDate(ticket.fecha_creacion)}
                       </span>
                     </td>
                     <td className="p-4 align-top">
-                      <div className={`font-bold text-sm ${
-                        esPlanFull ? 'text-slate-800' : 'text-white'
-                      }`}>
+                      <div className="font-bold text-sm text-white">
                         {ticket.nombre_usuario}
                       </div>
                       {ticket.email && (
-                        <div className={`text-xs mt-1 ${
-                          esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                        }`}>
+                        <div className="text-xs mt-1 text-slate-300">
                           {ticket.email}
                         </div>
                       )}
                       {ticket.telefono && (
-                        <div className={`text-xs mt-0.5 ${
-                          esPlanFull ? 'text-slate-500' : 'text-slate-400'
-                        }`}>
+                        <div className="text-xs mt-0.5 text-slate-400">
                           {ticket.telefono}
                         </div>
                       )}
                     </td>
                     <td className="p-4 align-top max-w-md">
-                      <div className={`font-bold text-sm mb-1 ${
-                        esPlanFull ? 'text-slate-800' : 'text-white'
-                      }`}>
+                      <div className="font-bold text-sm mb-1 text-white">
                         {ticket.asunto}
                       </div>
-                      <div className={`text-sm whitespace-pre-wrap ${
-                        esPlanFull ? 'text-slate-600' : 'text-slate-300'
-                      }`}>
+                      <div className="text-sm whitespace-pre-wrap text-slate-200">
                         {ticket.mensaje}
                       </div>
                     </td>
                     <td className="p-4 align-top">
                       {ticket.estado === 'pendiente' && (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          esPlanFull 
-                            ? 'bg-amber-100 text-amber-700 border border-amber-300/60' 
-                            : 'bg-slate-800 text-slate-300 border border-slate-700'
-                        }`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
                           <Clock className="w-3 h-3" /> Pendiente
                         </span>
                       )}
+                      {ticket.estado === 'en_proceso' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-950/80 text-blue-300 border border-blue-800">
+                          <Clock className="w-3 h-3" /> En Proceso
+                        </span>
+                      )}
                       {ticket.estado === 'leido' && (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          esPlanFull 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : 'bg-blue-950/80 text-blue-300 border border-blue-800'
-                        }`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-950/80 text-blue-300 border border-blue-800">
                           <Circle className="w-3 h-3" /> Leído
                         </span>
                       )}
                       {ticket.estado === 'resuelto' && (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          esPlanFull 
-                            ? 'bg-emerald-100 text-emerald-700' 
-                            : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
-                        }`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-300 border border-emerald-800">
                           <CheckCircle2 className="w-3 h-3" /> Resuelto
                         </span>
                       )}
@@ -237,22 +215,31 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
                           Enviar Correo
                         </button>
                       ) : null}
-                      <div className="flex items-center gap-2">
-                        {ticket.estado !== 'en_proceso' ? (
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {ticket.estado !== 'en_proceso' && ticket.estado !== 'resuelto' ? (
                           <button
                             onClick={() => handleMarcarEnProceso(ticket.id)}
                             className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
                           >
-                            Marcar en Proceso
+                            En Proceso
+                          </button>
+                        ) : null}
+                        {ticket.estado !== 'resuelto' ? (
+                          <button
+                            onClick={() => handleResolverTicket(ticket.id)}
+                            className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                          >
+                            Resolver
                           </button>
                         ) : (
-                          <span className="text-xs font-bold text-blue-400 px-2 py-1">En Proceso (Notificado)</span>
+                          <span className="text-xs font-bold text-emerald-400 px-2 py-1">Resuelto</span>
                         )}
                         <button
                           onClick={() => handleEliminarTicket(ticket.id)}
-                          className="bg-red-600/20 hover:bg-red-600/40 text-red-500 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                          className="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
+                          title="Eliminar ticket"
                         >
-                          Eliminar
+                          <Trash2 className="w-3.5 h-3.5" /> Eliminar
                         </button>
                       </div>
                     </td>
