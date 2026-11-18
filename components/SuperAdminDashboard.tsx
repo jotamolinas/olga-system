@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, addDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
@@ -7,7 +7,7 @@ import {
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard, Check, Trash2
+  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -145,6 +145,37 @@ export const SuperAdminDashboard: React.FC = () => {
       alert('Error al actualizar categoría.');
     }
   };
+
+  const formatWhatsAppNumber = (tel: string) => {
+    if (!tel) return '';
+    let cleaned = tel.replace(/[^0-9]/g, '');
+    if (cleaned.startsWith('09')) {
+      cleaned = '595' + cleaned.substring(1);
+    } else if (!cleaned.startsWith('595') && cleaned.length >= 9) {
+      cleaned = '595' + cleaned;
+    }
+    return cleaned;
+  };
+
+  const handleEnviarOfertaCampana = async (user: RegisteredUser) => {
+    try {
+      await addDoc(collection(db, 'support_tickets'), {
+        userId: user.id,
+        email: user.email,
+        nombre_usuario: user.nombre || user.email,
+        asunto: '🎁 ¡Propuesta Comercial Exclusiva O.L.G.A.!',
+        mensaje: `¡Hola ${user.nombre || 'Escribano'}! Tenemos una propuesta preferencial para que actives tu plan completo hoy con soporte prioritario (soporte@olgatech.com.py / WhatsApp +595 983 440021).`,
+        estado: 'en_proceso',
+        esOfertaPromocional: true,
+        respuestaAdmin: '¡Hola! Como usuario de O.L.G.A., te ofrecemos una tarifa preferencial y descuento en tu primer mes. Contáctanos en soporte@olgatech.com.py o al WhatsApp +595 983 440021.',
+        fecha_creacion: Date.now()
+      });
+      alert(`¡Oferta promocional enviada con éxito a la campana de ${user.nombre || user.email}!`);
+    } catch (err) {
+      console.error("Error al enviar oferta a campana:", err);
+      alert('Error al enviar la oferta.');
+    }
+  };
   
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -152,6 +183,36 @@ export const SuperAdminDashboard: React.FC = () => {
 
   const [pagaresGlobal, setPagaresGlobal] = useState<PagareGlobal[]>([]);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<{pagare: PagareGlobal, reporte: {riesgo: string, razones: string[]}} | null>(null);
+  const [expandedModule, setExpandedModule] = useState<'usuarios' | 'pagares' | null>(null);
+  const [pagaresSearchTerm, setPagaresSearchTerm] = useState('');
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [pagosModalOpen, setPagosModalOpen] = useState(false);
+  const [buzonModalOpen, setBuzonModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setExpandedModule(null);
+        setAiModalOpen(false);
+        setPagosModalOpen(false);
+        setBuzonModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const filteredPagares = useMemo(() => {
+    const term = pagaresSearchTerm.trim().toLowerCase();
+    if (!term) return pagaresGlobal;
+    return pagaresGlobal.filter(p => {
+      const emisor = (p.empresa || p.acreedor_nombre || p.userEmail || '').toLowerCase();
+      const acreedor = (p.acreedor_nombre || '').toLowerCase();
+      const deudor = (p.deudor_nombre || '').toLowerCase();
+      const cedula = (p.deudor_cedula || '').toLowerCase();
+      return emisor.includes(term) || acreedor.includes(term) || deudor.includes(term) || cedula.includes(term);
+    });
+  }, [pagaresGlobal, pagaresSearchTerm]);
 
   const [chartData, setChartData] = useState<{name: string, cantidad: number}[]>([]);
   const [lineData, setLineData] = useState<{name: string, volumen: number}[]>([]);
@@ -630,7 +691,11 @@ export const SuperAdminDashboard: React.FC = () => {
           <div className="flex-1 flex flex-col overflow-hidden gap-3">
             {/* 1. Grid Superior de KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 shrink-0">
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setExpandedModule('usuarios')}
+                className="bg-[#121214] border border-white/5 hover:border-blue-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all"
+                title="Click para ver lista completa de usuarios"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Usuarios Totales</span>
                   <div className="p-1 bg-blue-500/10 rounded-lg border border-blue-500/20">
@@ -651,7 +716,11 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setExpandedModule('pagares')}
+                className="bg-[#121214] border border-white/5 hover:border-emerald-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all"
+                title="Click para ver emisión de pagarés en pantalla completa"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagarés Emitidos</span>
                   <div className="p-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
@@ -663,7 +732,11 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setAiModalOpen(true)}
+                className="bg-[#121214] border border-white/5 hover:border-purple-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all"
+                title="Click para ver detalles de consultas IA"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Consultas IA</span>
                   <div className="p-1 bg-purple-500/10 rounded-lg border border-purple-500/20">
@@ -675,7 +748,11 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
+              <div 
+                onClick={() => setPagosModalOpen(true)}
+                className="bg-[#121214] border border-white/5 hover:border-orange-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all"
+                title="Click para revisar pagos pendientes"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
                   <div className="p-1 bg-orange-500/10 rounded-lg border border-orange-500/20">
@@ -687,7 +764,11 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-[#121214] border border-white/5 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
+              <div 
+                onClick={() => setBuzonModalOpen(true)}
+                className="bg-[#121214] border border-white/5 hover:border-amber-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1 cursor-pointer transition-all"
+                title="Click para ver buzón de consultas"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Buzón de Consultas</span>
                   <div className="p-1 bg-amber-500/10 rounded-lg border border-amber-500/20">
@@ -890,9 +971,19 @@ export const SuperAdminDashboard: React.FC = () => {
                     <span className="flex items-center gap-1.5">
                       <FileText className="w-3 h-3 text-emerald-400" /> Emisión Reciente de Pagarés
                     </span>
-                    <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
-                      {pagaresGlobal.length} docs
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                        {pagaresGlobal.length} docs
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedModule('pagares')}
+                        className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-1.5 rounded-lg border border-white/10 transition-all cursor-pointer flex items-center gap-1"
+                        title="Expandir a pantalla completa (ESC para salir)"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1">
@@ -953,9 +1044,19 @@ export const SuperAdminDashboard: React.FC = () => {
                   <span className="flex items-center gap-1.5">
                     <Users className="w-3 h-3 text-blue-400" /> Panel de Usuarios Activos & Registrados
                   </span>
-                  <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
-                    {filteredUsers.length} / {registeredUsers.length} total
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full font-mono">
+                      {filteredUsers.length} / {registeredUsers.length} total
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedModule('usuarios')}
+                      className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-1.5 rounded-lg border border-white/10 transition-all cursor-pointer flex items-center gap-1"
+                      title="Expandir a pantalla completa (ESC para salir)"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Barra de búsqueda y filtros rápidos */}
@@ -1015,18 +1116,39 @@ export const SuperAdminDashboard: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            {user.telefono && (
-                              <a
-                                href={`https://wa.me/${user.telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hola ' + nombreDisplay + ', nos comunicamos desde Soporte O.L.G.A.')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="bg-green-600/20 hover:bg-green-600/35 text-green-400 p-1.5 rounded-lg transition-colors"
-                                title="Contactar por WhatsApp"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
-                              </a>
-                            )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* 1. WhatsApp Commercial Button */}
+                            <a
+                              href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                              title={user.telefono ? `Contactar por WhatsApp (${user.telefono})` : 'Sin teléfono registrado'}
+                              onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                            </a>
+
+                            {/* 2. Corporate Gmail Button */}
+                            <a
+                              href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg transition-colors flex items-center justify-center"
+                              title={`Enviar correo corporativo a ${user.email}`}
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                            </a>
+
+                            {/* 3. Send Offer to Notification Bell Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleEnviarOfertaCampana(user)}
+                              className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                              title="🎁 Enviar oferta promocional a su campana de notificaciones"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </button>
 
                             <select
                               value={user.categoriaCuenta || 'cliente'}
@@ -1085,6 +1207,528 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EXPANDIDO: USUARIOS */}
+        {expandedModule === 'usuarios' && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-7xl h-[90vh] bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-400">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Panel de Usuarios Activos & Registrados (Pantalla Completa)</h2>
+                    <p className="text-xs text-gray-400">Gestión ejecutiva de clientes, pruebas y cuentas de cortesía/equipo ({filteredUsers.length} de {registeredUsers.length})</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 font-mono">
+                    ESC para contraer
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedModule(null)}
+                    className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Contraer (ESC)"
+                  >
+                    <Minimize2 className="w-4 h-4" /> Contraer
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de búsqueda y filtros en modal */}
+              <div className="mb-4 shrink-0 flex flex-col md:flex-row items-center gap-3">
+                <input
+                  type="text"
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  placeholder="Buscar por nombre, email, teléfono..."
+                  className="w-full md:flex-1 bg-[#09090b] border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                />
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto">
+                  {(['todos', 'clientes', 'cortesia_equipo', 'prueba', 'vencidos'] as const).map((filtro) => (
+                    <button
+                      key={filtro}
+                      type="button"
+                      onClick={() => setUserFilter(filtro)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer shrink-0 ${
+                        userFilter === filtro
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white/5 text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {filtro === 'todos' ? 'Todos' : filtro === 'clientes' ? 'Clientes' : filtro === 'cortesia_equipo' ? 'Cortesía/Equipo' : filtro === 'prueba' ? 'Prueba' : 'Vencidos'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tabla expandida */}
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 rounded-2xl border border-white/5 bg-[#09090b]">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white/[0.02] border-b border-white/10 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+                      <th className="p-3.5">Usuario / Razón Social</th>
+                      <th className="p-3.5">Contacto</th>
+                      <th className="p-3.5">Registro</th>
+                      <th className="p-3.5">Categoría</th>
+                      <th className="p-3.5">Plan</th>
+                      <th className="p-3.5">Estado</th>
+                      <th className="p-3.5 text-right">Acciones Comerciales</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-xs">
+                    {filteredUsers.map((user) => {
+                      const inicial = (user.nombre || user.razonSocial || user.email || 'U').charAt(0).toUpperCase();
+                      const nombreDisplay = user.razonSocial || user.nombre || user.email;
+                      const isActivo = user.estadoSuscripcion === 'activo';
+                      const isPrueba = user.estadoSuscripcion === 'prueba';
+                      const isPendiente = user.estadoSuscripcion === 'pendiente';
+
+                      return (
+                        <tr key={user.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">
+                                {inicial}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-white">{nombreDisplay}</p>
+                                <p className="text-[10px] text-gray-500">{user.nombre || 'Sin nombre fiscal'}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5">
+                            <p className="text-gray-300">{user.email}</p>
+                            <p className="text-[10px] text-gray-500 font-mono">{user.telefono || 'Sin teléfono'}</p>
+                          </td>
+                          <td className="p-3.5 text-gray-400 font-mono text-[11px]">
+                            {user.fechaFormateada}
+                          </td>
+                          <td className="p-3.5">
+                            <select
+                              value={user.categoriaCuenta || 'cliente'}
+                              onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+                              className={`border rounded-lg text-xs px-2.5 py-1 outline-none cursor-pointer ${
+                                user.categoriaCuenta === 'cortesia' 
+                                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                  : user.categoriaCuenta === 'equipo'
+                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              }`}
+                            >
+                              <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+                              <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+                              <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+                            </select>
+                          </td>
+                          <td className="p-3.5">
+                            <select
+                              value={user.plan || 'Prueba Gratuita'}
+                              onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+                              className="bg-[#121214] border border-white/10 rounded-lg text-xs text-gray-200 px-2.5 py-1 outline-none cursor-pointer"
+                            >
+                              <option value="Prueba Gratuita">Prueba (5d)</option>
+                              <option value="Plan Básico">Plan Básico</option>
+                              <option value="Plan Pro">Plan Pro</option>
+                              <option value="Plan Empresa">Plan Empresa</option>
+                              <option value="Plan Full">Plan Full</option>
+                            </select>
+                          </td>
+                          <td className="p-3.5">
+                            {isActivo ? (
+                              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-medium border border-emerald-500/20">
+                                Activo
+                              </span>
+                            ) : isPrueba ? (
+                              <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-full font-medium border border-cyan-500/20">
+                                Prueba ({user.diasRestantes ?? 5}d)
+                              </span>
+                            ) : isPendiente ? (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full font-medium border border-amber-500/20">
+                                Pendiente
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-red-500/10 text-red-400 px-2.5 py-1 rounded-full font-medium border border-red-500/20">
+                                Vencido
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <a
+                                href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`px-2.5 py-1.5 rounded-xl transition-colors flex items-center gap-1 text-xs font-semibold ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                                onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+                              >
+                                <Phone className="w-3.5 h-3.5" /> WhatsApp
+                              </a>
+                              <a
+                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-xl transition-colors flex items-center gap-1 text-xs font-semibold"
+                              >
+                                <Mail className="w-3.5 h-3.5" /> Gmail
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleEnviarOfertaCampana(user)}
+                                className="px-2.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-xl transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" /> Oferta Campana
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EXPANDIDO: PAGARES */}
+        {expandedModule === 'pagares' && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-7xl h-[90vh] bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Auditoría Global & Emisión de Pagarés (Pantalla Completa)</h2>
+                    <p className="text-xs text-gray-400">Listado completo de instrumentos notariales emitidos en el sistema ({filteredPagares.length} de {pagaresGlobal.length})</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 font-mono">
+                    ESC para contraer
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedModule(null)}
+                    className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Contraer (ESC)"
+                  >
+                    <Minimize2 className="w-4 h-4" /> Contraer
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de búsqueda rápida */}
+              <div className="mb-4 shrink-0">
+                <input
+                  type="text"
+                  value={pagaresSearchTerm}
+                  onChange={(e) => setPagaresSearchTerm(e.target.value)}
+                  placeholder="Buscar por acreedor, deudor, C.I./R.U.C. o escribano emisor..."
+                  className="w-full bg-[#09090b] border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Tabla expandida de pagarés */}
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 rounded-2xl border border-white/5 bg-[#09090b]">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white/[0.02] border-b border-white/10 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+                      <th className="p-3.5">Fecha Emisión</th>
+                      <th className="p-3.5">Escribanía / Emisor</th>
+                      <th className="p-3.5">Acreedor</th>
+                      <th className="p-3.5">Deudor (C.I. / R.U.C.)</th>
+                      <th className="p-3.5">Monto (Gs.)</th>
+                      <th className="p-3.5">Vencimiento</th>
+                      <th className="p-3.5 text-right">Auditoría IA</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-xs">
+                    {filteredPagares.map((pagare) => {
+                      const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
+                      const montoFormatted = typeof pagare.monto === 'number' 
+                        ? `Gs. ${pagare.monto.toLocaleString('es-PY')}` 
+                        : pagare.monto;
+
+                      return (
+                        <tr key={pagare.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="p-3.5 font-mono text-gray-400 text-[11px]">
+                            {pagare.fecha_emision}
+                          </td>
+                          <td className="p-3.5 font-semibold text-white">
+                            {emisor}
+                          </td>
+                          <td className="p-3.5 text-gray-200">
+                            {pagare.acreedor_nombre}
+                          </td>
+                          <td className="p-3.5">
+                            <p className="text-gray-200 font-medium">{pagare.deudor_nombre}</p>
+                            <p className="text-[10px] text-gray-500 font-mono">{pagare.deudor_cedula || 'Sin documento'}</p>
+                          </td>
+                          <td className="p-3.5 font-mono font-semibold text-emerald-400">
+                            {montoFormatted}
+                          </td>
+                          <td className="p-3.5 font-mono text-gray-300 text-[11px]">
+                            {pagare.fecha_vencimiento || 'No especificada'}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleAuditoria(pagare)}
+                              className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 rounded-xl transition-colors font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" /> Ver Auditoría IA
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: CONSUMO DE IA */}
+        {aiModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-purple-500/10 rounded-2xl border border-purple-500/20 text-purple-400">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white">Análisis de Consultas IA (Asistente O.L.G.A.)</h2>
+                    <p className="text-xs text-gray-400">Estado de integración Gemini SDK y consumo por operador</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiModalOpen(false)}
+                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 overflow-y-auto flex-1 pr-1 text-xs text-gray-300">
+                <div className="bg-purple-500/10 border border-purple-500/20 p-4 rounded-2xl space-y-2">
+                  <h4 className="font-bold text-purple-300 text-sm flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-400" /> ¿La Consulta IA está configurada?
+                  </h4>
+                  <p className="leading-relaxed text-gray-300">
+                    <strong>¡Sí, está 100% configurada y activa!</strong> El sistema utiliza el SDK oficial de Google GenAI para asistir en la redacción de escritos y análisis de pagarés.
+                    El contador marca <strong>{metrics.aiQueries}</strong> porque los usuarios activos aún no han realizado generaciones en esta base de datos o se encuentran en el inicio de su periodo de prueba. Cada vez que un escribano genere una minuta o escrito asistido en el módulo correspondiente, el contador se incrementará automáticamente.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="font-bold text-white mb-2 uppercase tracking-wider text-[11px] text-gray-400">Desglose de Consumo por Usuario:</h4>
+                  <div className="bg-[#09090b] rounded-2xl border border-white/5 overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-white/[0.02] border-b border-white/10 text-gray-400 text-[10px] uppercase">
+                          <th className="p-3">Escribano / Usuario</th>
+                          <th className="p-3">Plan</th>
+                          <th className="p-3 text-right">Consultas Usadas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {registeredUsers.map(u => {
+                          const uso = Number(u.raw?.usoIA || u.raw?.consultasUsadas || u.raw?.aiConsultationsCount || 0);
+                          return (
+                            <tr key={u.id} className="hover:bg-white/[0.02]">
+                              <td className="p-3">
+                                <p className="font-semibold text-white">{u.nombre || u.razonSocial || u.email}</p>
+                                <p className="text-[10px] text-gray-500">{u.email}</p>
+                              </td>
+                              <td className="p-3 text-gray-400">{u.plan}</td>
+                              <td className="p-3 text-right font-mono font-bold text-purple-400">{uso}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-white/15 mt-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAiModalOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: PAGOS PENDIENTES */}
+        {pagosModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-orange-500/10 rounded-2xl border border-orange-500/20 text-orange-400">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white">Gestión de Cobros y Suscripciones Pendientes</h2>
+                    <p className="text-xs text-gray-400">Verificación de comprobantes de transferencia y aprobación de planes</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPagosModalOpen(false)}
+                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
+                {pendingPayments.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-2" />
+                    <p className="font-medium text-gray-300">No hay pagos pendientes de verificación en este momento.</p>
+                  </div>
+                ) : (
+                  pendingPayments.map(pago => (
+                    <div key={pago.id} className="p-4 bg-white/[0.02] border border-white/10 rounded-2xl flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-bold text-white text-sm">{pago.nombreCliente || pago.email}</p>
+                        <p className="text-gray-400 mt-0.5">Plan solicitado: <span className="text-white font-medium">{pago.planSolicitado}</span> • Monto: <span className="font-mono text-emerald-400 font-bold">Gs. {(pago.montoAPagar || 0).toLocaleString('es-PY')}</span></p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {pago.urlComprobante && (
+                          <button
+                            type="button"
+                            onClick={() => { setReciboSeleccionado(pago.urlComprobante); setPagosModalOpen(false); }}
+                            className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-xl font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> Ver Recibo
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago); }}
+                          className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 rounded-xl font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Aprobar Plan
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-white/15 mt-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPagosModalOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: BUZÓN DE CONSULTAS */}
+        {buzonModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-4xl bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-amber-400">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white">Buzón de Consultas y Soporte Técnico</h2>
+                    <p className="text-xs text-gray-400">Gestión de solicitudes e inquietudes de usuarios ({pendingTicketsCount} pendientes)</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBuzonModalOpen(false)}
+                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
+                {pendingTickets.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-2" />
+                    <p className="font-medium text-gray-300">No hay consultas en el buzón actualmente.</p>
+                  </div>
+                ) : (
+                  pendingTickets.map(ticket => {
+                    const isResuelto = ticket.estado === 'resuelto';
+                    const isPendiente = ticket.estado === 'pendiente' || !ticket.estado;
+                    return (
+                      <div key={ticket.id} className={`p-4 border rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${isResuelto ? 'bg-white/[0.01] opacity-70 border-white/5' : 'bg-white/[0.03] border-amber-500/20'}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-white text-sm truncate">{ticket.asunto || ticket.mensaje || 'Consulta'}</p>
+                          <p className="text-[11px] text-gray-300 mt-1">{ticket.mensaje}</p>
+                          <p className="text-[10px] text-gray-500 mt-1 font-mono">{ticket.userEmail || ticket.email || 'Usuario'} • Estado: <span className="uppercase text-white font-semibold">{ticket.estado || 'pendiente'}</span></p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                          {isPendiente && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarcarEnProceso(ticket.id)}
+                              className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg font-semibold text-[11px] transition-colors cursor-pointer"
+                            >
+                              En Proceso
+                            </button>
+                          )}
+                          {!isResuelto && (
+                            <button
+                              type="button"
+                              onClick={() => handleResolverTicket(ticket.id)}
+                              className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-400 rounded-lg font-semibold text-[11px] transition-colors cursor-pointer"
+                            >
+                              Resolver
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarTicket(ticket.id)}
+                            className="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/35 text-red-400 rounded-lg font-semibold text-[11px] transition-colors cursor-pointer"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-white/15 mt-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setBuzonModalOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         )}

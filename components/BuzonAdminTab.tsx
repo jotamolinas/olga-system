@@ -13,6 +13,7 @@ interface Ticket {
   mensaje: string;
   estado: 'pendiente' | 'leido' | 'resuelto' | 'en_proceso';
   fecha_creacion: number;
+  respuestaAdmin?: string;
 }
 
 interface BuzonAdminTabProps {
@@ -200,21 +201,24 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
                       )}
                     </td>
                     <td className="p-4 align-top text-right flex flex-col items-end gap-2">
-                      {ticket.telefono ? (
+                      {ticket.telefono && (
                         <button
-                          onClick={() => window.open(`https://wa.me/${ticket.telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hola! Recibimos tu consulta en O.L.G.A. sobre: *' + ticket.asunto + '*...')}`, '_blank')}
-                          className="px-3 py-1.5 bg-green-500 text-white hover:bg-green-600 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                          onClick={() => window.open(`https://wa.me/${ticket.telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hola ' + (ticket.nombre_usuario || 'Escribano') + '! Te contactamos desde Soporte Oficial O.L.G.A. (soporte@olgatech.com.py / WhatsApp +595 983 440021) respecto a tu consulta: *' + ticket.asunto + '*.\n\nEstamos a tu disposición para ayudarte.')}`, '_blank')}
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="Responder por WhatsApp"
                         >
-                          Responder
+                          <MessageSquare className="w-3.5 h-3.5" /> WhatsApp S.O.S.
                         </button>
-                      ) : ticket.email ? (
+                      )}
+                      {ticket.email && (
                         <button
-                          onClick={() => { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${ticket.email}&su=${encodeURIComponent('Respuesta a tu consulta en O.L.G.A: ' + ticket.asunto)}`, '_blank'); }}
-                          className="px-3 py-1.5 bg-blue-500 text-white hover:bg-blue-600 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                          onClick={() => { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${ticket.email}&su=${encodeURIComponent('Respuesta de Soporte O.L.G.A. a tu consulta: ' + ticket.asunto)}&body=${encodeURIComponent('Estimado/a ' + (ticket.nombre_usuario || 'Escribano/a') + ',\n\nHemos revisado su consulta en el buzón de O.L.G.A. Notarial.\n\nRespuesta de Soporte:\n' + (ticket.respuestaAdmin || 'Estamos analizando su inquietud y nos pondremos en contacto.') + '\n\nContáctenos directamente en:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte O.L.G.A.')}`, '_blank'); }}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="Enviar Correo Corporativo"
                         >
-                          Enviar Correo
+                          <Mail className="w-3.5 h-3.5" /> Enviar Correo S.O.S.
                         </button>
-                      ) : null}
+                      )}
                       <div className="flex items-center gap-2 flex-wrap justify-end">
                         {ticket.estado !== 'en_proceso' && ticket.estado !== 'resuelto' ? (
                           <button
