@@ -7,7 +7,7 @@ import {
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard
+  MessageSquare, CreditCard, Check
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -72,6 +72,19 @@ export const SuperAdminDashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
+  const [pendingTickets, setPendingTickets] = useState<any[]>([]);
+
+  const handleResolverTicket = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'support_tickets', ticketId), { 
+        estado: 'resuelto',
+        respuestaAdmin: 'Tu consulta ha sido atendida y marcada como resuelta por nuestro equipo de soporte. Pronto nos contactaremos por correo. Gracias.',
+        fechaActualizacion: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error al resolver ticket:", err);
+    }
+  };
   
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
@@ -357,12 +370,15 @@ export const SuperAdminDashboard: React.FC = () => {
       const qTickets = query(collection(db, 'support_tickets'));
       unsubscribeTickets = onSnapshot(qTickets, (snapshot) => {
         let count = 0;
+        const ticketsList: any[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
+          ticketsList.push({ id: docSnap.id, ...data });
           if (data.estado === 'pendiente' || !data.estado) {
             count++;
           }
         });
+        setPendingTickets(ticketsList);
         setPendingTicketsCount(count);
       }, (err) => {
         console.error("Error en snapshot de tickets de soporte:", err);
@@ -711,6 +727,68 @@ export const SuperAdminDashboard: React.FC = () => {
                               >
                                 <CheckCircle className="w-2.5 h-2.5" /> Aprobar
                               </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Buzón de Consultas (Tickets de Soporte) */}
+                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shrink-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <MessageSquare className="w-3 h-3 text-amber-400" /> Buzón de Consultas
+                    </span>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-mono ${
+                      pendingTicketsCount > 0 
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold' 
+                        : 'text-gray-500 bg-white/5'
+                    }`}>
+                      {pendingTicketsCount} pendientes
+                    </span>
+                  </div>
+
+                  <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
+                    {pendingTickets.length === 0 ? (
+                      <div className="py-4 text-center flex flex-col items-center justify-center">
+                        <CheckCircle className="w-5 h-5 text-emerald-500/30 mb-1" />
+                        <p className="text-[11px] text-gray-400 font-medium">No hay consultas pendientes</p>
+                      </div>
+                    ) : (
+                      pendingTickets.map((ticket) => {
+                        const isResuelto = ticket.estado === 'resuelto';
+                        return (
+                          <div 
+                            key={ticket.id}
+                            className={`flex items-center justify-between py-1.5 px-2 rounded-xl border transition-colors gap-2 ${
+                              isResuelto ? 'bg-white/[0.01] opacity-60 border-white/5' : 'bg-white/[0.03] border-amber-500/20'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] text-gray-200 font-medium truncate" title={ticket.asunto || ticket.mensaje || 'Consulta'}>
+                                {ticket.asunto || ticket.mensaje || 'Consulta de soporte'}
+                              </p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[9px] text-gray-400 truncate">
+                                  {ticket.userEmail || ticket.email || 'Usuario'} • {ticket.estado || 'pendiente'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!isResuelto && (
+                                <button
+                                  onClick={() => handleResolverTicket(ticket.id)}
+                                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-[9px] px-2 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Check className="w-2.5 h-2.5" /> Resolver
+                                </button>
+                              )}
+                              {isResuelto && (
+                                <span className="text-[9px] text-emerald-400 font-semibold px-1.5 py-0.5">Resuelto</span>
+                              )}
                             </div>
                           </div>
                         );

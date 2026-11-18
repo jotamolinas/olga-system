@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { Mail, CheckCircle2, Circle, Clock, MessageSquare } from 'lucide-react';
 
@@ -11,7 +11,7 @@ interface Ticket {
   telefono?: string;
   asunto: string;
   mensaje: string;
-  estado: 'pendiente' | 'leido' | 'resuelto';
+  estado: 'pendiente' | 'leido' | 'resuelto' | 'en_proceso';
   fecha_creacion: number;
 }
 
@@ -40,13 +40,25 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
     return () => unsubscribe();
   }, []);
 
-  const handleUpdateStatus = async (ticketId: string, newStatus: 'leido' | 'resuelto') => {
+  const handleMarcarEnProceso = async (ticketId: string) => {
     try {
-      await updateDoc(doc(db, 'support_tickets', ticketId), {
-        estado: newStatus
+      await updateDoc(doc(db, 'support_tickets', ticketId), { 
+        estado: 'en_proceso',
+        respuestaAdmin: 'Hemos recibido tu consulta y nuestro equipo ya está trabajando en ella. Nos pondremos en contacto contigo a la brevedad.',
+        fechaActualizacion: new Date().toISOString()
       });
-    } catch (error) {
-      console.error("Error updating ticket status:", error);
+    } catch (err) {
+      console.error("Error al poner en proceso:", err);
+    }
+  };
+
+  const handleEliminarTicket = async (ticketId: string) => {
+    if(window.confirm("¿Seguro que deseas eliminar este ticket definitivamente?")) {
+      try {
+        await deleteDoc(doc(db, 'support_tickets', ticketId));
+      } catch (err) {
+        console.error("Error al eliminar ticket:", err);
+      }
     }
   };
 
@@ -225,31 +237,23 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
                           Enviar Correo
                         </button>
                       ) : null}
-                      <div className="space-x-2">
-                        {ticket.estado === 'pendiente' && (
+                      <div className="flex items-center gap-2">
+                        {ticket.estado !== 'en_proceso' ? (
                           <button
-                            onClick={() => handleUpdateStatus(ticket.id, 'leido')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors inline-block cursor-pointer ${
-                              esPlanFull 
-                                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' 
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                            }`}
+                            onClick={() => handleMarcarEnProceso(ticket.id)}
+                            className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
                           >
-                            Marcar Leído
+                            Marcar en Proceso
                           </button>
+                        ) : (
+                          <span className="text-xs font-bold text-blue-400 px-2 py-1">En Proceso (Notificado)</span>
                         )}
-                        {ticket.estado !== 'resuelto' && (
-                          <button
-                            onClick={() => handleUpdateStatus(ticket.id, 'resuelto')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors inline-block cursor-pointer ${
-                              esPlanFull 
-                                ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
-                                : 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-800'
-                            }`}
-                          >
-                            Resolver
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleEliminarTicket(ticket.id)}
+                          className="bg-red-600/20 hover:bg-red-600/40 text-red-500 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     </td>
                   </tr>

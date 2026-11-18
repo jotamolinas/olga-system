@@ -3155,7 +3155,16 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
                 {/* 4. SUMA CONSOLIDADA */}
                 <div className="flex justify-between items-center pt-4 font-extrabold text-[14px] border-t border-slate-800">
-                  <span className="text-slate-300">Suma Consolidada (Entrega + Cuotas + Refuerzos):</span>
+                  <span className="text-slate-300">
+                    Suma Consolidada
+                    {tipoNegociacion === 'cuotas_corridas' || (tipoNegociacion as any) === 'Cuotas Corridas (Solo cuotas)' 
+                      ? ' (Total Cuotas):'
+                      : tipoNegociacion === 'entrega_cuotas' || (tipoNegociacion as any) === 'Entrega Inicial + Cuotas'
+                      ? ' (Entrega + Cuotas):'
+                      : tipoNegociacion === 'cuotas_refuerzos' || (tipoNegociacion as any) === 'Cuotas + Refuerzos (Sin entrega)'
+                      ? ' (Cuotas + Refuerzos):'
+                      : ' (Entrega + Cuotas + Refuerzos):'}
+                  </span>
                   <span className="font-mono text-base text-white">{getMonedaSimbolo(moneda)} {formatCurrencyValue(sumaTotalCalculada, moneda)}</span>
                 </div>
 
