@@ -1,16 +1,16 @@
 import { db, auth } from './auth';
 import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
 import { Persona, Pagare, KnowledgeDoc } from '../types';
+import { depurarDuplicadosLista } from './personaDedup';
 
 export const syncPersonaToFirestore = async (userId: string, persona: Persona) => {
-  if (!auth?.currentUser?.uid) return;
   if (!persona || !persona.id) {
     console.error("syncPersonaToFirestore: ID de persona ausente o inválido", persona);
     return;
   }
   const cleanPersona = JSON.parse(JSON.stringify(persona));
-  const effectiveUserId = userId || auth.currentUser.uid;
-  const user = auth.currentUser as any;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
+  const user = (auth?.currentUser || {}) as any;
   const personaPayload = {
     ...cleanPersona, 
     id: persona.id,
@@ -25,8 +25,14 @@ export const syncPersonaToFirestore = async (userId: string, persona: Persona) =
     fechaActualizacion: serverTimestamp()
   };
 
-  await setDoc(doc(db, 'personas', persona.id), personaPayload, { merge: true });
-  await setDoc(doc(db, 'directorio_personas', persona.id), personaPayload, { merge: true });
+  const promises = [
+    setDoc(doc(db, 'personas', persona.id), personaPayload, { merge: true }),
+    setDoc(doc(db, 'directorio_personas', persona.id), personaPayload, { merge: true })
+  ];
+  if (effectiveUserId) {
+    promises.push(setDoc(doc(db, 'users', effectiveUserId, 'fichero_personas', persona.id), personaPayload, { merge: true }));
+  }
+  await Promise.allSettled(promises);
 };
 
 export const updatePersonaInFirestore = async (userId: string, persona: Persona) => {
@@ -34,30 +40,80 @@ export const updatePersonaInFirestore = async (userId: string, persona: Persona)
 };
 
 export const fetchPersonasFromFirestore = async (userId?: string): Promise<Persona[]> => {
-  if (!auth?.currentUser?.uid) return [];
-  const effectiveUserId = userId || auth.currentUser.uid;
-  const q = query(collection(db, 'personas'), where('userId', '==', effectiveUserId));
-  const snapshot = await getDocs(q);
-  const personas: Persona[] = [];
-  snapshot.forEach(docSnap => {
-    const data = docSnap.data() as any;
-    personas.push({ ...data, id: docSnap.id, userId: data.userId || effectiveUserId } as Persona);
-  });
-  return personas;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
+  const uid = auth?.currentUser?.uid || userId;
+  if (!uid && !effectiveUserId) return [];
+
+  const targetId = effectiveUserId || uid;
+  const isAdmin = auth?.currentUser?.email === 'jotamolinas@gmail.com';
+  const todasPersonas: Persona[] = [];
+
+  try {
+    const promises = [
+      isAdmin ? getDocs(query(collection(db, 'directorio_personas'))) : getDocs(query(collection(db, 'directorio_personas'), where('userId', '==', targetId))),
+      isAdmin ? getDocs(query(collection(db, 'personas'))) : getDocs(query(collection(db, 'personas'), where('userId', '==', targetId))),
+      getDocs(collection(db, 'users', targetId, 'fichero_personas'))
+    ];
+
+    if (uid && uid !== targetId) {
+      promises.push(getDocs(query(collection(db, 'directorio_personas'), where('userId', '==', uid))));
+      promises.push(getDocs(query(collection(db, 'personas'), where('userId', '==', uid))));
+      promises.push(getDocs(collection(db, 'users', uid, 'fichero_personas')));
+    }
+
+    const snapshots = await Promise.allSettled(promises);
+
+    snapshots.forEach((res) => {
+      if (res.status === 'fulfilled' && res.value) {
+        res.value.forEach(docSnap => {
+          const data = docSnap.data() as any;
+          const pId = docSnap.id;
+          if (isAdmin || !data.userId || data.userId === targetId || data.userId === uid || data.ownedByWorkspace === targetId || data.creator_id === uid || data.createdBy === uid) {
+            todasPersonas.push({ ...data, id: pId, userId: data.userId || targetId } as Persona);
+          }
+        });
+      }
+    });
+
+    const { listaLimpia } = depurarDuplicadosLista(todasPersonas);
+
+    // Auto-reparación silenciosa en segundo plano
+    for (const p of listaLimpia) {
+      if (p.id) {
+        const cleanP = JSON.parse(JSON.stringify(p));
+        setDoc(doc(db, 'directorio_personas', p.id), {
+          ...cleanP,
+          userId: p.userId || targetId,
+          fechaActualizacion: serverTimestamp()
+        }, { merge: true }).catch(() => {});
+      }
+    }
+
+    return listaLimpia;
+  } catch (err) {
+    console.error("Error en fetchPersonasFromFirestore:", err);
+    return [];
+  }
 };
 
-export const deletePersonaFromFirestore = async (personaId: string) => {
-  if (!auth?.currentUser?.uid) return;
-  await deleteDoc(doc(db, 'personas', personaId));
+export const deletePersonaFromFirestore = async (personaId: string, userId?: string) => {
+  const effectiveUserId = userId || auth?.currentUser?.uid;
+  const promises = [
+    deleteDoc(doc(db, 'personas', personaId)),
+    deleteDoc(doc(db, 'directorio_personas', personaId))
+  ];
+  if (effectiveUserId) {
+    promises.push(deleteDoc(doc(db, 'users', effectiveUserId, 'fichero_personas', personaId)));
+  }
+  await Promise.allSettled(promises);
 };
 
 export const syncPagareToFirestore = async (userId: string, pagare: Pagare) => {
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'pagares', pagare.id);
   
-  // Clean undefined values to prevent Firestore errors (JSON stringify strips undefined)
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
-  const effectiveUserId = userId || auth.currentUser.uid;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
   const user = auth.currentUser as any;
 
   await setDoc(docRef, { 
@@ -75,9 +131,8 @@ export const updatePagareInFirestore = async (userId: string, pagare: Pagare) =>
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'pagares', pagare.id);
   const cleanPagare = JSON.parse(JSON.stringify(pagare));
-  const effectiveUserId = userId || auth.currentUser.uid;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
   
-  // Usamos setDoc con { merge: true } para garantizar que guarde incluso si el documento no existía previamente
   await setDoc(docRef, { ...cleanPagare, userId: effectiveUserId }, { merge: true });
 };
 
@@ -102,7 +157,6 @@ export const fetchPagaresFromFirestore = async (userId?: string): Promise<Pagare
       pagares.push({ ...data, id: doc.id } as Pagare);
     }
   });
-  console.log("Pagarés recuperados: ", pagares);
   return pagares;
 };
 
@@ -114,14 +168,14 @@ export const anularPagareFromFirestore = async (pagareId: string) => {
 export const syncKnowledgeDocToFirestore = async (userId: string, kDoc: KnowledgeDoc) => {
   if (!auth?.currentUser?.uid) return;
   const docRef = doc(db, 'knowledge_docs', kDoc.id);
-  const effectiveUserId = userId || auth.currentUser.uid;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
   await setDoc(docRef, { ...kDoc, userId: effectiveUserId }, { merge: true });
 };
 
 export const fetchKnowledgeDocsFromFirestore = async (userId?: string): Promise<KnowledgeDoc[]> => {
   if (!auth?.currentUser?.uid) return [];
   const isAdmin = auth.currentUser.email === 'jotamolinas@gmail.com';
-  const effectiveUserId = userId || auth.currentUser.uid;
+  const effectiveUserId = userId || auth?.currentUser?.uid;
   const q = isAdmin 
     ? query(collection(db, 'knowledge_docs'))
     : query(collection(db, 'knowledge_docs'), where('userId', '==', effectiveUserId));
@@ -143,7 +197,6 @@ export const deleteKnowledgeDocFromFirestore = async (kDocId: string) => {
 export const guardarEscritoToFirestore = async (userId: string, texto: string, tipo: string = 'Escrito Generado') => {
   if (!auth.currentUser || !auth.currentUser.uid) return;
   const effectiveUserId = userId || auth.currentUser.uid;
-  console.log("Guardando escrito con Workspace/UserId:", effectiveUserId);
   const user = auth.currentUser as any;
   const datosDelDocumento = {
     texto,

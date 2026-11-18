@@ -152,22 +152,29 @@ export const RegistroOperador: React.FC = () => {
         fecha_registro: serverTimestamp()
       }).catch(err => console.warn('Advertencia actualizando invitación:', err));
 
-      // 2.5 Obtener el plan del Escribano Titular (tenant) para heredarlo
       let planDelTitular = 'Plan Básico';
       if (invitacion.tenant_id) {
         try {
-          const tenantRef = doc(db, 'users', invitacion.tenant_id);
+          const tenantRef = doc(db, 'users', invitacion.tenant_id.trim());
           const tenantSnap = await getDoc(tenantRef);
+          
           if (tenantSnap.exists()) {
             const tenantData = tenantSnap.data();
-            if (tenantData.planActual || tenantData.plan) {
-              planDelTitular = tenantData.planActual || tenantData.plan;
+            console.log("¡Titular encontrado con éxito!", tenantData);
+            
+            const planCrudo = tenantData.planActual || tenantData.plan || tenantData.tipoPlan || tenantData.suscripcion;
+            if (planCrudo) {
+              planDelTitular = String(planCrudo).trim();
             }
+          } else {
+            console.warn("El documento del tenant no existe:", invitacion.tenant_id);
           }
         } catch (e) {
-          console.warn('Advertencia: No se pudo obtener el plan del titular:', e);
+          console.error('Error detallado al leer el plan del titular (verificar reglas de Firestore):', e);
         }
       }
+      
+      console.log("Plan final que se asignará al operador:", planDelTitular);
 
       const localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
@@ -186,6 +193,8 @@ export const RegistroOperador: React.FC = () => {
         tenantId: invitacion.tenant_id,
         planActual: planDelTitular,
         plan: planDelTitular,
+        tipoPlan: planDelTitular,
+        suscripcion: planDelTitular,
         estado: 'activo',
         perfilCompletado: true,
         activeSessionId: localSessionId,

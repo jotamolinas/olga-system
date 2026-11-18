@@ -44,7 +44,7 @@ import {
   sonMismaPersona, 
   extraerDocBase 
 } from '../services/personaDedup';
-import { deletePersonaFromFirestore } from '../services/firestore';
+import { deletePersonaFromFirestore, syncPersonaToFirestore, fetchPersonasFromFirestore } from '../services/firestore';
 
 interface PersonasTabProps {
   personas?: Persona[];
@@ -62,6 +62,7 @@ interface PersonasTabProps {
 }
 
 const STORAGE_KEY = 'olga_directorio_personas';
+const GLOBAL_STORAGE_KEY = 'olga_directorio_personas_global';
 const PAGARES_STORAGE_KEY = 'olga_pagares';
 
 export const PersonasTab: React.FC<PersonasTabProps> = ({
@@ -79,7 +80,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   esPlanFull
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
-  const { workspaceId } = useWorkspace(currentUser || auth?.currentUser);
+  const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
 
   // Guardián Blando de Recursos - Restricción de consultas a la API del DNIT
   const { diasRestantes, pruebaActiva, isTrialExpired, userData: liveUserData } = useTrialStatus(auth?.currentUser);
@@ -175,12 +176,53 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   };
 
-  // 1. Estado de Personas aislado estrictamente por usuario/workspace (sin fugas de localStorage global)
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
-    if (personas && Array.isArray(personas)) {
-      const { listaLimpia } = depurarDuplicadosLista(personas);
-      return listaLimpia;
+    try {
+      let acumulado: Persona[] = [];
+
+      // 1. Leer clave global compartida prioritaria
+      const globalSaved = localStorage.getItem(GLOBAL_STORAGE_KEY);
+      if (globalSaved) {
+        try {
+          const parsed = JSON.parse(globalSaved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            acumulado = [...acumulado, ...parsed];
+          }
+        } catch (e) {}
+      }
+
+      // 2. Escanear todo el localStorage buscando cualquier clave relacionada al directorio
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(`${STORAGE_KEY}_`) || key.includes('directorio_personas'))) {
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                acumulado = [...acumulado, ...parsed];
+              }
+            } catch (err) {}
+          }
+        }
+      }
+
+      // 3. Incluir props iniciales si existen
+      if (personas && Array.isArray(personas) && personas.length > 0) {
+        acumulado = [...acumulado, ...personas];
+      }
+
+      if (acumulado.length > 0) {
+        const { listaLimpia } = depurarDuplicadosLista(acumulado);
+        try {
+          localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
+        } catch (e) {}
+        return listaLimpia;
+      }
+    } catch (e) {
+      console.error("Error leyendo localStorage inicial:", e);
     }
+    
     return [];
   });
 
@@ -192,13 +234,16 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     return [];
   }, [pagares]);
 
-  // Helper para persistir lista en localStorage aislada por workspaceId
+  // Helper para persistir lista en localStorage de forma global y compartida
   const guardarListaPersistente = (nuevaLista: Persona[]) => {
     setListaPersonas(nuevaLista);
     try {
-      const targetUid = workspaceId || currentUser?.uid || auth?.currentUser?.uid;
+      const { listaLimpia } = depurarDuplicadosLista(nuevaLista);
+      localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
+
+      const targetUid = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid;
       if (targetUid) {
-        localStorage.setItem(`${STORAGE_KEY}_${targetUid}`, JSON.stringify(nuevaLista));
+        localStorage.setItem(`${STORAGE_KEY}_${targetUid}`, JSON.stringify(listaLimpia));
       }
     } catch (err) {
       console.error('Error persistiendo personas en localStorage:', err);
@@ -281,10 +326,15 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   }, [initialEditingId, listaPersonas]);
 
-  // Sincronización continua de listaPersonas con props recibidas
+  // Sincronización continua de listaPersonas con props recibidas (con protección contra sobrescritura vacía)
   useEffect(() => {
     if (Array.isArray(personas)) {
-      setListaPersonas(personas);
+      setListaPersonas(prev => {
+        // Si ya teníamos datos locales y la prop viene vacía, priorizamos los locales para evitar parpadeos y borrados
+        if (prev.length > 0 && personas.length === 0) return prev;
+        const { listaLimpia } = depurarDuplicadosLista([...personas, ...prev]);
+        return listaLimpia;
+      });
     }
   }, [personas]);
 
@@ -300,6 +350,31 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       window.removeEventListener('olga_personas_updated', handlePersonasEvent);
     };
   }, []);
+
+  // Carga inicial automática desde la nube (Firestore) combinando inteligentemente con datos locales y globales
+  useEffect(() => {
+    const cargarPersonasCloud = async () => {
+      const effectiveId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid;
+      if (!effectiveId) return;
+      try {
+        const cloudPersonas = await fetchPersonasFromFirestore(effectiveId);
+        if (cloudPersonas && cloudPersonas.length > 0) {
+          setListaPersonas(prevLocal => {
+            const combinadas = [...cloudPersonas, ...prevLocal];
+            const { listaLimpia } = depurarDuplicadosLista(combinadas);
+            try {
+              localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
+              localStorage.setItem(`${STORAGE_KEY}_${effectiveId}`, JSON.stringify(listaLimpia));
+            } catch {}
+            return listaLimpia;
+          });
+        }
+      } catch (err) {
+        console.error("Error sincronizando personas de Firestore:", err);
+      }
+    };
+    cargarPersonasCloud();
+  }, [workspaceId, currentUser, userData]);
 
   const resetFormulario = () => {
     setEditingId(null);
@@ -362,6 +437,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     guardarListaPersistente(nuevaLista);
     setClienteExpediente(personaActualizada);
 
+    const effectiveUserId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
+    syncPersonaToFirestore(effectiveUserId, personaActualizada).catch(console.error);
+
     if (onUpdatePersona) {
       onUpdatePersona(personaActualizada);
     }
@@ -384,6 +462,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
     const nuevaLista = listaPersonas.filter(p => p.id !== id);
     guardarListaPersistente(nuevaLista);
+
+    const effectiveUserId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
+    deletePersonaFromFirestore(id).catch(console.error);
 
     if (onDeletePersona) {
       onDeletePersona(id);
@@ -538,6 +619,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
           creator_role: personaExistente?.creator_role
         };
 
+        const effectiveUserId = workspaceId || activeUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
+        syncPersonaToFirestore(effectiveUserId, registroFinal).catch(console.error);
+
         // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
         if (onUpdatePersona) {
           onUpdatePersona(registroFinal);
@@ -580,6 +664,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         creator_name: undefined,
         creator_role: undefined
       };
+
+      const effectiveUserId = workspaceId || activeUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
+      syncPersonaToFirestore(effectiveUserId, registroNuevo).catch(console.error);
 
       if (onAddPersona) {
         const agregado = onAddPersona(registroNuevo);

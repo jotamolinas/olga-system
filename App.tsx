@@ -473,8 +473,36 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showAdminLoginModal]);
 
-  // Core collections (Inicializadas vacías y aisladas estrictamente por Workspace autenticado)
-  const [personas, setPersonas] = useState<Persona[]>([]);
+  // Core collections (Inicializadas síncronamente desde localStorage y aisladas estrictamente por Workspace autenticado)
+  const [personas, setPersonas] = useState<Persona[]>(() => {
+    try {
+      let acumulado: Persona[] = [];
+      const globalSaved = localStorage.getItem('olga_directorio_personas_global');
+      if (globalSaved) {
+        try {
+          const parsed = JSON.parse(globalSaved);
+          if (Array.isArray(parsed) && parsed.length > 0) acumulado = [...acumulado, ...parsed];
+        } catch {}
+      }
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('olga_directorio_personas_') || key.includes('directorio_personas'))) {
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed) && parsed.length > 0) acumulado = [...acumulado, ...parsed];
+            } catch {}
+          }
+        }
+      }
+      if (acumulado.length > 0) {
+        const { listaLimpia } = depurarDuplicadosLista(acumulado);
+        return listaLimpia;
+      }
+    } catch {}
+    return [];
+  });
   const [config, setConfig] = useState<GlobalConfig>(() => {
     const saved = localStorage.getItem('ihara_config');
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
@@ -917,9 +945,23 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // FASE 2: Sincronización de Personas por Workspace (Confidencialidad Estricta Multi-Usuario)
   useEffect(() => {
     if (!workspaceId) {
-      setPersonas([]);
       return;
     }
+
+    // 1. Carga inmediata asíncrona desde fetchPersonasFromFirestore (multicolección)
+    fetchPersonasFromFirestore(workspaceId).then(cloudPersonas => {
+      if (cloudPersonas && cloudPersonas.length > 0) {
+        setPersonas(prev => {
+          const combinadas = [...cloudPersonas, ...prev];
+          const { listaLimpia } = depurarDuplicadosLista(combinadas);
+          try {
+            localStorage.setItem('olga_directorio_personas_global', JSON.stringify(listaLimpia));
+            localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
+          } catch {}
+          return listaLimpia;
+        });
+      }
+    }).catch(err => console.error("Error fetching personas cloud on mount:", err));
 
     const q = query(
       collection(db, 'directorio_personas'),
@@ -932,15 +974,22 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       snapshot.docs.forEach(docSnap => {
         const item = docSnap.data() as any;
         const pId = docSnap.id;
-
         validData.push({ ...item, id: pId } as Persona);
       });
 
-      const { listaLimpia } = depurarDuplicadosLista(validData);
-      setPersonas(listaLimpia);
-      try {
-        localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
-      } catch {}
+      setPersonas(prev => {
+        // Protección: Si el snapshot llega vacío pero prev ya tiene datos locales, NO sobrescribir con vacío
+        if (snapshot.docs.length === 0 && prev.length > 0) {
+          return prev;
+        }
+        const combinadas = [...validData, ...prev];
+        const { listaLimpia } = depurarDuplicadosLista(combinadas);
+        try {
+          localStorage.setItem('olga_directorio_personas_global', JSON.stringify(listaLimpia));
+          localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
+        } catch {}
+        return listaLimpia;
+      });
     }, (error) => {
       console.error("Fallo en sincronización de personas:", error);
     });
@@ -1562,11 +1611,14 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 {(() => {
   const isOperador = userProfile?.rol === 'operador' || userProfile?.role === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
   if (isOperador) {
+    const planActualOp = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan;
+    const textoPlan = planActualOp && planActualOp !== 'Operador Notarial' ? String(planActualOp).toUpperCase() : 'PLAN BÁSICO';
+    const nombrePlanOp = textoPlan.startsWith('PLAN ') ? textoPlan : `PLAN ${textoPlan}`;
     return (
       <div className="flex items-center shrink-0 flex-shrink-0">
-        <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+        <span className="bg-slate-800 text-white border border-slate-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold shadow-sm flex items-center gap-1.5 whitespace-nowrap" title="Operador Notarial (Plan Heredado)">
           <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>OPERADOR NOTARIAL</span>
+          <span>{nombrePlanOp}</span>
         </span>
       </div>
     );

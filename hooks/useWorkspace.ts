@@ -6,12 +6,12 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
   const [workspaceName, setWorkspaceName] = useState<string>("");
   const [workspaceData, setWorkspaceData] = useState<any>(null);
   
-  // ID Maestro inmutable por render
   const role = currentUser?.role || currentUser?.rol || userProfile?.role || userProfile?.rol;
-  const tenantId = currentUser?.tenant_id || currentUser?.tenantId || userProfile?.tenant_id || userProfile?.tenantId;
+  const rawTenantId = currentUser?.tenant_id || currentUser?.tenantId || userProfile?.tenant_id || userProfile?.tenantId;
+  const tenantId = rawTenantId ? String(rawTenantId).trim() : '';
   const isOperador = role === 'operador';
 
-  const workspaceId = isOperador ? tenantId : (currentUser?.uid || userProfile?.uid);
+  const workspaceId = (isOperador && tenantId) ? tenantId : (currentUser?.uid || userProfile?.uid);
 
   const userDisplayName = currentUser?.razonSocial || userProfile?.razonSocial || currentUser?.nombreInstitucion || userProfile?.nombreInstitucion || currentUser?.nombre;
 
@@ -34,7 +34,7 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
       }
     };
 
-    if (isOperador) {
+    if (isOperador && tenantId) {
       fetchWorkspaceProfile();
     } else if (currentUser || userProfile) {
       const ownName = userDisplayName || "Mi Escribanía";
@@ -43,7 +43,7 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
     }
 
     return () => { isMounted = false; };
-  }, [workspaceId, isOperador, userDisplayName, userProfile]);
+  }, [workspaceId, isOperador, tenantId, userDisplayName, userProfile, currentUser]);
 
   return { workspaceId, workspaceName, workspaceData };
 };
