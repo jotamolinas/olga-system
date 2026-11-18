@@ -152,6 +152,23 @@ export const RegistroOperador: React.FC = () => {
         fecha_registro: serverTimestamp()
       }).catch(err => console.warn('Advertencia actualizando invitación:', err));
 
+      // 2.5 Obtener el plan del Escribano Titular (tenant) para heredarlo
+      let planDelTitular = 'Plan Básico';
+      if (invitacion.tenant_id) {
+        try {
+          const tenantRef = doc(db, 'users', invitacion.tenant_id);
+          const tenantSnap = await getDoc(tenantRef);
+          if (tenantSnap.exists()) {
+            const tenantData = tenantSnap.data();
+            if (tenantData.planActual || tenantData.plan) {
+              planDelTitular = tenantData.planActual || tenantData.plan;
+            }
+          }
+        } catch (e) {
+          console.warn('Advertencia: No se pudo obtener el plan del titular:', e);
+        }
+      }
+
       const localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
@@ -167,7 +184,8 @@ export const RegistroOperador: React.FC = () => {
         role: 'operador',
         tenant_id: invitacion.tenant_id,
         tenantId: invitacion.tenant_id,
-        planActual: 'Operador Notarial',
+        planActual: planDelTitular,
+        plan: planDelTitular,
         estado: 'activo',
         perfilCompletado: true,
         activeSessionId: localSessionId,

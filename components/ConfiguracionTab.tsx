@@ -472,7 +472,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   const isOperador = currentUser?.role === 'operador' || currentUser?.rol === 'operador' || userData?.rol === 'operador' || userData?.role === 'operador';
   const limiteActual = PLAN_LIMITS[planKey] ?? PLAN_LIMITS.basico;
-  const slotsLibres = Math.max(0, limiteActual - operadores.length);
+  const slotsOcupados = operadores.length + 1;
+  const slotsLibres = Math.max(0, limiteActual - slotsOcupados);
 
   const currentUserId = auth.currentUser?.uid || userData?.uid || userData?.id;
 
@@ -722,8 +723,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     }
 
     // 2. Doble Validación de Seguridad (Límite según plan)
-    if (operadores.length >= limiteActual) {
-      setErrorOperador(`Límite de ${limiteActual} operadores alcanzado para su plan.`);
+    if ((operadores.length + 1) >= limiteActual) {
+      setErrorOperador(`Límite de ${limiteActual} slots alcanzado para su plan (incluye al Escribano Titular).`);
       return;
     }
 
@@ -1383,7 +1384,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     Gestión de Operadores Notariales
                   </span>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Slots utilizados: {operadores.length} de {limiteActual} ({slotsLibres} libres)
+                    Slots utilizados: {operadores.length + 1} de {limiteActual} ({slotsLibres} libres) • <span className="italic">Incluye al Escribano Titular</span>
                   </p>
                 </div>
               </div>
@@ -1410,7 +1411,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <div>
                   <h4 className="text-base font-bold text-white dark:text-slate-100">Gestión de Usuarios y Operadores</h4>
                   <p className="text-xs text-slate-400">
-                    Slots utilizados: {operadores.length} de {limiteActual}
+                    Slots utilizados: {operadores.length + 1} de {limiteActual} (Incluye al Escribano Titular)
                   </p>
                 </div>
               </div>
@@ -1430,8 +1431,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
                     Registrar Nuevo Operador Local
                   </span>
-                  <span className={`text-xs font-bold ${operadores.length >= limiteActual ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
-                    Slots utilizados: {operadores.length} de {limiteActual}
+                  <span className={`text-xs font-bold ${(operadores.length + 1) >= limiteActual ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                    Slots utilizados: {operadores.length + 1} de {limiteActual}
                   </span>
                 </div>
 
@@ -1442,11 +1443,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   </div>
                 )}
 
-                {operadores.length >= limiteActual && (
+                {(operadores.length + 1) >= limiteActual && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
-                      Has alcanzado el límite de <strong>{limiteActual} operadores</strong> permitido por tu plan.
+                      Has alcanzado el límite de <strong>{limiteActual} slots</strong> permitido por tu plan (incluye al Escribano Titular).
                     </span>
                   </div>
                 )}
@@ -1457,7 +1458,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     required
                     placeholder="Nombre Completo"
                     value={nuevoUsuarioNombre}
-                    disabled={operadores.length >= limiteActual || isAddingOperador}
+                    disabled={(operadores.length + 1) >= limiteActual || isAddingOperador}
                     onChange={(e) => {
                       setNuevoUsuarioNombre(e.target.value);
                       if (errorOperador) setErrorOperador('');
@@ -1469,7 +1470,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     required
                     placeholder="Correo o Celular (Ej: 0983...)"
                     value={nuevoUsuarioContacto}
-                    disabled={operadores.length >= limiteActual || isAddingOperador}
+                    disabled={(operadores.length + 1) >= limiteActual || isAddingOperador}
                     onChange={(e) => {
                       setNuevoUsuarioContacto(e.target.value);
                       if (errorOperador) setErrorOperador('');
@@ -1480,9 +1481,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <div className="flex justify-end pt-1">
                   <button
                     type="submit"
-                    disabled={operadores.length >= limiteActual || isAddingOperador}
+                    disabled={(operadores.length + 1) >= limiteActual || isAddingOperador}
                     className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shadow-sm ${
-                      operadores.length >= limiteActual || isAddingOperador
+                      (operadores.length + 1) >= limiteActual || isAddingOperador
                         ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300'
                         : 'bg-[#FF3131] hover:bg-red-700 text-white'
                     }`}
