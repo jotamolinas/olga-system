@@ -691,6 +691,31 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           const data = docSnap.data();
           if (!data) return;
 
+          // Sincronización automática del plan del operador con el titular (tenant)
+          if ((data.rol === 'operador' || data.role === 'operador') && data.tenant_id) {
+            try {
+              const tenantRef = doc(db, 'users', data.tenant_id);
+              const tenantSnap = await getDoc(tenantRef);
+              if (tenantSnap.exists()) {
+                const tenantData = tenantSnap.data();
+                const planTitular = tenantData.planActual || tenantData.plan || 'Plan Básico';
+                
+                // Si el plan del operador es distinto al del titular, lo actualizamos en Firestore
+                if (data.planActual !== planTitular) {
+                  await updateDoc(doc(db, 'users', user.uid), {
+                    planActual: planTitular,
+                    plan: planTitular
+                  });
+                  // Actualizar el estado local para que la UI se refresque inmediatamente
+                  data.planActual = planTitular;
+                  data.plan = planTitular;
+                }
+              }
+            } catch (error) {
+              console.error("Error sincronizando el plan del operador con el titular:", error);
+            }
+          }
+
           // Autorreparación de cuentas existentes incompletas
           const updates: any = {};
           if (user.phoneNumber && !data.telefono) {
