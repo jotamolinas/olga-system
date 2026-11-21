@@ -23,6 +23,30 @@ interface DocumentoModalProps {
   olgaDocsCount: number;
 }
 
+export const limpiarTextoParaEscrito = (texto: string): string => {
+  if (!texto) return '';
+
+  return texto
+    // 1. Reemplazar <br> y cierres de bloque HTML por saltos de línea antes de limpiar etiquetas
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
+    // 2. Reemplazar secuencias de &nbsp; / &#160; por un único espacio y eliminar HTML residual
+    .replace(/(?:&nbsp;|&#160;)+/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    // 3. Limpiar sintaxis Markdown (**negrita**, *cursiva*, encabezados ###, bloques ```) preservando líneas de firma ___
+    .replace(/```[\w-]*\n?/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?=[^\w*]|$)/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1')
+    // 4. Colapsar múltiples espacios horizontales consecutivos y limitar saltos de línea a máximo 2
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   isOpen,
   onClose,
@@ -36,7 +60,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   config,
   olgaDocsCount
 }) => {
-  const [text, setText] = useState(initialText);
+  const [text, setText] = useState(() => limpiarTextoParaEscrito(initialText));
   const [currentDocId, setCurrentDocId] = useState<string | undefined>(documentId);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -56,7 +80,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const isSavingRef = useRef(false);
 
   useEffect(() => {
-    setText(initialText);
+    setText(limpiarTextoParaEscrito(initialText));
     setCurrentDocId(documentId);
   }, [initialText, documentId]);
 

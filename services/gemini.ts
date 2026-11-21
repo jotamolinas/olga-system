@@ -58,57 +58,111 @@ const getGenAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Modelos oficiales y compatibles según SDK @google/genai (prohibidos los modelos obsoletos 1.5/2.0 que devuelven 404)
+// Modelo principal rápido para chat y redacción legal, con respaldos rápidos compatibles con @google/genai
 const COMPATIBLE_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-flash-latest',
+  'gemini-2.5-flash',
+  'gemini-4-hydrogen',
   'gemini-3.1-flash-lite',
-  'gemini-3.1-pro-preview'
 ];
 
+const CHAT_TIMEOUT_MS = 60000;
+
+export interface SendMessageOptions {
+  systemInstructionExtra?: string;
+  onChunk?: (textPartial: string) => void;
+  timeoutMs?: number;
+}
+
 export const sendMessageToOlga = async (
-  message: string, 
-  history: { role: 'user' | 'model', parts: { text?: string, inlineData?: any }[] }[], 
+  message: string,
+  history: { role: 'user' | 'model', parts: { text?: string, inlineData?: any }[] }[],
   lang: string = 'es',
-  attachments?: { data: string, mimeType: string }[]
+  attachments?: { data: string, mimeType: string }[],
+  options?: SendMessageOptions
 ) => {
   const ai = getGenAI();
-  
+
   const userParts: any[] = [];
   if (message) userParts.push({ text: message });
-  
+
   if (attachments && attachments.length > 0) {
-    attachments.forEach(attachment => {
+    attachments.forEach((attachment) => {
       userParts.push({
         inlineData: { data: attachment.data, mimeType: attachment.mimeType }
       });
     });
   }
 
-  for (const model of COMPATIBLE_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: [...history, { role: 'user', parts: userParts }],
-        config: {
-          systemInstruction: getSystemInstruction(lang),
-          temperature: 0.2,
-        },
-      });
+  const combinedSystemInstruction = options?.systemInstructionExtra
+    ? `${getSystemInstruction(lang)}\n\n${options.systemInstructionExtra}`
+    : getSystemInstruction(lang);
 
-      return {
-        text: response.text,
-        functionCalls: null
-      };
-    } catch (error: any) {
-      console.warn(`[sendMessageToOlga] Error con modelo ${model}:`, error?.message || error);
-      if (model === COMPATIBLE_MODELS[COMPATIBLE_MODELS.length - 1]) {
-        return { text: "Error al procesar la solicitud con IA. Por favor, intente nuevamente." };
+  const timeoutMs = options?.timeoutMs ?? CHAT_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error('La solicitud a IA superó el tiempo límite de 60 segundos.'));
+  }, timeoutMs);
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener(
+      'abort',
+      () => reject(new Error('TIMEOUT_60S')),
+      { once: true }
+    );
+  });
+
+  try {
+    for (const model of COMPATIBLE_MODELS) {
+      if (timedOut || controller.signal.aborted) break;
+
+      try {
+        const streamCall = ai.models.generateContentStream({
+          model,
+          contents: [...history, { role: 'user', parts: userParts }],
+          config: {
+            systemInstruction: combinedSystemInstruction,
+            ...(model !== 'gemini-4-hydrogen' ? { temperature: 0.2 } : {}),
+            abortSignal: controller.signal,
+          },
+        });
+
+        const stream = await Promise.race([streamCall, timeoutPromise]);
+        let accumulatedText = '';
+
+        for await (const chunk of stream) {
+          if (timedOut || controller.signal.aborted) {
+            throw new Error('TIMEOUT_60S');
+          }
+          const chunkText = chunk?.text || '';
+          if (chunkText) {
+            accumulatedText += chunkText;
+            if (options?.onChunk) {
+              options.onChunk(accumulatedText);
+            }
+          }
+        }
+
+        return {
+          text: accumulatedText,
+          functionCalls: null
+        };
+      } catch (error: any) {
+        if (timedOut || controller.signal.aborted || error?.message === 'TIMEOUT_60S' || error?.name === 'AbortError') {
+          throw new Error('La consulta superó el tiempo máximo de espera (60s). Por favor, intenta nuevamente con una pregunta más específica.');
+        }
+        console.warn(`[sendMessageToOlga] Error con modelo ${model}:`, error?.message || error);
+        if (model === COMPATIBLE_MODELS[COMPATIBLE_MODELS.length - 1]) {
+          return { text: 'Error al procesar la solicitud con IA. Por favor, intente nuevamente.' };
+        }
       }
     }
-  }
 
-  return { text: "No se pudo conectar con el servicio notarial de IA." };
+    return { text: 'No se pudo conectar con el servicio notarial de IA.' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 export const generateExecutiveSummary = async (history: any[], lang: string, currentUrl: string) => {
@@ -277,7 +331,7 @@ ${prompt.trim()}
         contents: [{ role: 'user', parts: userParts }],
         config: {
           systemInstruction: "Eres O.L.G.A., redactora legal y notarial de Paraguay. Genera redacciones sólidas, formales, listas para su revisión y uso notarial administrativo. No incluyas introducciones conversacionales innecesarias; entrega directamente el texto legal o la cláusula redactada.",
-          temperature: 0.2,
+          ...(model !== 'gemini-4-hydrogen' ? { temperature: 0.2 } : {}),
         }
       });
 

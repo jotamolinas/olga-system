@@ -53,6 +53,8 @@ export interface SidebarProps {
   installMessage?: string | null;
   handleInstallClick?: () => void;
   isSoftBlocked?: boolean;
+  hasUnreadChatResponse?: boolean;
+  isChatLoading?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -80,7 +82,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isStandalone = true,
   installMessage,
   handleInstallClick,
-  isSoftBlocked = false
+  isSoftBlocked = false,
+  hasUnreadChatResponse = false,
+  isChatLoading = false
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -399,16 +403,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 )}
 
-                {/* Icono */}
-                <Icon
-                  className={`w-4 h-4 shrink-0 transition-colors stroke-[1.75] ${
-                    isActive
-                      ? esPlanFull
-                        ? 'text-amber-400'
-                        : 'text-white'
-                      : 'text-slate-400 group-hover:text-slate-200'
-                  }`}
-                />
+                {/* Icono con indicador de estado en segundo plano para El Oráculo / Asistente IA */}
+                <span className="relative shrink-0 inline-flex items-center justify-center">
+                  <Icon
+                    className={`w-4 h-4 shrink-0 transition-colors stroke-[1.75] ${
+                      isActive
+                        ? esPlanFull
+                          ? 'text-amber-400'
+                          : 'text-white'
+                        : 'text-slate-400 group-hover:text-slate-200'
+                    }`}
+                  />
+                  {item.id === 'chat' && isChatLoading && (
+                    <span
+                      className="absolute -top-1 -right-1 flex h-2.5 w-2.5"
+                      title="Generando respuesta en segundo plano..."
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 border border-slate-900" />
+                    </span>
+                  )}
+                  {item.id === 'chat' && !isChatLoading && hasUnreadChatResponse && (
+                    <span
+                      className="absolute -top-1 -right-1 flex h-2.5 w-2.5"
+                      title="Nueva respuesta lista en El Oráculo"
+                    >
+                      <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-slate-900 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                    </span>
+                  )}
+                </span>
 
                 {/* Texto del ítem visible solo cuando la barra está desplegada */}
                 {isExpanded && (

@@ -32,7 +32,7 @@ import { ConfigTab } from './components/ConfigTab';
 import { PagarePDFPreview } from './components/PagarePDFPreview';
 import { KnowledgeBaseTab } from './components/KnowledgeBaseTab';
 import { CheckoutModal } from './components/CheckoutModal';
-import { DocumentoModal } from './components/DocumentoModal';
+import { DocumentoModal, limpiarTextoParaEscrito } from './components/DocumentoModal';
 import { EscritosTab } from './components/EscritosTab';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { SuperAdminOnboarding } from './components/SuperAdminOnboarding';
@@ -609,7 +609,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     categoria?: string,
     tipoHoja?: 'blanca' | 'protocolo'
   ) => {
-    setDocumentoInitialText(text);
+    setDocumentoInitialText(limpiarTextoParaEscrito(text));
     setDocumentoModalDocId(docId);
     setDocumentoModalTipo(tipo);
     setDocumentoModalCategoria(categoria);
@@ -627,8 +627,33 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [hasUnreadChatResponse, setHasUnreadChatResponse] = useState(false);
+  const [chatReadyToast, setChatReadyToast] = useState(false);
+  const activeTabRef = useRef(activeTab);
+  const chatToastTimerRef = useRef<number | null>(null);
   const [pendingFiles, setPendingFiles] = useState<{name: string, data: string, mimeType: string}[]>([]);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+    if (activeTab === 'chat') {
+      setHasUnreadChatResponse(false);
+      setChatReadyToast(false);
+      if (chatToastTimerRef.current) {
+        window.clearTimeout(chatToastTimerRef.current);
+        chatToastTimerRef.current = null;
+      }
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    return () => {
+      if (chatToastTimerRef.current) {
+        window.clearTimeout(chatToastTimerRef.current);
+        chatToastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -1404,53 +1429,129 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       }
     }
     
+    const streamMsgId = `olga-stream-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
     setChatInput('');
     setPendingFiles([]);
-    setChatMessages(prev => [...prev, { role: 'user', text: userText, timestamp: new Date() }]);
+    setChatMessages(prev => [
+      ...prev,
+      { role: 'user', text: userText, timestamp: new Date() },
+      { id: streamMsgId, role: 'model', text: '', timestamp: new Date() }
+    ]);
     setChatLoading(true);
 
     try {
-      const history = chatMessages.map(m => ({
-        role: m.role,
-        parts: [{ text: m.text }]
-      }));
+      // Limitar historial a los últimos 10 mensajes no vacíos para reducir latencia y tokens
+      const history = chatMessages
+        .filter((m) => typeof m?.text === 'string' && m.text.trim().length > 0)
+        .slice(-10)
+        .map((m) => ({
+          role: (m.role === 'user' ? 'user' : 'model') as 'user' | 'model',
+          parts: [{ text: m.text }]
+        }));
 
-      // Inyectamos contexto del panel en el prompt para guiar al modelo
-      // Inyectamos también la memoria de conocimiento permanentemente si existe
-      const knowledgeContext = knowledgeDocs.length > 0 
-        ? `\n\n### BASE DE CONOCIMIENTO (DOCUMENTACIÓN DE APOYO) ###\nEl usuario ha subido manuales, leyes o documentos a tu memoria permanente. Úsalos como la fuente primaria para contestar o redactar contratos.\n` + knowledgeDocs.map(d => `- ${d.name}: ${d.content}`).join('\n')
-        : '';
+      // Seleccionar knowledgeDocs relevantes y limitar a un máximo de 15.000 caracteres totales
+      const MAX_KNOWLEDGE_CHARS = 15000;
+      let knowledgeContext = '';
+      if (knowledgeDocs.length > 0) {
+        const queryTerms = userText
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((term) => term.length > 3);
+
+        const scoredDocs = knowledgeDocs.map((docItem) => {
+          const nameLower = String(docItem?.name || '').toLowerCase();
+          const contentLower = String(docItem?.content || '').toLowerCase();
+          let score = 0;
+          for (const term of queryTerms) {
+            if (nameLower.includes(term)) score += 3;
+            if (contentLower.includes(term)) score += 1;
+          }
+          return { doc: docItem, score };
+        });
+
+        const hasKeywordMatch = scoredDocs.some((entry) => entry.score > 0);
+        const prioritizedDocs = (hasKeywordMatch
+          ? scoredDocs.filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score)
+          : scoredDocs
+        ).map((entry) => entry.doc);
+
+        let totalChars = 0;
+        const selectedSnippets: string[] = [];
+        for (const docItem of prioritizedDocs) {
+          if (totalChars >= MAX_KNOWLEDGE_CHARS) break;
+          const remaining = MAX_KNOWLEDGE_CHARS - totalChars;
+          const truncatedContent = String(docItem?.content || '').slice(0, remaining);
+          if (!truncatedContent) continue;
+          const formatted = `- ${docItem?.name || 'Documento'}: ${truncatedContent}`;
+          selectedSnippets.push(formatted);
+          totalChars += formatted.length;
+        }
+
+        if (selectedSnippets.length > 0) {
+          knowledgeContext = `\n\n### BASE DE CONOCIMIENTO (DOCUMENTACIÓN DE APOYO) ###\nEl usuario ha subido manuales, leyes o documentos a tu memoria permanente. Úsalos como fuente primaria cuando correspondan:\n${selectedSnippets.join('\n')}`;
+        }
+      }
+
+      const fechaHoyParaguay = new Date().toLocaleDateString('es-PY', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'America/Asuncion'
+      });
 
       const panelContextPrompt = `
-      El usuario está utilizando el panel de control de administración y notarización O.L.G.A (Organización, Legalización, Gestión y Administración).
-      Información actual del sistema de pagarés en tiempo real para ayudar con precisión:
-      - Cantidad de pagarés redactados: ${pagares.length}
-      - Cantidad de personas registradas: ${personas.length}
-      - Escribanía titular: ${config.escribania.nombre} (Matrícula: ${config.escribania.nro_registro})
-      - Frecuencias de pago activas: ${config.frecuencias.filter(f => f.activa).map(f => f.nombre).join(', ')}
-      - Monedas autorizadas: ${config.monedas.filter(m => m.activa).map(m => m.codigo).join(', ')}
-      - Rol del usuario actual: ${role === 'admin' ? 'Administrador' : 'Usuario'}
-      ${knowledgeContext}
-      Eres O.L.G.A., experta en leyes paraguayas, redacción de contratos privados, pagarés y escrituras públicas. 
-      Conoces en profundidad la Ley 1.183/85 (Código Civil Paraguayo) sobre obligaciones y contratos, así como la Ley de Maquila y constituciones de sociedades (S.A., S.R.L., E.A.S.).
-      Responde a las consultas del usuario justificando legalmente o redactando las cláusulas solicitadas con alto nivel técnico y notarial.
-      Por favor, responde de manera concisa y sumamente inteligente en español como O.L.G.A. (Asistente de Organización Legal).
-      `;
+[CONTEXTO INTERNO DE OPERACIÓN]
+FECHA ACTUAL EN PARAGUAY: ${fechaHoyParaguay}. Usa SIEMPRE esta fecha actual (y el año en curso) para todos los contratos, pagarés y documentos que redactes, salvo que el usuario indique otra fecha explícitamente.
+FORMATO ESTRICTO DE DOCUMENTOS: Cuando redactes contratos, escritos o dictámenes, está PROHIBIDO usar etiquetas HTML (<br>, &nbsp;, <div>, <p>, etc.). Para los bloques de firmas al final del documento, colócalos en formato limpio (uno debajo del otro con líneas de firma ___________________________, Nombre Completo, C.I. y Rol), NUNCA uses &nbsp; ni espacios artificiales para intentar hacer dos columnas.
+El usuario está utilizando el panel de control de administración y notarización O.L.G.A (Organización, Legalización, Gestión y Administración).
+Información actual del sistema en tiempo real para ayudar con precisión:
+- Cantidad de pagarés redactados: ${pagares.length}
+- Cantidad de personas registradas: ${personas.length}
+- Escribanía titular: ${config.escribania.nombre} (Matrícula: ${config.escribania.nro_registro})
+- Frecuencias de pago activas: ${config.frecuencias.filter(f => f.activa).map(f => f.nombre).join(', ')}
+- Monedas autorizadas: ${config.monedas.filter(m => m.activa).map(m => m.codigo).join(', ')}
+- Rol del usuario actual: ${role === 'admin' ? 'Administrador' : 'Usuario'}
+${knowledgeContext}
+Eres O.L.G.A., experta en leyes paraguayas, redacción de contratos privados, pagarés y escrituras públicas.
+Conoces en profundidad la Ley 1.183/85 (Código Civil Paraguayo) sobre obligaciones y contratos, así como la Ley de Maquila y constituciones de sociedades (S.A., S.R.L., E.A.S.).
+Responde a las consultas del usuario justificando legalmente o redactando las cláusulas solicitadas con alto nivel técnico y notarial, de manera concisa y en español.`;
 
-      const finalMessage = userText + `\n\n[CONTEXTO INTERNO DE OPERACIÓN: ${panelContextPrompt}]`;
       const attachments = currentPendingFiles.length > 0 ? currentPendingFiles.map(f => ({ data: f.data, mimeType: f.mimeType })) : undefined;
 
       const response = await sendMessageToOlga(
-        finalMessage,
+        userText,
         history,
         'es',
-        attachments
+        attachments,
+        {
+          systemInstructionExtra: panelContextPrompt,
+          timeoutMs: 60000,
+          onChunk: (textPartial) => {
+            setChatMessages(prev =>
+              prev.map(m => (m.id === streamMsgId ? { ...m, text: textPartial } : m))
+            );
+          }
+        }
       );
 
-      setChatMessages(prev => [
-        ...prev,
-        { role: 'model', text: response.text || 'Entendido. ¿En qué más puedo asistirte dentro del panel?', timestamp: new Date() }
-      ]);
+      const finalResponseText = response.text || 'Entendido. ¿En qué más puedo asistirte dentro del panel?';
+      setChatMessages(prev =>
+        prev.map(m => (m.id === streamMsgId ? { ...m, text: finalResponseText } : m))
+      );
+
+      if (activeTabRef.current !== 'chat') {
+        setHasUnreadChatResponse(true);
+        setChatReadyToast(true);
+        if (chatToastTimerRef.current) {
+          window.clearTimeout(chatToastTimerRef.current);
+        }
+        chatToastTimerRef.current = window.setTimeout(() => {
+          setChatReadyToast(false);
+          chatToastTimerRef.current = null;
+        }, 10000);
+      }
       
       if (role !== 'admin' && auth.currentUser && auth.currentUser.uid) {
         try {
@@ -1468,12 +1569,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
            console.warn("Could not increment AI queries", e);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al enviar mensaje a la IA:", err);
-      setChatMessages(prev => [
-        ...prev,
-        { role: 'model', text: 'Disculpa, experimenté una interrupción temporal en mi canal de IA. ¿Podrías volver a formular tu pregunta?', timestamp: new Date() }
-      ]);
+      const fallbackErrorText = err?.message || 'Disculpa, experimenté una interrupción temporal en mi canal de IA. ¿Podrías volver a formular tu pregunta?';
+      setChatMessages(prev =>
+        prev.map(m => (m.id === streamMsgId ? { ...m, text: m.text ? `${m.text}\n\n_${fallbackErrorText}_` : fallbackErrorText } : m))
+      );
     } finally {
       setChatLoading(false);
     }
@@ -1580,6 +1681,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         installMessage={installMessage}
         handleInstallClick={handleInstallClick}
         isSoftBlocked={isSoftBlocked}
+        hasUnreadChatResponse={hasUnreadChatResponse}
+        isChatLoading={chatLoading}
       />
 
       {/* Main Content Workspace viewport */}
@@ -2061,8 +2164,10 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
                   {/* Dialog Messages viewport */}
                   <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-                    {chatMessages.map((msg, i) => (
-                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {chatMessages.map((msg, i) => {
+                      if (msg.role === 'model' && !msg.text) return null;
+                      return (
+                      <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`p-4 rounded-3xl max-w-[80%] shadow-sm text-xs md:text-sm font-medium ${msg.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
                           {msg.role === 'model' ? (
                             <div className="flex flex-col gap-2 relative group w-full box-border">
@@ -2106,16 +2211,22 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {chatLoading && (
-                      <div className="flex justify-start items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl w-fit">
-                        <div className="flex gap-1">
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce"></div>
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-75"></div>
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-150"></div>
+                      <div className="flex flex-col gap-1 p-3 bg-white border border-slate-200 rounded-2xl w-fit max-w-md shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1">
+                            <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce"></div>
+                            <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-75"></div>
+                            <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce delay-150"></div>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest">O.L.G.A. procesando...</span>
                         </div>
-                        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">O.L.G.A. procesando...</span>
+                        <p className="text-[11px] text-slate-500 leading-snug">
+                          Generando en segundo plano. Puedes seguir trabajando en otros módulos y te avisaremos cuando esté listo.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -2471,6 +2582,42 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             <button 
               onClick={() => setCheckoutToast(false)}
               className="p-1 hover:bg-emerald-500 rounded-full ml-2 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Toast flotante de respuesta IA lista en segundo plano */}
+      {chatReadyToast && (
+        <div className="fixed bottom-6 right-6 z-[100] max-w-sm w-[calc(100vw-3rem)] sm:w-auto animate-fade-in print:hidden">
+          <div className="bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white leading-tight">
+                ✨ O.L.G.A. tiene una nueva respuesta
+              </p>
+              <p className="text-xs text-slate-300 mt-1 leading-snug">
+                Tu documento o consulta ya está listo en El Oráculo.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('chat');
+                    setChatReadyToast(false);
+                    setHasUnreadChatResponse(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-extrabold transition-colors cursor-pointer"
+                >
+                  Ver respuesta
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChatReadyToast(false)}
+              aria-label="Cerrar notificación"
+              className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
             >
               <X className="w-4 h-4" />
             </button>
