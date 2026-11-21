@@ -602,6 +602,78 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const [documentoModalCategoria, setDocumentoModalCategoria] = useState<string | undefined>(undefined);
   const [documentoModalTipoHoja, setDocumentoModalTipoHoja] = useState<'blanca' | 'protocolo' | undefined>(undefined);
 
+  const formatearMensajeChatVisual = (texto: string): string => {
+    const base = texto.includes('[CONTEXTO INTERNO DE OPERACIÓN')
+      ? texto.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim()
+      : texto;
+    return base
+      .replace(/===INICIO_DOCUMENTO===/g, '\n\n---\n\n')
+      .replace(/===FIN_DOCUMENTO===/g, '\n\n---\n\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const extraerDocumentoPuro = (texto: string): string => {
+    const sinContexto = texto.includes('[CONTEXTO INTERNO DE OPERACIÓN')
+      ? texto.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim()
+      : texto;
+
+    const inicioTag = '===INICIO_DOCUMENTO===';
+    const finTag = '===FIN_DOCUMENTO===';
+    const inicioIdx = sinContexto.indexOf(inicioTag);
+    const finIdx = sinContexto.indexOf(finTag);
+
+    let resultado = '';
+
+    if (inicioIdx !== -1 && finIdx !== -1 && finIdx > inicioIdx) {
+      resultado = sinContexto.slice(inicioIdx + inicioTag.length, finIdx).trim();
+    } else if (inicioIdx !== -1) {
+      resultado = sinContexto.slice(inicioIdx + inicioTag.length).trim();
+      const recIdx = resultado.search(/\n?\s*(?:\*{0,2})RECOMENDACI[ÓO]N DE O\.L\.G\.A\.?:/i);
+      if (recIdx !== -1) {
+        resultado = resultado.slice(0, recIdx).trim();
+      }
+    } else {
+      let fallback = sinContexto;
+      const recIdx = fallback.search(/(?:\*{0,2})RECOMENDACI[ÓO]N DE O\.L\.G\.A\.?:/i);
+      if (recIdx !== -1) {
+        fallback = fallback.slice(0, recIdx).trim();
+      }
+
+      const paragraphs = fallback.split(/\n{2,}/);
+      const cleanedParagraphs: string[] = [];
+      let skippingIntro = true;
+      let lastWasDatosExtraidos = false;
+
+      for (const para of paragraphs) {
+        const trimmed = para.trim();
+        if (!trimmed) continue;
+
+        if (skippingIntro) {
+          if (/^(?:\*{0,2})DATOS EXTRA[ÍI]DOS:/i.test(trimmed)) {
+            lastWasDatosExtraidos = true;
+            continue;
+          }
+          if (/^(?:\*{0,2})(?:Entendido\b|Como O\.L\.G\.A\.)/i.test(trimmed)) {
+            lastWasDatosExtraidos = false;
+            continue;
+          }
+          if (lastWasDatosExtraidos && /^(?:[-•*]|\d+\.)\s+/.test(trimmed)) {
+            continue;
+          }
+          skippingIntro = false;
+          lastWasDatosExtraidos = false;
+        }
+
+        cleanedParagraphs.push(trimmed);
+      }
+
+      resultado = cleanedParagraphs.join('\n\n').trim();
+    }
+
+    return limpiarTextoParaEscrito(resultado);
+  };
+
   const handleOpenDocumentModal = (
     text: string,
     docId?: string,
@@ -1509,7 +1581,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       const panelContextPrompt = `
 [CONTEXTO INTERNO DE OPERACIÓN]
 FECHA ACTUAL EN PARAGUAY: ${fechaHoyParaguay}. Usa SIEMPRE esta fecha actual (y el año en curso) para todos los contratos, pagarés y documentos que redactes, salvo que el usuario indique otra fecha explícitamente.
-FORMATO ESTRICTO DE DOCUMENTOS: Cuando redactes contratos, escritos o dictámenes, está PROHIBIDO usar etiquetas HTML (<br>, &nbsp;, <div>, <p>, etc.). Para los bloques de firmas al final del documento, colócalos en formato limpio (uno debajo del otro con líneas de firma ___________________________, Nombre Completo, C.I. y Rol), NUNCA uses &nbsp; ni espacios artificiales para intentar hacer dos columnas.
+ESTÁNDAR NOTARIAL PARAGUAYO (OBLIGATORIO):
+- Nivel Profesional (Escribanos y Abogados de Paraguay): Prohibido redactar contratos escuetos o resúmenes de 6-7 líneas. Todo contrato o escrito debe tener redacción jurídica rigurosa, formal y completa conforme al Código Civil Paraguayo (Ley N° 1.183/85) y leyes concordantes.
+- Cláusulas completas obligatorias en contratos de arrendamiento/locación: Incluir como mínimo cláusulas desarrolladas y numeradas (PRIMERA, SEGUNDA, etc.) de: 1) Objeto e individualización del inmueble (dejando [completar Finca / Matrícula / Cta. Cte. Catastral] si el usuario no lo dio), 2) Plazo y renovación, 3) Precio, lugar/forma de pago y mora automática con interés punitorio, 4) Depósito de garantía y restitución, 5) Destino del inmueble y prohibición de subarriendo/cesión, 6) Servicios básicos (ANDE, ESSAP/agua, tasas municipales) e impuestos, 7) Estado de conservación, inventario y mejoras, 8) Rescisión anticipada, incumplimiento y desalojo, 9) Domicilios especiales constituidos a todos los efectos legales, 10) Jurisdicción y competencia (Tribunales de la Circunscripción Judicial correspondiente a la ciudad del inmueble).
+- FORMATO ESTRICTO DE DOCUMENTOS Y FIRMAS: Prohibido usar etiquetas HTML (<br>, &nbsp;, <div>, <p>, etc.). Al final del documento, incluye SIEMPRE el cierre de conformidad y el bloque de firmas limpio uno debajo del otro con líneas de firma visibles (_______________________________), Nombre Completo, C.I. N° y Rol (NUNCA uses &nbsp; ni espacios artificiales para dos columnas).
+- DELIMITADORES OBLIGATORIOS DE DOCUMENTO: Siempre que redactes un contrato, escrito, poder, acta o nota, DEBES envolver el documento puro entre las etiquetas exactas:
+===INICIO_DOCUMENTO===
+(aquí va únicamente el título, cuerpo legal y bloque de firmas del documento)
+===FIN_DOCUMENTO===
+Cualquier saludo inicial, resumen de datos extraídos o sección de "RECOMENDACIÓN DE O.L.G.A.:" debe ir estrictamente FUERA de esas etiquetas.
 El usuario está utilizando el panel de control de administración y notarización O.L.G.A (Organización, Legalización, Gestión y Administración).
 Información actual del sistema en tiempo real para ayudar con precisión:
 - Cantidad de pagarés redactados: ${pagares.length}
@@ -1521,7 +1601,7 @@ Información actual del sistema en tiempo real para ayudar con precisión:
 ${knowledgeContext}
 Eres O.L.G.A., experta en leyes paraguayas, redacción de contratos privados, pagarés y escrituras públicas.
 Conoces en profundidad la Ley 1.183/85 (Código Civil Paraguayo) sobre obligaciones y contratos, así como la Ley de Maquila y constituciones de sociedades (S.A., S.R.L., E.A.S.).
-Responde a las consultas del usuario justificando legalmente o redactando las cláusulas solicitadas con alto nivel técnico y notarial, de manera concisa y en español.`;
+Responde a las consultas del usuario justificando legalmente o redactando las cláusulas solicitadas con alto nivel técnico y notarial, de manera rigurosa y en español.`;
 
       const attachments = currentPendingFiles.length > 0 ? currentPendingFiles.map(f => ({ data: f.data, mimeType: f.mimeType })) : undefined;
 
@@ -1575,8 +1655,12 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         }
       }
     } catch (err: any) {
-      console.error("Error al enviar mensaje a la IA:", err);
-      const fallbackErrorText = err?.message || 'Disculpa, experimenté una interrupción temporal en mi canal de IA. ¿Podrías volver a formular tu pregunta?';
+      console.warn("Aviso al enviar mensaje a la IA:", err?.message || err);
+      const rawErrorText = typeof err?.message === 'string' ? err.message : '';
+      const fallbackErrorText =
+        /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|quota|Free Tier|cuota gratuita|facturaci[óo]n|Settings > Secrets|Gemini API/i.test(rawErrorText)
+          ? 'El Oráculo está atendiendo un alto volumen de consultas en este momento. No se trata de un error del sistema ni de tu cuenta; por favor, aguarda unos segundos y vuelve a enviar tu solicitud.'
+          : rawErrorText || 'Disculpa, experimenté una interrupción temporal en mi canal de IA. ¿Podrías volver a formular tu pregunta?';
       setChatMessages(prev =>
         prev.map(m => (m.id === streamMsgId ? { ...m, text: m.text ? `${m.text}\n\n_${fallbackErrorText}_` : fallbackErrorText } : m))
       );
@@ -2177,7 +2261,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                           {msg.role === 'model' ? (
                             <div className="flex flex-col gap-2 relative group w-full box-border">
                               <div id={`model-msg-${i}`} className="markdown-body prose prose-slate max-w-none prose-sm sm:prose-base prose-p:leading-relaxed prose-a:text-[#FF3131] prose-strong:text-slate-900 border-b border-transparent group-hover:border-slate-50 pb-2">
-                                <ReactMarkdown>{msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text}</ReactMarkdown>
+                                <ReactMarkdown>{formatearMensajeChatVisual(msg.text)}</ReactMarkdown>
                               </div>
                               <div className="flex items-center gap-2 self-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {(!tienePlanPago && (activePlan === 'ninguno' || activePlan === undefined) && (!pruebaActiva || diasRestantes <= 0 || olgaDocsCount >= 5)) ? (
@@ -2187,8 +2271,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                                   </div>
                                 ) : (
                                   <button 
-                                    onClick={async () => {
-                                      const extractedText = msg.text.includes('[CONTEXTO INTERNO DE OPERACIÓN') ? msg.text.split('[CONTEXTO INTERNO DE OPERACIÓN')[0].trim() : msg.text;
+                                    onClick={() => {
+                                      const extractedText = extraerDocumentoPuro(msg.text);
                                       handleOpenDocumentModal(extractedText);
                                     }}
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
