@@ -65,13 +65,53 @@ const COMPATIBLE_MODELS = [
   'gemini-3.1-flash-lite',
 ];
 
-const CHAT_TIMEOUT_MS = 60000;
+const CHAT_TIMEOUT_MS = 90000;
 
 export interface SendMessageOptions {
   systemInstructionExtra?: string;
   onChunk?: (textPartial: string) => void;
   timeoutMs?: number;
 }
+
+const normalizeGeminiHistory = (
+  rawHistory: { role: 'user' | 'model'; parts: { text?: string; inlineData?: any }[] }[]
+): { role: 'user' | 'model'; parts: { text?: string; inlineData?: any }[] }[] => {
+  const valid = (rawHistory || []).filter(
+    (m) =>
+      m &&
+      Array.isArray(m.parts) &&
+      m.parts.some((p) => (typeof p?.text === 'string' && p.text.trim().length > 0) || Boolean(p?.inlineData))
+  );
+
+  // Nunca empezar el historial con un mensaje 'model' (ej. mensaje inicial de bienvenida)
+  let startIndex = 0;
+  while (startIndex < valid.length && valid[startIndex].role !== 'user') {
+    startIndex++;
+  }
+
+  // Garantizar alternancia estricta user -> model -> user -> model
+  const alternating: { role: 'user' | 'model'; parts: { text?: string; inlineData?: any }[] }[] = [];
+  for (let i = startIndex; i < valid.length; i++) {
+    const item = valid[i];
+    if (alternating.length === 0) {
+      alternating.push({ role: item.role, parts: [...item.parts] });
+    } else {
+      const prev = alternating[alternating.length - 1];
+      if (prev.role === item.role) {
+        prev.parts = [...prev.parts, ...item.parts];
+      } else {
+        alternating.push({ role: item.role, parts: [...item.parts] });
+      }
+    }
+  }
+
+  // Antes de añadir el nuevo mensaje 'user', el último turno del historial debe ser 'model'
+  if (alternating.length > 0 && alternating[alternating.length - 1].role === 'user') {
+    alternating.pop();
+  }
+
+  return alternating;
+};
 
 export const sendMessageToOlga = async (
   message: string,
@@ -93,6 +133,7 @@ export const sendMessageToOlga = async (
     });
   }
 
+  const normalizedHistory = normalizeGeminiHistory(history);
   const combinedSystemInstruction = options?.systemInstructionExtra
     ? `${getSystemInstruction(lang)}\n\n${options.systemInstructionExtra}`
     : getSystemInstruction(lang);
@@ -100,32 +141,51 @@ export const sendMessageToOlga = async (
   const timeoutMs = options?.timeoutMs ?? CHAT_TIMEOUT_MS;
   const controller = new AbortController();
   let timedOut = false;
+  let timerCleared = false;
+
+  const clearSafetyTimer = () => {
+    if (!timerCleared) {
+      timerCleared = true;
+      clearTimeout(timeoutId);
+    }
+  };
+
   const timeoutId = setTimeout(() => {
     timedOut = true;
-    controller.abort(new Error('La solicitud a IA superó el tiempo límite de 60 segundos.'));
+    controller.abort(new Error('TIMEOUT_90S'));
   }, timeoutMs);
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     controller.signal.addEventListener(
       'abort',
-      () => reject(new Error('TIMEOUT_60S')),
+      () => reject(new Error('TIMEOUT_90S')),
       { once: true }
     );
   });
 
   try {
+    let lastError: any = null;
+
     for (const model of COMPATIBLE_MODELS) {
       if (timedOut || controller.signal.aborted) break;
 
       try {
+        const modelConfig: Record<string, any> = {
+          systemInstruction: combinedSystemInstruction,
+          abortSignal: controller.signal,
+        };
+
+        if (model === 'gemini-2.5-flash') {
+          modelConfig.temperature = 0.2;
+          modelConfig.thinkingConfig = { thinkingBudget: 0 };
+        } else if (model !== 'gemini-4-hydrogen') {
+          modelConfig.temperature = 0.2;
+        }
+
         const streamCall = ai.models.generateContentStream({
           model,
-          contents: [...history, { role: 'user', parts: userParts }],
-          config: {
-            systemInstruction: combinedSystemInstruction,
-            ...(model !== 'gemini-4-hydrogen' ? { temperature: 0.2 } : {}),
-            abortSignal: controller.signal,
-          },
+          contents: [...normalizedHistory, { role: 'user', parts: userParts }],
+          config: modelConfig,
         });
 
         const stream = await Promise.race([streamCall, timeoutPromise]);
@@ -133,8 +193,11 @@ export const sendMessageToOlga = async (
 
         for await (const chunk of stream) {
           if (timedOut || controller.signal.aborted) {
-            throw new Error('TIMEOUT_60S');
+            throw new Error('TIMEOUT_90S');
           }
+          // Cancelar el timeout de respaldo apenas llega el primer chunk del stream
+          clearSafetyTimer();
+
           const chunkText = chunk?.text || '';
           if (chunkText) {
             accumulatedText += chunkText;
@@ -144,24 +207,33 @@ export const sendMessageToOlga = async (
           }
         }
 
+        clearSafetyTimer();
         return {
           text: accumulatedText,
           functionCalls: null
         };
       } catch (error: any) {
-        if (timedOut || controller.signal.aborted || error?.message === 'TIMEOUT_60S' || error?.name === 'AbortError') {
-          throw new Error('La consulta superó el tiempo máximo de espera (60s). Por favor, intenta nuevamente con una pregunta más específica.');
+        lastError = error;
+        console.error(`[sendMessageToOlga] Error real en modelo ${model}:`, error);
+
+        if (timedOut || controller.signal.aborted || error?.message === 'TIMEOUT_90S' || error?.name === 'AbortError') {
+          throw new Error('La consulta superó el tiempo máximo de espera (90s). Por favor, intenta nuevamente.');
         }
-        console.warn(`[sendMessageToOlga] Error con modelo ${model}:`, error?.message || error);
+
+        const status = error?.status ?? error?.code;
+        if (status === 400 || status === 401 || status === 403 || status === 429) {
+          throw new Error(error?.message || `Error de Gemini API (${status}).`);
+        }
+
         if (model === COMPATIBLE_MODELS[COMPATIBLE_MODELS.length - 1]) {
-          return { text: 'Error al procesar la solicitud con IA. Por favor, intente nuevamente.' };
+          throw new Error(lastError?.message || 'Error al procesar la solicitud con IA. Por favor, intente nuevamente.');
         }
       }
     }
 
-    return { text: 'No se pudo conectar con el servicio notarial de IA.' };
+    throw new Error(lastError?.message || 'No se pudo conectar con el servicio notarial de IA.');
   } finally {
-    clearTimeout(timeoutId);
+    clearSafetyTimer();
   }
 };
 
@@ -331,7 +403,11 @@ ${prompt.trim()}
         contents: [{ role: 'user', parts: userParts }],
         config: {
           systemInstruction: "Eres O.L.G.A., redactora legal y notarial de Paraguay. Genera redacciones sólidas, formales, listas para su revisión y uso notarial administrativo. No incluyas introducciones conversacionales innecesarias; entrega directamente el texto legal o la cláusula redactada.",
-          ...(model !== 'gemini-4-hydrogen' ? { temperature: 0.2 } : {}),
+          ...(model === 'gemini-2.5-flash'
+            ? { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } }
+            : model !== 'gemini-4-hydrogen'
+              ? { temperature: 0.2 }
+              : {}),
         }
       });
 

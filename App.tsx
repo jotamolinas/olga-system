@@ -1441,14 +1441,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     setChatLoading(true);
 
     try {
-      // Limitar historial a los últimos 10 mensajes no vacíos para reducir latencia y tokens
-      const history = chatMessages
+      // Limitar historial a los últimos 10 mensajes, omitiendo el saludo inicial de bienvenida y garantizando empezar por 'user'
+      const rawHistory = chatMessages
+        .slice(1)
         .filter((m) => typeof m?.text === 'string' && m.text.trim().length > 0)
         .slice(-10)
         .map((m) => ({
           role: (m.role === 'user' ? 'user' : 'model') as 'user' | 'model',
           parts: [{ text: m.text }]
         }));
+      while (rawHistory.length > 0 && rawHistory[0].role !== 'user') {
+        rawHistory.shift();
+      }
+      const history = rawHistory;
 
       // Seleccionar knowledgeDocs relevantes y limitar a un máximo de 15.000 caracteres totales
       const MAX_KNOWLEDGE_CHARS = 15000;
@@ -1527,7 +1532,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         attachments,
         {
           systemInstructionExtra: panelContextPrompt,
-          timeoutMs: 60000,
+          timeoutMs: 90000,
           onChunk: (textPartial) => {
             setChatMessages(prev =>
               prev.map(m => (m.id === streamMsgId ? { ...m, text: textPartial } : m))
