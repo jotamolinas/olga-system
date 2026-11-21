@@ -324,7 +324,7 @@ export const LandingPage: React.FC = () => {
             {/* Insignia / Pill oficial en azul institucional */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider rounded-full border border-blue-200 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-              <span>Software Notarial Oficial para Paraguay</span>
+              <span>OLGA Legal Tech • Software Notarial Paraguay</span>
             </div>
 
             {/* H1 Título Principal */}
@@ -334,7 +334,7 @@ export const LandingPage: React.FC = () => {
 
             {/* Subtítulo gris legible */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-              El software Legal-Tech líder en Paraguay para Escribanías, Playas de Vehículos, Inmobiliarias y Estudios Contables. Emite pagarés a la orden, calibra hojas de seguridad notarial (Certificación de Firmas, Concuerda y Legalización) y genera presupuestos exactos en segundos.
+              <strong className="text-slate-900 font-semibold">OLGA Legal Tech</strong> (O.L.G.A.) es el software Legal-Tech líder en Paraguay para Escribanías, Playas de Vehículos, Inmobiliarias y Estudios Contables. Emite pagarés a la orden, calibra hojas de seguridad notarial (Certificación de Firmas, Concuerda y Legalización) y genera presupuestos exactos en segundos.
             </p>
             
             {/* Botones de Acción Hero */}
@@ -561,7 +561,7 @@ export const LandingPage: React.FC = () => {
                 Software Especializado para el Mercado Paraguayo
               </h2>
               <p className="text-slate-600 mt-4 text-base">
-                O.L.G.A. centraliza la emisión de títulos ejecutivos, documentos notariales y cuentas por cobrar con estricto rigor jurídico.
+                OLGA Legal Tech (O.L.G.A.) centraliza la emisión de títulos ejecutivos, documentos notariales y cuentas por cobrar con estricto rigor jurídico.
               </p>
             </div>
 
@@ -690,7 +690,7 @@ export const LandingPage: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-3xl mx-auto mb-12">
               <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mb-4">
-                Planes de Suscripción O.L.G.A.
+                Planes de Suscripción OLGA Legal Tech (O.L.G.A.)
               </h2>
               <p className="text-slate-600 text-base mb-8">
                 Elige la escala adecuada para tu escribanía, empresa o estudio jurídico. Actualiza o cancela en cualquier momento.
@@ -1220,7 +1220,7 @@ export const LandingPage: React.FC = () => {
         </div>
 
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-slate-500">
-          <p>© 2026 O.L.G.A. Legal-Tech (olgatech.com.py). Todos los derechos reservados.</p>
+          <p>© 2026 OLGA Legal Tech — O.L.G.A. (olgatech.com.py). Todos los derechos reservados.</p>
           
           {/* Social Media SVG Icons */}
           <div className="flex items-center gap-4">
@@ -1228,7 +1228,7 @@ export const LandingPage: React.FC = () => {
               href="https://www.linkedin.com/company/146929506" 
               target="_blank" 
               rel="noopener noreferrer"
-              aria-label="LinkedIn de O.L.G.A. Legal Tech"
+              aria-label="LinkedIn de OLGA Legal Tech (O.L.G.A.)"
               className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-2xs hover:scale-105 cursor-pointer"
             >
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -1240,7 +1240,7 @@ export const LandingPage: React.FC = () => {
               href="https://www.facebook.com/olgalegaltech" 
               target="_blank" 
               rel="noopener noreferrer"
-              aria-label="Facebook de O.L.G.A. Legal Tech"
+              aria-label="Facebook de OLGA Legal Tech (O.L.G.A.)"
               className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-2xs hover:scale-105 cursor-pointer"
             >
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -1252,7 +1252,7 @@ export const LandingPage: React.FC = () => {
               href="https://www.instagram.com/olgalegaltech" 
               target="_blank" 
               rel="noopener noreferrer"
-              aria-label="Instagram de O.L.G.A. Legal Tech"
+              aria-label="Instagram de OLGA Legal Tech (O.L.G.A.)"
               className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-2xs hover:scale-105 cursor-pointer"
             >
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -1261,7 +1261,7 @@ export const LandingPage: React.FC = () => {
             </a>
           </div>
 
-          <p>Desarrollado por <strong className="text-slate-400">O.L.G.A. Tech</strong> - Paraguay</p>
+          <p>Desarrollado por <strong className="text-slate-400">OLGA Legal Tech (Olgatech)</strong> - Paraguay</p>
         </div>
       </footer>
 
