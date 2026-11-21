@@ -1,7 +1,9 @@
 User-agent: *
 Allow: /
+Allow: /recursos
 Allow: /privacidad
 Allow: /terminos
+Allow: /llms.txt
 Disallow: /admin
 Disallow: /consola/admin
 Disallow: /api/

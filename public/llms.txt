@@ -1,0 +1,69 @@
+# OLGA Legal Tech (O.L.G.A.)
+
+> Plataforma Legal-Tech y software notarial de alta precisión para Paraguay, desarrollado por Ihara Outsourcing. Centraliza la emisión de pagarés a la orden con fuerza ejecutiva, la impresión milimétrica en fojas de seguridad de la Corte Suprema de Justicia (CSJ), el cálculo de presupuestos notariales bajo la Ley 879/81 y la gestión documental asistida con Inteligencia Artificial.
+
+Nombre oficial: OLGA Legal Tech
+Marcas alternativas: O.L.G.A., O.L.G.A. Legal-Tech, Olgatech
+Dominio oficial: https://olgatech.com.py
+Idioma y jurisdicción: Español (Paraguay - es-PY)
+Empresa operadora: Ihara Outsourcing Paraguay (Ciudad del Este, Paraguay — Cobertura nacional en todo Paraguay)
+
+## Qué problema resuelve
+
+En Paraguay, las escribanías, estudios jurídicos, playas de vehículos e inmobiliarias suelen redactar pagarés manualmente, perder papel valorado de la CSJ por descalibraciones de impresión y calcular honorarios notariales de forma lenta o con errores. OLGA Legal Tech automatiza estos procesos bajo normativa paraguaya vigente en una plataforma web segura en la nube.
+
+## Funcionalidades principales
+
+- **Pagarés a la Orden con Fuerza Ejecutiva:** Emisión de pagarés conforme al Código Civil y Procesal Civil paraguayo, conversión exacta de guaraníes a letras, vencimientos, cuotas, cláusula sin protesto y seguimiento de cartera.
+- **Lienzo Notarial Milimétrico (CSJ):** Calibración estricta para papel oficial de 216 mm × 330 mm en fojas de seguridad notarial de la Corte Suprema de Justicia: Certificación de Firmas (Hoja 0 y Hoja 1), Concuerda Notarial (Hoja 2) y Legalización / Protocolo (Hoja 3).
+- **Presupuestos y Facturación Notarial (Ley 879/81):** Cálculo automático de escalas arancelarias, honorarios mínimos, tasas judiciales, gastos registrales e IVA según el Arancel Notarial Oficial del Paraguay.
+- **Gestión de Escritos y Plantillas Legales:** Editor notarial y comercial para contratos de compraventa, poderes, estatutos y constitución de sociedades (S.A., S.R.L., E.A.S.) y actas.
+- **Fichero de Personas con Validación C.I. y RUC:** Directorio centralizado de otorgantes, clientes y deudores con validación automática de Dígito Verificador (DV) ante DNIT y compatibilidad tributaria SIFEN.
+- **Oráculo Legal IA:** Asistente jurídico entrenado para dictámenes notariales, revisión documental y apoyo normativo paraguayo.
+
+## Público objetivo en Paraguay
+
+- Escribanías y Notarías Públicas
+- Playas de Vehículos y Concesionarias Automotores
+- Inmobiliarias, Loteadoras y Desarrolladoras
+- Estudios Jurídicos, Contables, Cooperativas y Financieras
+
+## Planes y tarifas vigentes (Guaraníes - PYG)
+
+Modalidad mensual o anual (2 meses gratis en pago anual):
+
+- **Plan Básico (Inicial):** Gs. 250.000 / mes — 2 usuarios, 20 consultas IA/mes, pagarés a la orden ilimitados, fichero de personas.
+- **Plan Pro (Profesional):** Gs. 575.000 / mes — 5 usuarios, 50 consultas IA/mes, gestión de escritos libre, plantillas legales, exportación sin marca de agua, soporte WhatsApp.
+- **Plan Empresa (Corporativo / Escribanías):** Gs. 1.000.000 / mes — 10 usuarios, 100 consultas IA/mes, Lienzo Notarial Oficial (CSJ), Presupuestos Ley 879/81, Oráculo Legal IA, módulos SEPRELAD y Traducción Legal, Audit Logs.
+- **Plan Full (Glow Gold Edition):** Gs. 1.350.000 / mes — 15 usuarios, 300 consultas IA/mes, todas las funciones de Plan Empresa sin restricciones de dictámenes IA, interfaz Glow Gold y atención prioritaria 24/7.
+
+## Enlaces oficiales
+
+- [Sitio web oficial OLGA Legal Tech](https://olgatech.com.py/)
+- [Centro de Guías y Recursos Legales](https://olgatech.com.py/recursos)
+- [Consola de acceso](https://olgatech.com.py/consola)
+- [Política de Privacidad](https://olgatech.com.py/privacidad)
+- [Términos y Condiciones](https://olgatech.com.py/terminos)
+- [Sitemap XML](https://olgatech.com.py/sitemap.xml)
+
+## Guías y Recursos Oficiales en Paraguay
+
+- [Pagaré a la Orden en Paraguay: Requisitos Legales para Fuerza Ejecutiva](https://olgatech.com.py/recursos/pagare-a-la-orden-paraguay)
+- [Arancel Notarial Ley 879/81 en Paraguay: Cálculo de Honorarios, Tasas e IVA](https://olgatech.com.py/recursos/arancel-notarial-ley-879-81)
+- [Fojas de Seguridad Notarial CSJ (216 × 330 mm): Cómo Imprimir Sin Desfasajes](https://olgatech.com.py/recursos/fojas-seguridad-csj-calibracion)
+- [Playas de Vehículos en Paraguay: Cómo Blindar Ventas Financiadas con Pagarés](https://olgatech.com.py/recursos/playas-vehiculos-pagares-compraventa)
+- [Inmobiliarias y Loteadoras en Paraguay: Contratos, Cuotas y Pagarés Ejecutivos](https://olgatech.com.py/recursos/inmobiliarias-loteadoras-pagares-lotes)
+- [Constitución de Empresas en Paraguay: Diferencias entre S.A., S.R.L. y E.A.S.](https://olgatech.com.py/recursos/constitucion-empresas-sa-srl-eas-paraguay)
+- [Juicio Ejecutivo por Pagarés Impagos en Paraguay: Errores Formales que Evitar](https://olgatech.com.py/recursos/juicio-ejecutivo-pagare-paraguay-abogados)
+- [Validación de RUC, Dígito Verificador (DV) y Preparación SIFEN / DNIT](https://olgatech.com.py/recursos/ruc-digito-verificador-sifen-dnit-paraguay)
+- [Cumplimiento SEPRELAD en Escribanías de Paraguay: Debida Diligencia y Registros](https://olgatech.com.py/recursos/seprelad-escribanias-debida-diligencia-paraguay)
+- [Contratos de Alquiler en Paraguay: Cláusulas Clave, Garantías y Pagarés](https://olgatech.com.py/recursos/alquiler-inmuebles-garantias-paraguay)
+- [Certificación de Firmas, Concuerda y Legalización Notarial en Paraguay](https://olgatech.com.py/recursos/certificacion-firmas-concuerda-protocolo-paraguay)
+- [Control de Cartera de Créditos y Cuentas por Cobrar en Empresas de Paraguay](https://olgatech.com.py/recursos/cartera-creditos-cuentas-por-cobrar-empresas)
+
+## Perfiles oficiales verificados
+
+- [LinkedIn de OLGA Legal Tech](https://www.linkedin.com/company/146929506)
+- [Instagram (@olgalegaltech)](https://www.instagram.com/olgalegaltech)
+- [Facebook (@olgalegaltech)](https://www.facebook.com/olgalegaltech)
+- [Reseñas verificadas en Google](https://g.page/r/CWl9WpnL0PfFECE/review)

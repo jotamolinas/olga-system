@@ -5,12 +5,14 @@ import {
   ArrowRight, Users, MessageSquare, Activity, Settings, Building, 
   Car, Briefcase, Home, Bot, Target, Stamp, Calculator, Sparkles, 
   Printer, CheckCircle2, Star, Shield, HelpCircle, Layers, FileCheck,
-  ChevronRight, Landmark, ExternalLink
+  ChevronRight, Landmark, ExternalLink, BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth } from '../services/auth';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Testimonials } from './Testimonials';
+import { RECURSOS_ARTICLES } from '../data/recursosData';
+import { SocialShareBar } from './SocialShareBar';
 
 const Logo: React.FC<{ darkTheme?: boolean }> = ({ darkTheme = false }) => (
   <div className="flex items-center gap-4">
@@ -300,6 +302,7 @@ export const LandingPage: React.FC = () => {
             <a href="#casos-de-uso" className="hover:text-slate-900 transition-colors">Casos de Uso</a>
             <a href="#beneficios" className="hover:text-slate-900 transition-colors">Beneficios</a>
             <a href="#planes" className="hover:text-slate-900 transition-colors">Planes</a>
+            <Link to="/recursos" className="hover:text-slate-900 transition-colors">Recursos</Link>
             <a href="#faq" className="hover:text-slate-900 transition-colors">FAQ</a>
           </div>
 
@@ -1099,6 +1102,83 @@ export const LandingPage: React.FC = () => {
         {/* TESTIMONIOS Y RESEÑAS GOOGLE */}
         <Testimonials />
 
+        {/* SECCIÓN PÚBLICA DE GUÍAS Y RECURSOS LEGALES (SEO PARAGUAY + COMPARTIR EN REDES) */}
+        <section id="recursos" className="py-24 bg-white border-t border-slate-200 scroll-mt-20">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-14">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-xs font-bold uppercase tracking-wider mb-3">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Biblioteca Legal-Tech • Paraguay</span>
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                  Guías y Recursos Legales por Rubro
+                </h2>
+                <p className="text-slate-600 mt-3 text-base leading-relaxed">
+                  Artículos prácticos creados por OLGA Legal Tech para escribanos, playas de vehículos, inmobiliarias, abogados, contadores y empresas. Compártelos directo en LinkedIn o WhatsApp.
+                </p>
+              </div>
+
+              <Link
+                to="/recursos"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shrink-0 shadow-sm"
+              >
+                <span>Ver las {RECURSOS_ARTICLES.length} Guías</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                RECURSOS_ARTICLES[0],
+                RECURSOS_ARTICLES[1],
+                RECURSOS_ARTICLES[3],
+                RECURSOS_ARTICLES[4],
+                RECURSOS_ARTICLES[5],
+                RECURSOS_ARTICLES[7],
+              ]
+                .filter(Boolean)
+                .map((item) => {
+                  const shareUrl = `https://olgatech.com.py/recursos/${item.slug}`;
+                  return (
+                    <article
+                      key={item.slug}
+                      className="bg-slate-50/70 hover:bg-white border border-slate-200 rounded-3xl p-6 flex flex-col justify-between transition-all hover:shadow-md"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white text-slate-800 border border-slate-200">
+                            {item.category}
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-medium">{item.readTime}</span>
+                        </div>
+
+                        <h3 className="text-lg font-black text-slate-900 leading-snug mb-2.5">
+                          <Link to={`/recursos/${item.slug}`} className="hover:text-blue-600 transition-colors">
+                            {item.title}
+                          </Link>
+                        </h3>
+
+                        <p className="text-sm text-slate-600 leading-relaxed mb-5">{item.excerpt}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                        <Link
+                          to={`/recursos/${item.slug}`}
+                          className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+                        >
+                          <span>Leer guía</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                        <SocialShareBar url={shareUrl} title={item.title} compact={true} />
+                      </div>
+                    </article>
+                  );
+                })}
+            </div>
+          </div>
+        </section>
+
         {/* 7. PREGUNTAS FRECUENTES (FAQ OPTIMIZADO PARA PARAGUAY) */}
         <section id="faq" className="py-24 bg-slate-50 border-t border-slate-200">
           <div className="max-w-3xl mx-auto px-6">
@@ -1212,6 +1292,7 @@ export const LandingPage: React.FC = () => {
             <a href="#modulos-notariales" className="hover:text-white transition-colors">Herramientas Notariales</a>
             <a href="#casos-de-uso" className="hover:text-white transition-colors">Casos de Uso</a>
             <a href="#planes" className="hover:text-white transition-colors">Planes y Precios</a>
+            <Link to="/recursos" className="hover:text-white transition-colors">Guías y Recursos</Link>
             <a href="#faq" className="hover:text-white transition-colors">Preguntas Frecuentes</a>
             <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
             <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
