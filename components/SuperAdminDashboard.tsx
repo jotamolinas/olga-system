@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
+import { normalizePersona } from '../services/firestore';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
   KeyRound, CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2
+  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, Database
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -76,6 +77,139 @@ export const SuperAdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
+  const [migratingPersonas, setMigratingPersonas] = useState(false);
+  const [migrationSummary, setMigrationSummary] = useState<{
+    migrados: number;
+    normalizados: number;
+    totalOrigen: number;
+    totalDestino: number;
+    errores: string[];
+  } | null>(null);
+
+  const handleMigrarYUnificarFichero = async () => {
+    if (migratingPersonas) return;
+    setMigratingPersonas(true);
+    setMigrationSummary(null);
+
+    const errores: string[] = [];
+    let migrados = 0;
+    let normalizados = 0;
+
+    try {
+      const [snapOrigen, snapDestino] = await Promise.all([
+        getDocs(collection(db, 'personas')),
+        getDocs(collection(db, 'directorio_personas'))
+      ]);
+
+      type BatchOp = { id: string; payload: Record<string, any>; tipo: 'migrado' | 'normalizado' };
+      const ops: BatchOp[] = [];
+      const idsMigrados = new Set<string>();
+
+      snapOrigen.docs.forEach((d) => {
+        const raw = d.data() || {};
+        const norm = normalizePersona(raw, d.id);
+        const ownedByWorkspace = String(raw.ownedByWorkspace ?? raw.userId ?? raw.createdBy ?? raw.creator_id ?? '').trim();
+        const userId = String(raw.userId ?? raw.createdBy ?? raw.ownedByWorkspace ?? raw.creator_id ?? '').trim();
+        const nombreCompleto = norm.nombre_o_razon_social || `${norm.nombre} ${norm.apellido || ''}`.trim();
+
+        idsMigrados.add(d.id);
+        ops.push({
+          id: d.id,
+          tipo: 'migrado',
+          payload: {
+            ...norm,
+            id: d.id,
+            nombre: norm.nombre,
+            apellido: norm.apellido ?? '',
+            nombre_o_razon_social: nombreCompleto,
+            nro_documento: norm.nro_documento,
+            documento_numero: norm.documento_numero || norm.nro_documento,
+            ownedByWorkspace,
+            userId,
+            createdBy: norm.createdBy || userId || ownedByWorkspace,
+            fechaActualizacion: serverTimestamp()
+          }
+        });
+      });
+
+      snapDestino.docs.forEach((d) => {
+        if (idsMigrados.has(d.id)) return;
+        const raw = d.data() || {};
+        const needsBackfill =
+          !raw.ownedByWorkspace ||
+          !raw.userId ||
+          raw.nombre === undefined ||
+          raw.nombre_o_razon_social === undefined ||
+          raw.documento_numero === undefined ||
+          raw.nro_documento === undefined;
+
+        if (!needsBackfill) return;
+
+        const norm = normalizePersona(raw, d.id);
+        const ownedByWorkspace = String(raw.ownedByWorkspace ?? raw.userId ?? raw.createdBy ?? raw.creator_id ?? '').trim();
+        const userId = String(raw.userId ?? raw.createdBy ?? raw.ownedByWorkspace ?? raw.creator_id ?? '').trim();
+        const nombreCompleto = norm.nombre_o_razon_social || `${norm.nombre} ${norm.apellido || ''}`.trim();
+
+        ops.push({
+          id: d.id,
+          tipo: 'normalizado',
+          payload: {
+            ...norm,
+            id: d.id,
+            nombre: norm.nombre,
+            apellido: norm.apellido ?? '',
+            nombre_o_razon_social: nombreCompleto,
+            nro_documento: norm.nro_documento,
+            documento_numero: norm.documento_numero || norm.nro_documento,
+            ownedByWorkspace,
+            userId,
+            createdBy: norm.createdBy || userId || ownedByWorkspace,
+            fechaActualizacion: serverTimestamp()
+          }
+        });
+      });
+
+      const MAX_BATCH = 400;
+      for (let i = 0; i < ops.length; i += MAX_BATCH) {
+        const chunk = ops.slice(i, i + MAX_BATCH);
+        const batch = writeBatch(db);
+        chunk.forEach((op) => {
+          const ref = doc(db, 'directorio_personas', op.id);
+          batch.set(ref, op.payload, { merge: true });
+        });
+        try {
+          await batch.commit();
+          chunk.forEach((op) => {
+            if (op.tipo === 'migrado') migrados += 1;
+            else normalizados += 1;
+          });
+        } catch (batchErr: any) {
+          console.error('Error en lote de migración:', batchErr);
+          errores.push(batchErr?.message || `Error ejecutando lote ${Math.floor(i / MAX_BATCH) + 1}`);
+        }
+      }
+
+      setMigrationSummary({
+        migrados,
+        normalizados,
+        totalOrigen: snapOrigen.size,
+        totalDestino: snapDestino.size,
+        errores
+      });
+    } catch (err: any) {
+      console.error('Error general en migración de fichero:', err);
+      errores.push(err?.message || 'Error al leer colecciones en Firestore.');
+      setMigrationSummary({
+        migrados,
+        normalizados,
+        totalOrigen: 0,
+        totalDestino: 0,
+        errores
+      });
+    } finally {
+      setMigratingPersonas(false);
+    }
+  };
 
   const handleMarcarEnProceso = async (ticketId: string) => {
     try {
@@ -655,33 +789,79 @@ export const SuperAdminDashboard: React.FC = () => {
             <p className="text-[11px] text-gray-400 mt-0.5">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
           </div>
 
-          <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setAdminSubTab('metricas')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                adminSubTab === 'metricas'
-                  ? 'bg-white/10 text-white shadow-xs'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
+              onClick={handleMigrarYUnificarFichero}
+              disabled={migratingPersonas}
+              className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-amber-500/15 hover:bg-amber-500/25 disabled:opacity-50 text-amber-300 border border-amber-500/30 transition-all flex items-center gap-2 cursor-pointer"
+              title="Herramienta temporal para migrar personas → directorio_personas y normalizar campos"
             >
-              <Activity className="w-3.5 h-3.5 text-blue-400" />
-              Métricas
+              <Database className={`w-3.5 h-3.5 text-amber-400 ${migratingPersonas ? 'animate-spin' : ''}`} />
+              <span>
+                {migratingPersonas
+                  ? 'Migrando y unificando...'
+                  : 'Migrar y Unificar Fichero (personas → directorio_personas)'}
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={() => setAdminSubTab('onboarding')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                adminSubTab === 'onboarding'
-                  ? 'bg-white/10 text-white shadow-xs'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
-              Onboarding SIFEN
-            </button>
+
+            <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm shrink-0">
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('metricas')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                  adminSubTab === 'metricas'
+                    ? 'bg-white/10 text-white shadow-xs'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5 text-blue-400" />
+                Métricas
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('onboarding')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+                  adminSubTab === 'onboarding'
+                    ? 'bg-white/10 text-white shadow-xs'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                Onboarding SIFEN
+              </button>
+            </div>
           </div>
         </div>
+
+        {migrationSummary && (
+          <div className={`mb-3 shrink-0 rounded-2xl border px-4 py-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+            migrationSummary.errores.length > 0
+              ? 'bg-red-500/10 border-red-500/30 text-red-200'
+              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+          }`}>
+            <div className="space-y-0.5">
+              <p className="font-bold">
+                Resultado de Unificación (personas → directorio_personas):
+              </p>
+              <p className="text-[11px] opacity-90">
+                Migrados desde <code className="font-mono">personas</code>: <strong>{migrationSummary.migrados}</strong> / {migrationSummary.totalOrigen} • Normalizados/Backfill en <code className="font-mono">directorio_personas</code>: <strong>{migrationSummary.normalizados}</strong> (de {migrationSummary.totalDestino} existentes) • Errores: <strong>{migrationSummary.errores.length}</strong>
+              </p>
+              {migrationSummary.errores.length > 0 && (
+                <p className="text-[11px] text-red-300">
+                  {migrationSummary.errores.join(' | ')}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMigrationSummary(null)}
+              className="self-start sm:self-center px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold cursor-pointer"
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
 
         {adminSubTab === 'onboarding' ? (
           <div className="flex-1 overflow-y-auto">

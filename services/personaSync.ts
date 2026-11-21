@@ -1,7 +1,8 @@
 import { Persona, Pagare, TipoPersona, TipoDocumento } from '../types';
 import { auth } from './auth';
 import { formatearRUCConDV } from './dnitService';
-import { buscarPersonaDuplicada, extraerDocBase, sonMismaPersona } from './personaDedup';
+import { buscarPersonaDuplicada } from './personaDedup';
+import { syncPersonaToFirestore, normalizePersona } from './firestore';
 
 export const PERSONAS_STORAGE_KEY = 'olga_directorio_personas';
 export const PAGARES_STORAGE_KEY = 'olga_pagares';
@@ -128,20 +129,41 @@ export interface FirmanteInput {
 export function sincronizarOAutoRegistrarPersona(
   firmante: FirmanteInput,
   personasActuales: Persona[],
-  onPersonaCreada?: (nuevaPersona: Persona) => void
-): { persona: Persona; esNueva: boolean } {
+  onPersonaCreada?: (nuevaPersona: Persona) => void,
+  workspaceId?: string
+): { persona: Persona; esNueva: boolean; syncPromise?: Promise<void> } {
   const docLimpio = (firmante.documento || '').trim();
   const nombreLimpio = (firmante.nombre || '').trim();
+  const effectiveWorkspace = String(workspaceId || auth?.currentUser?.uid || '').trim();
+  const uid = String(auth?.currentUser?.uid || effectiveWorkspace).trim();
 
   // Buscar coincidencia por documento normalizado, base o nombre
   const existente = findPersonaPorDocOId(personasActuales, undefined, docLimpio, nombreLimpio);
   if (existente) {
-    // Si ya existe pero no tenía domicilio y ahora lo tenemos, actualizar no destructivamente
-    if (firmante.domicilio && !existente.domicilio) {
-      existente.domicilio = firmante.domicilio.trim();
+    let syncPromise: Promise<void> | undefined;
+    // Si ya existe pero no tenía domicilio o campos unificados, actualizar no destructivamente y persistir en directorio_personas
+    if ((firmante.domicilio && !existente.domicilio) || !existente.ownedByWorkspace || !existente.nombre_o_razon_social) {
+      if (firmante.domicilio && !existente.domicilio) {
+        existente.domicilio = firmante.domicilio.trim();
+      }
+      const normalizadaExistente = normalizePersona(
+        {
+          ...existente,
+          ownedByWorkspace: existente.ownedByWorkspace || effectiveWorkspace,
+          userId: existente.userId || uid || effectiveWorkspace,
+        },
+        existente.id
+      );
+      Object.assign(existente, normalizadaExistente);
       savePersonasToStorage(personasActuales);
+      if (effectiveWorkspace || uid) {
+        syncPromise = syncPersonaToFirestore(effectiveWorkspace, normalizadaExistente).catch((err) => {
+          console.error('Error sincronizando persona existente en directorio_personas:', err);
+          throw err;
+        });
+      }
     }
-    return { persona: existente, esNueva: false };
+    return { persona: existente, esNueva: false, syncPromise };
   }
 
   // Determinar si es persona jurídica o física según normativa paraguaya:
@@ -154,7 +176,7 @@ export function sincronizarOAutoRegistrarPersona(
 
   // Si es persona física, intentar separar nombre y apellido
   let nombreParte = nombreLimpio;
-  let apellidoParte: string | undefined = undefined;
+  let apellidoParte = '';
 
   if (tipoPersona === 'física') {
     const partes = nombreLimpio.split(/\s+/);
@@ -168,23 +190,33 @@ export function sincronizarOAutoRegistrarPersona(
   }
 
   const docConDv = formatearRUCConDV(docLimpio) || docLimpio;
+  const nuevoId = `p-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  const nuevaPersona: Persona = {
-    id: `p-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    tipo_persona: tipoPersona,
-    nombre: nombreParte,
-    apellido: apellidoParte,
-    tipo_documento: tipoDocumento,
-    nro_documento: docConDv,
-    domicilio: (firmante.domicilio || '').trim(),
-    telefono: '',
-    email: '',
-    representante_id: undefined,
-    representanteLegal: tipoPersona === 'física' ? 'No aplica' : 'Sin Asignar',
-    responsable: null,
-    origen: firmante.origen || (tipoDocumento === 'RUC' ? 'DNIT' : 'MANUAL'),
-    notas_notariales: `Auto-registrado desde Gestión de Pagarés (${firmante.rol.toUpperCase()}) el ${new Date().toLocaleDateString('es-PY')}.`
-  };
+  const nuevaPersona: Persona = normalizePersona(
+    {
+      id: nuevoId,
+      tipo_persona: tipoPersona,
+      nombre: nombreParte,
+      apellido: apellidoParte,
+      nombre_o_razon_social: nombreLimpio || `${nombreParte} ${apellidoParte}`.trim(),
+      tipo_documento: tipoDocumento,
+      nro_documento: docConDv,
+      documento_numero: docConDv,
+      domicilio: (firmante.domicilio || '').trim(),
+      telefono: '',
+      email: '',
+      representante_id: '',
+      representanteLegal: tipoPersona === 'física' ? 'No aplica' : 'Sin Asignar',
+      responsable: null,
+      ownedByWorkspace: effectiveWorkspace || uid,
+      userId: uid || effectiveWorkspace,
+      createdBy: uid || effectiveWorkspace,
+      creator_id: uid || effectiveWorkspace,
+      origen: firmante.origen || (tipoDocumento === 'RUC' ? 'DNIT' : 'MANUAL'),
+      notas_notariales: `Auto-registrado desde Gestión de Pagarés (${firmante.rol.toUpperCase()}) el ${new Date().toLocaleDateString('es-PY')}.`
+    },
+    nuevoId
+  );
 
   // Verificación estricta final de unicidad registral
   const duplicadoFinal = buscarPersonaDuplicada(nuevaPersona, personasActuales);
@@ -195,11 +227,18 @@ export function sincronizarOAutoRegistrarPersona(
   personasActuales.push(nuevaPersona);
   savePersonasToStorage(personasActuales);
 
+  const syncPromise = (effectiveWorkspace || uid)
+    ? syncPersonaToFirestore(effectiveWorkspace, nuevaPersona).catch((err) => {
+        console.error('Error guardando nueva persona en directorio_personas:', err);
+        throw err;
+      })
+    : undefined;
+
   if (onPersonaCreada) {
     onPersonaCreada(nuevaPersona);
   }
 
-  return { persona: nuevaPersona, esNueva: true };
+  return { persona: nuevaPersona, esNueva: true, syncPromise };
 }
 
 export interface SincronizacionResultado {
@@ -208,6 +247,7 @@ export interface SincronizacionResultado {
   nombresSincronizados: string[];
   mensaje: string;
   pagareActualizado?: Pagare;
+  syncPromises?: Promise<void>[];
 }
 
 /**
@@ -224,17 +264,19 @@ function formatearListaNombres(nombres: string[]): string {
 /**
  * Sincroniza retroactivamente los firmantes de un pagaré específico:
  * Revisa Acreedor, Deudor Principal y Codeudores.
- * Si no existen en el Fichero de Personas (localStorage), los auto-registra.
+ * Si no existen en el Fichero de Personas, los auto-registra en directorio_personas.
  * Vincula sus IDs en el pagaré para el Expediente 360°.
  */
 export function sincronizarFirmantesDePagare(
   pagare: Pagare,
   personasActuales: Persona[],
-  onPersonaCreada?: (nuevaPersona: Persona) => void
+  onPersonaCreada?: (nuevaPersona: Persona) => void,
+  workspaceId?: string
 ): SincronizacionResultado {
   const agregadas: Persona[] = [];
   const yaExistentes: Persona[] = [];
   const nombresSincronizados: string[] = [];
+  const syncPromises: Promise<void>[] = [];
 
   let acreedorIdFinal = pagare.acreedor_id;
   let deudorIdFinal = pagare.deudor_id;
@@ -252,8 +294,10 @@ export function sincronizarFirmantesDePagare(
         rol: 'acreedor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     acreedorIdFinal = res.persona.id;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -277,8 +321,10 @@ export function sincronizarFirmantesDePagare(
         rol: 'deudor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     deudorIdFinal = res.persona.id;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -313,8 +359,10 @@ export function sincronizarFirmantesDePagare(
           rol: 'codeudor'
         },
         personasActuales,
-        onPersonaCreada
+        onPersonaCreada,
+        workspaceId
       );
+      if (res.syncPromise) syncPromises.push(res.syncPromise);
       const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
       nombresSincronizados.push(nombreCompleto);
       if (res.esNueva) {
@@ -350,7 +398,8 @@ export function sincronizarFirmantesDePagare(
     yaExistentes,
     nombresSincronizados,
     mensaje,
-    pagareActualizado
+    pagareActualizado,
+    syncPromises
   };
 }
 
@@ -379,11 +428,13 @@ export function sincronizarFirmantesDeFormulario(
     codeudor2Origen?: 'MANUAL' | 'DNIT';
   },
   personasActuales: Persona[],
-  onPersonaCreada?: (nuevaPersona: Persona) => void
+  onPersonaCreada?: (nuevaPersona: Persona) => void,
+  workspaceId?: string
 ): SincronizacionResultado & { acreedorPersona?: Persona; deudorPersona?: Persona; codeudor1Persona?: Persona; codeudor2Persona?: Persona } {
   const agregadas: Persona[] = [];
   const yaExistentes: Persona[] = [];
   const nombresSincronizados: string[] = [];
+  const syncPromises: Promise<void>[] = [];
 
   let acreedorPersona: Persona | undefined;
   let deudorPersona: Persona | undefined;
@@ -391,8 +442,8 @@ export function sincronizarFirmantesDeFormulario(
   let codeudor2Persona: Persona | undefined;
 
   // 1. Acreedor
-  const acreedorDoc = inputs.acreedorDoc.trim();
-  const acreedorNombre = inputs.acreedorNombre.trim();
+  const acreedorDoc = (inputs.acreedorDoc || '').trim();
+  const acreedorNombre = (inputs.acreedorNombre || '').trim();
   if (acreedorDoc || acreedorNombre) {
     const res = sincronizarOAutoRegistrarPersona(
       {
@@ -403,8 +454,10 @@ export function sincronizarFirmantesDeFormulario(
         rol: 'acreedor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     acreedorPersona = res.persona;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -416,8 +469,8 @@ export function sincronizarFirmantesDeFormulario(
   }
 
   // 2. Deudor
-  const deudorDoc = inputs.deudorDoc.trim();
-  const deudorNombre = inputs.deudorNombre.trim();
+  const deudorDoc = (inputs.deudorDoc || '').trim();
+  const deudorNombre = (inputs.deudorNombre || '').trim();
   if (deudorDoc || deudorNombre) {
     const res = sincronizarOAutoRegistrarPersona(
       {
@@ -428,8 +481,10 @@ export function sincronizarFirmantesDeFormulario(
         rol: 'deudor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     deudorPersona = res.persona;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -459,8 +514,10 @@ export function sincronizarFirmantesDeFormulario(
         rol: 'codeudor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     codeudor1Persona = res.persona;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -487,8 +544,10 @@ export function sincronizarFirmantesDeFormulario(
         rol: 'codeudor'
       },
       personasActuales,
-      onPersonaCreada
+      onPersonaCreada,
+      workspaceId
     );
+    if (res.syncPromise) syncPromises.push(res.syncPromise);
     codeudor2Persona = res.persona;
     const nombreCompleto = `${res.persona.nombre} ${res.persona.apellido || ''}`.trim();
     nombresSincronizados.push(nombreCompleto);
@@ -516,7 +575,10 @@ export function sincronizarFirmantesDeFormulario(
     nombresSincronizados,
     mensaje,
     acreedorPersona,
-    deudorPersona
+    deudorPersona,
+    codeudor1Persona,
+    codeudor2Persona,
+    syncPromises
   };
 }
 
@@ -526,17 +588,20 @@ export function sincronizarFirmantesDeFormulario(
 export function sincronizarRetroactivoTodosLosPagares(
   pagares: Pagare[],
   personasActuales: Persona[],
-  onPersonaCreada?: (nuevaPersona: Persona) => void
+  onPersonaCreada?: (nuevaPersona: Persona) => void,
+  workspaceId?: string
 ): SincronizacionResultado {
   const todasAgregadas: Persona[] = [];
   const todasExistentes: Persona[] = [];
   const todosNombres: string[] = [];
+  const syncPromises: Promise<void>[] = [];
 
   for (const pag of pagares) {
-    const res = sincronizarFirmantesDePagare(pag, personasActuales, onPersonaCreada);
+    const res = sincronizarFirmantesDePagare(pag, personasActuales, onPersonaCreada, workspaceId);
     todasAgregadas.push(...res.agregadas);
     todasExistentes.push(...res.yaExistentes);
     todosNombres.push(...res.nombresSincronizados);
+    if (res.syncPromises) syncPromises.push(...res.syncPromises);
   }
 
   let mensaje = '';
@@ -552,6 +617,7 @@ export function sincronizarRetroactivoTodosLosPagares(
     agregadas: todasAgregadas,
     yaExistentes: todasExistentes,
     nombresSincronizados: todosNombres,
-    mensaje
+    mensaje,
+    syncPromises
   };
 }

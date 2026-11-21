@@ -170,7 +170,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     if (pagares && pagares.length > 0 && personas && personas.length > 0) {
       const res = sincronizarRetroactivoTodosLosPagares(pagares, personas, (nueva) => {
         onAddPersona(nueva);
-      });
+      }, workspaceId);
       if (res.agregadas.length > 0) {
         setSyncAlertBanner({
           tipo: 'success',
@@ -1282,7 +1282,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   // Sincronizar firmantes actuales del formulario con el Fichero de Clientes
-  const handleSincronizarFirmantesFormulario = () => {
+  const handleSincronizarFirmantesFormulario = async () => {
     const res = sincronizarFirmantesDeFormulario(
       {
         acreedorNombre: acreedorNombreRaw,
@@ -1307,8 +1307,13 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       personas,
       (nueva) => {
         onAddPersona(nueva);
-      }
+      },
+      workspaceId
     );
+
+    if (res.syncPromises && res.syncPromises.length > 0) {
+      await Promise.allSettled(res.syncPromises);
+    }
 
     if (res.acreedorPersona) {
       setAcreedorId(res.acreedorPersona.id);
@@ -1330,14 +1335,19 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   // Sincronizar firmantes de un pagaré existente en la lista
-  const handleSincronizarFirmantesDePagare = (pag: Pagare) => {
+  const handleSincronizarFirmantesDePagare = async (pag: Pagare) => {
     const res = sincronizarFirmantesDePagare(
       pag,
       personas,
       (nueva) => {
         onAddPersona(nueva);
-      }
+      },
+      workspaceId
     );
+
+    if (res.syncPromises && res.syncPromises.length > 0) {
+      await Promise.allSettled(res.syncPromises);
+    }
 
     if (res.pagareActualizado) {
       if (onUpdatePagare) {
@@ -1360,7 +1370,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   };
 
   // Detección Retroactiva de todos los pagarés
-  const handleSincronizarTodosRetroactivo = () => {
+  const handleSincronizarTodosRetroactivo = async () => {
     setIsSyncingRetroactivo(true);
     try {
       const res = sincronizarRetroactivoTodosLosPagares(
@@ -1368,8 +1378,12 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         personas,
         (nueva) => {
           onAddPersona(nueva);
-        }
+        },
+        workspaceId
       );
+      if (res.syncPromises && res.syncPromises.length > 0) {
+        await Promise.allSettled(res.syncPromises);
+      }
       setSyncAlertBanner({
         tipo: 'success',
         texto: res.mensaje
@@ -1435,7 +1449,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       personas,
       (nueva) => {
         onAddPersona(nueva);
-      }
+      },
+      workspaceId
     );
 
     const deudorIdFinal = syncRes.deudorPersona?.id || deudorId || undefined;

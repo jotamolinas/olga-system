@@ -9,7 +9,7 @@ import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData
 import { User, signOut, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, logout, getAccessToken } from './services/auth';
 import { 
-  fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore,
+  fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
   fetchKnowledgeDocsFromFirestore, syncKnowledgeDocToFirestore, deleteKnowledgeDocFromFirestore, guardarEscritoToFirestore 
 } from './services/firestore';
@@ -473,36 +473,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showAdminLoginModal]);
 
-  // Core collections (Inicializadas síncronamente desde localStorage y aisladas estrictamente por Workspace autenticado)
-  const [personas, setPersonas] = useState<Persona[]>(() => {
-    try {
-      let acumulado: Persona[] = [];
-      const globalSaved = localStorage.getItem('olga_directorio_personas_global');
-      if (globalSaved) {
-        try {
-          const parsed = JSON.parse(globalSaved);
-          if (Array.isArray(parsed) && parsed.length > 0) acumulado = [...acumulado, ...parsed];
-        } catch {}
-      }
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('olga_directorio_personas_') || key.includes('directorio_personas'))) {
-          const saved = localStorage.getItem(key);
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed) && parsed.length > 0) acumulado = [...acumulado, ...parsed];
-            } catch {}
-          }
-        }
-      }
-      if (acumulado.length > 0) {
-        const { listaLimpia } = depurarDuplicadosLista(acumulado);
-        return listaLimpia;
-      }
-    } catch {}
-    return [];
-  });
+  // Core collections (Aisladas estrictamente por Workspace autenticado desde directorio_personas)
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [config, setConfig] = useState<GlobalConfig>(() => {
     const saved = localStorage.getItem('ihara_config');
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
@@ -513,6 +485,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // Purgar claves globales antiguas de localStorage para evitar fugas entre cuentas en el mismo navegador
   useEffect(() => {
     try {
+      localStorage.removeItem('olga_directorio_personas_global');
       localStorage.removeItem('olga_directorio_personas');
       localStorage.removeItem('ihara_personas');
       localStorage.removeItem('olga_pagares');
@@ -626,12 +599,20 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const [documentoModalDocId, setDocumentoModalDocId] = useState<string | undefined>(undefined);
   const [documentoModalTipo, setDocumentoModalTipo] = useState<string | undefined>(undefined);
   const [documentoModalCategoria, setDocumentoModalCategoria] = useState<string | undefined>(undefined);
+  const [documentoModalTipoHoja, setDocumentoModalTipoHoja] = useState<'blanca' | 'protocolo' | undefined>(undefined);
 
-  const handleOpenDocumentModal = (text: string, docId?: string, tipo?: string, categoria?: string) => {
+  const handleOpenDocumentModal = (
+    text: string,
+    docId?: string,
+    tipo?: string,
+    categoria?: string,
+    tipoHoja?: 'blanca' | 'protocolo'
+  ) => {
     setDocumentoInitialText(text);
     setDocumentoModalDocId(docId);
     setDocumentoModalTipo(tipo);
     setDocumentoModalCategoria(categoria);
+    setDocumentoModalTipoHoja(tipoHoja);
     setDocumentoModalOpen(true);
   };
 
@@ -905,6 +886,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       }
       setCurrentUser(null);
       setUserProfile(null);
+      setPersonas([]);
       setIsCheckingProfile(false);
     });
     
@@ -942,60 +924,93 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => unsubscribe();
   }, [workspaceId]);
 
-  // FASE 2: Sincronización de Personas por Workspace (Confidencialidad Estricta Multi-Usuario)
+  // FASE 2: Sincronización de Personas por Workspace en directorio_personas (Retrocompatible Multi-Usuario)
   useEffect(() => {
     if (!workspaceId) {
+      setPersonas([]);
       return;
     }
 
-    // 1. Carga inmediata asíncrona desde fetchPersonasFromFirestore (multicolección)
-    fetchPersonasFromFirestore(workspaceId).then(cloudPersonas => {
-      if (cloudPersonas && cloudPersonas.length > 0) {
-        setPersonas(prev => {
-          const combinadas = [...cloudPersonas, ...prev];
-          const { listaLimpia } = depurarDuplicadosLista(combinadas);
-          try {
-            localStorage.setItem('olga_directorio_personas_global', JSON.stringify(listaLimpia));
-            localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
-          } catch {}
-          return listaLimpia;
-        });
-      }
-    }).catch(err => console.error("Error fetching personas cloud on mount:", err));
+    let activo = true;
+    const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
+    const mapa = new Map<string, Persona>();
 
-    const q = query(
+    const aplicarMapa = () => {
+      if (!activo) return;
+      const { listaLimpia } = depurarDuplicadosLista(Array.from(mapa.values()));
+      const normalizadas = listaLimpia.map((p) => normalizePersona(p, p.id));
+      setPersonas(normalizadas);
+      try {
+        localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(normalizadas));
+      } catch {}
+    };
+
+    // 1. Carga inmediata retrocompatible desde directorio_personas
+    fetchPersonasFromFirestore(workspaceId)
+      .then((cloudPersonas) => {
+        if (!activo) return;
+        cloudPersonas.forEach((p) => {
+          mapa.set(p.id, normalizePersona(p, p.id));
+        });
+        aplicarMapa();
+      })
+      .catch((err) => console.error("Error fetching directorio_personas on mount:", err));
+
+    // 2. Suscripción en tiempo real a directorio_personas por ownedByWorkspace y userId
+    const unsubs: Array<() => void> = [];
+
+    const qWorkspace = query(
       collection(db, 'directorio_personas'),
-      where('userId', '==', workspaceId)
+      where('ownedByWorkspace', '==', workspaceId)
+    );
+    unsubs.push(
+      onSnapshot(
+        qWorkspace,
+        (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'removed') {
+              mapa.delete(change.doc.id);
+            } else {
+              mapa.set(change.doc.id, normalizePersona(change.doc.data(), change.doc.id));
+            }
+          });
+          aplicarMapa();
+        },
+        (error) => {
+          console.error("Fallo en sincronización ownedByWorkspace de directorio_personas:", error);
+        }
+      )
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const validData: Persona[] = [];
-
-      snapshot.docs.forEach(docSnap => {
-        const item = docSnap.data() as any;
-        const pId = docSnap.id;
-        validData.push({ ...item, id: pId } as Persona);
-      });
-
-      setPersonas(prev => {
-        // Protección: Si el snapshot llega vacío pero prev ya tiene datos locales, NO sobrescribir con vacío
-        if (snapshot.docs.length === 0 && prev.length > 0) {
-          return prev;
+    const userTarget = uid || workspaceId;
+    const qUser = query(
+      collection(db, 'directorio_personas'),
+      where('userId', '==', userTarget)
+    );
+    unsubs.push(
+      onSnapshot(
+        qUser,
+        (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'removed') {
+              mapa.delete(change.doc.id);
+            } else {
+              mapa.set(change.doc.id, normalizePersona(change.doc.data(), change.doc.id));
+            }
+          });
+          aplicarMapa();
+        },
+        (error) => {
+          console.error("Fallo en sincronización userId de directorio_personas:", error);
         }
-        const combinadas = [...validData, ...prev];
-        const { listaLimpia } = depurarDuplicadosLista(combinadas);
-        try {
-          localStorage.setItem('olga_directorio_personas_global', JSON.stringify(listaLimpia));
-          localStorage.setItem(`olga_directorio_personas_${workspaceId}`, JSON.stringify(listaLimpia));
-        } catch {}
-        return listaLimpia;
-      });
-    }, (error) => {
-      console.error("Fallo en sincronización de personas:", error);
-    });
+      )
+    );
 
-    return () => unsubscribe();
-  }, [workspaceId]);
+    return () => {
+      activo = false;
+      unsubs.forEach((u) => u());
+    };
+  }, [workspaceId, currentUser?.uid]);
 
   // FASE 2: Sincronización de Base de Conocimiento por Workspace
   useEffect(() => {
@@ -1030,6 +1045,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   // Actually, I can just keep local update logic in handlers! Let's do that.
 
   const isBypassAuth =
+    Boolean((import.meta as any).env && (import.meta as any).env.DEV) &&
     typeof window !== 'undefined' &&
     (window.localStorage?.getItem('olga_bypass_auth') === 'true' ||
       Boolean((window as any).__OLGA_BYPASS_AUTH__));
@@ -1165,17 +1181,21 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       return false;
     }
 
-    const per: Persona = {
-      ...newPersona,
-      responsable: (newPersona.responsable && newPersona.responsable !== 'MONKEY BUSINESS IA') ? newPersona.responsable : null,
-      representanteLegal: newPersona.representanteLegal || (newPersona.tipo_persona === 'física' ? 'No aplica' : (newPersona.representante_id ? 'Asignado' : 'Sin Asignar')),
-      userId: workspaceId,            // El propietario legal de los datos (Titular)
-      ownedByWorkspace: workspaceId,  // Sello de propiedad verificada del Workspace
-      creator_id: currentUser?.uid,   // Rastro de auditoría: Quién lo digitó
-      createdBy: currentUser?.uid,
-      creator_name: currentUser?.displayName || (currentUser as any)?.nombre || currentUser?.email?.split('@')[0] || 'Usuario',
-      created_at: new Date().toISOString()
-    } as Persona;
+    const uid = String(currentUser?.uid || auth?.currentUser?.uid || workspaceId).trim();
+    const per: Persona = normalizePersona(
+      {
+        ...newPersona,
+        responsable: (newPersona.responsable && newPersona.responsable !== 'MONKEY BUSINESS IA') ? newPersona.responsable : null,
+        representanteLegal: newPersona.representanteLegal || (newPersona.tipo_persona === 'física' ? 'No aplica' : (newPersona.representante_id ? 'Asignado' : 'Sin Asignar')),
+        userId: uid,
+        ownedByWorkspace: workspaceId,
+        creator_id: uid,
+        createdBy: uid,
+        creator_name: currentUser?.displayName || (currentUser as any)?.nombre || currentUser?.email?.split('@')[0] || 'Usuario',
+        created_at: new Date().toISOString()
+      },
+      newPersona.id
+    );
     const updated = [...personas, per];
     setPersonas(updated);
     try {
@@ -1184,18 +1204,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       console.warn('Error saving personas to localStorage:', e);
     }
     syncPersonaToFirestore(workspaceId, per).catch(e => console.error("Error en escritura persona:", e));
-
-    // Forzar persistencia en la colección 'directorio_personas' en la nube
-    try {
-      setDoc(doc(db, 'directorio_personas', per.id), {
-        ...JSON.parse(JSON.stringify(per)),
-        userId: workspaceId,
-        creator_name: currentUser?.displayName || (currentUser as any)?.nombre || currentUser?.email?.split('@')[0] || 'Usuario',
-        created_at: per.created_at || new Date().toISOString()
-      }, { merge: true }).catch(err => console.error("Error al guardar en directorio_personas:", err));
-    } catch (err) {
-      console.error("Error al invocar setDoc en directorio_personas:", err);
-    }
 
     return true;
   };
@@ -1209,11 +1217,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       console.error("Operación abortada: Persona o ID no válido para actualización.");
       return;
     }
-    const per: Persona = {
-      ...updatedPersona,
-      userId: workspaceId,
-      ownedByWorkspace: workspaceId
-    } as Persona;
+    const uid = String(currentUser?.uid || auth?.currentUser?.uid || workspaceId).trim();
+    const per: Persona = normalizePersona(
+      {
+        ...updatedPersona,
+        userId: updatedPersona.userId || uid,
+        ownedByWorkspace: updatedPersona.ownedByWorkspace || workspaceId
+      },
+      updatedPersona.id
+    );
     setPersonas(prev => {
       const exists = prev.some(p => p.id === per.id);
       const updated = exists 
@@ -1239,7 +1251,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch (e) {
       console.warn('Error saving personas to localStorage:', e);
     }
-    if (currentUser) deletePersonaFromFirestore(id);
+    if (currentUser) deletePersonaFromFirestore(id).catch(e => console.error("Error eliminando persona:", e));
   };
 
   // FASE 3: Handlers for Pagares CRUD con Asignación de Propiedad (Titular)
@@ -1266,7 +1278,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       const updated = [pag, ...pagares];
       setPagares(updated);
       try {
-        localStorage.setItem('olga_pagares', JSON.stringify(updated));
+        if (workspaceId) {
+          localStorage.setItem(`olga_pagares_${workspaceId}`, JSON.stringify(updated));
+        }
       } catch (e) {
         console.warn('Error saving pagares to localStorage:', e);
       }
@@ -1283,8 +1297,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       setSelectedPagareForPreview(updatedPagare);
     }
     try {
-      localStorage.setItem('olga_pagares', JSON.stringify(updated));
-      localStorage.setItem('ihara_pagares', JSON.stringify(updated));
+      if (workspaceId) {
+        localStorage.setItem(`olga_pagares_${workspaceId}`, JSON.stringify(updated));
+      }
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
@@ -1301,7 +1316,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     const updated = pagares.map(p => p.id === id ? { ...p, status: 'anulado', anuladoAt: new Date().toISOString() } : p);
     setPagares(updated);
     try {
-      localStorage.setItem('olga_pagares', JSON.stringify(updated));
+      if (workspaceId) {
+        localStorage.setItem(`olga_pagares_${workspaceId}`, JSON.stringify(updated));
+      }
     } catch (e) {
       console.warn('Error saving pagares to localStorage:', e);
     }
@@ -1358,6 +1375,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           setPendingFiles([]);
           return;
         }
+      } else {
         // Control de límite para planes de pago
         let aiLimit = 30;
         if (planStr.includes('full')) aiLimit = 300;
@@ -2360,11 +2378,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           setDocumentoModalDocId(undefined);
           setDocumentoModalTipo(undefined);
           setDocumentoModalCategoria(undefined);
+          setDocumentoModalTipoHoja(undefined);
         }}
         initialText={documentoInitialText}
         documentId={documentoModalDocId}
         tipo={documentoModalTipo}
         categoria={documentoModalCategoria}
+        tipoHoja={documentoModalTipoHoja}
         currentUser={currentUser}
         config={config}
         olgaDocsCount={olgaDocsCount}

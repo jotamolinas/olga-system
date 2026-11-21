@@ -16,6 +16,7 @@ interface DocumentoModalProps {
   documentId?: string;
   tipo?: string;
   categoria?: string;
+  tipoHoja?: 'blanca' | 'protocolo';
   userData: any;
   currentUser: any;
   config?: any;
@@ -29,6 +30,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   documentId,
   tipo,
   categoria,
+  tipoHoja,
   userData,
   currentUser,
   config,
@@ -81,6 +83,8 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const isPaid = hasPaidPlan;
   const isWatermarkRequired = !isWhitelisted && isSoftBlocked;
 
+  const isHojaBlanca = tipoHoja === 'blanca';
+
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;
     if (printContent) {
@@ -95,12 +99,12 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           .prose { max-width: none !important; }
           @media print {
             body { padding: 0; margin: 0; }
-            @page { margin: 0; size: legal portrait; }
+            @page { margin: 0; size: 216mm 330mm portrait; }
             .print-content-wrapper {
-              padding-top: 4.5cm !important;
-              padding-left: 1.5cm !important;
-              padding-right: 1.5cm !important;
-              padding-bottom: 1.5cm !important;
+              padding-top: ${isHojaBlanca ? '20mm' : '4.5cm'} !important;
+              padding-left: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
+              padding-right: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
+              padding-bottom: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
               box-sizing: border-box !important;
               margin: 0 auto !important;
               width: 100% !important;
@@ -199,6 +203,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
         await updateDoc(docRef, {
           texto: text,
           categoria: categoriaSeleccionada || categoria || 'Sin Categoría',
+          ...(tipoHoja ? { tipoHoja } : {}),
           ultimaModificacion: serverTimestamp(),
           lastModifiedBy: auth.currentUser.uid,
           lastModifiedByName: creatorName
@@ -208,6 +213,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
         const datosDelDocumento = {
           texto: text,
           tipo: tipo || 'Escrito Generado',
+          ...(tipoHoja ? { tipoHoja } : {}),
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: auth.currentUser.uid, // Rastro de auditoría: Quién lo digitó
           createdBy: auth.currentUser.uid,
@@ -302,10 +308,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             ref={printAreaRef} 
             className="print-content-wrapper w-full max-w-[215.9mm] bg-white shadow-xl border border-slate-200"
             style={{
-              paddingTop: '4.5cm',
-              paddingLeft: '1.5cm',
-              paddingRight: '1.5cm',
-              paddingBottom: '1.5cm',
+              paddingTop: isHojaBlanca ? '20mm' : '4.5cm',
+              paddingLeft: isHojaBlanca ? '20mm' : '1.5cm',
+              paddingRight: isHojaBlanca ? '20mm' : '1.5cm',
+              paddingBottom: isHojaBlanca ? '20mm' : '1.5cm',
               boxSizing: 'border-box'
             }}
           >

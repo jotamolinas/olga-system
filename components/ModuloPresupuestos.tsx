@@ -51,8 +51,39 @@ import {
 import { Persona, TipoPersona } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { sonMismaPersona, extraerDocBase } from '../services/personaDedup';
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../services/auth';
+import { syncPersonaToFirestore, fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from '../services/auth';
+import { useWorkspace } from '../hooks/useWorkspace';
+
+const limpiarParaFirestore = (valor: any): any => {
+  if (valor === undefined) return '';
+  if (valor === null) return null;
+  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : 0;
+  if (typeof valor !== 'object') return valor;
+  if (Array.isArray(valor)) {
+    return valor.map((item) => limpiarParaFirestore(item));
+  }
+  const proto = Object.getPrototypeOf(valor);
+  if (proto !== Object.prototype && proto !== null) {
+    return valor;
+  }
+  const limpio: Record<string, any> = {};
+  for (const [k, v] of Object.entries(valor)) {
+    limpio[k] = v === undefined ? '' : limpiarParaFirestore(v);
+  }
+  return limpio;
+};
+
+const obtenerMillisPresupuesto = (p: any): number => {
+  const ts = p?.createdAt || p?.creadoEn || p?.updatedAt || p?.actualizadoEn;
+  if (!ts) return 0;
+  if (typeof ts?.toMillis === 'function') return ts.toMillis();
+  if (typeof ts?.seconds === 'number') return ts.seconds * 1000;
+  const parsed = new Date(ts).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const STORAGE_KEY_PERSONAS = 'olga_directorio_personas';
 
@@ -83,6 +114,18 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 }) => {
   const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
   const esFull = esPlanFull !== undefined ? esPlanFull : planUsuario.includes('full');
+
+  const [authUid, setAuthUid] = useState<string>(() => auth?.currentUser?.uid || '');
+  useEffect(() => {
+    if (!auth) return;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setAuthUid(user?.uid || '');
+    });
+    return () => unsubAuth();
+  }, []);
+
+  const { workspaceId: resolvedWorkspaceId } = useWorkspace(auth?.currentUser || userProfile, userProfile);
+  const effectiveWorkspaceId = resolvedWorkspaceId || authUid || (userId && userId !== 'default' ? userId : '');
 
   // Estado dinámico del Membrete Institucional (Multi-usuario)
   const [membrete, setMembrete] = useState<MembreteEscribaniaConfig>(() => {
@@ -174,6 +217,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   const [guardadoExito, setGuardadoExito] = useState(false);
   const [guardandoFirestore, setGuardandoFirestore] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
   const [pestañaActiva, setPestañaActiva] = useState<'todo' | 'tasas' | 'servicios' | 'resumen'>('todo');
 
   // Estados para Historial y Gestión de Presupuestos Guardados
@@ -224,23 +269,41 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     return () => window.removeEventListener('olga_theme_changed', handleThemeChange);
   }, []);
 
-  // Carga y sincronización reactiva del Fichero de Personas
+  // Carga y sincronización reactiva del Fichero de Personas desde directorio_personas
   useEffect(() => {
+    const effectiveWorkspace = effectiveWorkspaceId || userId || auth?.currentUser?.uid || '';
+    if (effectiveWorkspace) {
+      fetchPersonasFromFirestore(effectiveWorkspace)
+        .then((cloudPersonas) => {
+          const norm = cloudPersonas.map((p) => normalizePersona(p, p.id));
+          if (norm.length > 0) {
+            setFicheroPersonas(norm);
+            try {
+              localStorage.setItem(`${STORAGE_KEY_PERSONAS}_${effectiveWorkspace}`, JSON.stringify(norm));
+            } catch {}
+          }
+        })
+        .catch((err) => console.warn('Error cargando directorio_personas en Presupuestos:', err));
+    }
+
     const sincronizarPersonas = () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY_PERSONAS);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) setFicheroPersonas(parsed);
-        }
-      } catch {}
+      if (effectiveWorkspace) {
+        fetchPersonasFromFirestore(effectiveWorkspace)
+          .then((cloudPersonas) => {
+            const norm = cloudPersonas.map((p) => normalizePersona(p, p.id));
+            if (norm.length > 0) setFicheroPersonas(norm);
+          })
+          .catch(() => {});
+      }
     };
 
     window.addEventListener('olga_persona_guardada', sincronizarPersonas);
+    window.addEventListener('olga_personas_updated', sincronizarPersonas);
     return () => {
       window.removeEventListener('olga_persona_guardada', sincronizarPersonas);
+      window.removeEventListener('olga_personas_updated', sincronizarPersonas);
     };
-  }, []);
+  }, [effectiveWorkspaceId, userId]);
 
   // Cerrar lista de sugerencias al hacer clic fuera del buscador
   useEffect(() => {
@@ -257,22 +320,25 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   // Filtrado reactivo de clientes guardados en el Fichero
   const personasSugeridas = useMemo(() => {
-    const term = (encabezado.clienteNombre || '').trim().toLowerCase();
-    const docTerm = (encabezado.clienteRucCI || '').replace(/[.-]/g, '').toLowerCase().trim();
-    if (!term && !docTerm) return ficheroPersonas.slice(0, 8);
+    const term = (encabezado.clienteNombre ?? '').toString().trim().toLowerCase();
+    const docTerm = (encabezado.clienteRucCI ?? '').toString().replace(/[.-]/g, '').toLowerCase().trim();
+    const lista = Array.isArray(ficheroPersonas) ? ficheroPersonas : [];
+    if (!term && !docTerm) return lista.slice(0, 8);
 
-    return ficheroPersonas
+    return lista
       .filter((p) => {
-        const nom = (p.nombre || '').toLowerCase();
-        const ape = (p.apellido || '').toLowerCase();
+        if (!p) return false;
+        const nom = (p?.nombre ?? '').toString().toLowerCase();
+        const ape = (p?.apellido ?? '').toString().toLowerCase();
+        const nomRazon = (p?.nombre_o_razon_social ?? '').toString().toLowerCase();
         const completo = `${nom} ${ape}`.trim();
-        const doc = (p.nro_documento || '').replace(/[.-]/g, '').toLowerCase();
-        return completo.includes(term) || (docTerm && doc.includes(docTerm));
+        const docStr = (p?.nro_documento ?? p?.documento_numero ?? '').toString().replace(/[.-]/g, '').toLowerCase();
+        return completo.includes(term) || nomRazon.includes(term) || (Boolean(docTerm) && docStr.includes(docTerm));
       })
       .slice(0, 8);
   }, [ficheroPersonas, encabezado.clienteNombre, encabezado.clienteRucCI]);
 
-  // Función de Autoguardado Inteligente y Silencioso en el Fichero de Personas
+  // Función de Autoguardado Inteligente y Silencioso en el Fichero de Personas (directorio_personas)
   const autoguardarClienteSilencioso = (datosClienteDirecto?: {
     nombre?: string;
     doc?: string;
@@ -281,44 +347,43 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     origen?: 'DNIT' | 'FICHERO' | 'MANUAL';
   }) => {
     const nombre = (datosClienteDirecto?.nombre || encabezado.clienteNombre || '').trim();
-    const doc = (datosClienteDirecto?.doc || encabezado.clienteRucCI || '').trim();
-    if (!nombre || !doc) return false;
+    const docNum = (datosClienteDirecto?.doc || encabezado.clienteRucCI || '').trim();
+    if (!nombre || !docNum) return false;
 
     try {
-      const stored = localStorage.getItem(STORAGE_KEY_PERSONAS);
-      let lista: Persona[] = [];
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) lista = parsed;
-        } catch {}
-      }
+      const effectiveWorkspace = effectiveWorkspaceId || userId || auth?.currentUser?.uid || '';
+      const uid = auth?.currentUser?.uid || effectiveWorkspace;
+      const lista: Persona[] = Array.isArray(ficheroPersonas) ? [...ficheroPersonas] : [];
 
       const indice = lista.findIndex(
-        (p) => sonMismaPersona({ nro_documento: doc, nombre }, p)
+        (p) => sonMismaPersona({ nro_documento: docNum, nombre }, p)
       );
 
       // Evaluación dinámica según normativa tributaria paraguaya:
-      // Se limpian todos los caracteres no numéricos (puntos, guiones, espacios) antes de evaluar
-      const ruc = doc;
-      const rucLimpio = ruc.replace(/\D/g, '');
+      const rucLimpio = docNum.replace(/\D/g, '');
       const tipoPersonaResuelto: TipoPersona = rucLimpio.startsWith('800') ? 'jurídica' : 'física';
       const esJuridica = tipoPersonaResuelto === 'jurídica';
 
       let personaActualizada: Persona;
       if (indice >= 0) {
-        personaActualizada = {
-          ...lista[indice],
-          tipo_persona: tipoPersonaResuelto,
-          nombre: nombre,
-          domicilio: datosClienteDirecto?.direccion || encabezado.clienteDireccion || lista[indice].domicilio || '',
-          telefono: datosClienteDirecto?.telefono || encabezado.clienteTelefono || lista[indice].telefono || '',
-          email: encabezado.clienteEmail || lista[indice].email || '',
-        };
+        personaActualizada = normalizePersona(
+          {
+            ...lista[indice],
+            tipo_persona: tipoPersonaResuelto,
+            nombre: lista[indice].nombre || nombre,
+            nombre_o_razon_social: nombre,
+            domicilio: datosClienteDirecto?.direccion || encabezado.clienteDireccion || lista[indice].domicilio || '',
+            telefono: datosClienteDirecto?.telefono || encabezado.clienteTelefono || lista[indice].telefono || '',
+            email: encabezado.clienteEmail || lista[indice].email || '',
+            ownedByWorkspace: lista[indice].ownedByWorkspace || effectiveWorkspace,
+            userId: lista[indice].userId || uid,
+          },
+          lista[indice].id
+        );
         lista[indice] = personaActualizada;
       } else {
         let nombreFisica = nombre;
-        let apellidoFisica: string | undefined = undefined;
+        let apellidoFisica = '';
 
         if (!esJuridica) {
           const partes = nombre.split(/\s+/);
@@ -329,31 +394,46 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           }
         }
 
-        personaActualizada = {
-          id: `per-not-${Date.now()}`,
-          tipo_persona: tipoPersonaResuelto,
-          nombre: esJuridica ? nombre : nombreFisica,
-          apellido: apellidoFisica,
-          tipo_documento: doc.includes('-') ? 'RUC' : 'CI',
-          nro_documento: doc,
-          telefono: datosClienteDirecto?.telefono || encabezado.clienteTelefono || '',
-          email: encabezado.clienteEmail || '',
-          domicilio: datosClienteDirecto?.direccion || encabezado.clienteDireccion || '',
-          representante_id: undefined,
-          representanteLegal: tipoPersonaResuelto === 'física' ? 'No aplica' : 'Sin Asignar',
-          responsable: null,
-          origen: (datosClienteDirecto?.origen || origenCliente) === 'DNIT' ? 'DNIT' : 'MANUAL',
-          fechaCreacion: new Date().toISOString(),
-          userId: userId || 'default',
-          notas_notariales: `Vinculado automáticamente desde ${encabezado.tipoComprobante} Nº ${encabezado.numeroComprobante} - Concepto: ${encabezado.conceptoGeneral || 'Servicios Notariales'} (${encabezado.fechaEmision})`,
-        };
+        const nuevoId = `per-not-${Date.now()}`;
+        personaActualizada = normalizePersona(
+          {
+            id: nuevoId,
+            tipo_persona: tipoPersonaResuelto,
+            nombre: esJuridica ? nombre : nombreFisica,
+            apellido: apellidoFisica,
+            nombre_o_razon_social: nombre,
+            tipo_documento: docNum.includes('-') ? 'RUC' : 'CI',
+            nro_documento: docNum,
+            documento_numero: docNum,
+            telefono: datosClienteDirecto?.telefono || encabezado.clienteTelefono || '',
+            email: encabezado.clienteEmail || '',
+            domicilio: datosClienteDirecto?.direccion || encabezado.clienteDireccion || '',
+            representante_id: '',
+            representanteLegal: tipoPersonaResuelto === 'física' ? 'No aplica' : 'Sin Asignar',
+            responsable: null,
+            origen: (datosClienteDirecto?.origen || origenCliente) === 'DNIT' ? 'DNIT' : 'MANUAL',
+            ownedByWorkspace: effectiveWorkspace || uid,
+            userId: uid || effectiveWorkspace,
+            createdBy: uid || effectiveWorkspace,
+            notas_notariales: `Vinculado automáticamente desde ${encabezado.tipoComprobante} Nº ${encabezado.numeroComprobante} - Concepto: ${encabezado.conceptoGeneral || 'Servicios Notariales'} (${encabezado.fechaEmision})`,
+          },
+          nuevoId
+        );
         lista.unshift(personaActualizada);
       }
 
-      localStorage.setItem(STORAGE_KEY_PERSONAS, JSON.stringify(lista));
+      if (effectiveWorkspace) {
+        localStorage.setItem(`${STORAGE_KEY_PERSONAS}_${effectiveWorkspace}`, JSON.stringify(lista));
+      }
       setFicheroPersonas(lista);
       setClienteAutoguardado(true);
       setTimeout(() => setClienteAutoguardado(false), 3000);
+
+      if (effectiveWorkspace || uid) {
+        syncPersonaToFirestore(effectiveWorkspace, personaActualizada).catch((err) =>
+          console.error('Error sincronizando cliente desde Presupuesto en directorio_personas:', err)
+        );
+      }
 
       window.dispatchEvent(
         new CustomEvent('olga_persona_guardada', {
@@ -553,22 +633,79 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     setServicios((prev) => prev.filter((s) => s.id !== id));
   };
 
+  // Sincronización en tiempo real de Presupuestos Guardados (persiste al recargar y actualiza al guardar)
+  useEffect(() => {
+    if (!authUid) {
+      setPresupuestosGuardados([]);
+      return;
+    }
+
+    const ownerIds = Array.from(
+      new Set([effectiveWorkspaceId, authUid, userId].filter((id): id is string => Boolean(id) && id !== 'default'))
+    );
+    if (ownerIds.length === 0) return;
+
+    setCargandoHistorial(true);
+    const q = ownerIds.length === 1
+      ? query(collection(db, 'presupuestos'), where('userId', '==', ownerIds[0]))
+      : query(collection(db, 'presupuestos'), where('userId', 'in', ownerIds.slice(0, 10)));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const lista: any[] = [];
+        snap.forEach((docSnap) => {
+          lista.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        lista.sort((a, b) => obtenerMillisPresupuesto(b) - obtenerMillisPresupuesto(a));
+        setPresupuestosGuardados(lista);
+        setCargandoHistorial(false);
+      },
+      (err) => {
+        console.error('Error en tiempo real al sincronizar presupuestos guardados:', err);
+        setCargandoHistorial(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authUid, effectiveWorkspaceId, userId]);
+
   // Cargar historial de presupuestos guardados desde Firestore
   const fetchPresupuestosGuardados = async () => {
+    const currentAuthUid = auth?.currentUser?.uid || authUid;
+    if (!currentAuthUid) {
+      setPresupuestosGuardados([]);
+      return;
+    }
     setCargandoHistorial(true);
     try {
-      const q = query(collection(db, 'presupuestos'), orderBy('creadoEn', 'desc'));
+      const ownerIds = Array.from(
+        new Set([effectiveWorkspaceId, currentAuthUid, userId].filter((id): id is string => Boolean(id) && id !== 'default'))
+      );
+      if (ownerIds.length === 0) {
+        setPresupuestosGuardados([]);
+        return;
+      }
+
+      const q = ownerIds.length === 1
+        ? query(collection(db, 'presupuestos'), where('userId', '==', ownerIds[0]))
+        : query(collection(db, 'presupuestos'), where('userId', 'in', ownerIds.slice(0, 10)));
+
       const snap = await getDocs(q);
       const lista: any[] = [];
       snap.forEach(docSnap => {
-        const data = docSnap.data();
-        if (!userId || data.userId === userId || data.userId === 'default') {
-          lista.push({ id: docSnap.id, ...data });
-        }
+        lista.push({ id: docSnap.id, ...docSnap.data() });
       });
+      lista.sort((a, b) => obtenerMillisPresupuesto(b) - obtenerMillisPresupuesto(a));
       setPresupuestosGuardados(lista);
-    } catch (e) {
-      console.error('Error al cargar historial de presupuestos:', e);
+    } catch (e: any) {
+      console.error('Error al cargar historial de presupuestos:', {
+        code: e?.code,
+        message: e?.message,
+        uid: currentAuthUid,
+        error: e,
+      });
+      setSaveError(`No se pudo cargar la lista de presupuestos guardados: ${e?.message || 'Error de conexión'}`);
     } finally {
       setCargandoHistorial(false);
     }
@@ -602,6 +739,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       setObservaciones(p.observaciones);
     }
 
+    setSaveError(null);
     setPresupuestoIdActivo(p.id);
     setModalHistorialAbierto(false);
     setGuardadoExito(true);
@@ -618,14 +756,23 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       if (presupuestoIdActivo === id) {
         setPresupuestoIdActivo(null);
       }
-    } catch (err) {
-      console.error('Error al eliminar presupuesto:', err);
-      alert('No se pudo eliminar el presupuesto.');
+      setSaveToastMessage('Presupuesto eliminado correctamente.');
+      setTimeout(() => setSaveToastMessage(null), 3000);
+    } catch (err: any) {
+      console.error('Error al eliminar presupuesto:', {
+        code: err?.code,
+        message: err?.message,
+        id,
+        error: err,
+      });
+      setSaveError(`No se pudo eliminar el presupuesto: ${err?.message || 'Error de permisos o conexión'}`);
     }
   };
 
   // Guardar presupuesto (con validación de si es edición activa)
   const handleGuardarPresupuesto = () => {
+    if (guardandoFirestore) return;
+    setSaveError(null);
     if (presupuestoIdActivo) {
       setModalSobrescribirAbierto(true);
     } else {
@@ -635,87 +782,160 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   // Ejecución real del guardado en Firestore y respaldo local
   const ejecutarGuardadoPresupuesto = async (sobrescribir: boolean) => {
+    if (guardandoFirestore) return;
     setModalSobrescribirAbierto(false);
+    setSaveError(null);
+    setGuardadoExito(false);
+
+    const authenticatedUser = auth?.currentUser;
+    if (!authenticatedUser?.uid) {
+      const authErrorMsg = 'Debe iniciar sesión con una cuenta autenticada para guardar el presupuesto en Firestore.';
+      console.error('Error al guardar presupuesto: usuario no autenticado (auth.currentUser es null).');
+      setSaveError(authErrorMsg);
+      return;
+    }
+
     setGuardandoFirestore(true);
     try {
-      localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezado));
-      localStorage.setItem('olga_presupuesto_tasas', JSON.stringify(tasas));
-      localStorage.setItem('olga_presupuesto_servicios', JSON.stringify(servicios));
-      localStorage.setItem('olga_presupuesto_observaciones', observaciones);
-      autoguardarClienteSilencioso();
+      try {
+        localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezado));
+        localStorage.setItem('olga_presupuesto_tasas', JSON.stringify(tasas));
+        localStorage.setItem('olga_presupuesto_servicios', JSON.stringify(servicios));
+        localStorage.setItem('olga_presupuesto_observaciones', observaciones ?? '');
+        autoguardarClienteSilencioso();
+      } catch (localErr) {
+        console.warn('No se pudo actualizar respaldo localStorage de presupuesto:', localErr);
+      }
 
-      const docPayload = {
-        userId: userId || 'default',
-        tipoComprobante: encabezado.tipoComprobante,
-        numeroComprobante: encabezado.numeroComprobante,
-        timbrado: encabezado.timbrado,
-        fechaEmision: encabezado.fechaEmision,
-        fechaVencimientoValidez: encabezado.fechaVencimientoValidez,
-        condicionVenta: encabezado.condicionVenta,
-        clienteNombre: encabezado.clienteNombre,
-        clienteRucCI: encabezado.clienteRucCI,
-        clienteTelefono: encabezado.clienteTelefono,
-        clienteDireccion: encabezado.clienteDireccion,
+      const ownerWorkspaceId = effectiveWorkspaceId || authenticatedUser.uid;
+      const sanitizedPayload = limpiarParaFirestore({
+        uid: authenticatedUser.uid,
+        userId: ownerWorkspaceId,
+        workspaceId: ownerWorkspaceId,
+        tipoComprobante: encabezado.tipoComprobante || 'Presupuesto',
+        numeroComprobante: encabezado.numeroComprobante || '',
+        timbrado: encabezado.timbrado || '',
+        fechaEmision: encabezado.fechaEmision || new Date().toISOString().slice(0, 10),
+        fechaVencimientoValidez: encabezado.fechaVencimientoValidez || '',
+        condicionVenta: encabezado.condicionVenta || 'Contado',
+        clienteNombre: encabezado.clienteNombre || '',
+        clienteRucCI: encabezado.clienteRucCI || '',
+        clienteTelefono: encabezado.clienteTelefono || '',
+        clienteDireccion: encabezado.clienteDireccion || '',
         clienteEmail: encabezado.clienteEmail || '',
-        conceptoGeneral: encabezado.conceptoGeneral,
+        conceptoGeneral: encabezado.conceptoGeneral || '',
         localidad: encabezado.localidad || 'Asunción',
         tasas: tasas.map((t) => ({
-          id: t.id,
-          categoria: t.categoria,
-          descripcion: t.descripcion,
+          id: t.id || `tasa-${Date.now()}`,
+          categoria: t.categoria || 'otro',
+          descripcion: t.descripcion || '',
           monto: Number(t.monto) || 0,
-          tipoIva: t.tipoIva,
+          tipoIva: t.tipoIva || 'exenta',
           activo: Boolean(t.activo),
           numeroComprobantePago: t.numeroComprobantePago || '',
+          observacion: t.observacion || '',
         })),
         servicios: servicios.map((s) => ({
-          id: s.id,
-          descripcion: s.descripcion,
+          id: s.id || `srv-${Date.now()}`,
+          codigoConcepto: s.codigoConcepto || '',
+          descripcion: s.descripcion || '',
           cantidad: Number(s.cantidad) || 1,
           precioUnitario: Number(s.precioUnitario) || 0,
-          tipoIva: s.tipoIva,
+          tipoIva: s.tipoIva || '10',
+          montoExento: Number(s.montoExento) || 0,
+          montoIva5: Number(s.montoIva5) || 0,
+          montoIva10: Number(s.montoIva10) || 0,
           total: Number(s.total) || 0,
           activo: Boolean(s.activo),
+          esPersonalizado: Boolean(s.esPersonalizado),
         })),
-        observaciones,
+        observaciones: observaciones ?? '',
         liquidacion: {
-          subtotalTasasReembolso: liquidacion.subtotalTasasReembolso,
-          totalVentaServicios: liquidacion.totalVentaServicios,
-          iva5: liquidacion.iva5,
-          iva10: liquidacion.iva10,
-          totalIvaLiquidado: liquidacion.totalIvaLiquidado,
-          totalGeneralOperacion: liquidacion.totalGeneralOperacion,
+          subtotalTasasReembolso: Number(liquidacion.subtotalTasasReembolso) || 0,
+          totalVentaServicios: Number(liquidacion.totalVentaServicios) || 0,
+          iva5: Number(liquidacion.iva5) || 0,
+          iva10: Number(liquidacion.iva10) || 0,
+          totalIvaLiquidado: Number(liquidacion.totalIvaLiquidado) || 0,
+          totalGeneralOperacion: Number(liquidacion.totalGeneralOperacion) || 0,
         },
         membrete: {
-          nombreNotario: membrete.nombreNotario,
-          registroNotarial: membrete.registroNotarial,
+          nombreNotario: membrete.nombreNotario || '',
+          registroNotarial: membrete.registroNotarial || '',
           nombreEscribania: membrete.nombreEscribania || '',
-          direccion: membrete.direccion,
-          telefono: membrete.telefono,
-          email: membrete.email,
-          ruc: membrete.ruc,
-          timbradoNumero: membrete.timbradoNumero,
-          timbradoVigenciaInicio: membrete.timbradoVigenciaInicio,
-          timbradoVigenciaFin: membrete.timbradoVigenciaFin,
+          direccion: membrete.direccion || '',
+          ciudad: membrete.ciudad || '',
+          telefono: membrete.telefono || '',
+          email: membrete.email || '',
+          ruc: membrete.ruc || '',
+          timbradoNumero: membrete.timbradoNumero || '',
+          timbradoVigenciaInicio: membrete.timbradoVigenciaInicio || '',
+          timbradoVigenciaFin: membrete.timbradoVigenciaFin || '',
         },
-        montoTotal: liquidacion.totalGeneralOperacion,
+        montoTotal: Number(liquidacion.totalGeneralOperacion) || 0,
         estado: 'emitido',
-        creadoEn: serverTimestamp(),
-      };
+      });
 
       if (sobrescribir && presupuestoIdActivo) {
-        await updateDoc(doc(db, 'presupuestos', presupuestoIdActivo), docPayload);
+        const updatePayload = {
+          ...sanitizedPayload,
+          updatedAt: serverTimestamp(),
+          actualizadoEn: serverTimestamp(),
+        };
+        await updateDoc(doc(db, 'presupuestos', presupuestoIdActivo), updatePayload);
+        setPresupuestosGuardados((prev) =>
+          prev.map((item) =>
+            item.id === presupuestoIdActivo
+              ? { ...item, ...sanitizedPayload, updatedAt: new Date(), actualizadoEn: new Date() }
+              : item
+          )
+        );
+        setSaveToastMessage('¡Presupuesto actualizado en la base de datos!');
       } else {
-        const docRef = await addDoc(collection(db, 'presupuestos'), docPayload);
+        const createPayload = {
+          ...sanitizedPayload,
+          createdAt: serverTimestamp(),
+          creadoEn: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        const docRef = await addDoc(collection(db, 'presupuestos'), createPayload);
         setPresupuestoIdActivo(docRef.id);
+        setPresupuestosGuardados((prev) => {
+          const nuevoRegistro = {
+            id: docRef.id,
+            ...sanitizedPayload,
+            createdAt: new Date(),
+            creadoEn: new Date(),
+          };
+          const sinDuplicado = prev.filter((item) => item.id !== docRef.id);
+          return [nuevoRegistro, ...sinDuplicado];
+        });
+        setSaveToastMessage('¡Presupuesto guardado correctamente en la base de datos!');
       }
 
       setGuardadoExito(true);
-      setTimeout(() => setGuardadoExito(false), 3000);
-    } catch (e) {
-      console.error('Error al guardar presupuesto en Firestore:', e);
-      setGuardadoExito(true);
-      setTimeout(() => setGuardadoExito(false), 3000);
+      setTimeout(() => {
+        setGuardadoExito(false);
+        setSaveToastMessage(null);
+      }, 3500);
+    } catch (e: any) {
+      console.error('Error detallado al guardar presupuesto en Firestore:', {
+        code: e?.code,
+        message: e?.message,
+        name: e?.name,
+        uid: authenticatedUser?.uid,
+        workspaceId: effectiveWorkspaceId || authenticatedUser?.uid,
+        sobrescribir,
+        presupuestoIdActivo,
+        error: e,
+      });
+      setGuardadoExito(false);
+      let mensajeUsuario = `No se pudo guardar el presupuesto en la nube: ${e?.message || 'Error desconocido'}`;
+      if (e?.code === 'permission-denied') {
+        mensajeUsuario = 'Permiso denegado por Firestore al guardar el presupuesto. Verifique su sesión activa e intente nuevamente.';
+      } else if (e?.code === 'unavailable') {
+        mensajeUsuario = 'No se pudo conectar con Firestore. Verifique su conexión a internet e intente nuevamente.';
+      }
+      setSaveError(mensajeUsuario);
     } finally {
       setGuardandoFirestore(false);
     }
@@ -1210,7 +1430,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             title="Ver presupuestos guardados"
           >
             <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Ver Guardados</span>
+            <span className="hidden sm:inline">Ver Guardados{presupuestosGuardados.length > 0 ? ` (${presupuestosGuardados.length})` : ''}</span>
             {presupuestoIdActivo && (
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse ml-0.5" title="Editando presupuesto existente"></span>
             )}
@@ -1267,6 +1487,41 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Alertas visibles de guardado / error en Firestore */}
+      {saveError && (
+        <div className="bg-red-500/15 border border-red-500/40 text-red-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-medium shadow-md print:hidden" role="alert">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="text-red-700 dark:text-red-200 font-semibold">{saveError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveError(null)}
+            className="text-red-400 hover:text-red-200 p-1 rounded-lg cursor-pointer"
+            aria-label="Cerrar error"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {saveToastMessage && (
+        <div className="bg-emerald-500/15 border border-emerald-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-semibold shadow-md print:hidden" role="status">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span className="text-emerald-700 dark:text-emerald-200">{saveToastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveToastMessage(null)}
+            className="text-emerald-500 hover:text-emerald-300 p-1 rounded-lg cursor-pointer"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Barra de Filtros y Totales Sticky (oculta al imprimir) */}
       <div className="sticky top-2 z-20 px-6 py-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg flex items-center justify-between gap-4 flex-wrap transition-all print:hidden">
@@ -2172,6 +2427,40 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </section>
 
+        {saveError && (
+          <div className="mt-4 bg-red-500/15 border border-red-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-medium shadow-md print:hidden" role="alert">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <span className="text-red-700 dark:text-red-200 font-semibold">{saveError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveError(null)}
+              className="text-red-400 hover:text-red-200 p-1 rounded-lg cursor-pointer"
+              aria-label="Cerrar error"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {saveToastMessage && (
+          <div className="mt-4 bg-emerald-500/15 border border-emerald-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-semibold shadow-md print:hidden" role="status">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span className="text-emerald-700 dark:text-emerald-200">{saveToastMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveToastMessage(null)}
+              className="text-emerald-500 hover:text-emerald-300 p-1 rounded-lg cursor-pointer"
+              aria-label="Cerrar notificación"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Botones de Acción Global Inferior (para evitar scroll hacia arriba) */}
         <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-end gap-3 print:hidden">
           <button
@@ -2728,22 +3017,27 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <div className="flex flex-col gap-2 pt-2">
               <button
                 type="button"
+                disabled={guardandoFirestore}
                 onClick={() => ejecutarGuardadoPresupuesto(true)}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
-                <Save className="w-4 h-4" /> Sobrescribir (Actualizar Actual)
+                {guardandoFirestore ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Sobrescribir (Actualizar Actual)</span>
               </button>
               <button
                 type="button"
+                disabled={guardandoFirestore}
                 onClick={() => ejecutarGuardadoPresupuesto(false)}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
-                <Plus className="w-4 h-4" /> Guardar como Nuevo
+                {guardandoFirestore ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span>Guardar como Nuevo</span>
               </button>
               <button
                 type="button"
+                disabled={guardandoFirestore}
                 onClick={() => setModalSobrescribirAbierto(false)}
-                className="w-full py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+                className="w-full py-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-gray-400 hover:text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
               >
                 Cancelar
               </button>

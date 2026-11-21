@@ -62,22 +62,38 @@ export const formatDocClean = (doc: string | number | null | undefined): string 
   return str.replace(/\./g, '').trim();
 };
 
-const EditableField = ({ value, onChange, className, style, placeholder, disabled }: any) => {
-  const valStr = String(value ?? '');
+const EditableField = ({ value, onChange, onBlur, className, style, placeholder, disabled }: any) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [localValue, setLocalValue] = useState(() => String(value ?? ''));
+
+  useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setLocalValue(String(value ?? ''));
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setLocalValue(raw);
+    onChange(raw);
+  };
+
   return (
     <>
       <input
+        ref={inputRef}
         type="text"
-        value={valStr}
-        size={Math.max(valStr.length || 1, 3)}
-        onChange={(e) => onChange(e.target.value)}
+        value={localValue}
+        size={Math.max(localValue.length || 1, 3)}
+        onChange={handleChange}
+        onBlur={onBlur}
         placeholder={placeholder}
         disabled={disabled}
         className={`bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors print:hidden ${className || ''}`}
         style={style}
       />
       <span className={`hidden print:inline ${className || ''}`} style={style}>
-        {valStr}
+        {localValue}
       </span>
     </>
   );
@@ -199,10 +215,13 @@ interface NotarialCiudadInputProps {
 }
 
 export const NotarialCiudadInput: React.FC<NotarialCiudadInputProps> = ({ value, onChangeCiudad }) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [localText, setLocalText] = useState(value);
 
   useEffect(() => {
-    setLocalText(value);
+    if (document.activeElement !== inputRef.current) {
+      setLocalText(value);
+    }
   }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,6 +237,7 @@ export const NotarialCiudadInput: React.FC<NotarialCiudadInputProps> = ({ value,
 
   return (
     <input
+      ref={inputRef}
       type="text"
       value={localText}
       onChange={handleChange}
@@ -245,96 +265,66 @@ export const NotarialTextarea: React.FC<NotarialTextareaProps> = ({
   isMaster,
   onReset
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [localText, setLocalText] = useState(value);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const debounceTimerRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const isEditingRef = useRef(false);
+  const lastValueRef = useRef(value);
 
   useEffect(() => {
-    setLocalText(value);
-  }, [value]);
-
-  const adjustHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    if (containerRef.current && !isEditingRef.current && document.activeElement !== containerRef.current) {
+      containerRef.current.innerHTML = htmlValue;
     }
-  };
+    lastValueRef.current = value;
+  }, [value, htmlValue]);
 
-  useEffect(() => {
-    if (isEditing) {
-      adjustHeight();
+  const handleInput = () => {
+    if (containerRef.current) {
+      const text = containerRef.current.innerText || containerRef.current.textContent || '';
+      if (onImmediateChange) {
+        onImmediateChange(text);
+      }
     }
-  }, [isEditing, localText]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const nextVal = e.target.value;
-    setLocalText(nextVal);
-    if (onImmediateChange) {
-      onImmediateChange(nextVal);
-    }
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      onCommit(nextVal);
-    }, 150);
   };
 
   const handleBlur = () => {
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    onCommit(localText);
-    setIsEditing(false);
+    isEditingRef.current = false;
+    if (containerRef.current) {
+      const text = containerRef.current.innerText || containerRef.current.textContent || '';
+      onCommit(text);
+    }
+  };
+
+  const handleFocus = () => {
+    isEditingRef.current = true;
   };
 
   return (
     <div className="print:hidden">
-      {!isEditing ? (
-        <div className="group relative">
-          <div
-            className="text-[13px] leading-relaxed text-slate-900 text-justify font-sans whitespace-pre-wrap cursor-pointer p-1 rounded hover:bg-slate-50/80 transition-colors"
-            onClick={() => setIsEditing(true)}
-            dangerouslySetInnerHTML={{ __html: htmlValue }}
-            title="Hacer clic para editar el texto"
-          />
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded shadow cursor-pointer"
-          >
-            Editar texto
-          </button>
-        </div>
-      ) : (
-        <div>
-          <textarea
-            ref={textareaRef}
-            value={localText}
-            onChange={handleChange}
-            onBlur={handleBlur}
-            rows={5}
-            className="w-full bg-slate-50 outline-none focus:ring-1 focus:ring-blue-400 rounded p-2 text-[13px] leading-relaxed text-slate-900 text-justify font-sans resize-none overflow-hidden border border-blue-300 transition-colors cursor-text"
-            placeholder="Ingrese aquí su texto..."
-            autoFocus
-          />
-          <div className="flex justify-between items-center mt-1">
+      <div className="group relative">
+        <div
+          ref={containerRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onBlur={handleBlur}
+          onFocus={handleFocus}
+          className="text-[13px] leading-relaxed text-slate-900 text-justify font-sans whitespace-pre-wrap outline-none p-1 rounded hover:bg-slate-50/80 focus:bg-slate-50 focus:ring-1 focus:ring-blue-400 border border-transparent focus:border-blue-300 transition-colors cursor-text"
+          title="Haga clic para editar el texto directamente"
+        />
+        <div className="flex justify-between items-center mt-1">
+          <span className="text-[10px] text-slate-400 italic">
+            * Edición directa habilitada. El cursor se mantiene en su posición al escribir.
+          </span>
+          {onReset && (
             <button
               type="button"
-              onClick={() => setIsEditing(false)}
-              className="text-[10px] text-emerald-600 hover:text-emerald-800 font-bold cursor-pointer"
+              onClick={onReset}
+              className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
             >
-              ✓ Listo / Vista previa
+              {isMaster ? 'Restablecer todas las cuotas al texto generado' : 'Restablecer texto generado'}
             </button>
-            {onReset && (
-              <button
-                type="button"
-                onClick={onReset}
-                className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
-              >
-                {isMaster ? 'Restablecer todas las cuotas al texto generado' : 'Restablecer texto generado'}
-              </button>
-            )}
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -774,7 +764,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
         codeudor2_documento_raw: formatDocClean(codeudor2DocumentoEditable),
         codeudor2_domicilio_raw: sanitizeNotarialText(codeudor2DomicilioEditable),
         certificado_firmas_nro: baseCertificadoNro,
-        fechaLugarEmision: encabezadoCiudadFechaEditable,
+        fechaLugarEmision: encabezadoCiudadFechaEditable.toUpperCase(),
         clausulaPenal,
         moraAutomatica,
         dispensaProtesto,
@@ -1301,8 +1291,8 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
       VENCIMIENTO: ${new Date(item.fecha_pag + 'T12:00:00').toLocaleDateString('es-PY')}
     </div>
 
-    <div class="date-line">
-      ${encabezadoCiudadFechaEditable}
+    <div class="date-line" style="text-transform: uppercase;">
+      ${encabezadoCiudadFechaEditable.toUpperCase()}
     </div>
 
     <div class="body-text">
@@ -1556,8 +1546,10 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   <div className="flex items-baseline text-sm mb-4 print:mb-3 font-sans uppercase">
                    <EditableField
                      className="text-sm font-bold uppercase mt-4 mb-6 w-full"
+                     style={{ textTransform: 'uppercase' }}
                      value={encabezadoCiudadFechaEditable}
-                     onChange={(val: string) => setEncabezadoCiudadFechaEditable(val.toUpperCase())}
+                     onChange={(val: string) => setEncabezadoCiudadFechaEditable(val)}
+                     onBlur={() => setEncabezadoCiudadFechaEditable(prev => prev.toUpperCase())}
                    />
                   </div>
                 </div>
@@ -1594,18 +1586,18 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   {/* Deudor Principal */}
                   <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
                     <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Deudor Principal</p>
-                    <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={(val: string) => setDeudorNombreEditable(sanitizeNotarialText(val))} /></p>
-                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(deudorDocumentoEditable)} onChange={(val: string) => setDeudorDocumentoEditable(formatDocClean(val))} /></p>
-                    <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDomicilioEditable} onChange={(val: string) => setDeudorDomicilioEditable(sanitizeNotarialText(val))} /></p>
+                    <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorNombreEditable} onChange={(val: string) => setDeudorNombreEditable(val)} onBlur={() => setDeudorNombreEditable(prev => sanitizeNotarialText(prev))} /></p>
+                    <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDocumentoEditable} onChange={(val: string) => setDeudorDocumentoEditable(val)} onBlur={() => setDeudorDocumentoEditable(prev => formatDocClean(prev))} /></p>
+                    <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={deudorDomicilioEditable} onChange={(val: string) => setDeudorDomicilioEditable(val)} onBlur={() => setDeudorDomicilioEditable(prev => sanitizeNotarialText(prev))} /></p>
                   </div>
 
                   {/* Co-deudor 1 (si existe) */}
                   {(codeudor1NombreEditable || codeudor1DocumentoEditable) && (
                     <div className="w-full max-w-[340px] border-t border-black pt-1 mb-14">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 1</p>
-                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={(val: string) => setCodeudor1NombreEditable(sanitizeNotarialText(val))} /></p>
-                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor1DocumentoEditable)} onChange={(val: string) => setCodeudor1DocumentoEditable(formatDocClean(val))} /></p>
-                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DomicilioEditable} onChange={(val: string) => setCodeudor1DomicilioEditable(sanitizeNotarialText(val))} /></p>
+                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1NombreEditable} onChange={(val: string) => setCodeudor1NombreEditable(val)} onBlur={() => setCodeudor1NombreEditable(prev => sanitizeNotarialText(prev))} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DocumentoEditable} onChange={(val: string) => setCodeudor1DocumentoEditable(val)} onBlur={() => setCodeudor1DocumentoEditable(prev => formatDocClean(prev))} /></p>
+                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor1DomicilioEditable} onChange={(val: string) => setCodeudor1DomicilioEditable(val)} onBlur={() => setCodeudor1DomicilioEditable(prev => sanitizeNotarialText(prev))} /></p>
                     </div>
                   )}
 
@@ -1613,9 +1605,9 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
                   {(codeudor2NombreEditable || codeudor2DocumentoEditable) && (
                     <div className="w-full max-w-[340px] border-t border-black pt-1 mb-8">
                       <p className="text-[11px] font-black uppercase text-slate-500 mb-0.5">Co-Deudor Solidario 2</p>
-                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={(val: string) => setCodeudor2NombreEditable(sanitizeNotarialText(val))} /></p>
-                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={formatDocClean(codeudor2DocumentoEditable)} onChange={(val: string) => setCodeudor2DocumentoEditable(formatDocClean(val))} /></p>
-                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DomicilioEditable} onChange={(val: string) => setCodeudor2DomicilioEditable(sanitizeNotarialText(val))} /></p>
+                      <p className="text-sm flex items-center gap-1">Nombre: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2NombreEditable} onChange={(val: string) => setCodeudor2NombreEditable(val)} onBlur={() => setCodeudor2NombreEditable(prev => sanitizeNotarialText(prev))} /></p>
+                      <p className="text-sm flex items-center gap-1">Documento: C.I.N° <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DocumentoEditable} onChange={(val: string) => setCodeudor2DocumentoEditable(val)} onBlur={() => setCodeudor2DocumentoEditable(prev => formatDocClean(prev))} /></p>
+                      <p className="text-sm flex items-center gap-1">Domicilio: <EditableField className="uppercase bg-transparent outline-none border-b border-transparent hover:border-slate-300 focus:border-slate-400 focus:bg-slate-50 transition-colors flex-1" value={codeudor2DomicilioEditable} onChange={(val: string) => setCodeudor2DomicilioEditable(val)} onBlur={() => setCodeudor2DomicilioEditable(prev => sanitizeNotarialText(prev))} /></p>
                     </div>
                   )}
                 </div>

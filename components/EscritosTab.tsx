@@ -22,6 +22,7 @@ interface Escrito {
   fechaCreacion?: Timestamp;
   createdAt?: string;
   tipo: string;
+  tipoHoja?: 'blanca' | 'protocolo';
   userId: string;
   categoria?: string;
   correlativo?: string | number;
@@ -35,7 +36,7 @@ interface EscritosTabProps {
   currentUser: User | null;
   userProfile?: any;
   personas?: any[];
-  onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string) => void;
+  onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string, tipoHoja?: 'blanca' | 'protocolo') => void;
   esPlanFull?: boolean;
   isSoftBlocked?: boolean;
 }
@@ -430,6 +431,7 @@ const LOCAL_STORAGE_DRAFT_TEXT = 'olga_escritos_redaccion_draft_texto';
 const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
+const LOCAL_STORAGE_DRAFT_TIPO_HOJA = 'olga_escritos_redaccion_draft_tipo_hoja';
 
 export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
@@ -758,7 +760,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [supportCopiedToast, setSupportCopiedToast] = useState<string | null>(null);
   const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
   const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
-  const esHojaEnBlanco = selectedPlantillaId === 'hoja_en_blanco' || documentTitle === 'Escrito en Blanco';
+  const [tipoHoja, setTipoHoja] = useState<'blanca' | 'protocolo'>('blanca');
+  const esHojaEnBlanco = tipoHoja === 'blanca';
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -821,9 +824,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const savedPlantilla = localStorage.getItem(LOCAL_STORAGE_DRAFT_PLANTILLA);
       const savedTitle = localStorage.getItem(LOCAL_STORAGE_DRAFT_TITULO);
       const savedCat = localStorage.getItem(LOCAL_STORAGE_DRAFT_CATEGORIA);
+      const savedTipoHoja = localStorage.getItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA);
 
       if (savedPlantilla) {
         setSelectedPlantillaId(savedPlantilla);
+      }
+      if (savedTipoHoja === 'blanca' || savedTipoHoja === 'protocolo') {
+        setTipoHoja(savedTipoHoja);
+      } else if (savedPlantilla) {
+        setTipoHoja(savedPlantilla === 'hoja_en_blanco' ? 'blanca' : 'protocolo');
+      } else if (savedTitle && savedTitle !== 'Escrito en Blanco') {
+        setTipoHoja('protocolo');
+      } else {
+        setTipoHoja('blanca');
       }
       if (savedTitle) {
         setDocumentTitle(savedTitle);
@@ -853,6 +866,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, selectedPlantillaId);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, documentTitle);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, selectedCategoryForSave);
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, tipoHoja);
       } catch (e) {
         console.warn('Error guardando borrador local:', e);
       }
@@ -863,7 +877,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave]);
+  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja]);
 
   // Sincronización del contentEditable con el estado de React editorText
   useEffect(() => {
@@ -1538,7 +1552,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Condición de Modo Autocompletado Activo:
   // Se oculta la cabecera completa si mensajeAsistente tiene algún valor (modo llenado paso a paso),
   // y solo se restaura cuando termina (mensajeAsistente === null / sin espacios pendientes) o al seleccionar 'Hoja en Blanco'.
-  const condicionAutocompletado = Boolean(mensajeAsistente) && selectedPlantillaId !== 'hoja_en_blanco';
+  const condicionAutocompletado = Boolean(mensajeAsistente) && !esHojaEnBlanco;
 
   // Lógica inteligente de visibilidad de la barra de herramientas de formato de texto (Negrita, Cursiva, Alineación, Listas)
   // Oculta si el asistente flotante está activo con espacios pendientes.
@@ -1547,7 +1561,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // 2. Se está editando un documento existente (abierto desde la grilla)
   // 3. Se completó el 100% de los espacios en blanco (mensajeAsistente === null o totalBlanks === 0)
   const mostrarBarraHerramientas = 
-    selectedPlantillaId === 'hoja_en_blanco' ||
+    esHojaEnBlanco ||
     editandoDocumentoExistente ||
     totalBlanks === 0 ||
     !mensajeAsistente;
@@ -1795,7 +1809,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Resaltado visual del espacio en blanco activo con resolución silenciosa previa:
   useEffect(() => {
-    if (!mostrarEditor || selectedPlantillaId === 'hoja_en_blanco') return;
+    if (!mostrarEditor || esHojaEnBlanco) return;
 
     // Si hay espacios en blanco pendientes, verificar si alguno se puede resolver silenciosamente
     if (/_{3,}/.test(editorText)) {
@@ -1841,7 +1855,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, selectedPlantillaId, editorText, memoria]);
+  }, [mostrarEditor, esHojaEnBlanco, editorText, memoria]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
@@ -2170,6 +2184,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     id: `temp-${idx}`,
                     texto: tDoc.texto,
                     tipo: `${tDoc.tipo} (Guardado Local)`,
+                    tipoHoja: tDoc.tipoHoja,
                     categoria: categoria,
                     userId: tDoc.userId,
                     fechaCreacion: {
@@ -2244,10 +2259,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     if (!found || plantillaId === 'hoja_en_blanco') {
       // Limpieza total del editor
       textoParaEditor = '';
+      setTipoHoja('blanca');
       setEditorText('');
       setDocumentTitle('Escrito en Blanco');
       setSelectedCategoryForSave('Contratos Privados');
     } else if (plantillaId === 'constitucion_sa') {
+      setTipoHoja('protocolo');
       // Generador Dinámico de Socios (Prompt Inicial):
       // Pregunta al usuario la cantidad de socios que conformarán la S.A.
       let numSocios = 2;
@@ -2269,6 +2286,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setDocumentTitle('Constitución de S.A.');
       setSelectedCategoryForSave('Contratos Privados');
     } else {
+      setTipoHoja('protocolo');
       // Plantillas limpias con espacios en blanco (_______)
       textoParaEditor = procesarAutofillPlantilla(found.contenido);
       setEditorText(textoParaEditor);
@@ -2304,6 +2322,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Botón explícito para '+ Nuevo Escrito' (despliega el editor en hoja limpia)
   const handleNuevoEscrito = () => {
     setSelectedPlantillaId('hoja_en_blanco');
+    setTipoHoja('blanca');
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
     setEditorText('');
@@ -2331,6 +2350,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Botón explícito para limpiar completamente el editor (Hoja en Blanco)
   const handleLimpiarEditor = () => {
     setSelectedPlantillaId('hoja_en_blanco');
+    setTipoHoja('blanca');
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
     setEditorText('');
@@ -2389,6 +2409,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         await updateDoc(docRef, {
           texto: textoLimpio,
           tipo: tipoDoc,
+          tipoHoja,
           categoria: cat,
           ultimaModificacion: serverTimestamp(),
           lastModifiedBy: user?.uid,
@@ -2403,6 +2424,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           if (!isNaN(idx) && tempDocs[idx]) {
             tempDocs[idx].texto = textoLimpio;
             tempDocs[idx].tipo = tipoDoc;
+            tempDocs[idx].tipoHoja = tipoHoja;
             tempDocs[idx].categoria = cat;
             localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
           }
@@ -2412,6 +2434,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         const nuevoDocData = {
           texto: textoLimpio,
           tipo: tipoDoc,
+          tipoHoja,
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
@@ -2458,6 +2481,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         list.push({
           texto: textoLimpio,
           tipo: tipoDoc,
+          tipoHoja,
           userId: user.uid,
           categoria: cat,
           fechaCreacion: new Date().toISOString()
@@ -2534,7 +2558,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
-    const esHojaEnBlanco = selectedPlantillaId === 'hoja_en_blanco' || documentTitle === 'Escrito en Blanco';
+    const esHojaEnBlancoImpresion = tipoHoja === 'blanca';
 
     // 2. Arquitectura CSS Nativa de Impresión: Flujo continuo con @page :left y @page :right
     const htmlToPrint = `<!DOCTYPE html>
@@ -2545,9 +2569,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   <style>
     @page {
       size: 216mm 330mm portrait;
-      ${esHojaEnBlanco ? 'margin: 20mm;' : 'margin-top: 55mm; margin-bottom: 25mm; margin-left: 45mm; margin-right: 15mm;'}
+      ${esHojaEnBlancoImpresion ? 'margin: 20mm;' : 'margin-top: 55mm; margin-bottom: 25mm; margin-left: 45mm; margin-right: 15mm;'}
     }
-    ${esHojaEnBlanco ? '' : `
+    ${esHojaEnBlancoImpresion ? '' : `
     @page :left {
       size: 216mm 330mm portrait;
       margin-top: 55mm;
@@ -2854,20 +2878,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Cargar documento seleccionado en el Editor Notarial Activo
   const handleEditarDocumento = (escrito: Escrito) => {
     const docTexto = escrito.texto || '';
+    const cleanTitle = escrito.tipo.replace(' (Guardado Local)', '');
+    const restoredTipoHoja: 'blanca' | 'protocolo' =
+      escrito.tipoHoja || (cleanTitle === 'Escrito en Blanco' ? 'blanca' : 'protocolo');
+
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
     setActiveEditingDoc(escrito);
-    setSelectedPlantillaId('');
+    setTipoHoja(restoredTipoHoja);
+    setSelectedPlantillaId(restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     setEditorText(docTexto);
-    setDocumentTitle(escrito.tipo.replace(' (Guardado Local)', ''));
+    setDocumentTitle(cleanTitle);
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
     setPreviewMode(false);
     setMemoria({});
 
     try {
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, docTexto);
-      localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, escrito.tipo.replace(' (Guardado Local)', ''));
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, cleanTitle);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, escrito.categoria || 'Contratos Privados');
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, restoredTipoHoja);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     } catch (e) {
       console.warn('Error sincronizando borrador local:', e);
     }
@@ -2910,12 +2941,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const nuevoTipo = `${escrito.tipo} (Copia)`;
       const nuevaCat = escrito.categoria || 'Contratos Privados';
 
+      const docTipoHoja: 'blanca' | 'protocolo' =
+        escrito.tipoHoja || (escrito.tipo?.replace(' (Guardado Local)', '') === 'Escrito en Blanco' ? 'blanca' : 'protocolo');
+
       if (escrito.id.startsWith('temp-')) {
         const tempDocsString = localStorage.getItem('escritos_temporales');
         const tempDocs = tempDocsString ? JSON.parse(tempDocsString) : [];
         const newTempDoc = {
           texto: escrito.texto,
           tipo: nuevoTipo,
+          tipoHoja: docTipoHoja,
           categoria: nuevaCat,
           userId: user?.uid || 'temp',
           fechaCreacion: new Date().toISOString()
@@ -2943,6 +2978,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         const { id, ...dataToCopy } = escrito;
         await addDoc(collection(db, 'documentos_olga'), {
           ...dataToCopy,
+          tipoHoja: docTipoHoja,
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
@@ -3384,7 +3420,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <span>Hoja en Blanco</span>
                 </button>
 
-                {selectedPlantillaId === 'hoja_en_blanco' && (
+                {esHojaEnBlanco && (
                   <>
                     <input
                       type="file"
@@ -3440,7 +3476,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <button
                   type="button"
-                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave)}
+                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave, tipoHoja)}
                   disabled={!editorText.trim()}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors border border-slate-800 shadow-sm cursor-pointer"
                   title="Abrir con membrete oficial e imprimir en PDF"
@@ -3617,7 +3653,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>Hoja de Protocolo Notarial (Oficio) • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
+                  <span>{esHojaEnBlanco ? 'Hoja en Blanco (Oficio)' : 'Hoja de Protocolo Notarial (Oficio)'} • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
                 </div>
               </div>
             )}
@@ -4070,7 +4106,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setActiveMenuId(null);
-                                    onOpenDocument(escrito.texto, escrito.id, escrito.tipo, escrito.categoria);
+                                    onOpenDocument(
+                                      escrito.texto,
+                                      escrito.id,
+                                      escrito.tipo,
+                                      escrito.categoria,
+                                      escrito.tipoHoja || (escrito.tipo?.replace(' (Guardado Local)', '') === 'Escrito en Blanco' ? 'blanca' : 'protocolo')
+                                    );
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
                                 >

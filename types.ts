@@ -8,8 +8,10 @@ export interface Persona {
   tipo_persona: TipoPersona;
   nombre: string;
   apellido?: string; // Solo personas físicas
+  nombre_o_razon_social?: string;
   tipo_documento: TipoDocumento;
   nro_documento: string; // Debe ser único en el sistema
+  documento_numero?: string;
   telefono: string;
   email: string;
   domicilio: string;
@@ -17,12 +19,14 @@ export interface Persona {
   representanteLegal?: string; // "No aplica" (Física) o "Sin Asignar" / "Asignado" (Jurídica)
   responsable?: string | null; // Responsable asignado explícitamente o null
   userId?: string;
+  ownedByWorkspace?: string;
   creator_id?: string;
   createdBy?: string;
   creator_name?: string;
   creator_role?: string;
   created_at?: string;
   fechaCreacion?: any;
+  fechaActualizacion?: any;
   origen?: 'MANUAL' | 'DNIT' | 'Presupuesto' | string;
   notas_notariales?: string;
 }

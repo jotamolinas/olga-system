@@ -44,7 +44,7 @@ import {
   sonMismaPersona, 
   extraerDocBase 
 } from '../services/personaDedup';
-import { deletePersonaFromFirestore, syncPersonaToFirestore, fetchPersonasFromFirestore } from '../services/firestore';
+import { deletePersonaFromFirestore, syncPersonaToFirestore, fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
 
 interface PersonasTabProps {
   personas?: Persona[];
@@ -177,52 +177,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   };
 
   const [listaPersonas, setListaPersonas] = useState<Persona[]>(() => {
-    try {
-      let acumulado: Persona[] = [];
-
-      // 1. Leer clave global compartida prioritaria
-      const globalSaved = localStorage.getItem(GLOBAL_STORAGE_KEY);
-      if (globalSaved) {
-        try {
-          const parsed = JSON.parse(globalSaved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            acumulado = [...acumulado, ...parsed];
-          }
-        } catch (e) {}
-      }
-
-      // 2. Escanear todo el localStorage buscando cualquier clave relacionada al directorio
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith(`${STORAGE_KEY}_`) || key.includes('directorio_personas'))) {
-          const saved = localStorage.getItem(key);
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                acumulado = [...acumulado, ...parsed];
-              }
-            } catch (err) {}
-          }
-        }
-      }
-
-      // 3. Incluir props iniciales si existen
-      if (personas && Array.isArray(personas) && personas.length > 0) {
-        acumulado = [...acumulado, ...personas];
-      }
-
-      if (acumulado.length > 0) {
-        const { listaLimpia } = depurarDuplicadosLista(acumulado);
-        try {
-          localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
-        } catch (e) {}
-        return listaLimpia;
-      }
-    } catch (e) {
-      console.error("Error leyendo localStorage inicial:", e);
+    if (Array.isArray(personas) && personas.length > 0) {
+      return depurarDuplicadosLista(personas.map((p) => normalizePersona(p, p?.id || ''))).listaLimpia;
     }
-    
     return [];
   });
 
@@ -234,13 +191,12 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     return [];
   }, [pagares]);
 
-  // Helper para persistir lista en localStorage de forma global y compartida
+  // Helper para persistir lista normalizada por workspace en almacenamiento local
   const guardarListaPersistente = (nuevaLista: Persona[]) => {
-    setListaPersonas(nuevaLista);
+    const normalizada = (Array.isArray(nuevaLista) ? nuevaLista : []).map((p) => normalizePersona(p, p?.id || ''));
+    const { listaLimpia } = depurarDuplicadosLista(normalizada);
+    setListaPersonas(listaLimpia);
     try {
-      const { listaLimpia } = depurarDuplicadosLista(nuevaLista);
-      localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
-
       const targetUid = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid;
       if (targetUid) {
         localStorage.setItem(`${STORAGE_KEY}_${targetUid}`, JSON.stringify(listaLimpia));
@@ -286,7 +242,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
   // Personas físicas disponibles para Representante Legal
   const personasFisicas = useMemo(() => {
-    return listaPersonas.filter(p => p.tipo_persona === 'física');
+    return (Array.isArray(listaPersonas) ? listaPersonas : []).filter(p => p && p.tipo_persona === 'física');
   }, [listaPersonas]);
 
   // Al seleccionar cliente para expediente, cargar sus notas
@@ -326,13 +282,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   }, [initialEditingId, listaPersonas]);
 
-  // Sincronización continua de listaPersonas con props recibidas (con protección contra sobrescritura vacía)
+  // Sincronización continua de listaPersonas con props recibidas (siempre normalizadas)
   useEffect(() => {
     if (Array.isArray(personas)) {
+      const normalizadas = personas.map((p) => normalizePersona(p, p?.id || ''));
       setListaPersonas(prev => {
-        // Si ya teníamos datos locales y la prop viene vacía, priorizamos los locales para evitar parpadeos y borrados
-        if (prev.length > 0 && personas.length === 0) return prev;
-        const { listaLimpia } = depurarDuplicadosLista([...personas, ...prev]);
+        if (prev.length > 0 && normalizadas.length === 0) return prev;
+        const { listaLimpia } = depurarDuplicadosLista([...normalizadas, ...prev]);
         return listaLimpia;
       });
     }
@@ -342,7 +298,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   useEffect(() => {
     const handlePersonasEvent = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
-        setListaPersonas(e.detail);
+        setListaPersonas(e.detail.map((p: any) => normalizePersona(p, p?.id || '')));
       }
     };
     window.addEventListener('olga_personas_updated', handlePersonasEvent);
@@ -351,30 +307,34 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     };
   }, []);
 
-  // Carga inicial automática desde la nube (Firestore) combinando inteligentemente con datos locales y globales
+  // Carga inicial automática desde directorio_personas (Firestore) con consultas retrocompatibles
   useEffect(() => {
+    let activo = true;
     const cargarPersonasCloud = async () => {
       const effectiveId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid;
-      if (!effectiveId) return;
+      if (!effectiveId) {
+        setListaPersonas([]);
+        return;
+      }
       try {
         const cloudPersonas = await fetchPersonasFromFirestore(effectiveId);
-        if (cloudPersonas && cloudPersonas.length > 0) {
-          setListaPersonas(prevLocal => {
-            const combinadas = [...cloudPersonas, ...prevLocal];
-            const { listaLimpia } = depurarDuplicadosLista(combinadas);
-            try {
-              localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(listaLimpia));
-              localStorage.setItem(`${STORAGE_KEY}_${effectiveId}`, JSON.stringify(listaLimpia));
-            } catch {}
-            return listaLimpia;
-          });
-        }
+        if (!activo) return;
+        const mapa = new Map<string, Persona>();
+        cloudPersonas.forEach((p) => mapa.set(p.id, normalizePersona(p, p.id)));
+        const { listaLimpia } = depurarDuplicadosLista(Array.from(mapa.values()));
+        setListaPersonas(listaLimpia);
+        try {
+          localStorage.setItem(`${STORAGE_KEY}_${effectiveId}`, JSON.stringify(listaLimpia));
+        } catch {}
       } catch (err) {
-        console.error("Error sincronizando personas de Firestore:", err);
+        console.error("Error sincronizando personas de directorio_personas:", err);
       }
     };
     cargarPersonasCloud();
-  }, [workspaceId, currentUser, userData]);
+    return () => {
+      activo = false;
+    };
+  }, [workspaceId, currentUser?.uid, userData?.tenant_id, userData?.uid]);
 
   const resetFormulario = () => {
     setEditingId(null);
@@ -421,14 +381,20 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     setClienteExpediente(persona);
   };
 
-  // Guardar notas notariales del expediente en localStorage
-  const handleGuardarNotasExpediente = () => {
+  // Guardar notas notariales del expediente en directorio_personas
+  const handleGuardarNotasExpediente = async () => {
     if (!clienteExpediente) return;
 
-    const personaActualizada: Persona = {
-      ...clienteExpediente,
-      notas_notariales: notasNotarialesTexto.trim()
-    };
+    const effectiveUserId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
+    const personaActualizada: Persona = normalizePersona(
+      {
+        ...clienteExpediente,
+        notas_notariales: notasNotarialesTexto.trim(),
+        ownedByWorkspace: clienteExpediente.ownedByWorkspace || effectiveUserId,
+        userId: clienteExpediente.userId || auth?.currentUser?.uid || effectiveUserId
+      },
+      clienteExpediente.id
+    );
 
     const nuevaLista = listaPersonas.map(p => 
       p.id === clienteExpediente.id ? personaActualizada : p
@@ -437,14 +403,16 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     guardarListaPersistente(nuevaLista);
     setClienteExpediente(personaActualizada);
 
-    const effectiveUserId = workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
-    syncPersonaToFirestore(effectiveUserId, personaActualizada).catch(console.error);
-
-    if (onUpdatePersona) {
-      onUpdatePersona(personaActualizada);
+    try {
+      await syncPersonaToFirestore(effectiveUserId, personaActualizada);
+      if (onUpdatePersona) {
+        onUpdatePersona(personaActualizada);
+      }
+      setFeedbackNotas('Notas notariales archivadas en el expediente del cliente.');
+    } catch (err) {
+      console.error('Error guardando notas en directorio_personas:', err);
+      setFeedbackNotas('Error al sincronizar notas en la nube. Verifica tu conexión.');
     }
-
-    setFeedbackNotas('Notas notariales archivadas en el expediente del cliente.');
     setTimeout(() => setFeedbackNotas(''), 3500);
   };
 
@@ -521,8 +489,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     }
   };
 
-  // Guardar persona (Crear o Actualizar)
-  const handleSubmit = (e: React.FormEvent) => {
+  // Guardar persona (Crear o Actualizar) en directorio_personas
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
 
@@ -557,16 +525,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       return;
     }
 
-    // Guardado manual respetando la entrada del usuario:
-    // Si el usuario carga manualmente la cédula y no pone dígito verificador, se guarda tal como lo ingresó.
-    // Solo cuando se consulta la DNIT o si el usuario escribe explícitamente el guion con DV, se guarda con dígito verificador.
     const docFinal = nroDocumento.trim();
 
     // Validar duplicado de documento y nombre con la máxima precisión notarial
     const candidato: Partial<Persona> = {
       id: editingId || undefined,
       nombre: nombreFinal,
-      apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
+      apellido: tipoPersona === 'física' ? apellidoFinal : '',
       nro_documento: docFinal,
       tipo_persona: tipoPersona
     };
@@ -575,59 +540,68 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     const duplicado = buscarPersonaDuplicada(candidato, baseComparar, editingId);
 
     if (duplicado) {
-      const nomDup = `${duplicado.nombre} ${duplicado.apellido || ''}`.trim();
-      setErrorMsg(`⚠️ No se puede guardar: Ya existe un interviniente registrado con este documento o identidad ("${nomDup}" - Doc: ${duplicado.nro_documento}). No se permite el doble guardado.`);
+      const nomDup = `${duplicado.nombre || ''} ${duplicado.apellido || ''}`.trim();
+      setErrorMsg(`⚠️ No se puede guardar: Ya existe un interviniente registrado con este documento o identidad ("${nomDup}" - Doc: ${duplicado.nro_documento || ''}). No se permite el doble guardado.`);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Representación legal notarial: Se inicializa de forma neutra ("No aplica" para Física, "Sin Asignar" para Jurídica salvo asignación manual)
       const representanteLegalValor = tipoPersona === 'física' 
         ? 'No aplica' 
         : (representanteId ? 'Asignado' : 'Sin Asignar');
 
       const activeUser = (currentUser || auth?.currentUser) as any;
+      const uid = String(activeUser?.uid || auth?.currentUser?.uid || userData?.uid || '').trim();
+      const effectiveUserId = String(workspaceId || uid || userData?.tenant_id || '').trim();
+
+      if (!effectiveUserId && !uid) {
+        setErrorMsg('No se detectó una sesión activa para guardar en Firestore.');
+        return;
+      }
+
+      const nombreRazonSocial = tipoPersona === 'física'
+        ? `${nombreFinal} ${apellidoFinal}`.trim()
+        : nombreFinal;
 
       // 1. SI ES EDICIÓN: El ID ya existe y debe preservarse de forma intacta
       if (editingId) {
         const personaExistente = (personas && personas.length > 0 ? personas : listaPersonas).find(p => p.id === editingId);
-        const registroFinal: Persona = {
-          ...(personaExistente || {}),
-          id: editingId, // Preservar exactamente el ID original
-          tipo_persona: tipoPersona,
-          nombre: nombreFinal,
-          apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
-          tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
-          nro_documento: docFinal,
-          telefono: telefono.trim(),
-          email: email.trim(),
-          domicilio: domicilio.trim(),
-          representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
-          representanteLegal: representanteLegalValor,
-          responsable: personaExistente?.responsable && personaExistente.responsable !== 'MONKEY BUSINESS IA' && personaExistente.responsable !== 'Titular' 
-            ? personaExistente.responsable 
-            : null,
-          origen: personaExistente?.origen || (origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL')),
-          notas_notariales: personaExistente?.notas_notariales,
-          userId: personaExistente?.userId || workspaceId || activeUser?.uid || '',
-          creator_id: personaExistente?.creator_id || activeUser?.uid,
-          createdBy: personaExistente?.createdBy || activeUser?.uid,
-          creator_name: personaExistente?.creator_name && personaExistente.creator_name !== 'MONKEY BUSINESS IA' && personaExistente.creator_name !== 'Titular'
-            ? personaExistente.creator_name
-            : undefined,
-          creator_role: personaExistente?.creator_role
-        };
+        const registroFinal: Persona = normalizePersona(
+          {
+            ...(personaExistente || {}),
+            id: editingId,
+            tipo_persona: tipoPersona,
+            nombre: nombreFinal,
+            apellido: tipoPersona === 'física' ? apellidoFinal : '',
+            nombre_o_razon_social: nombreRazonSocial,
+            tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
+            nro_documento: docFinal,
+            documento_numero: docFinal,
+            telefono: telefono.trim(),
+            email: email.trim(),
+            domicilio: domicilio.trim(),
+            representante_id: tipoPersona === 'jurídica' ? (representanteId || '') : '',
+            representanteLegal: representanteLegalValor,
+            responsable: personaExistente?.responsable && personaExistente.responsable !== 'MONKEY BUSINESS IA' && personaExistente.responsable !== 'Titular' 
+              ? personaExistente.responsable 
+              : null,
+            origen: personaExistente?.origen || (origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL')),
+            notas_notariales: personaExistente?.notas_notariales || '',
+            ownedByWorkspace: personaExistente?.ownedByWorkspace || effectiveUserId || uid,
+            userId: uid || personaExistente?.userId || effectiveUserId,
+            creator_id: personaExistente?.creator_id || uid,
+            createdBy: personaExistente?.createdBy || uid,
+          },
+          editingId
+        );
 
-        const effectiveUserId = workspaceId || activeUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
-        syncPersonaToFirestore(effectiveUserId, registroFinal).catch(console.error);
+        await syncPersonaToFirestore(effectiveUserId, registroFinal);
 
-        // LLAMAR EXCLUSIVAMENTE a la función onUpdatePersona con su ID intacto
         if (onUpdatePersona) {
           onUpdatePersona(registroFinal);
         }
 
-        // Mapeo no destructivo: se preservan íntegramente todos los demás registros
         const baseParaActualizar = (personas && personas.length >= listaPersonas.length) ? personas : listaPersonas;
         const nuevaLista = baseParaActualizar.map(p => p.id === editingId ? registroFinal : p);
         guardarListaPersistente(nuevaLista);
@@ -642,31 +616,34 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         return;
       }
 
-      // 2. SI ES CREACIÓN NUEVA (editingId no existe): Inicialización neutra de datos
+      // 2. SI ES CREACIÓN NUEVA (editingId no existe)
       const nuevoId = `p-${Date.now()}`;
-      const registroNuevo: Persona = {
-        id: nuevoId,
-        tipo_persona: tipoPersona,
-        nombre: nombreFinal,
-        apellido: tipoPersona === 'física' ? apellidoFinal : undefined,
-        tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
-        nro_documento: docFinal,
-        telefono: telefono.trim(),
-        email: email.trim(),
-        domicilio: domicilio.trim(),
-        representante_id: tipoPersona === 'jurídica' ? (representanteId || undefined) : undefined,
-        representanteLegal: representanteLegalValor,
-        responsable: null,
-        origen: origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL'),
-        userId: workspaceId || activeUser?.uid || '',
-        creator_id: activeUser?.uid,
-        createdBy: activeUser?.uid,
-        creator_name: undefined,
-        creator_role: undefined
-      };
+      const registroNuevo: Persona = normalizePersona(
+        {
+          id: nuevoId,
+          tipo_persona: tipoPersona,
+          nombre: nombreFinal,
+          apellido: tipoPersona === 'física' ? apellidoFinal : '',
+          nombre_o_razon_social: nombreRazonSocial,
+          tipo_documento: tipoPersona === 'física' ? (docFinal.includes('-') ? 'RUC' : 'CI') : 'RUC',
+          nro_documento: docFinal,
+          documento_numero: docFinal,
+          telefono: telefono.trim(),
+          email: email.trim(),
+          domicilio: domicilio.trim(),
+          representante_id: tipoPersona === 'jurídica' ? (representanteId || '') : '',
+          representanteLegal: representanteLegalValor,
+          responsable: null,
+          origen: origenDnitActivo ? 'DNIT' : (tipoPersona === 'jurídica' && docFinal.includes('-') ? 'DNIT' : 'MANUAL'),
+          ownedByWorkspace: effectiveUserId || uid,
+          userId: uid || effectiveUserId,
+          creator_id: uid,
+          createdBy: uid,
+        },
+        nuevoId
+      );
 
-      const effectiveUserId = workspaceId || activeUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || '';
-      syncPersonaToFirestore(effectiveUserId, registroNuevo).catch(console.error);
+      await syncPersonaToFirestore(effectiveUserId, registroNuevo);
 
       if (onAddPersona) {
         const agregado = onAddPersona(registroNuevo);
@@ -683,53 +660,73 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       setSuccessMsg(`Persona "${registroNuevo.nombre}" registrada en el fichero.`);
       resetFormulario();
       setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      console.error('Error guardando persona en directorio_personas:', err);
+      setErrorMsg(err?.message || 'Error al guardar en Firestore. Por favor, intenta nuevamente.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // 5. Filtrado en tiempo real con .filter()
+  // 5. Filtrado blindado en tiempo real con .filter()
   const listaFiltrada = useMemo(() => {
-    return listaPersonas.filter(p => {
-      if (filtroTipo !== 'todos' && p.tipo_persona !== filtroTipo) {
+    const lista = Array.isArray(listaPersonas) ? listaPersonas : [];
+    const term = (searchTerm ?? '').toString().trim().toLowerCase();
+
+    return lista.filter(p => {
+      if (!p) return false;
+      const tipo = (p?.tipo_persona ?? 'física').toString().toLowerCase();
+      const tipoNorm = tipo === 'juridica' ? 'jurídica' : (tipo === 'fisica' ? 'física' : tipo);
+      if (filtroTipo !== 'todos' && tipoNorm !== filtroTipo) {
         return false;
       }
 
-      const term = searchTerm.trim().toLowerCase();
       if (!term) return true;
 
-      const nombreMatch = (p.nombre || '').toLowerCase().includes(term);
-      const apellidoMatch = (p.apellido || '').toLowerCase().includes(term);
-      const docMatch = (p.nro_documento || '').toLowerCase().includes(term);
-      const emailMatch = (p.email || '').toLowerCase().includes(term);
+      const nombreMatch = (p?.nombre ?? '').toString().toLowerCase().includes(term);
+      const apellidoMatch = (p?.apellido ?? '').toString().toLowerCase().includes(term);
+      const razonMatch = (p?.nombre_o_razon_social ?? '').toString().toLowerCase().includes(term);
+      const docMatch = (p?.nro_documento ?? p?.documento_numero ?? '').toString().toLowerCase().includes(term);
+      const emailMatch = (p?.email ?? '').toString().toLowerCase().includes(term);
 
-      return nombreMatch || apellidoMatch || docMatch || emailMatch;
+      return nombreMatch || apellidoMatch || razonMatch || docMatch || emailMatch;
     });
   }, [listaPersonas, searchTerm, filtroTipo]);
 
-  const conteoFisicas = useMemo(() => listaPersonas.filter(p => p.tipo_persona === 'física').length, [listaPersonas]);
-  const conteoJuridicas = useMemo(() => listaPersonas.filter(p => p.tipo_persona === 'jurídica').length, [listaPersonas]);
+  const conteoFisicas = useMemo(() => (Array.isArray(listaPersonas) ? listaPersonas : []).filter(p => {
+    if (!p) return false;
+    const t = (p?.tipo_persona ?? '').toString().toLowerCase();
+    return t === 'física' || t === 'fisica';
+  }).length, [listaPersonas]);
+
+  const conteoJuridicas = useMemo(() => (Array.isArray(listaPersonas) ? listaPersonas : []).filter(p => {
+    if (!p) return false;
+    const t = (p?.tipo_persona ?? '').toString().toLowerCase();
+    return t === 'jurídica' || t === 'juridica';
+  }).length, [listaPersonas]);
 
   // 6. Lógica de Expediente 360° para el cliente seleccionado
   const instrumentosVinculados = useMemo(() => {
     if (!clienteExpediente) return [];
     const id = clienteExpediente.id;
-    const docLimpio = clienteExpediente.nro_documento.replace(/[^\d]/g, '');
-    const nombreCompleto = `${clienteExpediente.nombre} ${clienteExpediente.apellido || ''}`.trim().toLowerCase();
+    const docLimpio = (clienteExpediente?.nro_documento ?? clienteExpediente?.documento_numero ?? '').toString().replace(/[^\d]/g, '');
+    const nombreCliente = (clienteExpediente?.nombre ?? '').toString().toLowerCase();
 
-    return pagaresEfectivos.filter(p => {
+    const pagaresList = Array.isArray(pagaresEfectivos) ? pagaresEfectivos : [];
+    return pagaresList.filter(p => {
+      if (!p) return false;
       if (p.status === 'anulado' || p.estado === 'Anulado') return false;
 
-      const docAcreedor = (p.acreedor_documento_raw || '').replace(/[^\d]/g, '');
-      const docDeudor = (p.deudor_documento_raw || '').replace(/[^\d]/g, '');
+      const docAcreedor = (p?.acreedor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
+      const docDeudor = (p?.deudor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
 
       const esDeudor = p.deudor_id === id || 
-        (docLimpio && docDeudor === docLimpio) ||
-        (p.deudor_nombre_raw && p.deudor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+        (Boolean(docLimpio) && docDeudor === docLimpio) ||
+        (Boolean(nombreCliente) && (p?.deudor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
       const esAcreedor = p.acreedor_id === id ||
-        (docLimpio && docAcreedor === docLimpio) ||
-        (p.acreedor_nombre_raw && p.acreedor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+        (Boolean(docLimpio) && docAcreedor === docLimpio) ||
+        (Boolean(nombreCliente) && (p?.acreedor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
       const esCodeudor = p.codeudor1_id === id || p.codeudor2_id === id;
 
@@ -746,22 +743,24 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
     let totalAcreencias = 0;
 
     const id = clienteExpediente.id;
-    const docLimpio = clienteExpediente.nro_documento.replace(/[^\d]/g, '');
+    const docLimpio = (clienteExpediente?.nro_documento ?? clienteExpediente?.documento_numero ?? '').toString().replace(/[^\d]/g, '');
+    const nombreCliente = (clienteExpediente?.nombre ?? '').toString().toLowerCase();
 
     instrumentosVinculados.forEach(p => {
-      const docDeudor = (p.deudor_documento_raw || '').replace(/[^\d]/g, '');
-      const esDeudor = p.deudor_id === id || (docLimpio && docDeudor === docLimpio) || 
-        (p.deudor_nombre_raw && p.deudor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+      if (!p) return;
+      const docDeudor = (p?.deudor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
+      const esDeudor = p.deudor_id === id || (Boolean(docLimpio) && docDeudor === docLimpio) || 
+        (Boolean(nombreCliente) && (p?.deudor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
-      const docAcreedor = (p.acreedor_documento_raw || '').replace(/[^\d]/g, '');
-      const esAcreedor = p.acreedor_id === id || (docLimpio && docAcreedor === docLimpio) ||
-        (p.acreedor_nombre_raw && p.acreedor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+      const docAcreedor = (p?.acreedor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
+      const esAcreedor = p.acreedor_id === id || (Boolean(docLimpio) && docAcreedor === docLimpio) ||
+        (Boolean(nombreCliente) && (p?.acreedor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
       if (esDeudor) {
         totalDeudas += (p.valor_total || 0);
         if (p.cronograma && Array.isArray(p.cronograma)) {
           p.cronograma.forEach(cuota => {
-            if (cuota.pagado || cuota.estado === 'cobrado') {
+            if (cuota && (cuota.pagado || cuota.estado === 'cobrado')) {
               totalPagado += (cuota.monto || 0);
             }
           });
@@ -1698,17 +1697,18 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {instrumentosVinculados.map(pag => {
-                          const docLimpio = clienteExpediente.nro_documento.replace(/[^\d]/g, '');
-                          const docDeudor = (pag.deudor_documento_raw || '').replace(/[^\d]/g, '');
-                          const docAcreedor = (pag.acreedor_documento_raw || '').replace(/[^\d]/g, '');
+                          const docLimpio = (clienteExpediente?.nro_documento ?? clienteExpediente?.documento_numero ?? '').toString().replace(/[^\d]/g, '');
+                          const docDeudor = (pag?.deudor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
+                          const docAcreedor = (pag?.acreedor_documento_raw ?? '').toString().replace(/[^\d]/g, '');
+                          const nombreCliente = (clienteExpediente?.nombre ?? '').toString().toLowerCase();
 
                           const esDeudor = pag.deudor_id === clienteExpediente.id || 
-                            (docLimpio && docDeudor === docLimpio) ||
-                            (pag.deudor_nombre_raw && pag.deudor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+                            (Boolean(docLimpio) && docDeudor === docLimpio) ||
+                            (Boolean(nombreCliente) && (pag?.deudor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
                           const esAcreedor = pag.acreedor_id === clienteExpediente.id ||
-                            (docLimpio && docAcreedor === docLimpio) ||
-                            (pag.acreedor_nombre_raw && pag.acreedor_nombre_raw.toLowerCase().includes(clienteExpediente.nombre.toLowerCase()));
+                            (Boolean(docLimpio) && docAcreedor === docLimpio) ||
+                            (Boolean(nombreCliente) && (pag?.acreedor_nombre_raw ?? '').toString().toLowerCase().includes(nombreCliente));
 
                           const rol = esDeudor ? 'Deudor Principal' : esAcreedor ? 'Acreedor' : 'Co-Deudor';
                           const contraparte = esDeudor ? pag.acreedor_nombre_raw : pag.deudor_nombre_raw;

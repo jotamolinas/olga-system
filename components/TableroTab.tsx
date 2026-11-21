@@ -1,9 +1,10 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
+import { fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
 import { FileText, Users, Clock, DollarSign, Activity, ShieldCheck, ChevronRight, X, PieChartIcon, AlertTriangle } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { PagaresTab } from './PagaresTab';
@@ -273,23 +274,70 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   const [localPersonas, setLocalPersonas] = useState<Persona[]>([]);
 
-  // Sincronización en tiempo real de Personas por Workspace para métricas y overlay
+  // Sincronización en tiempo real de Personas por Workspace desde directorio_personas
   useEffect(() => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId) {
+      setLocalPersonas([]);
+      return;
+    }
 
-    const q = query(
-      collection(db, 'personas'),
-      where('userId', '==', activeWorkspaceId) // Filtro maestro por Tenant
+    let activo = true;
+    const uid = auth?.currentUser?.uid || '';
+    const mapa = new Map<string, Persona>();
+
+    fetchPersonasFromFirestore(activeWorkspaceId)
+      .then((cloud) => {
+        if (!activo) return;
+        cloud.forEach((p) => mapa.set(p.id, p));
+        setLocalPersonas(Array.from(mapa.values()));
+      })
+      .catch((err) => console.error('Error cargando directorio_personas en Tablero:', err));
+
+    const qWorkspace = query(
+      collection(db, 'directorio_personas'),
+      where('ownedByWorkspace', '==', activeWorkspaceId)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }) as Persona);
-      setLocalPersonas(data);
-    }, (error) => {
-      console.error("Fallo en sincronización de personas en Tablero:", error);
-    });
+    const unsubscribeWorkspace = onSnapshot(
+      qWorkspace,
+      (snapshot) => {
+        if (!activo) return;
+        snapshot.docs.forEach((d) => {
+          mapa.set(d.id, normalizePersona(d.data(), d.id));
+        });
+        setLocalPersonas(Array.from(mapa.values()));
+      },
+      (error) => {
+        console.error('Fallo en sincronización de directorio_personas en Tablero:', error);
+      }
+    );
 
-    return () => unsubscribe(); // Limpieza estricta de memoria
+    let unsubscribeUser: (() => void) | null = null;
+    if (uid) {
+      const qUser = query(
+        collection(db, 'directorio_personas'),
+        where('userId', '==', uid)
+      );
+      unsubscribeUser = onSnapshot(
+        qUser,
+        (snapshot) => {
+          if (!activo) return;
+          snapshot.docs.forEach((d) => {
+            mapa.set(d.id, normalizePersona(d.data(), d.id));
+          });
+          setLocalPersonas(Array.from(mapa.values()));
+        },
+        (error) => {
+          console.error('Fallo en sincronización retrocompatible de directorio_personas en Tablero:', error);
+        }
+      );
+    }
+
+    return () => {
+      activo = false;
+      unsubscribeWorkspace();
+      if (unsubscribeUser) unsubscribeUser();
+    };
   }, [activeWorkspaceId]);
 
   const effectivePersonas = (personas && Array.isArray(personas) && personas.length > 0) ? personas : localPersonas;
