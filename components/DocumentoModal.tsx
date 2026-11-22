@@ -47,6 +47,98 @@ export const limpiarTextoParaEscrito = (texto: string): string => {
     .trim();
 };
 
+export const wrapSignatureBlocksForPrint = (html: string): string => {
+  if (!html || typeof document === 'undefined') return html;
+
+  const container = document.createElement('div');
+  container.innerHTML = html;
+
+  const isClauseStart = (txt: string) =>
+    /^(CLÁUSULA|PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SÉPTIMA|OCTAVA|NOVENA|DÉCIMA|ARTÍCULO|CAPÍTULO|\d+\.)/i.test(txt);
+
+  const isSignatureCaption = (el: Element | null): boolean => {
+    if (!el) return false;
+    const tag = el.tagName.toLowerCase();
+    if (tag !== 'p' && tag !== 'div') return false;
+    const text = (el.textContent || '').trim();
+    return text.length > 0 && text.length <= 240 && !isClauseStart(text);
+  };
+
+  // Procesar nodos hijos directos y también un posible contenedor único (.prose / .markdown-body)
+  const targetParent: Element =
+    container.children.length === 1 &&
+    container.firstElementChild &&
+    (container.firstElementChild.tagName.toLowerCase() === 'div' ||
+      container.firstElementChild.classList.contains('prose'))
+      ? container.firstElementChild
+      : container;
+
+  const nodes = Array.from(targetParent.children);
+  const createdBlocks: HTMLElement[] = [];
+
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
+    if (!el.parentElement) continue;
+    const tag = el.tagName.toLowerCase();
+    const text = (el.textContent || '').trim();
+
+    if (tag === 'hr') {
+      const next = nodes[i + 1] || null;
+      if (isSignatureCaption(next)) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'signature-block';
+        targetParent.insertBefore(wrapper, el);
+        wrapper.appendChild(el);
+        wrapper.appendChild(next!);
+        createdBlocks.push(wrapper);
+        i++;
+      }
+      continue;
+    }
+
+    if (tag === 'p' || tag === 'div') {
+      const hasUnderscoreLine = /_{4,}/.test(text);
+      if (!hasUnderscoreLine) continue;
+
+      const textWithoutUnderscores = text.replace(/_/g, '').trim();
+      if (textWithoutUnderscores.length === 0) {
+        const next = nodes[i + 1] || null;
+        if (isSignatureCaption(next)) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'signature-block';
+          targetParent.insertBefore(wrapper, el);
+          wrapper.appendChild(el);
+          wrapper.appendChild(next!);
+          createdBlocks.push(wrapper);
+          i++;
+        }
+      } else if (text.length <= 260 && !isClauseStart(text)) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'signature-block';
+        targetParent.insertBefore(wrapper, el);
+        wrapper.appendChild(el);
+        createdBlocks.push(wrapper);
+      }
+    }
+  }
+
+  // Agrupar bloques de firma consecutivos al final (hasta 3 firmas) para mantenerlos juntos si caben en la hoja
+  if (createdBlocks.length >= 2 && createdBlocks.length <= 3) {
+    const first = createdBlocks[0];
+    const allContiguous = createdBlocks.every((blk, idx) =>
+      idx === 0 ? true : createdBlocks[idx - 1].nextElementSibling === blk
+    );
+    if (allContiguous && first.parentElement) {
+      const group = document.createElement('div');
+      group.className = 'signatures-group';
+      first.parentElement.insertBefore(group, first);
+      createdBlocks.forEach((blk) => group.appendChild(blk));
+    }
+  }
+
+  return container.innerHTML;
+};
+
 export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   isOpen,
   onClose,
@@ -107,60 +199,162 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const isPaid = hasPaidPlan;
   const isWatermarkRequired = !isWhitelisted && isSoftBlocked;
 
-  const isHojaBlanca = tipoHoja === 'blanca';
+  const isHojaBlanca = tipoHoja !== 'protocolo';
 
   const handlePrint = () => {
     const printContent = printAreaRef.current?.innerHTML;
     if (printContent) {
       const win = window.open('', '', 'height=800,width=1024');
       if (win) {
+        const preparedPrintContent = isHojaBlanca
+          ? wrapSignatureBlocksForPrint(printContent)
+          : printContent;
+
         win.document.write('<html><head><title>Impresión Oficial</title>');
         win.document.write('<script src="https://cdn.tailwindcss.com?plugins=typography"></script>');
         win.document.write('<style>');
-        win.document.write(`
-          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
-          body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
-          .prose { max-width: none !important; }
-          @media print {
-            body { padding: 0; margin: 0; }
-            @page { margin: 0; size: 216mm 330mm portrait; }
-            .print-content-wrapper {
-              padding-top: ${isHojaBlanca ? '20mm' : '4.5cm'} !important;
-              padding-left: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
-              padding-right: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
-              padding-bottom: ${isHojaBlanca ? '20mm' : '1.5cm'} !important;
-              box-sizing: border-box !important;
-              margin: 0 auto !important;
-              width: 100% !important;
-              max-width: 215.9mm !important;
+        if (isHojaBlanca) {
+          win.document.write(`
+            @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
+            @page {
+              size: A4 portrait;
+              margin: 2.5cm 2.5cm 2.5cm 3cm;
             }
-            p, div, blockquote { orphans: 3; widows: 3; }
-            table, tr, td { page-break-inside: avoid; break-inside: avoid; }
-            .salto-de-pagina, .salto-de-pagina-print { break-after: page !important; page-break-after: always !important; height: 0 !important; margin: 0 !important; padding: 0 !important; display: block !important; }
-            .salto-de-pagina * { display: none !important; }
-            .hoja-notarial-pagina { break-after: page !important; page-break-after: always !important; }
-            .hoja-notarial-pagina:last-of-type { break-after: avoid !important; page-break-after: avoid !important; }
-            ${isWatermarkRequired ? `
-            .watermark {
-              display: block !important;
-              position: fixed !important;
-              top: 50% !important;
-              left: 50% !important;
-              transform: translate(-50%, -50%) rotate(-45deg) !important;
-              font-size: 80px !important;
-              color: rgba(255, 0, 0, 0.15) !important;
-              font-weight: bold !important;
-              text-transform: uppercase !important;
-              z-index: 9999 !important;
-              pointer-events: none !important;
+            html, body {
+              font-family: 'Inter', sans-serif;
+              background: white;
+              color: black;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              margin: 0;
+              padding: 0;
+              height: auto;
+              overflow: visible;
+            }
+            .prose { max-width: none !important; }
+            .prose p, .prose li, .prose blockquote {
+              orphans: 3;
+              widows: 3;
+              text-align: justify;
+              line-height: 1.55;
+            }
+            .prose h1, .prose h2, .prose h3, .prose h4 {
+              break-after: avoid;
+              page-break-after: avoid;
+            }
+            .text-center, .text-center p, .text-center h2 {
               text-align: center !important;
-              width: 100% !important;
-              line-height: 1.2 !important;
             }
-            ` : ''}
-          }
-        `);
-        win.document.write('</style></head><body class="print:h-auto print:m-0 print:p-0 print:overflow-hidden">');
+            .signature-block, .signatures-group {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+            .signature-block {
+              margin-top: 24px;
+            }
+            .signature-block hr {
+              width: 260px;
+              max-width: 100%;
+              border: none;
+              border-top: 1px solid #000;
+              margin: 24px 0 6px 0;
+            }
+            .signature-block p {
+              margin: 0 !important;
+              text-align: left !important;
+              line-height: 1.45 !important;
+            }
+            @media print {
+              html, body {
+                padding: 0 !important;
+                margin: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+              }
+              .print-content-wrapper {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                border: none !important;
+                height: auto !important;
+                overflow: visible !important;
+                box-sizing: border-box !important;
+              }
+              p, li, div, blockquote {
+                orphans: 3;
+                widows: 3;
+              }
+              table, tr, td { page-break-inside: avoid; break-inside: avoid; }
+              .salto-de-pagina, .salto-de-pagina-print { break-after: page !important; page-break-after: always !important; height: 0 !important; margin: 0 !important; padding: 0 !important; display: block !important; }
+              .salto-de-pagina * { display: none !important; }
+              ${isWatermarkRequired ? `
+              .watermark {
+                display: block !important;
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-45deg) !important;
+                font-size: 80px !important;
+                color: rgba(255, 0, 0, 0.15) !important;
+                font-weight: bold !important;
+                text-transform: uppercase !important;
+                z-index: 9999 !important;
+                pointer-events: none !important;
+                text-align: center !important;
+                width: 100% !important;
+                line-height: 1.2 !important;
+              }
+              ` : ''}
+            }
+          `);
+        } else {
+          win.document.write(`
+            @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
+            body { font-family: 'Inter', sans-serif; background: white; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+            .prose { max-width: none !important; }
+            @media print {
+              body { padding: 0; margin: 0; }
+              @page { margin: 0; size: 216mm 330mm portrait; }
+              .print-content-wrapper {
+                padding-top: 4.5cm !important;
+                padding-left: 1.5cm !important;
+                padding-right: 1.5cm !important;
+                padding-bottom: 1.5cm !important;
+                box-sizing: border-box !important;
+                margin: 0 auto !important;
+                width: 100% !important;
+                max-width: 215.9mm !important;
+              }
+              p, div, blockquote { orphans: 3; widows: 3; }
+              table, tr, td { page-break-inside: avoid; break-inside: avoid; }
+              .salto-de-pagina, .salto-de-pagina-print { break-after: page !important; page-break-after: always !important; height: 0 !important; margin: 0 !important; padding: 0 !important; display: block !important; }
+              .salto-de-pagina * { display: none !important; }
+              .hoja-notarial-pagina { break-after: page !important; page-break-after: always !important; }
+              .hoja-notarial-pagina:last-of-type { break-after: avoid !important; page-break-after: avoid !important; }
+              ${isWatermarkRequired ? `
+              .watermark {
+                display: block !important;
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) rotate(-45deg) !important;
+                font-size: 80px !important;
+                color: rgba(255, 0, 0, 0.15) !important;
+                font-weight: bold !important;
+                text-transform: uppercase !important;
+                z-index: 9999 !important;
+                pointer-events: none !important;
+                text-align: center !important;
+                width: 100% !important;
+                line-height: 1.2 !important;
+              }
+              ` : ''}
+            }
+          `);
+        }
+        win.document.write('</style></head><body class="print:h-auto print:m-0 print:p-0 print:overflow-visible">');
         
         if (isWatermarkRequired) {
           win.document.write(`
@@ -170,9 +364,13 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           `);
         }
 
-        // Wrap content in a container that formats nicely on Legal/Oficio
-        win.document.write('<div class="w-full max-w-[215.9mm] mx-auto bg-white print-content-wrapper print:h-auto print:m-0 print:overflow-hidden break-inside-avoid">');
-        win.document.write(printContent);
+        if (isHojaBlanca) {
+          win.document.write('<div class="w-full bg-white print-content-wrapper print:h-auto print:m-0 print:p-0 print:overflow-visible">');
+        } else {
+          // Wrap content in a container that formats nicely on Legal/Oficio protocol sheet
+          win.document.write('<div class="w-full max-w-[215.9mm] mx-auto bg-white print-content-wrapper print:h-auto print:m-0 print:overflow-hidden break-inside-avoid">');
+        }
+        win.document.write(preparedPrintContent);
         win.document.write('</div></body></html>');
         win.document.close();
         win.focus();
@@ -332,10 +530,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             ref={printAreaRef} 
             className="print-content-wrapper w-full max-w-[215.9mm] bg-white shadow-xl border border-slate-200"
             style={{
-              paddingTop: isHojaBlanca ? '20mm' : '4.5cm',
-              paddingLeft: isHojaBlanca ? '20mm' : '1.5cm',
-              paddingRight: isHojaBlanca ? '20mm' : '1.5cm',
-              paddingBottom: isHojaBlanca ? '20mm' : '1.5cm',
+              paddingTop: isHojaBlanca ? '2.5cm' : '4.5cm',
+              paddingLeft: isHojaBlanca ? '3cm' : '1.5cm',
+              paddingRight: isHojaBlanca ? '2.5cm' : '1.5cm',
+              paddingBottom: isHojaBlanca ? '2.5cm' : '1.5cm',
               boxSizing: 'border-box'
             }}
           >

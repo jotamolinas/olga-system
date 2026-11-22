@@ -32,7 +32,7 @@ import { ConfigTab } from './components/ConfigTab';
 import { PagarePDFPreview } from './components/PagarePDFPreview';
 import { KnowledgeBaseTab } from './components/KnowledgeBaseTab';
 import { CheckoutModal } from './components/CheckoutModal';
-import { DocumentoModal, limpiarTextoParaEscrito } from './components/DocumentoModal';
+import { DocumentoModal, limpiarTextoParaEscrito, wrapSignatureBlocksForPrint } from './components/DocumentoModal';
 import { EscritosTab } from './components/EscritosTab';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { SuperAdminOnboarding } from './components/SuperAdminOnboarding';
@@ -147,6 +147,8 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
 
+  const preparedHtmlContent = wrapSignatureBlocksForPrint(htmlContent);
+
   const printDocument = `
     <!DOCTYPE html>
     <html lang="es">
@@ -155,19 +157,30 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Dictamen - Oráculo de O.L.G.A.</title>
       <style>
-        body {
+        @page {
+          size: A4 portrait;
+          margin: 2.5cm 2.5cm 2.5cm 3cm;
+        }
+        html, body {
           font-family: 'Times New Roman', serif;
           color: #000;
-          line-height: 1.6;
+          line-height: 1.55;
           margin: 0;
-          padding: 2cm 2cm 3cm 2cm;
+          padding: 0;
           font-size: 12pt;
+          height: auto;
+          overflow: visible;
+        }
+        body {
+          padding: 2.5cm 2.5cm 2.5cm 3cm;
         }
         .header {
           text-align: center;
           border-bottom: 2px solid #000;
           padding-bottom: 15px;
-          margin-bottom: 30px;
+          margin-bottom: 28px;
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
         .header h1 {
           font-size: 18pt;
@@ -183,24 +196,51 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
         }
         .content {
           text-align: justify;
+          line-height: 1.55;
+        }
+        .content p, .content li, .content blockquote {
+          orphans: 3;
+          widows: 3;
+          text-align: justify;
+          line-height: 1.55;
+        }
+        .content h1, .content h2, .content h3, .content h4 {
+          break-after: avoid;
+          page-break-after: avoid;
         }
         .content a { color: #000; text-decoration: none; }
         .footer {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          margin-top: 40px;
           text-align: center;
           font-size: 9pt;
           border-top: 1px solid #ccc;
           padding-top: 10px;
-          padding-bottom: 1cm;
           color: #555;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .firma-box, .signature-block, .signatures-group {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+        .signature-block {
+          margin-top: 24px;
+        }
+        .signature-block hr {
+          width: 260px;
+          max-width: 100%;
+          border: none;
+          border-top: 1px solid #000;
+          margin: 24px 0 6px 0;
+        }
+        .signature-block p {
+          margin: 0;
+          text-align: left;
+          line-height: 1.45;
         }
         .firma-box {
-          margin-top: 80px;
+          margin-top: 64px;
           text-align: center;
-          page-break-inside: avoid;
         }
         .firma-linea {
           border-top: 1px solid #000;
@@ -219,11 +259,13 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
           display: none;
         }
         @media print {
-          @page { margin: 0; }
-          body { 
-            padding: 2cm;
-            print-color-adjust: exact; 
-            -webkit-print-color-adjust: exact; 
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
           .watermark {
             display: block !important;
@@ -244,11 +286,13 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
         }
         ` : `
         @media print {
-          @page { margin: 0; }
-          body { 
-            padding: 2cm;
-            print-color-adjust: exact; 
-            -webkit-print-color-adjust: exact; 
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
         }
         `}
@@ -262,7 +306,7 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
       </div>
       
       <div class="content">
-        ${htmlContent}
+        ${preparedHtmlContent}
       </div>
 
       <div class="firma-box">
@@ -2273,7 +2317,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                                   <button 
                                     onClick={() => {
                                       const extractedText = extraerDocumentoPuro(msg.text);
-                                      handleOpenDocumentModal(extractedText);
+                                      handleOpenDocumentModal(extractedText, undefined, 'Escrito Oficial', undefined, 'blanca');
                                     }}
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200"
                                   >
