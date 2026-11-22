@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { normalizePersona } from '../services/firestore';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
@@ -8,7 +8,7 @@ import {
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, Database
+  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, Database, X
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -70,6 +70,102 @@ interface Metrics {
   clientesCount: number;
   equipoCortesiaCount: number;
 }
+
+type OfertaTemplateId =
+  | 'cierre_prueba'
+  | 'rescate_vencida'
+  | 'upgrade_full'
+  | 'promo_anual'
+  | 'personalizado';
+
+interface OfertaTemplateOption {
+  id: OfertaTemplateId;
+  title: string;
+  subtitle: string;
+  badge: string;
+}
+
+const OFERTA_TEMPLATES: OfertaTemplateOption[] = [
+  {
+    id: 'cierre_prueba',
+    title: 'Cierre de Prueba (Últimos días)',
+    subtitle: 'Activar Plan Básico o Pro con beneficio de bienvenida antes de expirar',
+    badge: 'Conversión',
+  },
+  {
+    id: 'rescate_vencida',
+    title: 'Rescate de Cuenta Vencida',
+    subtitle: 'Reactivar cuenta con extensión corta o descuento en el primer mes',
+    badge: 'Reactivación',
+  },
+  {
+    id: 'upgrade_full',
+    title: 'Upgrade a Plan Full / Empresa',
+    subtitle: 'Desbloquear El Oráculo Legal IA, Lienzo Notarial y Presupuestos',
+    badge: 'Upsell',
+  },
+  {
+    id: 'promo_anual',
+    title: 'Descuento Especial / Promo Anual',
+    subtitle: 'Oferta preferencial por pago semestral o anual con ahorro',
+    badge: 'Ahorro',
+  },
+  {
+    id: 'personalizado',
+    title: 'Mensaje Personalizado',
+    subtitle: 'Redactar asunto y cuerpo completamente desde cero',
+    badge: 'Libre',
+  },
+];
+
+const getDefaultOfertaTemplate = (estado: RegisteredUser['estadoSuscripcion']): OfertaTemplateId => {
+  if (estado === 'vencido') return 'rescate_vencida';
+  if (estado === 'activo') return 'upgrade_full';
+  return 'cierre_prueba';
+};
+
+const buildOfertaTemplateContent = (
+  templateId: OfertaTemplateId,
+  user: RegisteredUser
+): { asunto: string; mensaje: string } => {
+  const displayName = user.razonSocial || user.nombre || 'Escribano/a';
+  const planActual = user.plan || 'Prueba Gratuita';
+  const diasTxt =
+    typeof user.diasRestantes === 'number'
+      ? user.diasRestantes === 1
+        ? '1 día'
+        : `${user.diasRestantes} días`
+      : 'tus últimos días';
+
+  switch (templateId) {
+    case 'cierre_prueba':
+      return {
+        asunto: `Activa hoy tu Plan O.L.G.A. con beneficio de bienvenida — ${displayName}`,
+        mensaje: `¡Hola ${displayName}! Te saluda el equipo de O.L.G.A. Notarial.\n\nVemos que actualmente estás en ${planActual} (${diasTxt} restantes de prueba). Antes de que expire tu período de evaluación, queremos ofrecerte un beneficio exclusivo de bienvenida para activar tu Plan Básico o Plan Pro hoy mismo y continuar sin interrupciones.\n\n¿Te enviamos los datos para activar tu cuenta hoy?\n\nContacto directo:\n• WhatsApp: +595 983 440021\n• Correo: soporte@olgatech.com.py`,
+      };
+    case 'rescate_vencida':
+      return {
+        asunto: `Reactiva tu cuenta en O.L.G.A. con beneficio especial — ${displayName}`,
+        mensaje: `¡Hola ${displayName}! Te escribimos desde el equipo de O.L.G.A. Notarial.\n\nNotamos que tu cuenta (${planActual}) figura actualmente como vencida. Queremos ayudarte a retomar el trabajo en tu escribanía ofreciéndote una extensión corta de cortesía o un descuento especial en tu primer mes de reactivación.\n\nRespondenos por este medio y reactivamos tu acceso de inmediato.\n\nContacto directo:\n• WhatsApp: +595 983 440021\n• Correo: soporte@olgatech.com.py`,
+      };
+    case 'upgrade_full':
+      return {
+        asunto: `Desbloquea El Oráculo IA, Lienzo y Presupuestos en O.L.G.A. — ${displayName}`,
+        mensaje: `¡Hola ${displayName}! Gracias por trabajar con nosotros en tu ${planActual}.\n\nQueremos invitarte a subir al Plan Empresa o Plan Full con una condición preferencial para clientes activos, desbloqueando de inmediato El Oráculo Legal IA, el Lienzo Notarial Oficial y el módulo completo de Presupuestos.\n\nEscribinos si querés que apliquemos el upgrade a tu escribanía hoy mismo.\n\nContacto directo:\n• WhatsApp: +595 983 440021\n• Correo: soporte@olgatech.com.py`,
+      };
+    case 'promo_anual':
+      return {
+        asunto: `Promo Anual / Semestral O.L.G.A. con ahorro exclusivo — ${displayName}`,
+        mensaje: `¡Hola ${displayName}! Te saluda el equipo comercial de O.L.G.A. Notarial.\n\nPara tu cuenta (${planActual}), tenemos habilitada una promoción especial por pago semestral o anual con ahorro preferencial sobre la tarifa regular, congelando tu abono y sumando soporte prioritario para tu estudio.\n\nAvísanos si deseás recibir el detalle con el monto bonificado.\n\nContacto directo:\n• WhatsApp: +595 983 440021\n• Correo: soporte@olgatech.com.py`,
+      };
+    case 'personalizado':
+    default:
+      return {
+        asunto: '',
+        mensaje: '',
+      };
+  }
+};
 
 export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
@@ -291,24 +387,28 @@ export const SuperAdminDashboard: React.FC = () => {
     return cleaned;
   };
 
-  const handleEnviarOfertaCampana = async (user: RegisteredUser) => {
-    try {
-      await addDoc(collection(db, 'support_tickets'), {
-        userId: user.id,
-        email: user.email,
-        nombre_usuario: user.nombre || user.email,
-        asunto: '🎁 ¡Propuesta Comercial Exclusiva O.L.G.A.!',
-        mensaje: `¡Hola ${user.nombre || 'Escribano'}! Tenemos una propuesta preferencial para que actives tu plan completo hoy con soporte prioritario (soporte@olgatech.com.py / WhatsApp +595 983 440021).`,
-        estado: 'en_proceso',
-        esOfertaPromocional: true,
-        respuestaAdmin: '¡Hola! Como usuario de O.L.G.A., te ofrecemos una tarifa preferencial y descuento en tu primer mes. Contáctanos en soporte@olgatech.com.py o al WhatsApp +595 983 440021.',
-        fecha_creacion: Date.now()
-      });
-      alert(`¡Oferta promocional enviada con éxito a la campana de ${user.nombre || user.email}!`);
-    } catch (err) {
-      console.error("Error al enviar oferta a campana:", err);
-      alert('Error al enviar la oferta.');
-    }
+  const [ofertaModalUser, setOfertaModalUser] = useState<RegisteredUser | null>(null);
+  const [ofertaTemplateId, setOfertaTemplateId] = useState<OfertaTemplateId>('cierre_prueba');
+  const [ofertaAsunto, setOfertaAsunto] = useState('');
+  const [ofertaMensaje, setOfertaMensaje] = useState('');
+  const ofertaModalOpenRef = useRef(false);
+  ofertaModalOpenRef.current = Boolean(ofertaModalUser);
+
+  const openOfertaModal = (user: RegisteredUser) => {
+    const defaultTpl = getDefaultOfertaTemplate(user.estadoSuscripcion);
+    const { asunto, mensaje } = buildOfertaTemplateContent(defaultTpl, user);
+    setOfertaModalUser(user);
+    setOfertaTemplateId(defaultTpl);
+    setOfertaAsunto(asunto);
+    setOfertaMensaje(mensaje);
+  };
+
+  const handleSelectOfertaTemplate = (templateId: OfertaTemplateId) => {
+    setOfertaTemplateId(templateId);
+    if (!ofertaModalUser) return;
+    const { asunto, mensaje } = buildOfertaTemplateContent(templateId, ofertaModalUser);
+    setOfertaAsunto(asunto);
+    setOfertaMensaje(mensaje);
   };
   
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
@@ -326,6 +426,10 @@ export const SuperAdminDashboard: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (ofertaModalOpenRef.current) {
+          setOfertaModalUser(null);
+          return;
+        }
         setExpandedModule(null);
         setAiModalOpen(false);
         setPagosModalOpen(false);
@@ -1320,12 +1424,12 @@ export const SuperAdminDashboard: React.FC = () => {
                               <Mail className="w-3.5 h-3.5" />
                             </a>
 
-                            {/* 3. Send Offer to Notification Bell Button */}
+                            {/* 3. Open Offer / Campaign Modal Button */}
                             <button
                               type="button"
-                              onClick={() => handleEnviarOfertaCampana(user)}
+                              onClick={() => openOfertaModal(user)}
                               className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
-                              title="🎁 Enviar oferta promocional a su campana de notificaciones"
+                              title="Oferta / Campaña personalizada"
                             >
                               <Sparkles className="w-3.5 h-3.5" />
                             </button>
@@ -1559,10 +1663,10 @@ export const SuperAdminDashboard: React.FC = () => {
                               </a>
                               <button
                                 type="button"
-                                onClick={() => handleEnviarOfertaCampana(user)}
+                                onClick={() => openOfertaModal(user)}
                                 className="px-2.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-xl transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
                               >
-                                <Sparkles className="w-3.5 h-3.5" /> Oferta Campana
+                                <Sparkles className="w-3.5 h-3.5" /> Oferta / Campaña
                               </button>
                             </div>
                           </td>
@@ -1994,6 +2098,223 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* MODAL: OFERTA / CAMPAÑA COMERCIAL */}
+        {ofertaModalUser && (() => {
+          const telefonoLimpio = formatWhatsAppNumber(ofertaModalUser.telefono || '');
+          const hasPhone = Boolean(telefonoLimpio);
+          const emailDestino = (ofertaModalUser.email || '').trim();
+          const hasEmail = Boolean(emailDestino);
+          const nombreUsuarioDisplay = ofertaModalUser.razonSocial || ofertaModalUser.nombre || emailDestino || 'Usuario';
+          const whatsappHref = hasPhone
+            ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(ofertaMensaje)}`
+            : '#';
+          const gmailHref = hasEmail
+            ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailDestino)}&su=${encodeURIComponent(ofertaAsunto)}&body=${encodeURIComponent(ofertaMensaje)}`
+            : '#';
+
+          return (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
+              <div className="w-full max-w-2xl bg-[#121214] border border-white/10 rounded-3xl p-5 md:p-6 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 text-gray-200">
+                {/* Header */}
+                <div className="flex items-start justify-between border-b border-white/10 pb-4 mb-4 shrink-0 gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2.5 bg-purple-500/15 rounded-2xl border border-purple-500/30 text-purple-400 shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-bold text-white truncate">
+                        Oferta / Campaña Comercial
+                      </h2>
+                      <p className="text-xs text-gray-300 font-medium truncate mt-0.5" title={nombreUsuarioDisplay}>
+                        {nombreUsuarioDisplay}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-300 font-medium">
+                          {ofertaModalUser.plan || 'Prueba Gratuita'}
+                        </span>
+                        {ofertaModalUser.estadoSuscripcion === 'activo' ? (
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
+                            Activo
+                          </span>
+                        ) : ofertaModalUser.estadoSuscripcion === 'prueba' ? (
+                          <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
+                            Prueba ({ofertaModalUser.diasRestantes ?? 5}d)
+                          </span>
+                        ) : ofertaModalUser.estadoSuscripcion === 'pendiente' ? (
+                          <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
+                            Pendiente
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
+                            Vencido
+                          </span>
+                        )}
+                        <span className="text-[10px] text-gray-400 font-mono truncate">
+                          {hasEmail ? emailDestino : 'Sin email'} • {ofertaModalUser.telefono || 'Sin teléfono'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOfertaModalUser(null)}
+                    className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer shrink-0"
+                    title="Cerrar (ESC)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-4">
+                  {/* Selector de plantillas */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                      1. Selecciona una plantilla de oferta
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {OFERTA_TEMPLATES.map((tpl) => {
+                        const selected = ofertaTemplateId === tpl.id;
+                        return (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => handleSelectOfertaTemplate(tpl.id)}
+                            className={`text-left p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-1 ${
+                              tpl.id === 'personalizado' ? 'sm:col-span-2' : ''
+                            } ${
+                              selected
+                                ? 'bg-purple-500/15 border-purple-500/50 text-white shadow-sm'
+                                : 'bg-[#09090b] border-white/10 hover:border-white/20 text-gray-300 hover:bg-white/[0.03]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold">{tpl.title}</span>
+                              <span
+                                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                                  selected
+                                    ? 'bg-purple-500/30 text-purple-200 border border-purple-400/30'
+                                    : 'bg-white/5 text-gray-400 border border-white/10'
+                                }`}
+                              >
+                                {tpl.badge}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 leading-snug">
+                              {tpl.subtitle}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Asunto */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                      2. Asunto (para envío por Gmail)
+                    </label>
+                    <input
+                      type="text"
+                      value={ofertaAsunto}
+                      onChange={(e) => setOfertaAsunto(e.target.value)}
+                      placeholder={`Ej: Propuesta exclusiva O.L.G.A. para ${nombreUsuarioDisplay}`}
+                      className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                    />
+                  </div>
+
+                  {/* Cuerpo del mensaje */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                      3. Vista previa y edición del mensaje
+                    </label>
+                    <textarea
+                      rows={7}
+                      value={ofertaMensaje}
+                      onChange={(e) => setOfertaMensaje(e.target.value)}
+                      placeholder={`Redacta aquí el mensaje para ${nombreUsuarioDisplay}...`}
+                      className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors resize-y leading-relaxed"
+                    />
+                  </div>
+
+                  {(!hasPhone || !hasEmail) && (
+                    <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-3.5 py-2.5 text-[11px] text-amber-300 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        {!hasPhone && <p>Este usuario no tiene teléfono registrado para WhatsApp.</p>}
+                        {!hasEmail && <p>Este usuario no tiene correo electrónico registrado para Gmail.</p>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-4 border-t border-white/10 mt-4 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setOfertaModalUser(null)}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <a
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-disabled={!hasPhone || !ofertaMensaje.trim()}
+                      onClick={(e) => {
+                        if (!hasPhone || !ofertaMensaje.trim()) e.preventDefault();
+                      }}
+                      title={
+                        !hasPhone
+                          ? 'Usuario sin teléfono registrado'
+                          : !ofertaMensaje.trim()
+                            ? 'Escribe un mensaje antes de enviar'
+                            : `Enviar por WhatsApp (${ofertaModalUser.telefono})`
+                      }
+                      className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border ${
+                        hasPhone && ofertaMensaje.trim()
+                          ? 'bg-green-600/25 hover:bg-green-600/40 text-green-300 border-green-500/30 cursor-pointer'
+                          : 'bg-white/5 text-gray-500 border-white/5 cursor-not-allowed pointer-events-auto opacity-60'
+                      }`}
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      {hasPhone ? 'Enviar por WhatsApp' : 'WhatsApp (Sin teléfono)'}
+                    </a>
+
+                    <a
+                      href={gmailHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-disabled={!hasEmail || !ofertaMensaje.trim()}
+                      onClick={(e) => {
+                        if (!hasEmail || !ofertaMensaje.trim()) e.preventDefault();
+                      }}
+                      title={
+                        !hasEmail
+                          ? 'Usuario sin email registrado'
+                          : !ofertaMensaje.trim()
+                            ? 'Escribe un mensaje antes de enviar'
+                            : `Redactar en Gmail para ${emailDestino}`
+                      }
+                      className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border ${
+                        hasEmail && ofertaMensaje.trim()
+                          ? 'bg-blue-600/25 hover:bg-blue-600/40 text-blue-300 border-blue-500/30 cursor-pointer'
+                          : 'bg-white/5 text-gray-500 border-white/5 cursor-not-allowed pointer-events-auto opacity-60'
+                      }`}
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      {hasEmail ? 'Enviar por Gmail' : 'Gmail (Sin email)'}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
