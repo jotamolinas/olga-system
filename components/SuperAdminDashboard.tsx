@@ -49,17 +49,6 @@ const getEffectiveAddonState = (
   user: RegisteredUser,
   field: AddonField
 ): { enabled: boolean; isInherited: boolean } => {
-  const emailLower = String(user.email || '').toLowerCase();
-  const roleUpper = String(user.raw?.role || user.raw?.rol || '').toUpperCase();
-  const isUserSuperAdmin =
-    emailLower === 'jotamolinas@gmail.com' ||
-    roleUpper === 'ADMIN' ||
-    roleUpper === 'SUPERADMIN';
-
-  if (isUserSuperAdmin) {
-    return { enabled: true, isInherited: false };
-  }
-
   const rawVal = user.raw?.[field] ?? user[field];
   if (rawVal === true) return { enabled: true, isInherited: false };
   if (rawVal === false) return { enabled: false, isInherited: false };
@@ -318,6 +307,7 @@ const MASS_CAMPAIGN_TEMPLATES: {
 
 export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
+  const [mobileAdminTab, setMobileAdminTab] = useState<'resumen' | 'usuarios' | 'pagares' | 'sifen_avisos'>('resumen');
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0, clientesCount: 0, equipoCortesiaCount: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -497,19 +487,20 @@ export const SuperAdminDashboard: React.FC = () => {
         fecha_inicio_plan: fechaActual.toISOString(),
         fecha_vencimiento_plan: fechaVencimiento.toISOString()
       });
-      alert(`Plan actualizado con éxito a "${nuevoPlan}".`);
+      showToast('ok', `Plan actualizado con éxito a "${nuevoPlan}".`);
     } catch (err) {
       console.error("Error al actualizar plan:", err);
-      alert('Error al actualizar el plan.');
+      showToast('err', 'Error al actualizar el plan.');
     }
   };
 
   const handleCambiarCategoriaUsuario = async (userId: string, nuevaCat: 'cliente' | 'cortesia' | 'equipo') => {
     try {
       await updateDoc(doc(db, 'users', userId), { categoriaCuenta: nuevaCat });
+      showToast('ok', `Rol actualizado a "${nuevaCat}".`);
     } catch (err) {
       console.error("Error al actualizar categoría de cuenta:", err);
-      alert('Error al actualizar categoría.');
+      showToast('err', 'Error al actualizar categoría.');
     }
   };
 
@@ -692,6 +683,110 @@ export const SuperAdminDashboard: React.FC = () => {
       return true;
     });
   }, [registeredUsers, userSearchTerm, userFilter]);
+
+  const pagareIssuersRanking = useMemo(() => {
+    const userById = new Map<string, RegisteredUser>();
+    const userByEmail = new Map<string, RegisteredUser>();
+    registeredUsers.forEach((u) => {
+      userById.set(u.id, u);
+      if (u.email) userByEmail.set(u.email.trim().toLowerCase(), u);
+    });
+
+    const getTimestampMs = (val: any): number => {
+      if (!val) return 0;
+      if (typeof val?.toDate === 'function') return val.toDate().getTime();
+      if (typeof val === 'number') return val > 1000000000000 ? val : val * 1000;
+      if (typeof val === 'string') {
+        const parsed = Date.parse(val);
+        if (!isNaN(parsed)) return parsed;
+        const parts = val.split('/');
+        if (parts.length === 3) {
+          const dmy = Date.parse(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+          if (!isNaN(dmy)) return dmy;
+        }
+      }
+      return 0;
+    };
+
+    const formatShortDate = (ms: number): string => {
+      if (!ms) return 'Sin fecha';
+      const d = new Date(ms);
+      if (isNaN(d.getTime())) return 'Sin fecha';
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+    };
+
+    const map = new Map<
+      string,
+      {
+        key: string;
+        displayName: string;
+        email: string;
+        plan: string;
+        count: number;
+        totalMonto: number;
+        lastActivityMs: number;
+      }
+    >();
+
+    pagaresGlobal.forEach((p) => {
+      const cleanEmail =
+        p.userEmail && !p.userEmail.startsWith('ID: ')
+          ? p.userEmail.trim().toLowerCase()
+          : '';
+      const matchedUser =
+        (p.userId ? userById.get(p.userId) : undefined) ||
+        (cleanEmail ? userByEmail.get(cleanEmail) : undefined);
+
+      const groupKey =
+        matchedUser?.id ||
+        p.userId ||
+        cleanEmail ||
+        (p.empresa || p.acreedor_nombre || 'emisor').trim().toLowerCase();
+
+      const displayName =
+        matchedUser?.razonSocial ||
+        matchedUser?.nombre ||
+        (p.empresa && p.empresa !== 'Empresa Desconocida' ? p.empresa : '') ||
+        (p.acreedor_nombre && p.acreedor_nombre !== 'Emisor Desconocido' ? p.acreedor_nombre : '') ||
+        cleanEmail ||
+        'Usuario sin nombre';
+
+      const email = matchedUser?.email || cleanEmail || '';
+      const plan = matchedUser?.plan || 'Sin plan';
+      const montoNum =
+        typeof p.monto === 'number'
+          ? p.monto
+          : parseFloat(String(p.monto || '0').replace(/[^\d.-]/g, '')) || 0;
+      const activityMs = getTimestampMs(p.created_at) || getTimestampMs(p.fecha_emision);
+
+      const existing = map.get(groupKey);
+      if (existing) {
+        existing.count += 1;
+        existing.totalMonto += montoNum;
+        if (activityMs > existing.lastActivityMs) {
+          existing.lastActivityMs = activityMs;
+        }
+      } else {
+        map.set(groupKey, {
+          key: groupKey,
+          displayName,
+          email,
+          plan,
+          count: 1,
+          totalMonto: montoNum,
+          lastActivityMs: activityMs,
+        });
+      }
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.count - a.count || b.lastActivityMs - a.lastActivityMs)
+      .map((item) => ({
+        ...item,
+        lastActivityLabel: formatShortDate(item.lastActivityMs),
+      }));
+  }, [pagaresGlobal, registeredUsers]);
 
   const segmentCounts = useMemo<Record<CampaignSegment, number>>(() => ({
     all: registeredUsers.length,
@@ -1118,10 +1213,10 @@ export const SuperAdminDashboard: React.FC = () => {
       });
 
       setPendingPayments(prev => prev.filter(p => p.userId !== userId));
-      alert(`¡Suscripción aprobada!\nEl plan "${planSolicitado}" vencerá el ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
+      showToast('ok', `¡Suscripción aprobada! Plan "${planSolicitado}" vigente hasta ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
       console.error(err);
-      alert('Error al aprobar la suscripción.');
+      showToast('err', 'Error al aprobar la suscripción.');
     }
   };
 
@@ -1171,12 +1266,238 @@ export const SuperAdminDashboard: React.FC = () => {
     return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><ShieldCheck className="w-3 h-3"/> NORMAL</span>;
   };
 
+  const getUserExpirationLabel = (user: RegisteredUser): string => {
+    const rawExpiry =
+      user.raw?.fecha_vencimiento_plan ||
+      user.raw?.fecha_expiracion ||
+      user.raw?.fechaVencimiento ||
+      user.raw?.planExpiresAt;
+
+    const formatMs = (ms: number) => {
+      const d = new Date(ms);
+      if (isNaN(d.getTime())) return '';
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+    };
+
+    if (rawExpiry) {
+      if (typeof rawExpiry?.toDate === 'function') {
+        const formatted = formatMs(rawExpiry.toDate().getTime());
+        if (formatted) return formatted;
+      } else if (typeof rawExpiry === 'number') {
+        const ms = rawExpiry > 1000000000000 ? rawExpiry : rawExpiry * 1000;
+        const formatted = formatMs(ms);
+        if (formatted) return formatted;
+      } else if (typeof rawExpiry === 'string') {
+        const parsed = Date.parse(rawExpiry);
+        if (!isNaN(parsed)) {
+          const formatted = formatMs(parsed);
+          if (formatted) return formatted;
+        }
+      }
+    }
+
+    if (user.estadoSuscripcion === 'prueba' || user.estadoSuscripcion === 'vencido') {
+      if (user.timestamp > 0) {
+        const formatted = formatMs(user.timestamp + 5 * 24 * 60 * 60 * 1000);
+        if (formatted) return formatted;
+      }
+    }
+
+    return user.fechaFormateada !== 'Reciente / No registrada' ? user.fechaFormateada : 'Sin vencimiento';
+  };
+
+  const renderMobileUserCard = (user: RegisteredUser) => {
+    const inicial = (user.nombre || user.razonSocial || user.email || 'U').charAt(0).toUpperCase();
+    const nombreDisplay = user.razonSocial || user.nombre || user.email;
+    const isActivo = user.estadoSuscripcion === 'activo';
+    const isPrueba = user.estadoSuscripcion === 'prueba';
+    const isPendiente = user.estadoSuscripcion === 'pendiente';
+    const expirationLabel = getUserExpirationLabel(user);
+
+    return (
+      <div
+        key={user.id}
+        className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3.5 shadow-sm"
+      >
+        {/* Top row: identity + status + expiration */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-200 shrink-0 mt-0.5">
+              {inicial}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-white leading-snug break-words">
+                {nombreDisplay}
+              </p>
+              {user.email && (
+                <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
+              )}
+              {user.telefono && (
+                <p className="text-[11px] text-gray-500 font-mono mt-0.5">{user.telefono}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {isActivo ? (
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-300 px-2.5 py-1 rounded-full font-bold border border-emerald-500/30">
+                Activo
+              </span>
+            ) : isPrueba ? (
+              <span className="text-[10px] bg-cyan-500/15 text-cyan-300 px-2.5 py-1 rounded-full font-bold border border-cyan-500/30">
+                Prueba ({user.diasRestantes ?? 5}d)
+              </span>
+            ) : isPendiente ? (
+              <span className="text-[10px] bg-amber-500/15 text-amber-300 px-2.5 py-1 rounded-full font-bold border border-amber-500/30">
+                Pendiente
+              </span>
+            ) : (
+              <span className="text-[10px] bg-red-500/15 text-red-300 px-2.5 py-1 rounded-full font-bold border border-red-500/30">
+                Vencido
+              </span>
+            )}
+            <span className="text-[10px] text-gray-400 font-mono">
+              Vence: {expirationLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Selectores táctiles: Rol y Plan */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+              Rol
+            </label>
+            <select
+              value={user.categoriaCuenta || 'cliente'}
+              onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+              className={`w-full min-h-[42px] border rounded-xl text-xs font-semibold px-3 py-2 outline-none cursor-pointer ${
+                user.categoriaCuenta === 'cortesia'
+                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                  : user.categoriaCuenta === 'equipo'
+                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+              }`}
+            >
+              <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+              <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+              <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+              Plan (Liberar / Cambiar)
+            </label>
+            <select
+              value={user.plan || 'Prueba Gratuita'}
+              onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+              className="w-full min-h-[42px] bg-[#09090b] border border-white/15 rounded-xl text-xs font-semibold text-white px-3 py-2 outline-none cursor-pointer"
+            >
+              <option value="Prueba Gratuita">Prueba (5d)</option>
+              <option value="Plan Básico">Plan Básico</option>
+              <option value="Plan Pro">Plan Pro</option>
+              <option value="Plan Empresa">Plan Empresa</option>
+              <option value="Plan Full">Plan Full</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 3 switches grandes para WhatsApp, Lienzo y Presupuestos */}
+        <div className="space-y-2 pt-1">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            Módulos habilitados
+          </span>
+          <div className="grid grid-cols-1 gap-2">
+            {ADDON_MODULES.map((mod) => {
+              const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
+              const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
+              return (
+                <button
+                  key={mod.field}
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  disabled={isBusy}
+                  onClick={() => handleToggleAddon(user, mod.field)}
+                  className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-colors cursor-pointer disabled:opacity-50 ${
+                    enabled
+                      ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-200'
+                      : 'bg-[#09090b] border-white/10 text-gray-300'
+                  }`}
+                >
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-bold">{mod.fullLabel}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {enabled ? 'Activo' : 'Inactivo'} • {isInherited ? 'Heredado del plan' : 'Llave manual'}
+                    </p>
+                  </div>
+                  <span
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                      enabled
+                        ? 'bg-emerald-500 border-emerald-400/60'
+                        : 'bg-zinc-700 border-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${
+                        enabled ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Acciones rápidas: WhatsApp, Gmail y Oferta */}
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          <a
+            href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+            className={`min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors ${
+              user.telefono
+                ? 'bg-green-600/20 hover:bg-green-600/35 text-green-300 border-green-500/30'
+                : 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed'
+            }`}
+          >
+            <Phone className="w-3.5 h-3.5 shrink-0" />
+            <span>WhatsApp</span>
+          </a>
+
+          <a
+            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 transition-colors"
+          >
+            <Mail className="w-3.5 h-3.5 shrink-0" />
+            <span>Gmail</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={() => openOfertaModal(user)}
+            className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 border border-purple-500/30 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span>Oferta</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-2 md:p-4 w-full box-border h-full overflow-x-hidden">
+    <div className="flex-1 min-h-screen md:min-h-0 md:h-full overflow-y-auto md:overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-3 pb-24 md:p-4 w-full box-border overflow-x-hidden">
       {whatsappToast && (
         <div
           role="status"
-          className={`fixed top-4 right-4 z-[80] flex items-center gap-2.5 px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+          className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-4 z-[80] flex items-center gap-2.5 px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 ${
             whatsappToast.kind === 'success'
               ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
               : 'bg-red-950/90 border-red-500/40 text-red-200'
@@ -1190,7 +1511,7 @@ export const SuperAdminDashboard: React.FC = () => {
           <span>{whatsappToast.message}</span>
         </div>
       )}
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col md:overflow-hidden overflow-x-hidden">
         {/* Header / Subtabs */}
         <div className="mb-3 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -1201,7 +1522,7 @@ export const SuperAdminDashboard: React.FC = () => {
             <p className="text-[11px] text-gray-400 mt-0.5">Super Admin • Métricas, emisión y auditoría en tiempo real.</p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="hidden md:flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -1247,6 +1568,577 @@ export const SuperAdminDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Barra de navegación rápida solo en móvil */}
+        <nav
+          aria-label="Secciones de Monitor Central en móvil"
+          className="md:hidden flex items-center gap-2 overflow-x-auto pb-2.5 mb-3 border-b border-white/10 shrink-0"
+        >
+          <button
+            type="button"
+            onClick={() => setMobileAdminTab('resumen')}
+            className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer ${
+              mobileAdminTab === 'resumen'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : 'bg-[#121214] text-gray-300 border-white/10'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Resumen</span>
+            {(pendingPayments.length > 0 || pendingTicketsCount > 0) && (
+              <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/25 text-amber-200 font-mono">
+                {pendingPayments.length + pendingTicketsCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileAdminTab('usuarios')}
+            className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer ${
+              mobileAdminTab === 'usuarios'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : 'bg-[#121214] text-gray-300 border-white/10'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Usuarios ({registeredUsers.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileAdminTab('pagares')}
+            className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer ${
+              mobileAdminTab === 'pagares'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : 'bg-[#121214] text-gray-300 border-white/10'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Pagarés ({pagaresGlobal.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileAdminTab('sifen_avisos')}
+            className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer ${
+              mobileAdminTab === 'sifen_avisos'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : 'bg-[#121214] text-gray-300 border-white/10'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>SIFEN / Avisos</span>
+            {liveAnnouncement?.active && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+        </nav>
+
+        {/* VISTA MÓVIL (md:hidden) */}
+        <div className="md:hidden space-y-4">
+          {mobileAdminTab === 'resumen' && (
+            <div className="space-y-4">
+              {/* Grid KPIs compacto 2x2 */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setMobileAdminTab('usuarios')}
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Usuarios</span>
+                    <div className="p-1.5 bg-blue-500/15 rounded-lg border border-blue-500/20">
+                      <Users className="w-3.5 h-3.5 text-blue-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-light text-white">{loadingUsers ? '...' : metrics.totalUsers}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{metrics.clientesCount} clientes</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileAdminTab('pagares')}
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pagarés</span>
+                    <div className="p-1.5 bg-emerald-500/15 rounded-lg border border-emerald-500/20">
+                      <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-light text-white">{loading ? '...' : metrics.totalPagares}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{pagareIssuersRanking.length} emisores</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAiModalOpen(true)}
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Consultas IA</span>
+                    <div className="p-1.5 bg-purple-500/15 rounded-lg border border-purple-500/20">
+                      <Activity className="w-3.5 h-3.5 text-purple-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-light text-white">{loading ? '...' : metrics.aiQueries}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Ver desglose</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPagosModalOpen(true)}
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pagos Pend.</span>
+                    <div className="p-1.5 bg-orange-500/15 rounded-lg border border-orange-500/20">
+                      <CreditCard className="w-3.5 h-3.5 text-orange-400" />
+                    </div>
+                  </div>
+                  <p className={`text-2xl font-light ${pendingPayments.length > 0 ? 'text-orange-400 font-normal' : 'text-white'}`}>
+                    {loadingPayments ? '...' : pendingPayments.length}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Por aprobar</p>
+                </button>
+              </div>
+
+              {/* Pagos Pendientes */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-orange-400" />
+                    Pagos Pendientes
+                  </span>
+                  <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold ${
+                    pendingPayments.length > 0
+                      ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+                      : 'bg-white/5 text-gray-400'
+                  }`}>
+                    {pendingPayments.length} pendientes
+                  </span>
+                </div>
+
+                {loadingPayments ? (
+                  <div className="py-6 flex justify-center">
+                    <div className="w-5 h-5 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+                  </div>
+                ) : pendingPayments.length === 0 ? (
+                  <div className="py-5 text-center flex flex-col items-center">
+                    <CheckCircle className="w-6 h-6 text-emerald-500/40 mb-1.5" />
+                    <p className="text-xs text-gray-400">Al día con las suscripciones</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {pendingPayments.map((pago) => {
+                      const nombreEscribano = pago.nombreCliente || pago.email || 'Escribano';
+                      const montoFormatted =
+                        pago.montoAPagar && pago.montoAPagar > 0
+                          ? `Gs. ${pago.montoAPagar.toLocaleString('es-PY')}`
+                          : pago.planSolicitado || 'Plan';
+
+                      return (
+                        <div
+                          key={pago.id}
+                          className="p-3 rounded-xl bg-[#09090b] border border-white/10 space-y-2.5"
+                        >
+                          <div>
+                            <p className="text-xs font-bold text-white break-words">{nombreEscribano}</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                              {montoFormatted} • {pago.planSolicitado}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {pago.urlComprobante && (
+                              <button
+                                type="button"
+                                onClick={() => setReciboSeleccionado(pago.urlComprobante)}
+                                className="flex-1 min-h-[38px] bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" /> Revisar Recibo
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago)}
+                              className="flex-1 min-h-[38px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Aprobar Plan
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Buzón de Consultas */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-amber-400" />
+                    Buzón de Consultas
+                  </span>
+                  <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold ${
+                    pendingTicketsCount > 0
+                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      : 'bg-white/5 text-gray-400'
+                  }`}>
+                    {pendingTicketsCount} pendientes
+                  </span>
+                </div>
+
+                {pendingTickets.length === 0 ? (
+                  <div className="py-5 text-center flex flex-col items-center">
+                    <CheckCircle className="w-6 h-6 text-emerald-500/40 mb-1.5" />
+                    <p className="text-xs text-gray-400">No hay consultas pendientes</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {pendingTickets.map((ticket) => {
+                      const isResuelto = ticket.estado === 'resuelto';
+                      const isPendiente = ticket.estado === 'pendiente' || !ticket.estado;
+                      return (
+                        <div
+                          key={ticket.id}
+                          className={`p-3 rounded-xl border space-y-2.5 ${
+                            isResuelto
+                              ? 'bg-[#09090b]/60 opacity-65 border-white/5'
+                              : 'bg-[#09090b] border-amber-500/25'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs font-bold text-white leading-snug break-words">
+                                {ticket.asunto || ticket.mensaje || 'Consulta de soporte'}
+                              </p>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold shrink-0 ${
+                                isResuelto
+                                  ? 'bg-emerald-500/15 text-emerald-300'
+                                  : ticket.estado === 'en_proceso'
+                                    ? 'bg-blue-500/15 text-blue-300'
+                                    : 'bg-amber-500/15 text-amber-300'
+                              }`}>
+                                {ticket.estado || 'pendiente'}
+                              </span>
+                            </div>
+                            {ticket.mensaje && ticket.asunto && (
+                              <p className="text-[11px] text-gray-300 mt-1 break-words">{ticket.mensaje}</p>
+                            )}
+                            <p className="text-[10px] text-gray-400 mt-1 truncate">
+                              {ticket.userEmail || ticket.email || 'Usuario'}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {isPendiente && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarcarEnProceso(ticket.id)}
+                                className="min-h-[36px] px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Clock className="w-3.5 h-3.5" /> En Proceso
+                              </button>
+                            )}
+                            {!isResuelto && (
+                              <button
+                                type="button"
+                                onClick={() => handleResolverTicket(ticket.id)}
+                                className="min-h-[36px] px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Resolver
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarTicket(ticket.id)}
+                              className="min-h-[36px] px-3 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer ml-auto"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mobileAdminTab === 'usuarios' && (
+            <div className="space-y-3">
+              {/* Buscador + Filtros */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-3 space-y-2.5">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                    placeholder="Buscar por nombre, email o teléfono..."
+                    className="w-full min-h-[42px] bg-[#09090b] border border-white/15 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                  {(['todos', 'clientes', 'prueba', 'vencidos', 'cortesia_equipo'] as const).map((filtro) => (
+                    <button
+                      key={filtro}
+                      type="button"
+                      onClick={() => setUserFilter(filtro)}
+                      className={`min-h-[36px] px-3 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer shrink-0 border ${
+                        userFilter === filtro
+                          ? 'bg-blue-600 text-white border-blue-500'
+                          : 'bg-[#09090b] text-gray-400 border-white/10'
+                      }`}
+                    >
+                      {filtro === 'todos'
+                        ? 'Todos'
+                        : filtro === 'clientes'
+                          ? 'Clientes'
+                          : filtro === 'prueba'
+                            ? 'Prueba'
+                            : filtro === 'vencidos'
+                              ? 'Vencidos'
+                              : 'Cortesía'}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-gray-400 font-mono">
+                  Mostrando {filteredUsers.length} de {registeredUsers.length} usuarios
+                </p>
+              </div>
+
+              {loadingUsers ? (
+                <div className="py-10 flex justify-center">
+                  <div className="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="bg-[#121214] border border-white/10 rounded-2xl p-8 text-center text-xs text-gray-400">
+                  No se encontraron usuarios con los filtros seleccionados.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredUsers.map((user) => renderMobileUserCard(user))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mobileAdminTab === 'pagares' && (
+            <div className="space-y-4">
+              {/* Gráfico Emisión & Volumen */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    Emisión & Volumen (6 Meses)
+                  </span>
+                  <span className="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                    {metrics.totalPagares} docs
+                  </span>
+                </div>
+
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid stroke="#27272a" vertical={false} strokeOpacity={0.4} />
+                      <XAxis dataKey="name" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip
+                        cursor={{ fill: '#27272a', opacity: 0.3 }}
+                        contentStyle={{
+                          backgroundColor: '#18181b',
+                          borderColor: 'rgba(255,255,255,0.1)',
+                          borderRadius: '12px',
+                          color: '#f4f4f5',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Bar dataKey="cantidad" fill="#10b981" barSize={20} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Ranking / Lista de usuarios que generan pagarés */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-blue-400" />
+                    Usuarios que Generan Pagarés
+                  </span>
+                  <span className="text-[11px] text-gray-300 bg-white/5 px-2.5 py-0.5 rounded-full font-mono">
+                    {pagareIssuersRanking.length} emisores
+                  </span>
+                </div>
+
+                {loading ? (
+                  <div className="py-6 flex justify-center">
+                    <div className="w-5 h-5 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+                  </div>
+                ) : pagareIssuersRanking.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-4">
+                    Aún no hay usuarios con pagarés emitidos.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {pagareIssuersRanking.map((issuer, idx) => (
+                      <div
+                        key={issuer.key}
+                        className="p-3 rounded-xl bg-[#09090b] border border-white/10 flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">
+                            #{idx + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-white truncate">{issuer.displayName}</p>
+                            {issuer.email && (
+                              <p className="text-[11px] text-gray-400 truncate">{issuer.email}</p>
+                            )}
+                            <p className="text-[10px] text-gray-400 mt-1 font-mono">
+                              Última actividad: {issuer.lastActivityLabel}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="inline-block text-xs font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-full font-mono">
+                            {issuer.count} {issuer.count === 1 ? 'pagaré' : 'pagarés'}
+                          </span>
+                          <p className="text-[10px] text-gray-400 font-mono mt-1">
+                            Gs. {issuer.totalMonto.toLocaleString('es-PY')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Documentos recientes / Auditoría */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300">
+                    Emisión Reciente
+                  </span>
+                  <span className="text-[11px] text-gray-400 font-mono">
+                    {filteredPagares.length} docs
+                  </span>
+                </div>
+
+                <input
+                  type="text"
+                  value={pagaresSearchTerm}
+                  onChange={(e) => setPagaresSearchTerm(e.target.value)}
+                  placeholder="Filtrar por emisor, deudor o C.I./RUC..."
+                  className="w-full min-h-[42px] bg-[#09090b] border border-white/15 rounded-xl px-3.5 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                />
+
+                {filteredPagares.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-4">
+                    No se encontraron pagarés.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {filteredPagares.map((pagare) => {
+                      const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
+                      const montoFormatted =
+                        typeof pagare.monto === 'number'
+                          ? `Gs. ${pagare.monto.toLocaleString('es-PY')}`
+                          : pagare.monto;
+                      return (
+                        <div
+                          key={pagare.id}
+                          className="p-3 rounded-xl bg-[#09090b] border border-white/10 space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-white truncate">{emisor}</p>
+                              <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                                Deudor: {pagare.deudor_nombre || 'N/D'} {pagare.deudor_cedula ? `(${pagare.deudor_cedula})` : ''}
+                              </p>
+                              <p className="text-[10px] text-gray-500 font-mono mt-0.5">
+                                Emitido: {pagare.fecha_emision} {pagare.fecha_vencimiento ? `• Vence: ${pagare.fecha_vencimiento}` : ''}
+                              </p>
+                            </div>
+                            <span className="text-xs font-bold text-emerald-400 font-mono shrink-0">
+                              {montoFormatted}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAuditoria(pagare)}
+                            className="w-full min-h-[38px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> Ver Auditoría IA
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mobileAdminTab === 'sifen_avisos' && (
+            <div className="space-y-4">
+              {/* Centro de Avisos & Campañas */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Megaphone className="w-4 h-4 text-purple-400" />
+                      Avisos & Campañas Masivas
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Publica banners globales en plataforma o lanza campañas segmentadas por Email y WhatsApp.
+                    </p>
+                  </div>
+                  {liveAnnouncement?.active && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
+                      Activo
+                    </span>
+                  )}
+                </div>
+
+                {liveAnnouncement?.active && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs">
+                    <p className="font-bold text-emerald-200">{liveAnnouncement.title}</p>
+                    <p className="text-[11px] text-emerald-300/80 mt-0.5">
+                      Segmento: {liveAnnouncement.targetSegment} • Visto por {Array.isArray(liveAnnouncement.vistoPor) ? liveAnnouncement.vistoPor.length : 0} usuarios
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnouncementFeedback(null);
+                    setCenterModalOpen(true);
+                  }}
+                  className="w-full min-h-[44px] px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Megaphone className="w-4 h-4" />
+                  <span>Abrir Centro de Avisos & Campañas</span>
+                </button>
+              </div>
+
+              {/* Onboarding SIFEN inline */}
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-2">
+                <SuperAdminOnboarding />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* VISTA ESCRITORIO INTACTA (hidden md:flex) */}
+        <div className="hidden md:flex md:flex-1 md:flex-col md:overflow-hidden">
         {adminSubTab === 'onboarding' ? (
           <div className="flex-1 overflow-y-auto">
             <SuperAdminOnboarding />
@@ -1816,6 +2708,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
+        </div>
 
         {/* MODAL EXPANDIDO: USUARIOS */}
         {expandedModule === 'usuarios' && (
@@ -1873,9 +2766,12 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Tabla expandida */}
+              {/* Tabla expandida (solo escritorio) + Tarjetas (solo móvil) */}
               <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 rounded-2xl border border-white/5 bg-[#09090b]">
-                <table className="w-full text-left border-collapse">
+                <div className="md:hidden space-y-3 p-3">
+                  {filteredUsers.map((user) => renderMobileUserCard(user))}
+                </div>
+                <table className="hidden md:table w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-white/[0.02] border-b border-white/10 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
                       <th className="p-3.5">Usuario / Razón Social</th>
@@ -2096,9 +2992,36 @@ export const SuperAdminDashboard: React.FC = () => {
                 />
               </div>
 
-              {/* Tabla expandida de pagarés */}
+              {/* Tabla expandida de pagarés (solo escritorio) + Tarjetas (solo móvil) */}
               <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 rounded-2xl border border-white/5 bg-[#09090b]">
-                <table className="w-full text-left border-collapse">
+                <div className="md:hidden space-y-2.5 p-3">
+                  {filteredPagares.map((pagare) => {
+                    const emisor = pagare.empresa || pagare.acreedor_nombre || pagare.userEmail || 'Emisor';
+                    const montoFormatted = typeof pagare.monto === 'number'
+                      ? `Gs. ${pagare.monto.toLocaleString('es-PY')}`
+                      : pagare.monto;
+                    return (
+                      <div key={pagare.id} className="p-3 rounded-xl bg-[#121214] border border-white/10 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-white truncate">{emisor}</p>
+                            <p className="text-[11px] text-gray-400 truncate">Deudor: {pagare.deudor_nombre}</p>
+                            <p className="text-[10px] text-gray-500 font-mono">{pagare.fecha_emision}</p>
+                          </div>
+                          <span className="text-xs font-bold text-emerald-400 font-mono shrink-0">{montoFormatted}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAuditoria(pagare)}
+                          className="w-full min-h-[38px] bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" /> Ver Auditoría IA
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <table className="hidden md:table w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-white/[0.02] border-b border-white/10 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
                       <th className="p-3.5">Fecha Emisión</th>

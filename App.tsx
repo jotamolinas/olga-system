@@ -5,14 +5,14 @@ import { PrivacidadPage } from './components/PrivacidadPage';
 import { TerminosPage } from './components/TerminosPage';
 import { RecursosPage } from './components/RecursosPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
-import { Persona, GlobalConfig, Pagare, KnowledgeDoc } from './types';
+import { Persona, GlobalConfig, Pagare } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
 import { User, signOut, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, logout, getAccessToken } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
-  fetchKnowledgeDocsFromFirestore, syncKnowledgeDocToFirestore, deleteKnowledgeDocFromFirestore, guardarEscritoToFirestore 
+  guardarEscritoToFirestore 
 } from './services/firestore';
 import { buscarPersonaDuplicada, depurarDuplicadosLista } from './services/personaDedup';
 import { LoginScreen } from './components/LoginScreen';
@@ -30,7 +30,6 @@ import { PersonasTab } from './components/PersonasTab';
 import { PagaresTab } from './components/PagaresTab';
 import { ConfigTab } from './components/ConfigTab';
 import { PagarePDFPreview } from './components/PagarePDFPreview';
-import { KnowledgeBaseTab } from './components/KnowledgeBaseTab';
 import { CheckoutModal } from './components/CheckoutModal';
 import { DocumentoModal, limpiarTextoParaEscrito, wrapSignatureBlocksForPrint } from './components/DocumentoModal';
 import { EscritosTab } from './components/EscritosTab';
@@ -63,6 +62,7 @@ export interface AdminTramiteRecord {
 
 // Chat & AI
 import { sendMessageToOlga } from './services/gemini';
+import { notifySuperAdminWhatsApp } from './services/adminAlerts';
 import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp, Timestamp, arrayUnion } from 'firebase/firestore';
 import { db, auth } from './services/auth';
 import ReactMarkdown from 'react-markdown';
@@ -685,13 +685,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
   const esPlanPro = planActual.includes('pro');
   const esPlanEmpresa = planActual.includes('empresa');
-  const isSuperAdminModulo = Boolean(
-    role === 'admin' ||
-    isAdmin ||
-    currentUser?.email === 'jotamolinas@gmail.com' ||
-    String(userProfile?.role || userProfile?.rol || '').toUpperCase() === 'SUPERADMIN' ||
-    String(userData?.role || userData?.rol || '').toUpperCase() === 'SUPERADMIN'
-  );
   const getExplicitAddonFlag = (field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled'): boolean | undefined => {
     if (typeof userProfile?.[field] === 'boolean') return userProfile[field];
     if (typeof userData?.[field] === 'boolean') return userData[field];
@@ -701,13 +694,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled',
     defaultByPlan: boolean
   ): boolean => {
-    if (isSuperAdminModulo) return true;
     const explicit = getExplicitAddonFlag(field);
     if (explicit === true) return true;
     if (explicit === false) return false;
     return defaultByPlan;
   };
   const planIncluyeLienzoYPresupuestos = esPlanPro || esPlanEmpresa || planActual.includes('full');
+  const canUseWhatsApp = resolveAddonPermission('whatsappEnabled', false);
   const canUseLienzo = resolveAddonPermission('lienzoEnabled', planIncluyeLienzoYPresupuestos);
   const canUsePresupuesto = resolveAddonPermission('presupuestoEnabled', planIncluyeLienzoYPresupuestos);
   // Plan Full y Empresa tienen acceso a El Oráculo
@@ -757,7 +750,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
   });
   const [pagares, setPagares] = useState<Pagare[]>([]);
-  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
 
   // Purgar claves globales antiguas de localStorage para evitar fugas entre cuentas en el mismo navegador
   useEffect(() => {
@@ -854,7 +846,18 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp'>(forceAdmin ? 'monitor' : 'tablero');
+
+  useEffect(() => {
+    if (isCheckingProfile || !currentUser) return;
+    if (
+      (activeTab === 'whatsapp' && !canUseWhatsApp) ||
+      (activeTab === 'lienzo' && !canUseLienzo) ||
+      (activeTab === 'facturacion' && !canUsePresupuesto)
+    ) {
+      setActiveTab('tablero');
+    }
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -1389,28 +1392,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     };
   }, [workspaceId, currentUser?.uid]);
 
-  // FASE 2: Sincronización de Base de Conocimiento por Workspace
-  useEffect(() => {
-    if (!workspaceId) {
-      setKnowledgeDocs([]);
-      return;
-    }
-
-    const q = query(
-      collection(db, 'knowledge_docs'),
-      where('userId', '==', workspaceId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as KnowledgeDoc));
-      setKnowledgeDocs(data);
-    }, (error) => {
-      console.error("Fallo en sincronización de knowledge_docs:", error);
-    });
-
-    return () => unsubscribe();
-  }, [workspaceId]);
-
   useEffect(() => {
     localStorage.setItem('ihara_config', JSON.stringify(config));
   }, [config]);
@@ -1806,49 +1787,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       }
       const history = rawHistory;
 
-      // Seleccionar knowledgeDocs relevantes y limitar a un máximo de 15.000 caracteres totales
-      const MAX_KNOWLEDGE_CHARS = 15000;
-      let knowledgeContext = '';
-      if (knowledgeDocs.length > 0) {
-        const queryTerms = userText
-          .toLowerCase()
-          .split(/\s+/)
-          .filter((term) => term.length > 3);
-
-        const scoredDocs = knowledgeDocs.map((docItem) => {
-          const nameLower = String(docItem?.name || '').toLowerCase();
-          const contentLower = String(docItem?.content || '').toLowerCase();
-          let score = 0;
-          for (const term of queryTerms) {
-            if (nameLower.includes(term)) score += 3;
-            if (contentLower.includes(term)) score += 1;
-          }
-          return { doc: docItem, score };
-        });
-
-        const hasKeywordMatch = scoredDocs.some((entry) => entry.score > 0);
-        const prioritizedDocs = (hasKeywordMatch
-          ? scoredDocs.filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score)
-          : scoredDocs
-        ).map((entry) => entry.doc);
-
-        let totalChars = 0;
-        const selectedSnippets: string[] = [];
-        for (const docItem of prioritizedDocs) {
-          if (totalChars >= MAX_KNOWLEDGE_CHARS) break;
-          const remaining = MAX_KNOWLEDGE_CHARS - totalChars;
-          const truncatedContent = String(docItem?.content || '').slice(0, remaining);
-          if (!truncatedContent) continue;
-          const formatted = `- ${docItem?.name || 'Documento'}: ${truncatedContent}`;
-          selectedSnippets.push(formatted);
-          totalChars += formatted.length;
-        }
-
-        if (selectedSnippets.length > 0) {
-          knowledgeContext = `\n\n### BASE DE CONOCIMIENTO (DOCUMENTACIÓN DE APOYO) ###\nEl usuario ha subido manuales, leyes o documentos a tu memoria permanente. Úsalos como fuente primaria cuando correspondan:\n${selectedSnippets.join('\n')}`;
-        }
-      }
-
       const fechaHoyParaguay = new Date().toLocaleDateString('es-PY', {
         weekday: 'long',
         year: 'numeric',
@@ -1877,7 +1815,6 @@ Información actual del sistema en tiempo real para ayudar con precisión:
 - Frecuencias de pago activas: ${config.frecuencias.filter(f => f.activa).map(f => f.nombre).join(', ')}
 - Monedas autorizadas: ${config.monedas.filter(m => m.activa).map(m => m.codigo).join(', ')}
 - Rol del usuario actual: ${role === 'admin' ? 'Administrador' : 'Usuario'}
-${knowledgeContext}
 Eres O.L.G.A., experta en leyes paraguayas, redacción de contratos privados, pagarés y escrituras públicas.
 Conoces en profundidad la Ley 1.183/85 (Código Civil Paraguayo) sobre obligaciones y contratos, así como la Ley de Maquila y constituciones de sociedades (S.A., S.R.L., E.A.S.).
 Responde a las consultas del usuario justificando legalmente o redactando las cláusulas solicitadas con alto nivel técnico y notarial, de manera rigurosa y en español.`;
@@ -2001,9 +1938,6 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
   // En el workspace compartido, los pagarés pertenecen a la notaría
   const visiblePagares = pagares;
 
-  // Feature Flag WhatsApp Engine (con herencia por defecto = false)
-  const canUseWhatsApp = resolveAddonPermission('whatsappEnabled', false);
-
   const isSuperAdminView = role === 'admin' && (activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos');
   const isDarkLayout = isDarkMode || isSuperAdminView;
   const layoutBg = isDarkLayout ? 'bg-[#09090b]' : 'bg-gray-50';
@@ -2011,7 +1945,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
 
   return (
     <div 
-      className={`flex flex-col md:flex-row h-screen overflow-hidden font-sans ${layoutBg} ${layoutText} transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
+      className={`flex flex-col md:flex-row ${isSuperAdminView ? 'min-h-screen overflow-x-hidden md:h-screen md:overflow-hidden' : 'h-screen overflow-hidden'} font-sans ${layoutBg} ${layoutText} transition-all duration-300 print:block print:h-auto print:overflow-visible print:bg-white print:pl-0 ${
         !isSidebarPinned ? 'md:pl-[72px]' : ''
       }`} 
       id="main-panel-container"
@@ -2048,7 +1982,6 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           setUserProfile(null);
           setPersonas([]);
           setPagares([]);
-          setKnowledgeDocs([]);
           setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
         }}
         isStandalone={isStandalone}
@@ -2060,7 +1993,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
       />
 
       {/* Main Content Workspace viewport */}
-      <main className="flex-grow flex flex-col h-full overflow-hidden relative" id="main-content-viewport">
+      <main className={`flex-grow flex flex-col relative w-full min-w-0 max-w-full ${isSuperAdminView ? 'min-h-screen md:min-h-0 md:h-full md:overflow-hidden' : 'h-full overflow-hidden'}`} id="main-content-viewport">
         
         {/* Dynamic header display */}
         <header className={`${
@@ -2212,8 +2145,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         </header>
 
         {/* Scrollable container for tab body content */}
-        <div className={`flex-grow overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
-          <div className={`w-full max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'h-full flex-1 overflow-hidden pb-0' : 'pb-24'}`}>
+        <div className={`flex-grow w-full max-w-full overflow-x-hidden overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-y-auto md:overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
+          <div className={`w-full min-w-0 max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'min-h-full md:h-full flex-1 overflow-visible md:overflow-hidden pb-24 md:pb-0' : 'pb-24'}`}>
             
             {(() => {
               return (
@@ -2360,6 +2293,34 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 onPlanSelect={(planName, planPrice) => {
                   setSelectedPlanForCheckout({ name: planName, price: planPrice });
                   setCheckoutModalOpen(true);
+                  if (currentUser?.uid) {
+                    const modalidad = planPrice.includes('año') ? 'Anual' : 'Mensual';
+                    const activeProfile = userProfile || userData;
+                    void (async () => {
+                      try {
+                        await setDoc(doc(db, 'users', currentUser.uid), {
+                          ultimoPlanInteres: planName,
+                          modalidadInteres: modalidad,
+                          fechaSolicitudPlan: serverTimestamp(),
+                        }, { merge: true });
+                        notifySuperAdminWhatsApp({
+                          type: 'plan_request',
+                          userName:
+                            activeProfile?.nombreCompleto ||
+                            activeProfile?.nombre ||
+                            activeProfile?.razonSocial ||
+                            currentUser.displayName ||
+                            currentUser.email ||
+                            'Usuario',
+                          userEmail: currentUser.email || activeProfile?.email || '',
+                          userPhone: activeProfile?.telefono || currentUser.phoneNumber || '',
+                          details: `${planName} (${modalidad}) - ${planPrice}`,
+                        });
+                      } catch {
+                        // Silencioso para no afectar la apertura del checkout
+                      }
+                    })();
+                  }
                 }}
               />
             )}
@@ -2509,15 +2470,6 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 onUpdateConfig={handleUpdateConfig}
                 isAdmin={role === 'admin'}
                 esPlanFull={esPlanFull}
-              />
-            )}
-
-            {activeTab === 'knowledge' && (
-              <KnowledgeBaseTab
-                docs={knowledgeDocs}
-                setDocs={setKnowledgeDocs}
-                currentUser={currentUser}
-                onOpenDocument={handleOpenDocumentModal}
               />
             )}
 
@@ -2960,6 +2912,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           planName={selectedPlanForCheckout.name}
           planPrice={selectedPlanForCheckout.price}
           currentUser={currentUser}
+          userData={userProfile || userData}
         />
       )}
 

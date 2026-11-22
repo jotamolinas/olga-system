@@ -6,7 +6,6 @@ import {
   FileText,
   Stamp,
   Settings,
-  Database,
   CreditCard,
   Sparkles,
   MessageSquare,
@@ -35,7 +34,6 @@ export type SidebarTabId =
   | 'escritos'
   | 'config'
   | 'chat'
-  | 'knowledge'
   | 'monitor'
   | 'planes'
   | 'pagos'
@@ -147,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Plan Full y Plan Empresa tienen acceso a El Oráculo
   const tieneOraculo = esAdmin || planLower.includes('full') || planLower.includes('empresa');
   // Plan Pro, Full y Empresa tienen acceso base a Lienzo Notarial y Presupuestos
-  const planIncluyeLienzoYPresupuestos = esAdmin || planLower.includes('pro') || planLower.includes('empresa') || planLower.includes('full');
+  const planIncluyeLienzoYPresupuestos = planLower.includes('pro') || planLower.includes('empresa') || planLower.includes('full');
 
   // En Plan Full y Empresarial se llama 'El Oráculo'; en Básico y Pro es 'Asistente IA'
   const nombreAsistente = tieneOraculo ? 'El Oráculo' : 'Asistente IA';
@@ -239,7 +237,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     defaultByPlan: boolean
   ): boolean => {
     if (typeof propOverride === 'boolean') return propOverride;
-    if (isSuperAdmin) return true;
     const explicit = getExplicitFlag(field);
     if (explicit === true) return true;
     if (explicit === false) return false;
@@ -278,7 +275,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'cuenta', label: 'Configuración Escribanía', icon: Sliders },
     // Opciones administrativas
     { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
-    { id: 'knowledge', label: 'Entrenamiento IA', icon: Database, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
     // Regla Crítica: Envuelto en renderizado condicional estricto de Super Admin
     ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
@@ -553,8 +549,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => {
                   setRole('usuario');
-                  if (activeTab === 'config' || activeTab === 'knowledge' || activeTab === 'monitor' || activeTab === 'pagos') {
-                    setActiveTab('pagares');
+                  if (activeTab === 'config' || activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') {
+                    setActiveTab('tablero');
                   }
                 }}
                 className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${

@@ -80,42 +80,42 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
   };
 
   return (
-    <div className="space-y-8 animate-message" id="config-tab-panel">
+    <div className="space-y-6 md:space-y-8 animate-message w-full max-w-full overflow-x-hidden" id="config-tab-panel">
       {/* Header Info: Bloque Oscuro Azul Noche */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between p-6 rounded-3xl gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
-            <Settings className="w-6 h-6 text-slate-300" />
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between p-4 md:p-6 rounded-2xl md:rounded-3xl gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800 w-full min-w-0">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 min-w-0">
+          <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
+            <Settings className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold font-serif tracking-tight text-white">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl md:text-2xl font-bold font-serif tracking-tight text-white break-words">
                 Configuración del Sistema
               </h2>
-              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
+              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white shrink-0">
                 O.L.G.A.
               </span>
             </div>
-            <p className="text-sm mt-1 text-slate-400">
+            <p className="text-xs md:text-sm mt-1 text-slate-400 break-words">
               Parámetros jurídicos, institucionales y financieros para la escribanía y la emisión automatizada de documentos.
             </p>
           </div>
         </div>
         {!isAdmin && (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold leading-none w-fit border bg-slate-800 border border-slate-700 text-slate-300">
-            <Info className="w-4 h-4" />
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold leading-none w-fit border bg-slate-800 border-slate-700 text-slate-300 shrink-0">
+            <Info className="w-4 h-4 shrink-0" />
             <span>SOLO LECTURA (Acceso Restringido a Admin)</span>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 min-w-0">
         
         {/* Section A: Datos de la escribanía */}
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-            <ClipboardList className="w-5 h-5 text-[#FF3131]" />
-            <h3 className="text-lg font-extrabold text-slate-800">1. Datos Institucionales de la Escribanía</h3>
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-md space-y-6 w-full min-w-0">
+          <div className="flex items-center gap-3 border-b border-slate-50 pb-4 min-w-0">
+            <ClipboardList className="w-5 h-5 text-[#FF3131] shrink-0" />
+            <h3 className="text-base md:text-lg font-extrabold text-slate-800 break-words">1. Datos Institucionales de la Escribanía</h3>
           </div>
 
           <div className="space-y-4">
@@ -130,70 +130,70 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-1">
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Matrícula Registro</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
+              <div className="sm:col-span-1 min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Matrícula Registro</label>
                 <input 
                   type="text"
                   disabled={!isAdmin}
                   value={escribania.nro_registro}
                   onChange={(e) => setEscribania({ ...escribania, nro_registro: e.target.value })}
-                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
                 />
               </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Teléfono de Contacto</label>
+              <div className="sm:col-span-2 min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Teléfono de Contacto</label>
                 <input 
                   type="text"
                   disabled={!isAdmin}
                   value={escribania.telefono}
                   onChange={(e) => setEscribania({ ...escribania, telefono: e.target.value })}
-                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                  className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Dirección / Despacho Notarial</label>
+            <div className="min-w-0">
+              <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Dirección / Despacho Notarial</label>
               <input 
                 type="text"
                 disabled={!isAdmin}
                 value={escribania.direccion}
                 onChange={(e) => setEscribania({ ...escribania, direccion: e.target.value })}
-                className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Ciudad *</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+              <div className="min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Ciudad *</label>
                 <input 
                   type="text"
                   disabled={!isAdmin}
                   value={escribania.ciudad || ''}
                   onChange={(e) => setEscribania({ ...escribania, ciudad: e.target.value })}
                   placeholder="Ej. Asunción"
-                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-[#FF3131]"
+                  className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-[#FF3131]"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Localidad / País</label>
+              <div className="min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Localidad / País</label>
                 <input 
                   type="text"
                   disabled={!isAdmin}
                   value={escribania.localidad}
                   onChange={(e) => setEscribania({ ...escribania, localidad: e.target.value })}
-                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                  className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Correo Electrónico</label>
+              <div className="min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Correo Electrónico</label>
                 <input 
                   type="email"
                   disabled={!isAdmin}
                   value={escribania.email}
                   onChange={(e) => setEscribania({ ...escribania, email: e.target.value })}
-                  className="w-full box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                  className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-60 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none"
                 />
               </div>
             </div>
@@ -213,10 +213,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
         </div>
 
         {/* Section B: Configuración de Monedas */}
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-            <DollarSign className="w-5 h-5 text-[#FF3131]" />
-            <h3 className="text-lg font-extrabold text-slate-800">2. Divisas y Gestor de Moneda</h3>
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-md space-y-6 w-full min-w-0">
+          <div className="flex items-center gap-3 border-b border-slate-50 pb-4 min-w-0">
+            <DollarSign className="w-5 h-5 text-[#FF3131] shrink-0" />
+            <h3 className="text-base md:text-lg font-extrabold text-slate-800 break-words">2. Divisas y Gestor de Moneda</h3>
           </div>
 
           <div className="space-y-4">
@@ -269,29 +269,29 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
         </div>
 
         {/* Section C: Prefijo Serie de certificación de firmas */}
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-            <KeyRound className="w-5 h-5 text-[#FF3131]" />
-            <h3 className="text-lg font-extrabold text-slate-800">3. Serie de Certificación Correlativo</h3>
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-md space-y-6 w-full min-w-0">
+          <div className="flex items-center gap-3 border-b border-slate-50 pb-4 min-w-0">
+            <KeyRound className="w-5 h-5 text-[#FF3131] shrink-0" />
+            <h3 className="text-base md:text-lg font-extrabold text-slate-800 break-words">3. Serie de Certificación Correlativo</h3>
           </div>
 
           <div className="space-y-4">
             <p className="text-xs text-slate-400 font-medium">Defina el año de vigencia que servirá como prefijo fiscal de los pagarés notarizados.</p>
             
-            <div className="grid grid-cols-2 gap-4 items-center bg-slate-50 p-6 rounded-3xl">
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Año de Serie Vigente</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center bg-slate-50 p-4 md:p-6 rounded-2xl md:rounded-3xl min-w-0">
+              <div className="min-w-0">
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1 w-full min-w-0">Año de Serie Vigente</label>
                 <input 
                   type="number"
                   disabled={!isAdmin}
                   value={anioSerie}
                   onChange={(e) => setAnioSerie(parseInt(e.target.value) || 2026)}
-                  className="w-full box-border bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold tracking-tight outline-none"
+                  className="w-full min-w-0 box-border bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold tracking-tight outline-none"
                 />
               </div>
-              <div className="text-xs bg-slate-900 text-slate-300 p-4 rounded-2xl">
+              <div className="text-xs bg-slate-900 text-slate-300 p-4 rounded-2xl min-w-0">
                 <p className="text-[10px] font-black uppercase text-[#FF3131] mb-1">Formateador Prefijo:</p>
-                <p className="font-mono text-base font-black text-white">SERIE PJE-{anioSerie}-</p>
+                <p className="font-mono text-base font-black text-white break-all">SERIE PJE-{anioSerie}-</p>
                 <p className="text-[9px] opacity-70 mt-1 leading-normal">El sistema correlacionará automáticamente sobre este formato de serie.</p>
               </div>
             </div>
@@ -299,10 +299,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
         </div>
 
         {/* Section D: Frecuencias Obligatorias */}
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-            <CalendarDays className="w-5 h-5 text-[#FF3131]" />
-            <h3 className="text-lg font-extrabold text-slate-800">4. Tabla Frecuencias del Sistema</h3>
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-md space-y-6 w-full min-w-0">
+          <div className="flex items-center gap-3 border-b border-slate-50 pb-4 min-w-0">
+            <CalendarDays className="w-5 h-5 text-[#FF3131] shrink-0" />
+            <h3 className="text-base md:text-lg font-extrabold text-slate-800 break-words">4. Tabla Frecuencias del Sistema</h3>
           </div>
 
           <div className="space-y-4">
@@ -356,11 +356,11 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
         </div>
 
         {/* Section E: Pie de página del PDF */}
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-6 lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-slate-50 pb-4">
-            <h3 className="text-lg font-extrabold text-slate-800">5. Pie de Página de las Plantillas de Pagaré (PDF)</h3>
+        <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-md space-y-6 lg:col-span-2 w-full min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-50 pb-4">
+            <h3 className="text-base md:text-lg font-extrabold text-slate-800 break-words">5. Pie de Página de las Plantillas de Pagaré (PDF)</h3>
             
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-600">
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-600 shrink-0">
               <input 
                 type="checkbox"
                 disabled={!isAdmin}
@@ -368,20 +368,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
                 onChange={(e) => setPdf({ ...pdf, mostrar_pie: e.target.checked })}
                 className="rounded text-[#FF3131] focus:ring-none"
               />
-              Mostrar Pie de Página en Impresión
+              <span>Mostrar Pie de Página en Impresión</span>
             </label>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-black uppercase text-slate-400 mb-1.5">Contenido Notarial de Pie de Página (Edición Libre)</label>
+              <label className="block text-xs font-black uppercase text-slate-400 mb-1.5 w-full min-w-0">Contenido Notarial de Pie de Página (Edición Libre)</label>
               <textarea
                 disabled={!isAdmin || !pdf.mostrar_pie}
                 value={pdf.contenido_pie}
                 onChange={(e) => setPdf({ ...pdf, contenido_pie: e.target.value })}
                 placeholder="Si se deja vacío, completará automáticamente con los datos oficiales de la Escribanía y la marca de fecha de generación..."
                 rows={3}
-                className="w-full box-border bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 outline-none resize-none focus:border-[#FF3131]"
+                className="w-full min-w-0 box-border bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 outline-none resize-none focus:border-[#FF3131]"
               />
               <p className="text-[10px] text-slate-400 mt-1 leading-normal">
                 Nota: La marca temporal, hora exacta y hash del documento se imprimen de forma automática para otorgar autenticidad al pagaré.
@@ -394,19 +394,19 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
 
       {/* Save action button */}
       {isAdmin && (
-        <div className="pt-6 border-t border-slate-100 flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl">
-          <div className="flex items-center gap-2 text-green-700 text-xs font-bold font-sans">
-            <Sparkles className="w-5 h-5 text-green-500 animate-pulse" />
-            <span>Todos los datos están preparados para la firma notarial.</span>
+        <div className="pt-5 md:pt-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-4 md:p-6 rounded-2xl md:rounded-[2rem] border border-slate-100 shadow-xl w-full min-w-0">
+          <div className="flex items-center gap-2 text-green-700 text-xs font-bold font-sans min-w-0">
+            <Sparkles className="w-5 h-5 text-green-500 animate-pulse shrink-0" />
+            <span className="break-words">Todos los datos están preparados para la firma notarial.</span>
           </div>
           
           <button
             type="button"
             onClick={handleSaveAll}
-            className="px-8 py-4 bg-[#FF3131] hover:bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-red-500/20 active:scale-95 transition-all"
+            className="w-full sm:w-auto px-6 md:px-8 py-3.5 md:py-4 bg-[#FF3131] hover:bg-red-600 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 active:scale-95 transition-all shrink-0"
           >
             <Save className="w-4 h-4" />
-            Guardar Parámetros de Configuración
+            <span>Guardar Parámetros de Configuración</span>
           </button>
         </div>
       )}

@@ -1988,6 +1988,76 @@ ${prompt}
     }
   });
 
+  // 6. Alertas automáticas al Superadmin por WhatsApp (pagos, solicitudes de plan y soporte)
+  app.post('/api/notifications/admin-alert', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const rawType = typeof req.body?.type === 'string' ? req.body.type.trim() : '';
+      if (rawType !== 'payment' && rawType !== 'plan_request' && rawType !== 'support') {
+        res.status(400).json({ ok: false, error: 'Tipo de alerta inválido.' });
+        return;
+      }
+
+      const sanitizeText = (val: unknown, maxLen: number): string =>
+        typeof val === 'string' ? val.replace(/[\r\n]+/g, ' ').trim().slice(0, maxLen) : '';
+
+      const userName = sanitizeText(req.body?.userName, 160) || 'Usuario O.L.G.A.';
+      const userEmail = sanitizeText(req.body?.userEmail, 160);
+      const userPhone = sanitizeText(req.body?.userPhone, 60);
+      const details = sanitizeText(req.body?.details, 1200) || '(sin detalle)';
+
+      let safeAttachmentUrl = '';
+      const rawAttachment = typeof req.body?.attachmentUrl === 'string' ? req.body.attachmentUrl.trim().slice(0, 1000) : '';
+      if (rawAttachment) {
+        try {
+          const parsedUrl = new URL(rawAttachment);
+          if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+            safeAttachmentUrl = parsedUrl.toString();
+          }
+        } catch {
+          safeAttachmentUrl = '';
+        }
+      }
+
+      const rawAdminUids = (process.env.VITE_ADMIN_UID || '').trim();
+      const firstEnvAdminUid = rawAdminUids
+        .split(',')
+        .map((u) => u.trim())
+        .find((u) => WORKSPACE_ID_REGEX.test(u));
+      const adminWorkspaceId = firstEnvAdminUid || 'sjqCJTQ1lNMRIMk31VRwz9Rwhud2';
+
+      const adminPhone =
+        (process.env.ADMIN_WA_PHONE || '817084827565').replace(/[^\d]/g, '') || '817084827565';
+
+      let message = '';
+      if (rawType === 'payment') {
+        const attachmentPart = safeAttachmentUrl ? ` Comprobante: ${safeAttachmentUrl}` : '';
+        message = `💳 O.L.G.A. PAGO: ${userName} (${userEmail || 'sin correo'}) envió un comprobante. Detalle: ${details}.${attachmentPart} Ver en: https://olgatech.com.py/consola/admin`;
+      } else if (rawType === 'plan_request') {
+        message = `🚀 O.L.G.A. PLAN: ${userName} (${userEmail || 'sin correo'} / ${userPhone || 'sin teléfono'}) solicitó activar un plan. Detalle: ${details}. Gestionar en: https://olgatech.com.py/consola/admin`;
+      } else {
+        message = `📩 O.L.G.A. SOPORTE: Nueva consulta de ${userName} (${userEmail || 'sin correo'}): "${details}". Responder en: https://olgatech.com.py/consola/admin`;
+      }
+
+      try {
+        await callWhatsAppEngine('/send', 'POST', {
+          workspaceId: adminWorkspaceId,
+          phone: adminPhone,
+          message,
+        });
+      } catch {
+        await callWhatsAppEngine(`/send/${encodeURIComponent(adminWorkspaceId)}`, 'POST', {
+          phone: adminPhone,
+          message,
+        });
+      }
+
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      console.error('[admin-alert] No se pudo enviar alerta WhatsApp al Superadmin:', err);
+      res.json({ ok: false });
+    }
+  });
+
   // 404 explícito para cualquier ruta /api no registrada
   app.use('/api', (_req: Request, res: Response) => {
     res.status(404).json({ error: 'Ruta de API no encontrada.' });

@@ -122,7 +122,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
       ? canUseWhatsApp
-      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userProfile?.whatsappEnabled);
+      : userProfile?.whatsappEnabled === true;
   const [modalWhatsAppAbierto, setModalWhatsAppAbierto] = useState(false);
 
   const [authUid, setAuthUid] = useState<string>(() => auth?.currentUser?.uid || '');

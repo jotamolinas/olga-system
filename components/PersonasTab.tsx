@@ -831,28 +831,28 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   }, [clienteExpediente, listaPersonas]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 bg-transparent">
+    <div className="space-y-5 md:space-y-6 w-full max-w-7xl mx-auto p-0 md:p-6 bg-transparent overflow-x-hidden">
       {/* Encabezado del Módulo: Bloque Oscuro Azul Noche */}
-      <div className="p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-5 mb-6 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
-            <Users className="w-6 h-6 text-slate-300" />
+      <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 md:mb-6 transition-all bg-slate-900 text-white shadow-xl border border-slate-800 w-full min-w-0">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 min-w-0">
+          <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
+            <Users className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-serif font-bold text-2xl tracking-tight text-white">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-serif font-bold text-xl md:text-2xl tracking-tight text-white break-words">
                 Directorio de Personas & Expedientes 360°
               </h2>
-              <span className="font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-red-600 text-white">
+              <span className="font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-red-600 text-white shrink-0">
                 O.L.G.A.
               </span>
             </div>
-            <p className="text-sm mt-1 font-medium text-slate-400">
+            <p className="text-xs md:text-sm mt-1 font-medium text-slate-400 break-words">
               Fichero unificado con consulta de historial crediticio, resumen de obligaciones y notas notariales.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
           <span className="px-3.5 py-1.5 rounded-full text-xs font-bold border bg-slate-800 text-slate-300 border-slate-700">
             {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente Registrado' : 'Clientes Registrados'}
           </span>
@@ -860,29 +860,29 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       </div>
 
       {/* Cartel Reglamentario Notarial */}
-      <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
+      <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm w-full min-w-0">
         <ShieldCheck className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-600 leading-relaxed">
+        <div className="text-xs text-slate-600 leading-relaxed min-w-0 break-words">
           <strong className="text-slate-900 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
           La identificación de comparecientes y representantes legales incorporados en este directorio constituye un borrador de datos preparatorios. Requiere la certificación de identidad, verificación de personería y sello del <strong>Escribano Titular</strong> para poseer validez legal administrativa.
         </div>
       </div>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 min-w-0">
         
         {/* Formulario de Registro / Edición (ARRIBA) */}
-        <div id="formulario-persona" className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-          <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+        <div id="formulario-persona" className="w-full min-w-0 bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <div className="border-b border-slate-200 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-slate-900 break-words">
                 {editingId ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 break-words">
                 {editingId ? 'Modifique los datos del interviniente y guarde los cambios.' : 'Complete los datos del cliente o consulte el DNIT para autocompletar la información oficial.'}
               </p>
             </div>
             {editingId && (
-              <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg bg-red-100 text-[#FF3131] border border-red-200">
+              <span className="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg bg-red-100 text-[#FF3131] border border-red-200 self-start sm:self-auto shrink-0">
                 Edición Activa
               </span>
             )}
@@ -902,9 +902,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center min-w-0">
                 {/* Selector Dropdown (<select>) */}
-                <div>
+                <div className="min-w-0">
                   <select
                     id="tipoPersona"
                     name="tipoPersona"
@@ -914,7 +914,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                       setTipoPersona(nuevoTipo);
                       setErrorMsg('');
                     }}
-                    className="w-full bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none transition-colors cursor-pointer shadow-xs"
+                    className="w-full min-w-0 bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none transition-colors cursor-pointer shadow-xs"
                   >
                     <option value="física">FÍSICA</option>
                     <option value="jurídica">JURÍDICA</option>
@@ -922,7 +922,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 </div>
 
                 {/* Botones de Selección / Radio */}
-                <div className="flex items-center gap-4 px-2">
+                <div className="flex flex-wrap items-center gap-4 px-1 md:px-2 min-w-0">
                   <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-slate-900">
                     <input
                       type="radio"
@@ -960,10 +960,10 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
             {/* Campos condicionales */}
             {tipoPersona === 'física' ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
                 {/* Nombre */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                     Nombre(s) *
                   </label>
                   <input
@@ -971,13 +971,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
                     placeholder="Ej. Juan Carlos"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
                   />
                 </div>
 
                 {/* Apellido */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                     Apellido(s) *
                   </label>
                   <input
@@ -985,16 +985,16 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     value={apellido}
                     onChange={(e) => setApellido(e.target.value)}
                     placeholder="Ej. Pérez Gómez"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
                   />
                 </div>
 
                 {/* C.I. / R.U.C. con DNIT */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                     Nro. Documento (CI / RUC) *
                   </label>
-                  <div className="relative">
+                  <div className="relative w-full min-w-0">
                     <input
                       type="text"
                       value={nroDocumento}
@@ -1006,7 +1006,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                         }
                       }}
                       placeholder="Ej. 1.234.567 o 1234567-8"
-                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                      className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
                     />
                     <button
                       type="button"
@@ -1050,10 +1050,10 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
                 {/* Razón Social */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                     Nombre Completo / Razón Social *
                   </label>
                   <input
@@ -1061,16 +1061,16 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
                     placeholder="Ej. Agroganadera del Este S.A."
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs font-bold text-slate-900 outline-none transition-colors"
                   />
                 </div>
 
                 {/* R.U.C. con DNIT */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                     Nro. Documento (R.U.C.) *
                   </label>
-                  <div className="relative">
+                  <div className="relative w-full min-w-0">
                     <input
                       type="text"
                       value={nroDocumento}
@@ -1082,7 +1082,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                         }
                       }}
                       placeholder="Ej. 80012345-6"
-                      className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
+                      className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 pr-20 text-xs font-bold text-slate-900 outline-none transition-colors font-mono"
                     />
                     <button
                       type="button"
@@ -1126,17 +1126,17 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 </div>
 
                 {/* Selector de Representante Legal */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-slate-700" />
-                    <label className="block text-[11px] font-bold uppercase text-slate-700 tracking-wider">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <UserCheck className="w-4 h-4 text-slate-700 shrink-0" />
+                    <label className="block text-[11px] font-bold uppercase text-slate-700 tracking-wider w-full min-w-0">
                       Representante Legal (Persona Física) *
                     </label>
                   </div>
                   <select
                     value={representanteId}
                     onChange={(e) => setRepresentanteId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl p-2 text-xs font-bold text-slate-900 outline-none transition-colors"
+                    className="w-full min-w-0 bg-white border border-slate-300 focus:border-[#FF3131] rounded-xl p-2 text-xs font-bold text-slate-900 outline-none transition-colors"
                   >
                     <option value="">-- Seleccionar Persona Física Firmante --</option>
                     {personasFisicas.map(pf => (
@@ -1159,9 +1159,9 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             )}
 
             {/* Teléfono, Email y Domicilio */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+              <div className="min-w-0">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                   Teléfono
                 </label>
                 <input
@@ -1169,11 +1169,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={telefono}
                   onChange={(e) => setTelefono(e.target.value)}
                   placeholder="+595 981 ..."
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
+                  className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+              <div className="min-w-0">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                   Email
                 </label>
                 <input
@@ -1181,11 +1181,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="correo@..."
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
+                  className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider">
+              <div className="min-w-0">
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1 tracking-wider w-full min-w-0">
                   Domicilio / Dirección Notarial
                 </label>
                 <input
@@ -1193,7 +1193,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                   value={domicilio}
                   onChange={(e) => setDomicilio(e.target.value)}
                   placeholder="Dirección real, legal o comercial..."
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
+                  className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl p-2.5 text-xs text-slate-900 outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1202,23 +1202,23 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             {errorMsg && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs font-bold text-red-700 animate-pulse">
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{errorMsg}</span>
+                <span className="break-words">{errorMsg}</span>
               </div>
             )}
             {successMsg && (
               <div className="p-3 bg-slate-100 border border-slate-300 rounded-xl flex items-center gap-2 text-xs font-bold text-slate-900">
                 <Check className="w-4 h-4 text-[#FF3131] shrink-0" />
-                <span>{successMsg}</span>
+                <span className="break-words">{successMsg}</span>
               </div>
             )}
 
             {/* Botones de Acción */}
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-1">
               {editingId && (
                 <button
                   type="button"
                   onClick={resetFormulario}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors text-center"
                 >
                   Cancelar
                 </button>
@@ -1226,7 +1226,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {isSubmitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -1242,23 +1242,23 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
         </div>
 
         {/* Directorio Enterprise con Buscador y Filtros (ABAJO - Ancho Completo) */}
-        <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="w-full min-w-0 bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-slate-900 break-words">
                 Directorio Enterprise ({listaFiltrada.length})
               </h3>
-              <p className="text-[11px] text-slate-500">Haz clic en cualquier cliente para ver su Expediente 360°</p>
+              <p className="text-[11px] text-slate-500 break-words">Haz clic en cualquier cliente para ver su Expediente 360°</p>
             </div>
             
             {/* Buscador Local Reactivo */}
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-72 min-w-0">
               <input
                 type="text"
                 placeholder="Buscar por nombre, CI, RUC..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 outline-none transition-colors"
+                className="w-full min-w-0 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 outline-none transition-colors"
               />
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               {searchTerm && (
@@ -1313,18 +1313,18 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             </div>
 
             {/* Herramienta de Sincronización de Firmantes y Auditoría de Duplicados */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => handleSincronizarFirmantesConFichero()}
                 disabled={isSyncingRetroactivo}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                className="w-full sm:w-auto justify-center px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
                 title="Detección retroactiva: Revisa todos los pagarés y auto-registra a los firmantes no fichados en el Fichero de Personas"
               >
                 {isSyncingRetroactivo ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131] shrink-0" />
                 ) : (
-                  <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />
+                  <UserCheck className="w-3.5 h-3.5 text-[#FF3131] shrink-0" />
                 )}
                 <span>Sincronizar Firmantes con Fichero</span>
               </button>
@@ -1333,13 +1333,13 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
                 type="button"
                 onClick={handleDepurarDuplicados}
                 disabled={isDepurando}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                className="w-full sm:w-auto justify-center px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
                 title="Escanear y depurar registros duplicados por documento o identidad"
               >
                 {isDepurando ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 )}
                 <span>Auditar Duplicados</span>
                 {totalDuplicadosCount > 0 && (
@@ -1404,8 +1404,136 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             </div>
           )}
 
-          {/* Tabla de Directorio Enterprise */}
-          <div className="overflow-x-auto">
+          {/* Vista Móvil en Tarjetas Verticales del Directorio */}
+          <div className="md:hidden space-y-3">
+            {listaFiltrada.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                <p className="font-bold text-sm text-slate-600">No se encontraron registros coincidentes.</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {searchTerm ? 'Intenta modificar el término de búsqueda o limpiar filtros.' : 'Registra el primer cliente con el formulario.'}
+                </p>
+              </div>
+            ) : (
+              listaFiltrada.map((p) => {
+                const repLegal = p.tipo_persona === 'jurídica' && p.representante_id
+                  ? listaPersonas.find(rep => rep.id === p.representante_id)
+                  : null;
+
+                const nombreCompleto = p.tipo_persona === 'física' 
+                  ? `${p.nombre} ${p.apellido || ''}`.trim() 
+                  : p.nombre;
+
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => handleAbrirExpediente(p)}
+                    className={`p-4 rounded-2xl border transition-all space-y-3 cursor-pointer ${
+                      editingId === p.id
+                        ? 'bg-red-50/40 border-red-200'
+                        : 'bg-slate-50/70 border-slate-200 active:bg-slate-100'
+                    }`}
+                  >
+                    {/* Cabecera tarjeta: Icono, Nombre y Badge FÍSICA/JURÍDICA */}
+                    <div className="flex items-start justify-between gap-2.5 min-w-0">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-white text-slate-700 flex items-center justify-center shrink-0 border border-slate-200">
+                          {p.tipo_persona === 'física' ? (
+                            <User className="w-4 h-4" />
+                          ) : (
+                            <Building className="w-4 h-4 text-[#FF3131]" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-sm text-slate-900 leading-snug break-words">
+                            {nombreCompleto}
+                          </h4>
+                          <p className="text-[11px] font-mono font-bold text-slate-700 mt-0.5 break-all">
+                            {p.tipo_documento}: {p.nro_documento}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                        p.tipo_persona === 'física'
+                          ? 'bg-white text-slate-800 border border-slate-200'
+                          : 'bg-slate-800 text-white'
+                      }`}>
+                        {p.tipo_persona}
+                      </span>
+                    </div>
+
+                    {/* Datos de contacto y domicilio */}
+                    {(p.domicilio || p.telefono || p.email || p.tipo_persona === 'jurídica') && (
+                      <div className="space-y-1.5 text-xs text-slate-600 pt-1 min-w-0">
+                        {p.domicilio && (
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                            <span className="break-words min-w-0">{p.domicilio}</span>
+                          </div>
+                        )}
+                        {p.telefono && (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="break-all min-w-0">{p.telefono}</span>
+                          </div>
+                        )}
+                        {p.email && (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="break-all min-w-0">{p.email}</span>
+                          </div>
+                        )}
+                        {p.tipo_persona === 'jurídica' && (
+                          <div className="flex items-start gap-1.5 pt-0.5 min-w-0">
+                            <UserCheck className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                            <span className="text-[11px] break-words min-w-0">
+                              <strong className="text-slate-700">Rep. Legal:</strong>{' '}
+                              {repLegal ? `${repLegal.nombre} ${repLegal.apellido || ''} (CI ${repLegal.nro_documento})` : 'Sin asignar'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Botones táctiles en la parte inferior */}
+                    <div
+                      className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleAbrirExpediente(p)}
+                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-[#FF3131]" />
+                        <span>Ver 360°</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditPersona(p)}
+                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePersona(p.id)}
+                        className="py-2 px-3 text-xs font-bold rounded-xl text-red-600 bg-white hover:bg-red-50 border border-red-200 transition-colors flex items-center justify-center gap-1"
+                        title="Eliminar registro"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Eliminar</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Tabla de Directorio Enterprise (Escritorio) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
@@ -1583,24 +1711,24 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-scale-in">
             
             {/* Cabecera del Modal Expediente */}
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-800 rounded-xl text-[#FF3131] border border-slate-700">
+            <div className="p-4 md:p-5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-slate-800 rounded-xl text-[#FF3131] border border-slate-700 shrink-0">
                   <FolderOpen className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold font-serif text-white">Expediente Notarial 360°</h3>
-                    <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#FF3131] text-white">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base md:text-lg font-bold font-serif text-white">Expediente Notarial 360°</h3>
+                    <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-[#FF3131] text-white shrink-0">
                       Legajo #{clienteExpediente.id.replace('p-', '')}
                     </span>
                   </div>
-                  <p className="text-slate-400 text-xs">
+                  <p className="text-slate-400 text-xs break-words">
                     Auditoría de obligaciones, contratos notariales y antecedentes
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -1626,7 +1754,7 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
             </div>
 
             {/* Contenido con Scroll del Expediente */}
-            <div className="p-6 space-y-6 overflow-y-auto flex-grow bg-slate-50/50">
+            <div className="p-4 md:p-6 space-y-5 md:space-y-6 overflow-y-auto flex-grow bg-slate-50/50">
               
               {/* 1. Cabecera de Identificación del Cliente */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -1838,11 +1966,11 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               </div>
 
               {/* 4. Notas Notariales / Observaciones (Guardable en localStorage) */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-slate-700" />
-                    <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+              <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-slate-700 shrink-0" />
+                    <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider break-words">
                       Notas Notariales & Observaciones del Titular
                     </h4>
                   </div>

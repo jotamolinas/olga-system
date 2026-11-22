@@ -399,7 +399,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
       ? canUseWhatsApp
-      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userData?.whatsappEnabled);
+      : userData?.whatsappEnabled === true;
 
   const [escritos, setEscritos] = useState<any[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | 'vencidos' | null>(null);

@@ -3,6 +3,7 @@ import { addDoc, collection } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { LifeBuoy, Send, CheckCircle2, Loader2 } from 'lucide-react';
 import { User } from 'firebase/auth';
+import { notifySuperAdminWhatsApp } from '../services/adminAlerts';
 
 interface SoporteClienteTabProps {
   currentUser: User | null;
@@ -37,6 +38,18 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
         estado: 'pendiente',
         leidoPorUsuario: false,
         fecha_creacion: Date.now()
+      });
+      notifySuperAdminWhatsApp({
+        type: 'support',
+        userName:
+          userData?.nombreCompleto ||
+          userData?.nombre ||
+          currentUser.displayName ||
+          currentUser.email ||
+          'Usuario Desconocido',
+        userEmail: currentUser.email || '',
+        userPhone: userData?.telefono || currentUser.phoneNumber || '',
+        details: `${asunto.trim()}: ${mensaje.trim()}`,
       });
       setIsSuccess(true);
       setAsunto('');

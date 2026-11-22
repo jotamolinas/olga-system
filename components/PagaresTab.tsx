@@ -186,7 +186,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
       ? canUseWhatsApp
-      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(activeUserData?.whatsappEnabled);
+      : activeUserData?.whatsappEnabled === true;
   const [pagareForWhatsApp, setPagareForWhatsApp] = useState<Pagare | null>(null);
   const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
   const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || isAprobado || esAdmin;

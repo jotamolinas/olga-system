@@ -209,7 +209,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const hasPaidPlan = plan.includes('pro') || plan.includes('empresa') || plan.includes('full') || plan.includes('básico') || plan.includes('basico') || isAprobado;
   const isFree = !hasPaidPlan && (userData?.plan === 'ninguno' || !userData?.plan || plan.includes('trial') || plan.includes('prueba'));
   const isTrialAgotado = isFree && (!pruebaActiva || diasRestantes <= 0 || olgaDocsCount >= 5);
-  const isWhatsAppEnabled = Boolean(canUseWhatsApp || currentUser?.email === 'jotamolinas@gmail.com' || userData?.whatsappEnabled);
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : userData?.whatsappEnabled === true;
   const [temporalWarning, setTemporalWarning] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
   const isSavingRef = useRef(false);

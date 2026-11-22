@@ -393,7 +393,7 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
       ? canUseWhatsApp
-      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userData?.whatsappEnabled);
+      : userData?.whatsappEnabled === true;
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const esNotaria = String(userData?.tipoPerfil || config?.escribania?.nombre || '').toLowerCase().includes('escriban') || String(userData?.tipoPerfil || '').toLowerCase().includes('notar');
   const [pageSize, setPageSize] = useState<'legal' | 'a4'>('legal');

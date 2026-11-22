@@ -4,6 +4,7 @@ import { db, storage, auth } from '../services/auth';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { User } from 'firebase/auth';
+import { notifySuperAdminWhatsApp } from '../services/adminAlerts';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -12,9 +13,10 @@ interface CheckoutModalProps {
   planName: string;
   planPrice: string;
   currentUser: User | null;
+  userData?: any;
 }
 
-export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onSuccess, planName, planPrice, currentUser }) => {
+export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onSuccess, planName, planPrice, currentUser, userData }) => {
   const [activeTab, setActiveTab] = useState<'banco' | 'billetera' | 'boca'>('banco');
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -68,6 +70,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         urlComprobante: downloadURL,
         fechaSolicitud: serverTimestamp()
       }, { merge: true });
+
+      notifySuperAdminWhatsApp({
+        type: 'payment',
+        userName:
+          userData?.nombreCompleto ||
+          userData?.nombre ||
+          userData?.razonSocial ||
+          currentUser.displayName ||
+          currentUser.email ||
+          'Cliente',
+        userEmail: currentUser.email || userData?.email || '',
+        userPhone: userData?.telefono || currentUser.phoneNumber || '',
+        details: `${planName} (${modalidadPago}) - Gs. ${Number.isFinite(montoAPagar) ? montoAPagar.toLocaleString('es-PY') : planPrice}`,
+        attachmentUrl: downloadURL,
+      });
 
       if (onSuccess) {
         onSuccess();

@@ -464,7 +464,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const isMenuPlantillasBloqueado = isSoftBlocked || (!tienePlanActivo && (isTrialExpired || !pruebaActiva || diasRestantes <= 0)) || suscripcionVencida;
 
   const esFull = esPlanFull !== undefined ? esPlanFull : (currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full'));
-  const isWhatsAppEnabled = Boolean(canUseWhatsApp || currentUser?.email === 'jotamolinas@gmail.com' || activeUserData?.whatsappEnabled || userProfile?.whatsappEnabled);
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : Boolean(activeUserData?.whatsappEnabled === true || userProfile?.whatsappEnabled === true);
 
   const [waModalData, setWaModalData] = useState<{
     isOpen: boolean;
