@@ -30,6 +30,7 @@ import {
   Users,
   ChevronDown,
   FolderOpen,
+  MessageCircle,
 } from 'lucide-react';
 import {
   EncabezadoFacturaPresupuesto,
@@ -56,6 +57,8 @@ import { collection, addDoc, serverTimestamp, getDocs, query, where, onSnapshot,
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { WhatsAppSendModal } from './WhatsAppSendModal';
+import { generatePresupuestoPdfBase64 } from '../services/pdfExport';
 
 const limpiarParaFirestore = (valor: any): any => {
   if (valor === undefined) return '';
@@ -98,6 +101,7 @@ interface ModuloPresupuestosProps {
   direccionEscribania?: string;
   telefonoEscribania?: string;
   esPlanFull?: boolean;
+  canUseWhatsApp?: boolean;
 }
 
 export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
@@ -111,9 +115,15 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   direccionEscribania = 'Asunción, República del Paraguay',
   telefonoEscribania = '+595 21 000-000',
   esPlanFull,
+  canUseWhatsApp,
 }) => {
   const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
   const esFull = esPlanFull !== undefined ? esPlanFull : planUsuario.includes('full');
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userProfile?.whatsappEnabled);
+  const [modalWhatsAppAbierto, setModalWhatsAppAbierto] = useState(false);
 
   const [authUid, setAuthUid] = useState<string>(() => auth?.currentUser?.uid || '');
   useEffect(() => {
@@ -1485,6 +1495,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <Printer className="w-4 h-4 text-white" />
             <span>IMPRIMIR PRESUPUESTO</span>
           </button>
+
+          {isWhatsAppEnabled && (
+            <button
+              type="button"
+              onClick={() => setModalWhatsAppAbierto(true)}
+              className="px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <MessageCircle className="w-4 h-4 text-white" />
+              <span>Enviar por WhatsApp</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -2498,6 +2519,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <Printer className="w-4 h-4" />
             <span>Imprimir Presupuesto</span>
           </button>
+
+          {isWhatsAppEnabled && (
+            <button
+              type="button"
+              onClick={() => setModalWhatsAppAbierto(true)}
+              className="px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Enviar por WhatsApp</span>
+            </button>
+          )}
         </div>
 
         {/* Bloque de Firmas Notariales Oficiales (Exclusivo para Impresión Física) */}
@@ -2726,6 +2758,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 <Printer className="w-4 h-4 text-white" />
                 <span>IMPRIMIR AHORA</span>
               </button>
+
+              {isWhatsAppEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setModalWhatsAppAbierto(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/40 cursor-pointer whitespace-nowrap"
+                >
+                  <MessageCircle className="w-4 h-4 text-white" />
+                  <span>Enviar por WhatsApp</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -3045,6 +3088,96 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         </div>
       )}
+
+      {isWhatsAppEnabled && modalWhatsAppAbierto && (() => {
+        const clienteWa = (encabezado.clienteNombre || '').trim() || 'Cliente';
+        const conceptoWa = (encabezado.conceptoGeneral || '').trim() || 'Servicios notariales y gestión registral';
+        const totalGsWa = `${Number(liquidacion.totalGeneralOperacion || 0).toLocaleString('es-PY')} Gs.`;
+        const rawValidez = (encabezado.fechaVencimientoValidez || '').trim();
+        const validezParts = rawValidez.split('-');
+        const validezWa =
+          validezParts.length === 3
+            ? `${validezParts[2]}/${validezParts[1]}/${validezParts[0]}`
+            : rawValidez || '30 días a partir de la fecha de emisión';
+        const escribaniaWa =
+          membrete.nombreEscribania || membrete.nombreNotario || escribaniaNombre || 'Escribanía Titular';
+        const tipoComp = encabezado.tipoComprobante || 'Presupuesto';
+        const numComp = (encabezado.numeroComprobante || '').trim();
+
+        const tasasActivas = tasas
+          .filter((t) => t.activo)
+          .map((t) => ({
+            descripcion: t.descripcion,
+            monto: Number(t.monto) || 0,
+            numeroComprobantePago: t.numeroComprobantePago,
+          }));
+
+        const serviciosActivos = servicios
+          .filter((s) => s.activo)
+          .map((s) => ({
+            descripcion: s.descripcion,
+            cantidad: Number(s.cantidad) || 1,
+            precioUnitario: Number(s.precioUnitario) || 0,
+            total: Number(s.total) || (Number(s.cantidad) || 1) * (Number(s.precioUnitario) || 0),
+            tipoIva: s.tipoIva,
+          }));
+
+        const pdfPresupuesto = generatePresupuestoPdfBase64({
+          tipoComprobante: tipoComp,
+          numeroComprobante: numComp,
+          fechaEmision: encabezado.fechaEmision,
+          validez: validezWa,
+          condicionVenta: encabezado.condicionVenta,
+          conceptoGeneral: conceptoWa,
+          escribania: {
+            nombre: escribaniaWa,
+            ruc: membrete.ruc || rucEscribania,
+            registro: membrete.registroNotarial || registroNotarial,
+            telefono: membrete.telefono || telefonoEscribania,
+            direccion: membrete.direccion || direccionEscribania,
+          },
+          clienteNombre: clienteWa,
+          clienteDocumento: encabezado.clienteRucCI,
+          clienteTelefono: encabezado.clienteTelefono,
+          clienteDireccion: encabezado.clienteDireccion,
+          tasas: tasasActivas,
+          servicios: serviciosActivos,
+          subtotalTasas: Number(liquidacion.subtotalTasasReembolso) || 0,
+          subtotalServicios: Number(liquidacion.totalVentaServicios) || 0,
+          totalIva: Number(liquidacion.totalIvaLiquidado) || 0,
+          totalGeneral: Number(liquidacion.totalGeneralOperacion) || 0,
+          totalLetras: liquidacion.totalLetras,
+          notas: observaciones,
+        });
+
+        const defaultMsg = [
+          `Estimado/a ${clienteWa},`,
+          '',
+          `Compartimos adjunto en PDF su ${tipoComp} Notarial${numComp ? ` Nº ${numComp}` : ''}:`,
+          '',
+          `• Cliente: ${clienteWa}`,
+          `• Concepto: ${conceptoWa}`,
+          `• Total: ${totalGsWa}`,
+          `• Validez: ${validezWa}`,
+          `• Escribanía: ${escribaniaWa}`,
+          '',
+          'Quedamos atentos para confirmar e iniciar la gestión.',
+        ].join('\n');
+
+        return (
+          <WhatsAppSendModal
+            isOpen={modalWhatsAppAbierto}
+            onClose={() => setModalWhatsAppAbierto(false)}
+            workspaceId={effectiveWorkspaceId}
+            defaultPhone={encabezado.clienteTelefono || ''}
+            defaultMessage={defaultMsg}
+            documentTitle={`${tipoComp}${numComp ? ` Nº ${numComp}` : ''}`}
+            fileBase64={pdfPresupuesto.fileBase64}
+            fileName={pdfPresupuesto.fileName}
+            mimetype="application/pdf"
+          />
+        );
+      })()}
 
     </div>
   );

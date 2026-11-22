@@ -1,14 +1,32 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
 import { fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
-import { FileText, Users, Clock, DollarSign, Activity, ShieldCheck, ChevronRight, X, PieChartIcon, AlertTriangle } from 'lucide-react';
+import {
+  FileText,
+  Users,
+  Clock,
+  DollarSign,
+  Activity,
+  ChevronRight,
+  X,
+  PieChartIcon,
+  AlertTriangle,
+  MessageCircle,
+  Bell,
+  Bot,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { PagaresTab } from './PagaresTab';
 import { PersonasTab } from './PersonasTab';
+import { WhatsAppSendModal } from './WhatsAppSendModal';
+import { generatePagarePdfBase64 } from '../services/pdfExport';
 
 interface TableroTabProps {
   pagares: Pagare[];
@@ -28,7 +46,161 @@ interface TableroTabProps {
   workspaceName?: string;
   isSoftBlocked?: boolean; // <-- NUEVO
   esPlanFull?: boolean;
+  canUseWhatsApp?: boolean;
+  onNavigateTab?: (tab: 'pagares' | 'whatsapp' | 'escritos' | 'personas') => void;
 }
+
+interface WhatsAppActivityItem {
+  id: string;
+  pushName: string;
+  phone: string;
+  jid: string | null;
+  messagesCount: number;
+  timestampMs: number;
+  delaySeconds: number;
+}
+
+const parseTableroLocalYmd = (raw?: string): Date | null => {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (match) {
+    const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  const parsed = new Date(trimmed);
+  if (isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const getTableroPagareDueInfo = (pag: Pagare) => {
+  if (pag.status === 'anulado' || (pag as any).estado === 'Anulado') {
+    return { status: 'anulado' as const, dueDate: null, dueDateRaw: null, diffDays: null };
+  }
+  if (pag.status === 'cobrado' || (pag as any).estado === 'Cobrado') {
+    return { status: 'pagado' as const, dueDate: null, dueDateRaw: null, diffDays: null };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let dueDate: Date | null = null;
+  let dueDateRaw: string | null = null;
+
+  if (pag.cronograma && pag.cronograma.length > 0) {
+    const pending = pag.cronograma.filter((c: any) => c.estado !== 'cobrado' && c.pagado !== true);
+    if (pending.length === 0) {
+      return { status: 'pagado' as const, dueDate: null, dueDateRaw: null, diffDays: null };
+    }
+    const sorted = [...pending].sort((a: any, b: any) => {
+      const da = parseTableroLocalYmd(a.fecha_pag || a.fecha_vencimiento || a.fecha)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const dbDate = parseTableroLocalYmd(b.fecha_pag || b.fecha_vencimiento || b.fecha)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return da - dbDate;
+    });
+    const first = sorted[0];
+    dueDateRaw = first?.fecha_pag || (first as any)?.fecha_vencimiento || (first as any)?.fecha || null;
+    dueDate = parseTableroLocalYmd(dueDateRaw || undefined);
+  } else {
+    dueDateRaw =
+      pag.fecha_primer_pago ||
+      (pag as any).fecha_vencimiento ||
+      (pag as any).fecha_pago ||
+      (pag as any).fechaVencimiento ||
+      (pag as any).fecha ||
+      null;
+    dueDate = parseTableroLocalYmd(dueDateRaw || undefined);
+  }
+
+  if (!dueDate) {
+    return { status: 'al_dia' as const, dueDate: null, dueDateRaw: null, diffDays: null };
+  }
+
+  const diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    return { status: 'vencido' as const, dueDate, dueDateRaw, diffDays };
+  }
+  if (diffDays <= 5) {
+    return { status: 'proximo' as const, dueDate, dueDateRaw, diffDays };
+  }
+  return { status: 'al_dia' as const, dueDate, dueDateRaw, diffDays };
+};
+
+const parseWaTimestampMs = (rawTs: unknown): number => {
+  if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
+    return rawTs < 1_000_000_000_000 ? rawTs * 1000 : rawTs;
+  }
+  if (typeof rawTs === 'string' && rawTs.trim()) {
+    const num = Number(rawTs);
+    if (Number.isFinite(num) && num > 0) {
+      return num < 1_000_000_000_000 ? num * 1000 : num;
+    }
+    const parsed = Date.parse(rawTs);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+};
+
+const cleanWaPhone = (raw: unknown): string => {
+  if (typeof raw !== 'string' && typeof raw !== 'number') return '';
+  return (String(raw).split('@')[0] || '').replace(/[^\d+]/g, '').trim();
+};
+
+const countPendingWaThreadsFromInbox = (rawMessages: any[], wsId: string): number => {
+  let archivedMap: Record<string, number> = {};
+  try {
+    const stored = localStorage.getItem(`olga_wa_archived_${wsId}`);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        archivedMap = parsed;
+      }
+    }
+  } catch {
+    archivedMap = {};
+  }
+
+  const threadLatestMap = new Map<
+    string,
+    { threadKey: string; phone: string; jid: string | null; latestTimestampMs: number }
+  >();
+
+  rawMessages.forEach((raw, idx) => {
+    if (!raw || typeof raw !== 'object') return;
+    const jidCandidate = raw.jid ?? raw.remoteJid ?? raw.chatId ?? raw.key?.remoteJid;
+    const jid = typeof jidCandidate === 'string' && jidCandidate.trim() ? jidCandidate.trim() : null;
+    const phone = cleanWaPhone(raw.phone ?? raw.from ?? raw.sender ?? jid ?? '');
+    const digits = phone.replace(/^\+/, '');
+    const threadKey = digits || (jid ? jid.toLowerCase() : `anon-${idx}`);
+    const ts = parseWaTimestampMs(raw.timestampMs ?? raw.timestamp ?? raw.createdAt ?? raw.date);
+
+    const existing = threadLatestMap.get(threadKey);
+    if (!existing || ts > existing.latestTimestampMs) {
+      threadLatestMap.set(threadKey, {
+        threadKey,
+        phone: phone || existing?.phone || '',
+        jid: jid || existing?.jid || null,
+        latestTimestampMs: ts,
+      });
+    }
+  });
+
+  let pendingCount = 0;
+  for (const thread of threadLatestMap.values()) {
+    const archiveKey = thread.jid || thread.phone || thread.threadKey;
+    const archivedTs = archivedMap[archiveKey] ?? archivedMap[thread.threadKey];
+    const isAttended =
+      typeof archivedTs === 'number' &&
+      Number.isFinite(archivedTs) &&
+      thread.latestTimestampMs <= archivedTs;
+    if (!isAttended) {
+      pendingCount += 1;
+    }
+  }
+
+  return pendingCount;
+};
 
 const CountUp: React.FC<{ end: number; duration?: number; isCurrency?: boolean }> = ({ end, duration = 1500, isCurrency = false }) => {
   const [count, setCount] = useState(0);
@@ -217,10 +389,17 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   userData,
   workspaceId,
   workspaceName,
-  esPlanFull
+  esPlanFull,
+  canUseWhatsApp,
+  onNavigateTab,
 }) => {
   const { workspaceId: hookWorkspaceId } = useWorkspace(auth?.currentUser, userData);
   const activeWorkspaceId = workspaceId || hookWorkspaceId;
+
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userData?.whatsappEnabled);
 
   const [escritos, setEscritos] = useState<any[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | 'vencidos' | null>(null);
@@ -230,6 +409,15 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   
   const [isPersonasEditorOpen, setIsPersonasEditorOpen] = useState(false);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
+
+  // Centro de Notificaciones: Recordatorio rápido WhatsApp desde Pagarés
+  const [pagareForWhatsApp, setPagareForWhatsApp] = useState<Pagare | null>(null);
+
+  // Centro de Notificaciones: Actividad WhatsApp
+  const [waActivities, setWaActivities] = useState<WhatsAppActivityItem[]>([]);
+  const [waPendingThreadsCount, setWaPendingThreadsCount] = useState<number>(0);
+  const [isLoadingWaMonitor, setIsLoadingWaMonitor] = useState<boolean>(false);
+  const [waMonitorError, setWaMonitorError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -342,6 +530,119 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   const effectivePersonas = (personas && Array.isArray(personas) && personas.length > 0) ? personas : localPersonas;
 
+  const getTableroAuthHeaders = useCallback(async (withJson = false): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    if (withJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    try {
+      const user = auth?.currentUser;
+      if (user) {
+        const token = await user.getIdToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch {
+      // Continuar sin token si no está disponible
+    }
+    return headers;
+  }, []);
+
+  // Polling cada 10s de Actividad (Bitácora de Ausencia) + Bandeja Pendiente WhatsApp
+  useEffect(() => {
+    if (!isWhatsAppEnabled || !activeWorkspaceId) {
+      setWaActivities([]);
+      setWaPendingThreadsCount(0);
+      setWaMonitorError(null);
+      setIsLoadingWaMonitor(false);
+      return;
+    }
+
+    let active = true;
+
+    const fetchWaMonitorData = async (isInitial: boolean) => {
+      if (isInitial) setIsLoadingWaMonitor(true);
+      try {
+        const headers = await getTableroAuthHeaders(false);
+        const [actRes, inboxRes] = await Promise.all([
+          fetch(`/api/whatsapp/activity/${encodeURIComponent(activeWorkspaceId)}`, {
+            method: 'GET',
+            headers,
+          }),
+          fetch(`/api/whatsapp/inbox/${encodeURIComponent(activeWorkspaceId)}`, {
+            method: 'GET',
+            headers,
+          }),
+        ]);
+
+        if (!active) return;
+
+        const actData = await actRes.json().catch(() => ({}));
+        const inboxData = await inboxRes.json().catch(() => ({}));
+
+        if (actRes.ok) {
+          const rawActs = Array.isArray(actData.activities) ? actData.activities : [];
+          const normalizedActs: WhatsAppActivityItem[] = rawActs
+            .filter((item: any) => item && typeof item === 'object')
+            .map((item: any, idx: number) => {
+              const phone = cleanWaPhone(item.phone ?? item.from ?? item.jid ?? '');
+              const jid = typeof item.jid === 'string' ? item.jid : null;
+              const rawName = typeof item.pushName === 'string' ? item.pushName.trim() : '';
+              const pushName =
+                rawName ||
+                (typeof item.contactName === 'string' ? item.contactName.trim() : '') ||
+                (phone ? `+${phone.replace(/^\+/, '')}` : jid || 'Cliente');
+              const messagesCount = Math.max(
+                1,
+                Number(item.messagesCount ?? item.messageCount ?? item.count ?? 1) || 1
+              );
+              const timestampMs = parseWaTimestampMs(
+                item.timestampMs ?? item.timestamp ?? item.sentAt ?? item.createdAt
+              );
+              const delaySec = Number(item.delaySeconds) || 120;
+              return {
+                id: String(item.id || `${phone || jid || 'act'}-${timestampMs}-${idx}`),
+                pushName,
+                phone,
+                jid,
+                messagesCount,
+                timestampMs,
+                delaySeconds: delaySec,
+              };
+            })
+            .sort((a: WhatsAppActivityItem, b: WhatsAppActivityItem) => b.timestampMs - a.timestampMs);
+          setWaActivities(normalizedActs);
+        }
+
+        if (inboxRes.ok) {
+          const rawMsgs = Array.isArray(inboxData.messages) ? inboxData.messages : [];
+          setWaPendingThreadsCount(countPendingWaThreadsFromInbox(rawMsgs, activeWorkspaceId));
+        }
+
+        if (!actRes.ok && !inboxRes.ok) {
+          setWaMonitorError(actData.error || inboxData.error || 'No se pudo consultar la actividad de WhatsApp.');
+        } else {
+          setWaMonitorError(null);
+        }
+      } catch (err: unknown) {
+        if (!active) return;
+        const msg = err instanceof Error ? err.message : 'Error de conexión con WhatsApp.';
+        setWaMonitorError(msg);
+      } finally {
+        if (active) setIsLoadingWaMonitor(false);
+      }
+    };
+
+    fetchWaMonitorData(true);
+    const intervalId = window.setInterval(() => {
+      fetchWaMonitorData(false);
+    }, 10000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [isWhatsAppEnabled, activeWorkspaceId, getTableroAuthHeaders]);
+
   const { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado } = useMemo(() => {
     const totalPagares = pagares.length;
     const pagaresAnulados = pagares.filter(p => p.status === 'anulado').length;
@@ -355,85 +656,49 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     return { totalPagares, pagaresAnulados, personasActivas, totalValorNotariado };
   }, [pagares, effectivePersonas]);
 
-  const pagaresVencidos = useMemo(() => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+  const pagareAlertItems = useMemo(() => {
+    const items: Array<{
+      pagare: Pagare;
+      status: 'vencido' | 'proximo';
+      diffDays: number;
+      dueDate: Date;
+      dueDateRaw: string | null;
+      deudorNombre: string;
+    }> = [];
 
-    return pagares.filter(p => {
-      if (p.estado === 'Cobrado' || p.status === 'cobrado' || p.status === 'anulado' || p.estado === 'Anulado') return false;
+    for (const p of pagares) {
+      const info = getTableroPagareDueInfo(p);
+      if ((info.status === 'vencido' || info.status === 'proximo') && info.dueDate && info.diffDays !== null) {
+        const deudorPersona = effectivePersonas.find((per) => per.id === p.deudor_id);
+        const deudorNombre =
+          p.deudor_nombre_raw ||
+          (deudorPersona ? `${deudorPersona.nombre || ''} ${deudorPersona.apellido || ''}`.trim() : '') ||
+          (p as any).nombreDeudor ||
+          'Deudor sin especificar';
 
-      if (p.cronograma && p.cronograma.length > 0) {
-        return p.cronograma.some(c => {
-          if ((c as any).estado === 'cobrado' || (c as any).pagado === true) return false;
-          const rawDate = c.fecha_pag || (c as any).fecha_vencimiento || (c as any).fecha;
-          if (!rawDate) return false;
-          const partes = rawDate.split('-');
-          if (partes.length !== 3) {
-            const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
-            fallbackDate.setHours(0, 0, 0, 0);
-            return fallbackDate < hoy;
-          }
-          const fechaPago = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
-          return fechaPago < hoy;
+        items.push({
+          pagare: p,
+          status: info.status,
+          diffDays: info.diffDays,
+          dueDate: info.dueDate,
+          dueDateRaw: info.dueDateRaw,
+          deudorNombre,
         });
-      } else {
-        const rawDate = p.fecha_primer_pago || (p as any).fecha_vencimiento || (p as any).fecha || (p as any).fecha_pago;
-        if (!rawDate) return false;
-        const partes = rawDate.split('-');
-        if (partes.length !== 3) {
-          const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
-          fallbackDate.setHours(0, 0, 0, 0);
-          return fallbackDate < hoy;
-        }
-        const fechaPago = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
-        return fechaPago < hoy;
       }
-    });
-  }, [pagares]);
+    }
 
-  const pagaresProximosAVencer = useMemo(() => {
-    return pagares.filter(p => {
-      if (p.estado === 'Cobrado' || p.status === 'cobrado' || p.status === 'anulado' || p.estado === 'Anulado') return false;
+    return items.sort((a, b) => a.diffDays - b.diffDays);
+  }, [pagares, effectivePersonas]);
 
-      const hoy = new Date();
-      hoy.setHours(0,0,0,0);
-      
-      const max = new Date();
-      max.setDate(hoy.getDate() + 7);
-      max.setHours(23,59,59,999);
+  const pagaresVencidos = useMemo(
+    () => pagareAlertItems.filter((item) => item.status === 'vencido').map((item) => item.pagare),
+    [pagareAlertItems]
+  );
 
-      if (p.cronograma && p.cronograma.length > 0) {
-        return p.cronograma.some(c => {
-          if ((c as any).estado === 'cobrado' || (c as any).pagado === true) return false;
-          const rawDate = c.fecha_pag || (c as any).fecha_vencimiento || (c as any).fecha;
-          if (!rawDate) return false;
-          const parts = String(rawDate).split('-');
-          if (parts.length !== 3) {
-            const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
-            fallbackDate.setHours(0,0,0,0);
-            return fallbackDate >= hoy && fallbackDate <= max;
-          }
-          const [y, m, d] = parts.map(Number);
-          const fp = new Date(y, m - 1, d);
-          fp.setHours(0,0,0,0);
-          return fp >= hoy && fp <= max;
-        });
-      } else {
-        const rawDate = (p as any).fecha_pago || p.fecha_primer_pago || (p as any).fecha_vencimiento || (p as any).fecha;
-        if (!rawDate) return false;
-        const parts = String(rawDate).split('-');
-        if (parts.length !== 3) {
-          const fallbackDate = new Date(rawDate + (rawDate.includes('T') ? '' : 'T12:00:00'));
-          fallbackDate.setHours(0,0,0,0);
-          return fallbackDate >= hoy && fallbackDate <= max;
-        }
-        const [y, m, d] = parts.map(Number);
-        const fp = new Date(y, m - 1, d);
-        fp.setHours(0,0,0,0);
-        return fp >= hoy && fp <= max;
-      }
-    });
-  }, [pagares]);
+  const pagaresProximosAVencer = useMemo(
+    () => pagareAlertItems.filter((item) => item.status === 'proximo').map((item) => item.pagare),
+    [pagareAlertItems]
+  );
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -534,59 +799,241 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         </div>
       </div>
 
-      {pagaresVencidos.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-[2rem] p-6 shadow-sm flex items-start md:items-center gap-4 animate-fade-in relative overflow-hidden">
-          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-6 h-6" />
+      {/* CENTRO DE NOTIFICACIONES COMPACTO */}
+      <section
+        className={`rounded-2xl border p-4 transition-all ${
+          esPlanFull
+            ? 'bg-[#F4F4F0]/85 dark:bg-[#12141C]/85 backdrop-blur-xl border-amber-200/40 dark:border-amber-500/30 shadow-xs'
+            : 'bg-white dark:bg-[#121824]/90 border-slate-100 dark:border-slate-800/80 shadow-xs'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-3 border-b border-slate-100 dark:border-slate-800/80">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 dark:bg-slate-800 text-amber-400 flex items-center justify-center shrink-0">
+              <Bell className="w-3.5 h-3.5" />
+            </div>
+            <h3 className="text-sm font-extrabold font-serif text-slate-900 dark:text-slate-100">
+              Centro de Notificaciones
+            </h3>
           </div>
-          <div className="flex-1">
-            <h3 className="text-red-800 font-bold text-lg">Pagarés Vencidos</h3>
-            <p className="text-red-700/80 text-sm mt-0.5">
-              Hay <span className="font-black text-red-600">{pagaresVencidos.length} pagaré(s)</span> con fecha de vencimiento anterior al día de hoy (incluyendo meses anteriores).
-            </p>
-          </div>
-          <button 
-            onClick={() => setActiveOverlay('vencidos')} 
-            className="hidden md:flex bg-white text-red-700 border border-red-200 hover:bg-red-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest items-center gap-2 transition-colors z-10"
-          >
-            Ver Detalles <ChevronRight className="w-3 h-3" />
-          </button>
-          
-          <button 
-            onClick={() => setActiveOverlay('vencidos')} 
-            className="md:hidden absolute inset-0 w-full box-border h-full opacity-0 z-0"
-          >
-            Ver Detalles
-          </button>
-        </div>
-      )}
 
-      {pagaresProximosAVencer.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 shadow-sm flex items-start md:items-center gap-4 animate-fade-in relative overflow-hidden">
-          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-6 h-6" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-amber-800 font-bold text-lg">Próximos Vencimientos</h3>
-            <p className="text-amber-700/80 text-sm mt-0.5">
-              Hay <span className="font-black text-amber-600">{pagaresProximosAVencer.length} pagaré(s)</span> con fecha de vencimiento en los próximos 7 días.
-            </p>
-          </div>
-          <button 
-            onClick={() => setActiveOverlay('vencimientos')} 
-            className="hidden md:flex bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest items-center gap-2 transition-colors z-10"
-          >
-            Ver Detalles <ChevronRight className="w-3 h-3" />
-          </button>
-          
-          <button 
-            onClick={() => setActiveOverlay('vencimientos')} 
-            className="md:hidden absolute inset-0 w-full box-border h-full opacity-0 z-0"
-          >
-            Ver Detalles
-          </button>
+          {pagareAlertItems.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              {pagaresVencidos.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+                  {pagaresVencidos.length} vencido{pagaresVencidos.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {pagaresProximosAVencer.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  {pagaresProximosAVencer.length} por vencer (5d)
+                </span>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        <div className={`grid grid-cols-1 ${isWhatsAppEnabled ? 'lg:grid-cols-2' : ''} gap-3`}>
+          {/* Alertas de Pagarés */}
+          <div className="rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-[#0B0F17]/60 p-3 flex flex-col justify-center">
+            {pagareAlertItems.length === 0 ? (
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0 text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Sin alertas de pagarés próximos a vencer</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (onNavigateTab ? onNavigateTab('pagares') : setActiveOverlay('pagares'))}
+                  className="text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <span>Ver todos</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                      Alertas de Pagarés
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (onNavigateTab ? onNavigateTab('pagares') : setActiveOverlay('pagares'))}
+                    className="text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Ver todos</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                  {pagareAlertItems.map((item) => {
+                    const { pagare, status, diffDays, dueDate, deudorNombre } = item;
+                    const correlativoStr = String(pagare.correlativo || 'S/N').padStart(4, '0');
+                    const monCode = (pagare.moneda || 'PYG').toUpperCase();
+                    const monPrefix = monCode === 'USD' ? 'US$' : monCode === 'BRL' ? 'R$' : 'Gs.';
+                    const montoFmt = `${monPrefix} ${formatCurrencyValue(
+                      pagare.valor_total || (pagare as any).monto || 0,
+                      monCode
+                    )}`;
+                    const fechaFmt = dueDate.toLocaleDateString('es-PY', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    });
+                    const absDays = Math.abs(diffDays);
+                    const badgeText =
+                      status === 'vencido'
+                        ? absDays === 1
+                          ? 'Vencido 1d'
+                          : `Vencido ${absDays}d`
+                        : diffDays === 0
+                          ? 'Vence hoy'
+                          : diffDays === 1
+                            ? 'Vence en 1d'
+                            : `Vence en ${diffDays}d`;
+
+                    return (
+                      <div
+                        key={pagare.id}
+                        className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#121824] px-2.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                          <span
+                            className={`px-1.5 py-0.5 text-[10px] font-black uppercase rounded border whitespace-nowrap ${
+                              status === 'vencido'
+                                ? 'bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 border-red-300 dark:border-red-800'
+                                : 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                            }`}
+                          >
+                            {badgeText}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {deudorNombre}
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            Nº {correlativoStr} · <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{montoFmt}</span> · {fechaFmt}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onNavigateTab) {
+                                onNavigateTab('pagares');
+                              } else {
+                                setEditingPagareId(pagare.id);
+                                setIsPagareEditorOpen(true);
+                              }
+                            }}
+                            className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            Ir a Pagarés
+                          </button>
+
+                          {isWhatsAppEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => setPagareForWhatsApp(pagare)}
+                              className="px-2 py-1 rounded-md text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              <span>Recordar</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Notificaciones de WhatsApp (solo si canUseWhatsApp === true) */}
+          {isWhatsAppEnabled && (
+            <div className="rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-[#0B0F17]/60 p-3 flex flex-col justify-center space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Bot className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                    {waPendingThreadsCount === 0
+                      ? 'Sin chats pendientes'
+                      : `${waPendingThreadsCount} ${
+                          waPendingThreadsCount === 1
+                            ? 'chat pendiente por revisar'
+                            : 'chats pendientes por revisar'
+                        }`}
+                  </span>
+                  {isLoadingWaMonitor && (
+                    <Loader2 className="w-3 h-3 text-emerald-600 animate-spin shrink-0" />
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('whatsapp')}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <span>Abrir Bandeja</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {waActivities.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pt-2 border-t border-slate-200/70 dark:border-slate-800/80">
+                  {waActivities.slice(0, 5).map((act) => {
+                    const horaFmt = (() => {
+                      try {
+                        return new Intl.DateTimeFormat('es-PY', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: '2-digit',
+                        }).format(new Date(act.timestampMs));
+                      } catch {
+                        return '';
+                      }
+                    })();
+
+                    return (
+                      <div
+                        key={act.id}
+                        className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#121824] px-2.5 py-1.5 flex items-center justify-between gap-2"
+                      >
+                        <p className="text-[11px] text-slate-700 dark:text-slate-200 truncate">
+                          🤖 <span className="font-bold">O.L.G.A.</span> respondió a{' '}
+                          <span className="font-bold text-slate-900 dark:text-white">{act.pushName}</span> ({act.messagesCount}{' '}
+                          {act.messagesCount === 1 ? 'msj' : 'msjs'})
+                          {horaFmt ? ` · ${horaFmt}` : ''}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTab?.('whatsapp')}
+                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          Revisar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {waMonitorError
+                    ? waMonitorError
+                    : 'Sin respuestas automáticas recientes en ausencia.'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
@@ -916,6 +1363,158 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           </div>
         </div>
       )}
+
+      {isWhatsAppEnabled && pagareForWhatsApp && (() => {
+        const acreedorPersona = effectivePersonas.find((p) => p.id === pagareForWhatsApp.acreedor_id);
+        const normDoc = (v?: string) => String(v || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+        const deudorDocNorm = normDoc(pagareForWhatsApp.deudor_documento_raw);
+        const deudorNameNorm = String(
+          pagareForWhatsApp.deudor_nombre_raw || (pagareForWhatsApp as any).nombreDeudor || ''
+        )
+          .trim()
+          .toLowerCase();
+
+        const deudorPersona =
+          effectivePersonas.find((p) => p.id === pagareForWhatsApp.deudor_id) ||
+          (deudorDocNorm ? effectivePersonas.find((p) => normDoc(p.nro_documento) === deudorDocNorm) : undefined) ||
+          (deudorNameNorm
+            ? effectivePersonas.find(
+                (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim().toLowerCase() === deudorNameNorm
+              )
+            : undefined);
+
+        const codeudor1Persona = effectivePersonas.find((p) => p.id === pagareForWhatsApp.codeudor1_id);
+        const codeudor2Persona = effectivePersonas.find((p) => p.id === pagareForWhatsApp.codeudor2_id);
+
+        const nombreAcreedorWa =
+          pagareForWhatsApp.acreedor_nombre_raw ||
+          (acreedorPersona ? `${acreedorPersona.nombre || ''} ${acreedorPersona.apellido || ''}`.trim() : '') ||
+          'Acreedor / Beneficiario';
+        const docAcreedorWa =
+          pagareForWhatsApp.acreedor_documento_raw || acreedorPersona?.nro_documento || '';
+        const domAcreedorWa =
+          pagareForWhatsApp.acreedor_domicilio_raw || acreedorPersona?.domicilio || '';
+
+        const nombreDeudorWa =
+          pagareForWhatsApp.deudor_nombre_raw ||
+          (deudorPersona ? `${deudorPersona.nombre || ''} ${deudorPersona.apellido || ''}`.trim() : '') ||
+          (pagareForWhatsApp as any).nombreDeudor ||
+          'Cliente';
+        const docDeudorWa =
+          pagareForWhatsApp.deudor_documento_raw || deudorPersona?.nro_documento || '';
+        const domDeudorWa =
+          pagareForWhatsApp.deudor_domicilio_raw || deudorPersona?.domicilio || '';
+        const telefonoDeudorWa = String(
+          (pagareForWhatsApp as any).deudor_telefono_raw ||
+            (pagareForWhatsApp as any).deudorTelefono ||
+            (pagareForWhatsApp as any).telefonoDeudor ||
+            deudorPersona?.telefono ||
+            ''
+        ).trim();
+
+        const montoValor = Number(pagareForWhatsApp.valor_total || (pagareForWhatsApp as any).monto || 0);
+        const monCode = (pagareForWhatsApp.moneda || 'PYG').toUpperCase();
+        const monSimbolo = monCode === 'USD' ? 'US$' : monCode === 'BRL' ? 'R$' : 'Gs.';
+        const montoParaMensaje =
+          monCode === 'PYG' || monCode === 'GS'
+            ? `Gs. ${formatCurrencyValue(montoValor, 'PYG')}`
+            : `${monSimbolo} ${formatCurrencyValue(montoValor, monCode)}`;
+
+        const dueInfoWa = getTableroPagareDueInfo(pagareForWhatsApp);
+        const rawFechaVenc =
+          dueInfoWa.dueDateRaw ||
+          pagareForWhatsApp.cronograma?.find((c: any) => c.estado !== 'cobrado' && c.pagado !== true)?.fecha_pag ||
+          pagareForWhatsApp.cronograma?.[0]?.fecha_pag ||
+          pagareForWhatsApp.fecha_primer_pago ||
+          '';
+        const fechaVencDate = parseTableroLocalYmd(rawFechaVenc || undefined);
+        const fechaVencFmt = fechaVencDate
+          ? `${String(fechaVencDate.getDate()).padStart(2, '0')}/${String(fechaVencDate.getMonth() + 1).padStart(2, '0')}/${fechaVencDate.getFullYear()}`
+          : rawFechaVenc || 'A confirmar';
+        const escribaniaNombreWa =
+          workspaceName ||
+          userData?.razonSocial ||
+          userData?.nombreEscribania ||
+          config?.escribania?.nombre ||
+          'Escribanía Titular';
+        const correlativoStr = String(pagareForWhatsApp.correlativo || 'S/N').padStart(4, '0');
+
+        const totalCuotas = pagareForWhatsApp.cronograma?.length || 1;
+        const nextPendingIdx =
+          pagareForWhatsApp.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
+        const cuotaPlazo =
+          totalCuotas > 1
+            ? nextPendingIdx >= 0
+              ? `Cuota ${pagareForWhatsApp.cronograma[nextPendingIdx].numero_cuota} de ${totalCuotas}`
+              : `${totalCuotas} cuotas`
+            : 'Pago único';
+
+        const pdfPagare = generatePagarePdfBase64({
+          numero: correlativoStr,
+          certificadoFirmasNro: pagareForWhatsApp.certificado_firmas_nro,
+          escribania: {
+            nombre: escribaniaNombreWa,
+            ruc: userData?.ruc || '',
+            registro: userData?.registroNotarial || config?.escribania?.nro_registro || '',
+            telefono: userData?.telefono || config?.escribania?.telefono || '',
+            direccion: userData?.direccion || config?.escribania?.direccion || '',
+          },
+          acreedorNombre: nombreAcreedorWa,
+          acreedorDocumento: docAcreedorWa,
+          acreedorDomicilio: domAcreedorWa,
+          deudorNombre: nombreDeudorWa,
+          deudorDocumento: docDeudorWa,
+          deudorDomicilio: domDeudorWa,
+          codeudor1Nombre:
+            pagareForWhatsApp.codeudor1_nombre_raw ||
+            (codeudor1Persona ? `${codeudor1Persona.nombre || ''} ${codeudor1Persona.apellido || ''}`.trim() : ''),
+          codeudor1Documento: pagareForWhatsApp.codeudor1_documento_raw || codeudor1Persona?.nro_documento,
+          codeudor2Nombre:
+            pagareForWhatsApp.codeudor2_nombre_raw ||
+            (codeudor2Persona ? `${codeudor2Persona.nombre || ''} ${codeudor2Persona.apellido || ''}`.trim() : ''),
+          codeudor2Documento: pagareForWhatsApp.codeudor2_documento_raw || codeudor2Persona?.nro_documento,
+          montoValor,
+          moneda: monCode,
+          cuotaPlazo,
+          fechaEmision: pagareForWhatsApp.created_at,
+          fechaVencimiento: rawFechaVenc,
+          lugarPago:
+            (pagareForWhatsApp as any).ciudadEmision ||
+            (pagareForWhatsApp as any).ciudad ||
+            userData?.ciudad ||
+            config?.escribania?.ciudad ||
+            config?.escribania?.direccion ||
+            'Asunción, Paraguay',
+          tasaInteres:
+            pagareForWhatsApp.interesPersonalizado ||
+            pagareForWhatsApp.tasaInteres ||
+            pagareForWhatsApp.tasa_interes,
+          cuerpoTexto:
+            pagareForWhatsApp.texto_personalizado ||
+            pagareForWhatsApp.textoPersonalizado ||
+            pagareForWhatsApp.textoCuerpo ||
+            pagareForWhatsApp.contenido,
+        });
+
+        const defaultMsg =
+          dueInfoWa.status === 'vencido'
+            ? `Estimado/a ${nombreDeudorWa}, le informamos desde ${escribaniaNombreWa} que el Pagaré Nº ${correlativoStr} por ${montoParaMensaje} registró vencimiento el ${fechaVencFmt}. Adjuntamos copia y quedamos atentos para coordinar la regularización.`
+            : `Estimado/a ${nombreDeudorWa}, le recordamos cordialmente desde ${escribaniaNombreWa} que el Pagaré Nº ${correlativoStr} por ${montoParaMensaje} vence el ${fechaVencFmt}. Adjuntamos copia para su referencia. Quedamos a disposición.`;
+
+        return (
+          <WhatsAppSendModal
+            isOpen={!!pagareForWhatsApp}
+            onClose={() => setPagareForWhatsApp(null)}
+            workspaceId={activeWorkspaceId || pagareForWhatsApp.userId || auth?.currentUser?.uid || ''}
+            defaultPhone={telefonoDeudorWa}
+            defaultMessage={defaultMsg}
+            documentTitle={`Pagaré Notarial Nº ${correlativoStr}`}
+            fileBase64={pdfPagare.fileBase64}
+            fileName={pdfPagare.fileName}
+            mimetype="application/pdf"
+          />
+        );
+      })()}
     </div>
   );
 };

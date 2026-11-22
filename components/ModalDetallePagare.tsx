@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, formatCurrencyValue } from '../types';
-import { X, Clipboard, Check, FileText, Calendar, ShieldCheck, UserCheck, CreditCard, Printer } from 'lucide-react';
+import { X, Clipboard, Check, FileText, Calendar, ShieldCheck, UserCheck, CreditCard, Printer, MessageCircle } from 'lucide-react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { auth } from '../services/auth';
 
@@ -12,6 +12,8 @@ interface ModalDetallePagareProps {
   personas?: Persona[];
   onOpenPDFPreview?: (pagare: Pagare) => void;
   userData?: any;
+  canUseWhatsApp?: boolean;
+  onSendWhatsApp?: (pagare: Pagare) => void;
 }
 
 export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
@@ -20,7 +22,9 @@ export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
   pagare,
   personas = [],
   onOpenPDFPreview,
-  userData
+  userData,
+  canUseWhatsApp = false,
+  onSendWhatsApp
 }) => {
   const [copied, setCopied] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -274,7 +278,20 @@ export const ModalDetallePagare: React.FC<ModalDetallePagareProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {canUseWhatsApp && onSendWhatsApp && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSendWhatsApp(pagare);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer whitespace-nowrap"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Enviar por WhatsApp</span>
+              </button>
+            )}
             {onOpenPDFPreview && (
               <button
                 type="button"

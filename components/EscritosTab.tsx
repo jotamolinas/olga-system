@@ -9,12 +9,15 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload, MessageCircle, Download
 } from 'lucide-react';
 import { redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
 import { EditorNotarialOficial } from './EditorNotarialOficial';
+import { WhatsAppSendModal } from './WhatsAppSendModal';
+import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage, downloadPdfFromBase64 } from '../services/pdfExport';
+import { wrapSignatureBlocksForPrint } from './DocumentoModal';
 
 interface Escrito {
   id: string;
@@ -23,6 +26,7 @@ interface Escrito {
   createdAt?: string;
   tipo: string;
   tipoHoja?: 'blanca' | 'protocolo';
+  includeHeader?: boolean;
   userId: string;
   categoria?: string;
   correlativo?: string | number;
@@ -36,9 +40,10 @@ interface EscritosTabProps {
   currentUser: User | null;
   userProfile?: any;
   personas?: any[];
-  onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string, tipoHoja?: 'blanca' | 'protocolo') => void;
+  onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string, tipoHoja?: 'blanca' | 'protocolo', includeHeader?: boolean) => void;
   esPlanFull?: boolean;
   isSoftBlocked?: boolean;
+  canUseWhatsApp?: boolean;
 }
 
 // =========================================================================
@@ -432,13 +437,14 @@ const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 const LOCAL_STORAGE_DRAFT_TIPO_HOJA = 'olga_escritos_redaccion_draft_tipo_hoja';
+const LOCAL_STORAGE_DRAFT_INCLUDE_HEADER = 'olga_escritos_redaccion_draft_include_header';
 
-export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false }) => {
+export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false, canUseWhatsApp }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
-  const { workspaceId } = useWorkspace(currentUser, userProfile);
+  const { workspaceId, workspaceData } = useWorkspace(currentUser, userProfile);
   // Estado de prueba gratuita / billing
   const { pruebaActiva, diasRestantes, isTrialExpired, userData: liveUserData } = useTrialStatus(currentUser);
-  const activeUserData = liveUserData || userProfile;
+  const activeUserData = liveUserData || userProfile || workspaceData;
 
   const planUsuario = String(activeUserData?.planActual || activeUserData?.plan || userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador' || userProfile?.rol === 'operador' || userProfile?.role === 'operador';
@@ -458,6 +464,147 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const isMenuPlantillasBloqueado = isSoftBlocked || (!tienePlanActivo && (isTrialExpired || !pruebaActiva || diasRestantes <= 0)) || suscripcionVencida;
 
   const esFull = esPlanFull !== undefined ? esPlanFull : (currentUser?.email === 'jotamolinas@gmail.com' || planUsuario.includes('full'));
+  const isWhatsAppEnabled = Boolean(canUseWhatsApp || currentUser?.email === 'jotamolinas@gmail.com' || activeUserData?.whatsappEnabled || userProfile?.whatsappEnabled);
+
+  const [waModalData, setWaModalData] = useState<{
+    isOpen: boolean;
+    documentTitle: string;
+    defaultMessage: string;
+    fileBase64: string;
+    fileName: string;
+  } | null>(null);
+
+  const [pdfLogoDataUrl, setPdfLogoDataUrl] = useState<string | undefined>(undefined);
+
+  const rawLogoInstitucional: string | undefined =
+    workspaceData?.logo_institucional ||
+    workspaceData?.logoUrl ||
+    activeUserData?.logo_institucional ||
+    activeUserData?.logoUrl ||
+    userProfile?.logo_institucional ||
+    userProfile?.logoUrl ||
+    undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!rawLogoInstitucional) {
+      setPdfLogoDataUrl(undefined);
+      return;
+    }
+    if (/^data:image\/(png|jpe?g);base64,/i.test(rawLogoInstitucional)) {
+      setPdfLogoDataUrl(rawLogoInstitucional);
+      return;
+    }
+    if (rawLogoInstitucional.startsWith('data:image/')) {
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 200;
+          canvas.height = img.naturalHeight || 200;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            setPdfLogoDataUrl(canvas.toDataURL('image/png'));
+          }
+        } catch {
+          if (!cancelled) setPdfLogoDataUrl(undefined);
+        }
+      };
+      img.onerror = () => {
+        if (!cancelled) setPdfLogoDataUrl(undefined);
+      };
+      img.src = rawLogoInstitucional;
+    } else {
+      setPdfLogoDataUrl(undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [rawLogoInstitucional]);
+
+  const nombreEscHeader =
+    workspaceData?.razonSocial ||
+    workspaceData?.nombreInstitucion ||
+    activeUserData?.razonSocial ||
+    activeUserData?.nombreInstitucion ||
+    userProfile?.razonSocial ||
+    activeUserData?.nombre ||
+    userProfile?.nombre ||
+    'Escribanía Pública';
+  const rucEscHeader = workspaceData?.ruc || activeUserData?.ruc || userProfile?.ruc || '';
+  const registroEscHeader =
+    workspaceData?.registroNotarial ||
+    workspaceData?.matricula ||
+    activeUserData?.registroNotarial ||
+    activeUserData?.matricula ||
+    userProfile?.registroNotarial ||
+    userProfile?.matricula ||
+    '';
+  const telefonoEscHeader =
+    workspaceData?.telefono || activeUserData?.telefono || userProfile?.telefono || '';
+  const direccionEscHeader =
+    workspaceData?.direccion || activeUserData?.direccion || userProfile?.direccion || '';
+
+  const buildEscribaniaPdfMeta = () => ({
+    nombre: nombreEscHeader,
+    ruc: rucEscHeader,
+    registro: registroEscHeader,
+    telefono: telefonoEscHeader,
+    direccion: direccionEscHeader,
+    logo: pdfLogoDataUrl,
+  });
+
+  const handleSendDocumentByWhatsApp = (
+    rawTitle?: string,
+    rawContent?: string,
+    overrideIncludeHeader?: boolean
+  ) => {
+    const content = rawContent || '';
+    if (!content.trim()) return;
+    const cleanTitle = (rawTitle || 'Documento Notarial').replace(/\s*\(Guardado Local\)\s*/gi, '').trim();
+    const effectiveIncludeHeader =
+      overrideIncludeHeader !== undefined ? overrideIncludeHeader : includeHeader;
+    const pdf = generateDocumentPdfBase64({
+      title: cleanTitle,
+      content,
+      escribania: buildEscribaniaPdfMeta(),
+      includeHeader: effectiveIncludeHeader,
+    });
+    setWaModalData({
+      isOpen: true,
+      documentTitle: cleanTitle,
+      defaultMessage: buildWhatsAppDocumentMessage(cleanTitle, nombreEscHeader),
+      fileBase64: pdf.fileBase64,
+      fileName: pdf.fileName,
+    });
+  };
+
+  const handleDescargarPDF = (
+    rawTitle?: string,
+    rawContent?: string,
+    overrideIncludeHeader?: boolean
+  ) => {
+    const content = rawContent !== undefined ? rawContent : (editorContentRef.current?.innerHTML || editorText);
+    const cleanedSource = content.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
+    if (!cleanedSource || !cleanedSource.trim()) {
+      alert('El documento está vacío. Escriba o seleccione una plantilla antes de exportar.');
+      return;
+    }
+    const cleanTitle = (rawTitle || documentTitle || 'Documento Notarial')
+      .replace(/\s*\(Guardado Local\)\s*/gi, '')
+      .trim();
+    const effectiveIncludeHeader =
+      overrideIncludeHeader !== undefined ? overrideIncludeHeader : includeHeader;
+    const pdf = generateDocumentPdfBase64({
+      title: cleanTitle,
+      content: cleanedSource,
+      escribania: buildEscribaniaPdfMeta(),
+      includeHeader: effectiveIncludeHeader,
+    });
+    downloadPdfFromBase64(pdf.fileBase64, pdf.fileName);
+  };
 
   // Modo de navegación: Redacción activa vs Archivo de Documentos
   const [activeSubTab, setActiveSubTab] = useState<'redaccion' | 'archivo'>('redaccion');
@@ -761,6 +908,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [activeEditingDoc, setActiveEditingDoc] = useState<Escrito | null>(null);
   const [selectedPlantillaId, setSelectedPlantillaId] = useState<string>('');
   const [tipoHoja, setTipoHoja] = useState<'blanca' | 'protocolo'>('blanca');
+  const [includeHeader, setIncludeHeader] = useState<boolean>(true);
   const esHojaEnBlanco = tipoHoja === 'blanca';
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
@@ -825,18 +973,20 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const savedTitle = localStorage.getItem(LOCAL_STORAGE_DRAFT_TITULO);
       const savedCat = localStorage.getItem(LOCAL_STORAGE_DRAFT_CATEGORIA);
       const savedTipoHoja = localStorage.getItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA);
+      const savedIncludeHeader = localStorage.getItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER);
 
       if (savedPlantilla) {
         setSelectedPlantillaId(savedPlantilla);
       }
-      if (savedTipoHoja === 'blanca' || savedTipoHoja === 'protocolo') {
-        setTipoHoja(savedTipoHoja);
-      } else if (savedPlantilla) {
-        setTipoHoja(savedPlantilla === 'hoja_en_blanco' ? 'blanca' : 'protocolo');
-      } else if (savedTitle && savedTitle !== 'Escrito en Blanco') {
+      if (savedTipoHoja === 'protocolo') {
         setTipoHoja('protocolo');
       } else {
         setTipoHoja('blanca');
+      }
+      if (savedIncludeHeader === 'false') {
+        setIncludeHeader(false);
+      } else {
+        setIncludeHeader(true);
       }
       if (savedTitle) {
         setDocumentTitle(savedTitle);
@@ -867,6 +1017,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, documentTitle);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, selectedCategoryForSave);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, tipoHoja);
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(includeHeader));
       } catch (e) {
         console.warn('Error guardando borrador local:', e);
       }
@@ -877,7 +1028,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja]);
+  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader]);
 
   // Sincronización del contentEditable con el estado de React editorText
   useEffect(() => {
@@ -1549,10 +1700,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Mensaje o instrucción del asistente de autocompletado si hay espacios en blanco activos
   const mensajeAsistente = totalBlanks > 0 && currentBlankContext ? currentBlankContext.instruccion : null;
 
+  const isRedaccionEnBlanco =
+    selectedPlantillaId === 'hoja_en_blanco' ||
+    (!selectedPlantillaId && esHojaEnBlanco);
+
   // Condición de Modo Autocompletado Activo:
   // Se oculta la cabecera completa si mensajeAsistente tiene algún valor (modo llenado paso a paso),
   // y solo se restaura cuando termina (mensajeAsistente === null / sin espacios pendientes) o al seleccionar 'Hoja en Blanco'.
-  const condicionAutocompletado = Boolean(mensajeAsistente) && !esHojaEnBlanco;
+  const condicionAutocompletado = Boolean(mensajeAsistente) && !isRedaccionEnBlanco;
 
   // Lógica inteligente de visibilidad de la barra de herramientas de formato de texto (Negrita, Cursiva, Alineación, Listas)
   // Oculta si el asistente flotante está activo con espacios pendientes.
@@ -1561,7 +1716,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // 2. Se está editando un documento existente (abierto desde la grilla)
   // 3. Se completó el 100% de los espacios en blanco (mensajeAsistente === null o totalBlanks === 0)
   const mostrarBarraHerramientas = 
-    esHojaEnBlanco ||
+    isRedaccionEnBlanco ||
     editandoDocumentoExistente ||
     totalBlanks === 0 ||
     !mensajeAsistente;
@@ -1809,7 +1964,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Resaltado visual del espacio en blanco activo con resolución silenciosa previa:
   useEffect(() => {
-    if (!mostrarEditor || esHojaEnBlanco) return;
+    if (!mostrarEditor || isRedaccionEnBlanco) return;
 
     // Si hay espacios en blanco pendientes, verificar si alguno se puede resolver silenciosamente
     if (/_{3,}/.test(editorText)) {
@@ -1855,7 +2010,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, esHojaEnBlanco, editorText, memoria]);
+  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
@@ -2323,6 +2478,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleNuevoEscrito = () => {
     setSelectedPlantillaId('hoja_en_blanco');
     setTipoHoja('blanca');
+    setIncludeHeader(true);
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
     setEditorText('');
@@ -2351,6 +2507,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleLimpiarEditor = () => {
     setSelectedPlantillaId('hoja_en_blanco');
     setTipoHoja('blanca');
+    setIncludeHeader(true);
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
     setEditorText('');
@@ -2403,6 +2560,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const docId = activeEditingDoc?.id;
       const isExistingFirestoreDoc = !!(docId && !docId.startsWith('temp-'));
 
+      const tipoPapelValue = tipoHoja === 'blanca' ? 'blanco' : 'protocolo';
+      const modoImpresionValue = tipoHoja === 'blanca' ? 'simple' : 'protocolo';
+
       if (isExistingFirestoreDoc && docId) {
         // ACTUALIZACIÓN DIRECTA (updateDoc) SOBRE EL DOCUMENTO EXISTENTE
         const docRef = doc(db, 'documentos_olga', docId);
@@ -2410,6 +2570,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           texto: textoLimpio,
           tipo: tipoDoc,
           tipoHoja,
+          tipoPapel: tipoPapelValue,
+          modoImpresion: modoImpresionValue,
+          includeHeader,
           categoria: cat,
           ultimaModificacion: serverTimestamp(),
           lastModifiedBy: user?.uid,
@@ -2425,6 +2588,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             tempDocs[idx].texto = textoLimpio;
             tempDocs[idx].tipo = tipoDoc;
             tempDocs[idx].tipoHoja = tipoHoja;
+            tempDocs[idx].tipoPapel = tipoPapelValue;
+            tempDocs[idx].modoImpresion = modoImpresionValue;
+            tempDocs[idx].includeHeader = includeHeader;
             tempDocs[idx].categoria = cat;
             localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
           }
@@ -2435,6 +2601,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           texto: textoLimpio,
           tipo: tipoDoc,
           tipoHoja,
+          tipoPapel: tipoPapelValue,
+          modoImpresion: modoImpresionValue,
+          includeHeader,
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
@@ -2482,6 +2651,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           texto: textoLimpio,
           tipo: tipoDoc,
           tipoHoja,
+          includeHeader,
           userId: user.uid,
           categoria: cat,
           fechaCreacion: new Date().toISOString()
@@ -2507,46 +2677,174 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     const title = documentTitle.trim() || 'Escrito Notarial';
 
-    // 1. Limpieza y Normalización de Párrafos con Flujo Notarial Continuo
+    // 1. Limpieza y Normalización Lossless del árbol DOM (preserva nodos de texto sueltos, negritas, saltos y bloques)
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
 
-    const cleanParagraphs: string[] = [];
-    const directElements = Array.from(tempDiv.querySelectorAll('p, div, li, h1, h2, h3, h4, .salto-de-pagina'));
+    // Desenvolver cualquier span de campo activo residual conservando su texto
+    tempDiv.querySelectorAll('#espacio-activo').forEach((span) => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
 
-    if (directElements.length > 0) {
-      directElements.forEach(el => {
-        // Ignorar nodos internos de la insignia del salto de página
+    const escapeHtml = (str: string) =>
+      str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    const BLOCK_TAGS = new Set([
+      'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li', 'table', 'blockquote', 'hr', 'section', 'article'
+    ]);
+
+    const cleanParagraphs: string[] = [];
+    let inlineParts: string[] = [];
+
+    const flushInline = (forceEmpty = false) => {
+      const joined = inlineParts.join('');
+      inlineParts = [];
+      const tmp = document.createElement('div');
+      tmp.innerHTML = joined;
+      const plain = (tmp.textContent || '').replace(/\u00A0/g, ' ').trim();
+      if (plain.length > 0) {
+        cleanParagraphs.push(`<p>${joined}</p>`);
+      } else if (forceEmpty) {
+        cleanParagraphs.push('<p><br></p>');
+      }
+    };
+
+    const hasBlockDescendant = (el: Element): boolean =>
+      Array.from(el.children).some(
+        (child) =>
+          BLOCK_TAGS.has(child.tagName.toLowerCase()) ||
+          child.classList.contains('salto-de-pagina') ||
+          child.classList.contains('salto-de-pagina-print') ||
+          hasBlockDescendant(child)
+      );
+
+    const pushInlineText = (text: string, wrapperTag?: { open: string; close: string }) => {
+      const lines = text.split('\n');
+      lines.forEach((line, idx) => {
+        const escaped = escapeHtml(line);
+        if (escaped.length > 0) {
+          inlineParts.push(wrapperTag ? `${wrapperTag.open}${escaped}${wrapperTag.close}` : escaped);
+        }
+        if (idx < lines.length - 1) {
+          flushInline(true);
+        }
+      });
+    };
+
+    const processInlineWithNewlines = (el: Element) => {
+      const tag = el.tagName.toLowerCase();
+      const styleAttr = el.getAttribute('style');
+      const alignMatch = styleAttr?.match(/text-align\s*:\s*[^;]+/i)?.[0];
+      const open = tag === 'span'
+        ? (alignMatch ? `<span style="${alignMatch}">` : '<span>')
+        : `<${tag}${alignMatch ? ` style="${alignMatch}"` : ''}>`;
+      const close = `</${tag}>`;
+
+      Array.from(el.childNodes).forEach((child) => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          pushInlineText(child.nodeValue || '', { open, close });
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          const childEl = child as Element;
+          const childTag = childEl.tagName.toLowerCase();
+          if (childTag === 'br') {
+            flushInline(true);
+          } else {
+            processInlineWithNewlines(childEl);
+          }
+        }
+      });
+    };
+
+    const processNodes = (nodeList: NodeListOf<ChildNode> | ChildNode[]) => {
+      Array.from(nodeList).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          pushInlineText(node.nodeValue || '');
+          return;
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const el = node as Element;
+        const tag = el.tagName.toLowerCase();
+
+        // Ignorar nodos internos de la insignia visual del salto de página
         if (el.closest('.salto-de-pagina') && !el.classList.contains('salto-de-pagina')) {
           return;
         }
 
-        if (el.classList.contains('salto-de-pagina')) {
-          cleanParagraphs.push('<div class="salto-de-pagina-print" style="break-after: page; page-break-after: always; height: 0; line-height: 0; margin: 0; padding: 0;"></div>');
+        if (el.classList.contains('salto-de-pagina') || el.classList.contains('salto-de-pagina-print')) {
+          flushInline(false);
+          cleanParagraphs.push('<div class="salto-de-pagina-print"></div>');
           return;
         }
 
-        const isContainerWithBlocks = (el.tagName.toLowerCase() === 'div' || el.tagName.toLowerCase() === 'section') && el.querySelector('p, div, li');
-        if (isContainerWithBlocks) return;
+        if (tag === 'br') {
+          flushInline(true);
+          return;
+        }
 
-        const inner = el.innerHTML.trim();
-        const plainText = el.textContent?.trim() || '';
+        if (!BLOCK_TAGS.has(tag)) {
+          if (hasBlockDescendant(el)) {
+            flushInline(false);
+            processNodes(el.childNodes);
+            flushInline(false);
+          } else {
+            processInlineWithNewlines(el);
+          }
+          return;
+        }
 
-        // Preservar párrafos con texto Y líneas en blanco (Enters) para respetar el interlineado y los folios
-        if (plainText.length > 0) {
-          cleanParagraphs.push(el.tagName.toLowerCase() === 'p' ? el.outerHTML : `<p>${inner}</p>`);
-        } else if (inner === '<br>' || inner === '<br/>' || inner === '' || el.querySelector('br')) {
+        flushInline(false);
+
+        if (tag === 'ul' || tag === 'ol' || tag === 'table' || tag === 'blockquote' || tag === 'hr' || /^h[1-6]$/.test(tag)) {
+          if (tag !== 'hr' && !(el.textContent || '').trim()) {
+            return;
+          }
+          cleanParagraphs.push(el.outerHTML);
+          return;
+        }
+
+        // Contenedor DIV/SECTION/ARTICLE/P con sub-bloques (incluye antiguas .hoja-notarial-pagina)
+        if (hasBlockDescendant(el)) {
+          processNodes(el.childNodes);
+          flushInline(false);
+          return;
+        }
+
+        // Párrafo o DIV hoja: preservar saltos internos \n o <br> si los tuviera (contentEditable pre-wrap)
+        const textVal = el.textContent || '';
+        const innerHtml = el.innerHTML.trim();
+        const alignStyle = (el as HTMLElement).style?.textAlign
+          ? ` style="text-align: ${(el as HTMLElement).style.textAlign}"`
+          : '';
+
+        if (textVal.includes('\n')) {
+          processNodes(el.childNodes);
+          flushInline(false);
+          return;
+        }
+
+        if (textVal.replace(/\u00A0/g, ' ').trim().length > 0) {
+          cleanParagraphs.push(`<p${alignStyle}>${innerHtml}</p>`);
+        } else if (innerHtml === '<br>' || innerHtml === '<br/>' || innerHtml === '' || el.querySelector('br')) {
           cleanParagraphs.push('<p><br></p>');
         }
       });
-    }
+    };
+
+    processNodes(tempDiv.childNodes);
+    flushInline(false);
 
     if (cleanParagraphs.length === 0) {
       const rawLines = content.split('\n');
       rawLines.forEach(l => {
         const plain = l.replace(/<[^>]*>/g, '').trim();
         if (plain.length > 0) {
-          cleanParagraphs.push(`<p>${plain}</p>`);
+          cleanParagraphs.push(`<p>${escapeHtml(plain)}</p>`);
         } else {
           cleanParagraphs.push('<p><br></p>');
         }
@@ -2558,20 +2856,66 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
-    const esHojaEnBlancoImpresion = tipoHoja === 'blanca';
+    const bodyHtml = wrapSignatureBlocksForPrint(cleanParagraphs.join(''));
+    const esHojaEnBlancoImpresion = tipoHoja !== 'protocolo';
+    const mostrarCabeceraImpresion = esHojaEnBlancoImpresion && includeHeader;
 
-    // 2. Arquitectura CSS Nativa de Impresión: Flujo continuo con @page :left y @page :right
+    let membreteHtml = '';
+    if (mostrarCabeceraImpresion) {
+      const subItems: string[] = [];
+      if (registroEscHeader && registroEscHeader !== '---') {
+        subItems.push(
+          /reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`
+        );
+      }
+      if (rucEscHeader && rucEscHeader !== '---') {
+        subItems.push(`RUC: ${rucEscHeader}`);
+      }
+      if (telefonoEscHeader && telefonoEscHeader !== '---') {
+        subItems.push(`Tel.: ${telefonoEscHeader}`);
+      }
+      const logoMarkup = rawLogoInstitucional
+        ? `<img src="${rawLogoInstitucional.replace(/"/g, '&quot;')}" alt="${escapeHtml(nombreEscHeader)}" class="olga-doc-membrete-logo" />`
+        : '';
+      const subMarkup = subItems.length > 0
+        ? `<p class="olga-doc-membrete-sub">${escapeHtml(subItems.join('  •  '))}</p>`
+        : '';
+      const dirMarkup = direccionEscHeader && direccionEscHeader !== '---'
+        ? `<p class="olga-doc-membrete-dir">${escapeHtml(direccionEscHeader)}</p>`
+        : '';
+
+      membreteHtml = `
+        <div class="olga-doc-membrete">
+          ${logoMarkup}
+          <div class="olga-doc-membrete-title">${escapeHtml(nombreEscHeader.toUpperCase())}</div>
+          ${subMarkup}
+          ${dirMarkup}
+        </div>
+      `;
+    }
+
+    // 2. Arquitectura CSS Nativa de Impresión:
+    // - Hoja en Blanco (Simple): A4 uniforme con márgenes estándar en TODAS las páginas (sin anverso/reverso ni cabecera sellada)
+    // - Hoja de Protocolo Notarial: Oficio con alternancia @page :left y @page :right para papel preimpreso
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
+    ${esHojaEnBlancoImpresion ? `
+    @page {
+      size: A4 portrait;
+      margin: 2.5cm 2.5cm 2.5cm 3cm;
+    }
+    ` : `
     @page {
       size: 216mm 330mm portrait;
-      ${esHojaEnBlancoImpresion ? 'margin: 20mm;' : 'margin-top: 55mm; margin-bottom: 25mm; margin-left: 45mm; margin-right: 15mm;'}
+      margin-top: 55mm;
+      margin-bottom: 25mm;
+      margin-left: 45mm;
+      margin-right: 15mm;
     }
-    ${esHojaEnBlancoImpresion ? '' : `
     @page :left {
       size: 216mm 330mm portrait;
       margin-top: 55mm;
@@ -2595,6 +2939,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     html, body {
       margin: 0;
       padding: 0;
+      height: auto;
+      overflow: visible;
       background: #ffffff;
       color: #000000;
       font-family: "Times New Roman", Times, serif;
@@ -2613,28 +2959,50 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       display: block !important;
     }
 
+    .hoja-notarial-pagina {
+      position: relative !important;
+      height: auto !important;
+      overflow: visible !important;
+      page-break-after: always !important;
+      break-after: page !important;
+    }
+
+    .hoja-notarial-pagina:last-child,
+    .hoja-notarial-pagina:last-of-type {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+
     .documento-notarial {
+      position: relative;
       width: 100%;
       height: auto;
       overflow: visible;
       font-family: "Times New Roman", Times, serif;
-      font-size: 14pt;
-      line-height: 10.2mm;
+      font-size: ${esHojaEnBlancoImpresion ? '12pt' : '14pt'};
+      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'};
       text-align: justify;
       text-justify: inter-word;
       color: #000000;
     }
 
     p {
-      margin: 0 !important;
+      margin: ${esHojaEnBlancoImpresion ? '0 0 8px 0' : '0'} !important;
       padding: 0 !important;
-      min-height: 10.2mm !important;
+      ${esHojaEnBlancoImpresion ? 'min-height: 1.55em;' : 'min-height: 10.2mm !important;'}
       font-family: "Times New Roman", Times, serif;
-      font-size: 14pt;
-      line-height: 10.2mm !important;
+      font-size: ${esHojaEnBlancoImpresion ? '12pt' : '14pt'};
+      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
       text-align: justify;
       text-justify: inter-word;
       color: #000000;
+      orphans: 3;
+      widows: 3;
+    }
+
+    h1, h2, h3, h4 {
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     ul, ol {
@@ -2644,22 +3012,82 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     li {
       margin: 0 !important;
-      line-height: 10.2mm !important;
+      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
       text-align: justify;
+      orphans: 3;
+      widows: 3;
     }
 
-    /* Aislamiento Total: Supresión de cualquier membrete, cabecera o guía */
+    .signature-block, .signatures-group {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    .signature-block {
+      margin-top: ${esHojaEnBlancoImpresion ? '40px' : '20px'};
+    }
+    ${esHojaEnBlancoImpresion ? `
+    .signature-block p {
+      margin: 0 0 2px 0 !important;
+      min-height: 0 !important;
+      text-align: left !important;
+      line-height: 1.45 !important;
+    }
+    ` : ''}
+
+    /* Aislamiento Total: Supresión de cualquier membrete, cabecera o guía heredada del editor */
     header, .header, .membrete, .logo, .renglones-container, .texto-lateral-izq, .guia-linea, .watermark {
       display: none !important;
       visibility: hidden !important;
     }
 
+    .olga-doc-membrete {
+      text-align: center;
+      border-bottom: 1.5px solid #1e293b;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    .olga-doc-membrete-logo {
+      display: block;
+      margin: 0 auto 8px auto;
+      max-height: 54px;
+      max-width: 140px;
+      object-fit: contain;
+    }
+    .olga-doc-membrete-title {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 14pt;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #0f172a;
+      margin: 0;
+      line-height: 1.25;
+    }
+    .olga-doc-membrete p,
+    .olga-doc-membrete-sub,
+    .olga-doc-membrete-dir {
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-size: 8.5pt !important;
+      line-height: 1.35 !important;
+      min-height: 0 !important;
+      text-align: center !important;
+      color: #475569 !important;
+      margin: 3px 0 0 0 !important;
+    }
+    .olga-doc-membrete-dir {
+      font-size: 8pt !important;
+      color: #64748b !important;
+    }
+
     @media print {
-      body {
+      html, body {
         margin: 0 !important;
         padding: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
       }
       .documento-notarial {
+        position: relative !important;
         width: 100% !important;
         height: auto !important;
         overflow: visible !important;
@@ -2669,7 +3097,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 </head>
 <body>
   <div class="documento-notarial">
-    ${cleanParagraphs.join('')}
+    ${membreteHtml}
+    ${bodyHtml}
   </div>
 </body>
 </html>`;
@@ -2840,6 +3269,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     setEditorText(nuevoTexto);
+    setTipoHoja('blanca');
     // Desplegar el editor y desactivar vista previa
     setMostrarEditor(true);
     setPreviewMode(false);
@@ -2850,6 +3280,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // Persistencia local inmediata y segura
     try {
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, nuevoTexto);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, 'blanca');
     } catch (err) {
       console.warn('Error guardando en localStorage:', err);
     }
@@ -2880,12 +3311,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const docTexto = escrito.texto || '';
     const cleanTitle = escrito.tipo.replace(' (Guardado Local)', '');
     const restoredTipoHoja: 'blanca' | 'protocolo' =
-      escrito.tipoHoja || (cleanTitle === 'Escrito en Blanco' ? 'blanca' : 'protocolo');
+      escrito.tipoHoja === 'protocolo' || (escrito as any).tipoPapel === 'protocolo'
+        ? 'protocolo'
+        : 'blanca';
+    const restoredIncludeHeader = escrito.includeHeader !== false;
 
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
     setActiveEditingDoc(escrito);
     setTipoHoja(restoredTipoHoja);
+    setIncludeHeader(restoredIncludeHeader);
     setSelectedPlantillaId(restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     setEditorText(docTexto);
     setDocumentTitle(cleanTitle);
@@ -2898,6 +3333,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, cleanTitle);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, escrito.categoria || 'Contratos Privados');
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, restoredTipoHoja);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(restoredIncludeHeader));
       localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     } catch (e) {
       console.warn('Error sincronizando borrador local:', e);
@@ -2942,7 +3378,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const nuevaCat = escrito.categoria || 'Contratos Privados';
 
       const docTipoHoja: 'blanca' | 'protocolo' =
-        escrito.tipoHoja || (escrito.tipo?.replace(' (Guardado Local)', '') === 'Escrito en Blanco' ? 'blanca' : 'protocolo');
+        escrito.tipoHoja === 'protocolo' || (escrito as any).tipoPapel === 'protocolo'
+          ? 'protocolo'
+          : 'blanca';
 
       if (escrito.id.startsWith('temp-')) {
         const tempDocsString = localStorage.getItem('escritos_temporales');
@@ -3476,7 +3914,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <button
                   type="button"
-                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave, tipoHoja)}
+                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader)}
                   disabled={!editorText.trim()}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors border border-slate-800 shadow-sm cursor-pointer"
                   title="Abrir con membrete oficial e imprimir en PDF"
@@ -3485,17 +3923,78 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <span>Membrete / Imprimir</span>
                 </button>
 
+                <select
+                  value={tipoHoja}
+                  onChange={(e) => setTipoHoja(e.target.value as 'blanca' | 'protocolo')}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-[#242632] text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#2D303E] rounded-xl text-xs font-bold border border-slate-200 dark:border-white/10 outline-none cursor-pointer transition-colors"
+                  title="Cambiar modo de papel e impresión"
+                >
+                  <option value="blanca">Hoja en Blanco (Impresión Simple)</option>
+                  <option value="protocolo">Hoja de Protocolo Notarial (Oficio)</option>
+                </select>
 
-
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={includeHeader}
+                  onClick={() => setIncludeHeader((prev) => !prev)}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                    includeHeader
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                      : 'bg-slate-100 dark:bg-[#242632] border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                  title={
+                    tipoHoja === 'protocolo'
+                      ? 'Aplica al PDF descargado y envío por WhatsApp (la impresión en Protocolo Notarial respeta sus márgenes oficiales preimpresos)'
+                      : 'Activar o desactivar la cabecera / membrete institucional en vista previa, impresión, PDF y WhatsApp'
+                  }
+                >
+                  <span
+                    className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                      includeHeader ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                        includeHeader ? 'translate-x-3.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                  <span>Incluir cabecera / membrete</span>
+                </button>
               </div>
 
               <div className="flex items-center gap-2 ml-auto">
+                {isWhatsAppEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSendDocumentByWhatsApp(documentTitle, editorText, includeHeader)}
+                    disabled={!editorText.trim()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
+                    title="Generar PDF y enviar por WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Enviar por WhatsApp</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleDescargarPDF(documentTitle, undefined, includeHeader)}
+                  disabled={!editorText.trim()}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Descargar archivo PDF A4"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Exportar PDF</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleImprimirPDF}
                   disabled={!editorText.trim()}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-white/10 cursor-pointer shadow-xs active:scale-95"
-                  title="Imprimir o Descargar como PDF con márgenes de hoja notarial"
+                  title="Imprimir con márgenes de hoja notarial"
                 >
                   <Printer className="w-3.5 h-3.5 text-slate-600" />
                   <span>🖨️ Imprimir / PDF</span>
@@ -3653,7 +4152,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>{esHojaEnBlanco ? 'Hoja en Blanco (Oficio)' : 'Hoja de Protocolo Notarial (Oficio)'} • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
+                  <span>{esHojaEnBlanco ? 'Hoja en Blanco (Simple A4)' : 'Hoja de Protocolo Notarial (Oficio)'} • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
                 </div>
               </div>
             )}
@@ -3672,10 +4171,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     max-width: 850px !important;
                     min-height: 1056px !important;
                     background-color: #ffffff !important;
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
-                    border-radius: 4px !important;
+                    box-shadow: ${esHojaEnBlanco && includeHeader ? 'none' : '0 25px 50px -12px rgba(0, 0, 0, 0.25)'} !important;
+                    border-radius: ${esHojaEnBlanco && includeHeader ? '0 0 4px 4px' : '4px'} !important;
                     color: #000000 !important;
-                    padding-top: ${esHojaEnBlanco ? '60px' : '180px'} !important;
+                    padding-top: ${esHojaEnBlanco ? (includeHeader ? '28px' : '60px') : '180px'} !important;
                     padding-bottom: 60px !important;
                     padding-left: ${esHojaEnBlanco ? '60px' : '140px'} !important;
                     padding-right: 60px !important;
@@ -3825,33 +4324,67 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     }
                   }
                 `}</style>
-                <div
-                  ref={setEditorRef}
-                  id="editor-notarial-activo"
-                  contentEditable={!previewMode}
-                  suppressContentEditableWarning={true}
-                  onInput={(e) => {
-                    setEditorText(e.currentTarget.innerHTML);
-                    debouncedVerificarPaginacion();
-                  }}
-                  onPaste={handlePaste}
-                  onKeyUp={(e) => {
-                    checkFormatStates();
-                    if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+                <div className={esHojaEnBlanco && includeHeader ? 'w-full max-w-[850px] mx-auto shadow-2xl rounded-[4px] bg-white' : 'w-full max-w-[850px] mx-auto'}>
+                  {esHojaEnBlanco && includeHeader && (
+                    <div className="w-full bg-white px-[60px] pt-10 pb-4 border-b border-slate-300 text-center rounded-t-[4px] select-none print:hidden">
+                      {rawLogoInstitucional && (
+                        <img
+                          src={rawLogoInstitucional}
+                          alt={nombreEscHeader}
+                          className="mx-auto mb-2.5 max-h-14 max-w-[140px] object-contain"
+                        />
+                      )}
+                      <div className="font-serif font-bold text-lg uppercase tracking-wider text-slate-900">
+                        {nombreEscHeader}
+                      </div>
+                      {(registroEscHeader && registroEscHeader !== '---') || (rucEscHeader && rucEscHeader !== '---') || telefonoEscHeader ? (
+                        <div className="text-[11px] font-sans text-slate-600 mt-1">
+                          {[
+                            registroEscHeader && registroEscHeader !== '---'
+                              ? (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`)
+                              : null,
+                            rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
+                            telefonoEscHeader ? `Tel.: ${telefonoEscHeader}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join('  •  ')}
+                        </div>
+                      ) : null}
+                      {direccionEscHeader && (
+                        <div className="text-[10px] font-sans text-slate-500 mt-0.5">
+                          {direccionEscHeader}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    ref={setEditorRef}
+                    id="editor-notarial-activo"
+                    contentEditable={!previewMode}
+                    suppressContentEditableWarning={true}
+                    onInput={(e) => {
+                      setEditorText(e.currentTarget.innerHTML);
                       debouncedVerificarPaginacion();
-                    }
-                  }}
-                  onMouseUp={checkFormatStates}
-                  onFocus={() => {
-                    checkFormatStates();
-                    try {
-                      document.execCommand('defaultParagraphSeparator', false, 'p');
-                    } catch (err) {}
-                  }}
-                  className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
-                    previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
-                  }`}
-                />
+                    }}
+                    onPaste={handlePaste}
+                    onKeyUp={(e) => {
+                      checkFormatStates();
+                      if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+                        debouncedVerificarPaginacion();
+                      }
+                    }}
+                    onMouseUp={checkFormatStates}
+                    onFocus={() => {
+                      checkFormatStates();
+                      try {
+                        document.execCommand('defaultParagraphSeparator', false, 'p');
+                      } catch (err) {}
+                    }}
+                    className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                      previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
+                    }`}
+                  />
+                </div>
               </div>
 
 
@@ -4111,7 +4644,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                       escrito.id,
                                       escrito.tipo,
                                       escrito.categoria,
-                                      escrito.tipoHoja || (escrito.tipo?.replace(' (Guardado Local)', '') === 'Escrito en Blanco' ? 'blanca' : 'protocolo')
+                                      escrito.tipoHoja === 'protocolo' || (escrito as any).tipoPapel === 'protocolo'
+                                        ? 'protocolo'
+                                        : 'blanca',
+                                      escrito.includeHeader !== false
                                     );
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
@@ -4119,6 +4655,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   <Printer className="w-3.5 h-3.5 text-slate-500" />
                                   <span>Imprimir / Membrete</span>
                                 </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(null);
+                                    handleDescargarPDF(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Exportar PDF</span>
+                                </button>
+
+                                {isWhatsAppEnabled && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenuId(null);
+                                      handleSendDocumentByWhatsApp(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Enviar por WhatsApp</span>
+                                  </button>
+                                )}
 
                                 <button
                                   type="button"
@@ -4173,32 +4737,49 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   </div>
 
                   {/* Código de Soporte Técnico (Fase 8) */}
-                  <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="font-mono text-slate-400 text-[10px]">
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span className="font-mono text-slate-400 text-[10px] truncate">
                       Ref. Soporte: {escrito.correlativo || String(escrito.id || '').slice(0, 3)} - {String(escrito.id || '').slice(-6)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleCopiarCodigoSoporte(escrito);
-                      }}
-                      className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
-                      title="Copiar código estructurado para soporte técnico"
-                    >
-                      {copiedSupportId === escrito.id ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          <span className="text-emerald-700 font-bold text-[9px]">Copiado</span>
-                        </>
-                      ) : (
-                        <>
-                          <Clipboard className="w-3 h-3" />
-                          <span className="text-[9px]">Copiar</span>
-                        </>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleCopiarCodigoSoporte(escrito);
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
+                        title="Copiar código estructurado para soporte técnico"
+                      >
+                        {copiedSupportId === escrito.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-700 font-bold text-[9px]">Copiado</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clipboard className="w-3 h-3" />
+                            <span className="text-[9px]">Copiar</span>
+                          </>
+                        )}
+                      </button>
+                      {isWhatsAppEnabled && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleSendDocumentByWhatsApp(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                          }}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/80 transition-colors cursor-pointer"
+                          title="Enviar PDF por WhatsApp"
+                        >
+                          <MessageCircle className="w-3 h-3 text-emerald-600" />
+                          <span className="text-[9px]">WhatsApp</span>
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -4747,6 +5328,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           <Check className="w-4 h-4 text-[#FF3131]" />
           <span>{supportCopiedToast}</span>
         </div>
+      )}
+
+      {isWhatsAppEnabled && waModalData && (
+        <WhatsAppSendModal
+          isOpen={waModalData.isOpen}
+          onClose={() => setWaModalData(null)}
+          workspaceId={workspaceId}
+          documentTitle={waModalData.documentTitle}
+          defaultMessage={waModalData.defaultMessage}
+          fileBase64={waModalData.fileBase64}
+          fileName={waModalData.fileName}
+          mimetype="application/pdf"
+        />
       )}
     </div>
   );

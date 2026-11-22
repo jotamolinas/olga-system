@@ -1,10 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
-import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check, Save, AlertCircle, X } from 'lucide-react';
+import { Award, Printer, Download, Sparkles, RefreshCw, Layers, Shield, FileText, CheckCircle, Clipboard, Check, Save, AlertCircle, X, MessageCircle } from 'lucide-react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useTrialStatus } from '../hooks/useTrialStatus';
 import { auth, db } from '../services/auth';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { WhatsAppSendModal } from './WhatsAppSendModal';
+import { generatePagarePdfBase64 } from '../services/pdfExport';
 
 interface PagarePDFPreviewProps {
   pagare: Pagare | null;
@@ -13,6 +15,7 @@ interface PagarePDFPreviewProps {
   onClose: () => void;
   userData?: any;
   onUpdatePagare?: (pagare: Pagare) => void;
+  canUseWhatsApp?: boolean;
 }
 
 export const getMonedaInfo = (monedaCode: string = 'PYG') => {
@@ -384,8 +387,14 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
   config,
   onClose,
   userData,
-  onUpdatePagare
+  onUpdatePagare,
+  canUseWhatsApp,
 }) => {
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(userData?.whatsappEnabled);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const esNotaria = String(userData?.tipoPerfil || config?.escribania?.nombre || '').toLowerCase().includes('escriban') || String(userData?.tipoPerfil || '').toLowerCase().includes('notar');
   const [pageSize, setPageSize] = useState<'legal' | 'a4'>('legal');
   const [baseCertificadoNro, setBaseCertificadoNro] = useState(() => {
@@ -1444,6 +1453,16 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
               <Printer className="w-4 h-4" />
               Imprimir Documento
             </button>
+            {isWhatsAppEnabled && (
+              <button
+                type="button"
+                onClick={() => setShowWhatsAppModal(true)}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-emerald-700/20 cursor-pointer whitespace-nowrap"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Enviar por WhatsApp</span>
+              </button>
+            )}
             <button
               onClick={handleCerrarVista}
               className="px-3.5 py-2.5 bg-white/15 hover:bg-white/20 text-white rounded-xl text-[10px] uppercase font-bold tracking-widest transition-all cursor-pointer"
@@ -1716,6 +1735,113 @@ export const PagarePDFPreview: React.FC<PagarePDFPreviewProps> = ({
           </div>
         )}
       </div>
+
+      {isWhatsAppEnabled && showWhatsAppModal && pagare && (() => {
+        const acreedorPersona = personas.find((p) => p.id === pagare.acreedor_id);
+        const deudorPersona = personas.find((p) => p.id === pagare.deudor_id);
+        const nombreAcreedorWa =
+          sanitizeNotarialText(
+            acreedorNombreEditable ||
+              pagare.acreedor_nombre_raw ||
+              (acreedorPersona ? `${acreedorPersona.nombre || ''} ${acreedorPersona.apellido || ''}`.trim() : '')
+          ) || 'Acreedor / Beneficiario';
+        const nombreDeudorWa =
+          sanitizeNotarialText(
+            deudorNombreEditable ||
+              pagare.deudor_nombre_raw ||
+              (deudorPersona ? `${deudorPersona.nombre || ''} ${deudorPersona.apellido || ''}`.trim() : '')
+          ) || 'Cliente';
+        const telefonoDeudorWa = deudorPersona?.telefono || '';
+        const montoValor = Number(pagare.valor_total || (pagare as any).monto || 0);
+        const monSimbolo = getMonedaInfo(pagare.moneda).simbolo;
+        const montoFormateado = `${formatCurrencyValue(montoValor, pagare.moneda || 'PYG')} ${monSimbolo}`;
+        const rawFechaVenc =
+          pagare.cronograma?.find((c: any) => c.estado !== 'cobrado' && c.pagado !== true)?.fecha_pag ||
+          pagare.cronograma?.[0]?.fecha_pag ||
+          pagare.fecha_primer_pago ||
+          '';
+        const fechaParts = String(rawFechaVenc).split('-');
+        const fechaVencFmt =
+          fechaParts.length === 3 ? `${fechaParts[2]}/${fechaParts[1]}/${fechaParts[0]}` : rawFechaVenc || 'A confirmar';
+        const escribaniaNombreWa =
+          userData?.razonSocial || userData?.nombreEscribania || config?.escribania?.nombre || 'Escribanía Titular';
+        const correlativoStr = String(pagare.correlativo || 'S/N').padStart(4, '0');
+
+        const totalCuotas = pagare.cronograma?.length || 1;
+        const nextPendingIdx = pagare.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
+        const cuotaPlazo =
+          totalCuotas > 1
+            ? nextPendingIdx >= 0
+              ? `Cuota ${pagare.cronograma[nextPendingIdx].numero_cuota} de ${totalCuotas}`
+              : `${totalCuotas} cuotas`
+            : 'Pago único';
+
+        const pdfPagare = generatePagarePdfBase64({
+          numero: correlativoStr,
+          certificadoFirmasNro: baseCertificadoNro || pagare.certificado_firmas_nro,
+          escribania: {
+            nombre: escribaniaNombreWa,
+            ruc: userData?.ruc || '',
+            registro: userData?.registroNotarial || config?.escribania?.nro_registro || '',
+            telefono: userData?.telefono || config?.escribania?.telefono || '',
+            direccion: userData?.direccion || config?.escribania?.direccion || '',
+          },
+          acreedorNombre: nombreAcreedorWa,
+          acreedorDocumento: acreedorDocumentoEditable || pagare.acreedor_documento_raw || acreedorPersona?.nro_documento,
+          acreedorDomicilio: acreedorDomicilioEditable || pagare.acreedor_domicilio_raw || acreedorPersona?.domicilio,
+          deudorNombre: nombreDeudorWa,
+          deudorDocumento: deudorDocumentoEditable || pagare.deudor_documento_raw || deudorPersona?.nro_documento,
+          deudorDomicilio: deudorDomicilioEditable || pagare.deudor_domicilio_raw || deudorPersona?.domicilio,
+          codeudor1Nombre: codeudor1NombreEditable,
+          codeudor1Documento: codeudor1DocumentoEditable,
+          codeudor2Nombre: codeudor2NombreEditable,
+          codeudor2Documento: codeudor2DocumentoEditable,
+          montoValor,
+          moneda: pagare.moneda || 'PYG',
+          cuotaPlazo,
+          fechaEmision: pagare.created_at,
+          fechaVencimiento: rawFechaVenc,
+          lugarPago:
+            ciudadEmision ||
+            userData?.ciudad ||
+            config?.escribania?.ciudad ||
+            config?.escribania?.direccion ||
+            'Asunción, Paraguay',
+          tasaInteres,
+          cuerpoTexto:
+            pagare.texto_personalizado ||
+            pagare.textoPersonalizado ||
+            pagare.textoCuerpo ||
+            pagare.contenido,
+        });
+
+        const defaultMsg = [
+          `Estimado/a ${nombreDeudorWa},`,
+          '',
+          `Le remitimos adjunto en PDF su Pagaré Notarial Nº ${correlativoStr}:`,
+          '',
+          `• Deudor: ${nombreDeudorWa}`,
+          `• Monto: ${montoFormateado}`,
+          `• Fecha de vencimiento: ${fechaVencFmt}`,
+          `• Escribanía: ${escribaniaNombreWa}`,
+          '',
+          'Quedamos a su disposición ante cualquier consulta.',
+        ].join('\n');
+
+        return (
+          <WhatsAppSendModal
+            isOpen={showWhatsAppModal}
+            onClose={() => setShowWhatsAppModal(false)}
+            workspaceId={workspaceId || pagare.userId || auth?.currentUser?.uid || ''}
+            defaultPhone={telefonoDeudorWa}
+            defaultMessage={defaultMsg}
+            documentTitle={`Pagaré Notarial Nº ${correlativoStr}`}
+            fileBase64={pdfPagare.fileBase64}
+            fileName={pdfPagare.fileName}
+            mimetype="application/pdf"
+          />
+        );
+      })()}
     </div>
   );
 };

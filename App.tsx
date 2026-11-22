@@ -44,6 +44,7 @@ import { RegistroOperador } from './components/RegistroOperador';
 import { EditorNotarialOficial } from './components/EditorNotarialOficial';
 import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 import { Sidebar } from './components/Sidebar';
+import { WhatsAppTab } from './components/WhatsAppTab';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -197,8 +198,23 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
           color: #333;
         }
         .content {
+          position: relative;
+          height: auto;
+          overflow: visible;
           text-align: justify;
           line-height: 1.55;
+        }
+        .hoja-notarial-pagina {
+          position: relative !important;
+          height: auto !important;
+          overflow: visible !important;
+          page-break-after: always !important;
+          break-after: page !important;
+        }
+        .hoja-notarial-pagina:last-child,
+        .hoja-notarial-pagina:last-of-type {
+          page-break-after: auto !important;
+          break-after: auto !important;
         }
         .content p, .content li, .content blockquote {
           orphans: 3;
@@ -669,8 +685,31 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
   const esPlanPro = planActual.includes('pro');
   const esPlanEmpresa = planActual.includes('empresa');
-  // Plan Pro, Empresa y Full tienen acceso a Lienzo Notarial y Presupuestos
-  const tieneLienzoYPresupuestos = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || esPlanPro || esPlanEmpresa || planActual.includes('full');
+  const isSuperAdminModulo = Boolean(
+    role === 'admin' ||
+    isAdmin ||
+    currentUser?.email === 'jotamolinas@gmail.com' ||
+    String(userProfile?.role || userProfile?.rol || '').toUpperCase() === 'SUPERADMIN' ||
+    String(userData?.role || userData?.rol || '').toUpperCase() === 'SUPERADMIN'
+  );
+  const getExplicitAddonFlag = (field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled'): boolean | undefined => {
+    if (typeof userProfile?.[field] === 'boolean') return userProfile[field];
+    if (typeof userData?.[field] === 'boolean') return userData[field];
+    return undefined;
+  };
+  const resolveAddonPermission = (
+    field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled',
+    defaultByPlan: boolean
+  ): boolean => {
+    if (isSuperAdminModulo) return true;
+    const explicit = getExplicitAddonFlag(field);
+    if (explicit === true) return true;
+    if (explicit === false) return false;
+    return defaultByPlan;
+  };
+  const planIncluyeLienzoYPresupuestos = esPlanPro || esPlanEmpresa || planActual.includes('full');
+  const canUseLienzo = resolveAddonPermission('lienzoEnabled', planIncluyeLienzoYPresupuestos);
+  const canUsePresupuesto = resolveAddonPermission('presupuestoEnabled', planIncluyeLienzoYPresupuestos);
   // Plan Full y Empresa tienen acceso a El Oráculo
   const tieneOraculo = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full') || esPlanEmpresa;
 
@@ -815,7 +854,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'knowledge' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp'>(forceAdmin ? 'monitor' : 'tablero');
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -838,6 +877,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const [documentoModalTipo, setDocumentoModalTipo] = useState<string | undefined>(undefined);
   const [documentoModalCategoria, setDocumentoModalCategoria] = useState<string | undefined>(undefined);
   const [documentoModalTipoHoja, setDocumentoModalTipoHoja] = useState<'blanca' | 'protocolo' | undefined>(undefined);
+  const [documentoModalIncludeHeader, setDocumentoModalIncludeHeader] = useState<boolean>(true);
 
   const formatearMensajeChatVisual = (texto: string): string => {
     const base = texto.includes('[CONTEXTO INTERNO DE OPERACIÓN')
@@ -916,13 +956,15 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     docId?: string,
     tipo?: string,
     categoria?: string,
-    tipoHoja?: 'blanca' | 'protocolo'
+    tipoHoja: 'blanca' | 'protocolo' = 'blanca',
+    includeHeader: boolean = true
   ) => {
     setDocumentoInitialText(limpiarTextoParaEscrito(text));
     setDocumentoModalDocId(docId);
     setDocumentoModalTipo(tipo);
     setDocumentoModalCategoria(categoria);
-    setDocumentoModalTipoHoja(tipoHoja);
+    setDocumentoModalTipoHoja(tipoHoja || 'blanca');
+    setDocumentoModalIncludeHeader(includeHeader);
     setDocumentoModalOpen(true);
   };
 
@@ -1959,6 +2001,9 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
   // En el workspace compartido, los pagarés pertenecen a la notaría
   const visiblePagares = pagares;
 
+  // Feature Flag WhatsApp Engine (con herencia por defecto = false)
+  const canUseWhatsApp = resolveAddonPermission('whatsappEnabled', false);
+
   const isSuperAdminView = role === 'admin' && (activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos');
   const isDarkLayout = isDarkMode || isSuperAdminView;
   const layoutBg = isDarkLayout ? 'bg-[#09090b]' : 'bg-gray-50';
@@ -1991,6 +2036,9 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         config={config}
         activePlan={activePlan}
         esPlanFull={esPlanFull}
+        canUseWhatsApp={canUseWhatsApp}
+        canUseLienzo={canUseLienzo}
+        canUsePresupuesto={canUsePresupuesto}
         logoInstitucional={logoInstitucional}
         setShowBenefits={setShowBenefits}
         onLogout={async () => {
@@ -2301,6 +2349,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 workspaceName={workspaceName}
                 isSoftBlocked={isSoftBlocked}
                 esPlanFull={esPlanFull}
+                canUseWhatsApp={canUseWhatsApp}
+                onNavigateTab={(tab) => setActiveTab(tab)}
               />
             )}
 
@@ -2328,6 +2378,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 userData={userProfile || userData}
                 isSoftBlocked={isSoftBlocked}
                 esPlanFull={esPlanFull}
+                canUseWhatsApp={canUseWhatsApp}
               />
             )}
 
@@ -2354,11 +2405,12 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 onOpenDocument={handleOpenDocumentModal} 
                 esPlanFull={esPlanFull}
                 isSoftBlocked={isSoftBlocked}
+                canUseWhatsApp={canUseWhatsApp}
               />
             )}
 
             {activeTab === 'lienzo' && (
-              isSoftBlocked ? (
+              isSoftBlocked && getExplicitAddonFlag('lienzoEnabled') !== true ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
                   <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">Acceso Restringido</h3>
@@ -2372,17 +2424,17 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                     Ver Planes / Renovar
                   </button>
                 </div>
-              ) : tieneLienzoYPresupuestos ? (
+              ) : canUseLienzo ? (
                 <EditorNotarialOficial 
                   onVolver={() => setActiveTab('escritos')} 
                   esPlanFull={esPlanFull}
                 />
               ) : (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
-                  <Stamp className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold text-white mb-2">Lienzo Notarial Exclusivo</h3>
+                  <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Módulo no contratado o deshabilitado</h3>
                   <p className="text-slate-400 text-sm mb-6">
-                    El Lienzo Notarial Oficial está disponible a partir del <strong>Plan Pro</strong>, <strong>Plan Empresa</strong> y <strong>Plan Full</strong>.
+                    El <strong>Lienzo Notarial Oficial</strong> no está habilitado para tu cuenta actual. Está disponible desde el <strong>Plan Pro</strong> o como módulo adicional.
                   </p>
                   <button
                     onClick={() => setActiveTab('planes')}
@@ -2395,7 +2447,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             )}
 
             {activeTab === 'facturacion' && (
-              isSoftBlocked ? (
+              isSoftBlocked && getExplicitAddonFlag('presupuestoEnabled') !== true ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
                   <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">Acceso Restringido</h3>
@@ -2409,9 +2461,9 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                     Ver Planes / Renovar
                   </button>
                 </div>
-              ) : tieneLienzoYPresupuestos ? (
+              ) : canUsePresupuesto ? (
                 <ModuloPresupuestos 
-                  onVolver={() => setActiveTab('lienzo')}
+                  onVolver={() => setActiveTab(canUseLienzo ? 'lienzo' : 'escritos')}
                   userId={currentUser?.uid || currentUser?.email || 'default'}
                   userProfile={userProfile || userData}
                   onIrAConfiguracion={() => setActiveTab('cuenta')}
@@ -2421,13 +2473,14 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                   direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
                   telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
                   esPlanFull={esPlanFull}
+                  canUseWhatsApp={canUseWhatsApp}
                 />
               ) : (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
-                  <CreditCard className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold text-white mb-2">Módulo de Presupuestos Exclusivo</h3>
+                  <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Módulo no contratado o deshabilitado</h3>
                   <p className="text-slate-400 text-sm mb-6">
-                    El Módulo de Presupuestos está disponible a partir del <strong>Plan Pro</strong>, <strong>Plan Empresa</strong> y <strong>Plan Full</strong>.
+                    El <strong>Módulo de Presupuestos</strong> no está habilitado para tu cuenta actual. Está disponible desde el <strong>Plan Pro</strong> o como módulo adicional.
                   </p>
                   <button
                     onClick={() => setActiveTab('planes')}
@@ -2483,6 +2536,37 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
 
             {activeTab === 'soporte' && role !== 'admin' && (
               <SoporteClienteTab currentUser={currentUser} userData={userProfile} esPlanFull={esPlanFull} />
+            )}
+
+            {activeTab === 'whatsapp' && (
+              canUseWhatsApp === true ? (
+                <WhatsAppTab
+                  workspaceId={workspaceId}
+                  esPlanFull={esPlanFull}
+                  escribania={{
+                    nombre: workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre,
+                    ruc: customBranding.ruc || userData?.ruc || '',
+                    registro: customBranding.registroNotarial || userData?.matricula || config.escribania.nro_registro || '',
+                    telefono: (customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono || '',
+                    direccion: (customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion || '',
+                  }}
+                  onOpenEscritos={() => setActiveTab('escritos')}
+                />
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
+                  <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">Módulo WhatsApp IA no contratado</h3>
+                  <p className="text-slate-400 text-sm mb-6">
+                    El módulo de <strong>WhatsApp Institucional e IA</strong> no está habilitado para tu cuenta. Solicita su activación al equipo comercial de O.L.G.A.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('soporte')}
+                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-900/40 cursor-pointer"
+                  >
+                    Solicitar Activación
+                  </button>
+                </div>
+              )
             )}
 
             {activeTab === 'chat' && (() => {
@@ -2794,6 +2878,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           onClose={() => setSelectedPagareForPreview(null)}
           userData={userProfile}
           onUpdatePagare={handleUpdatePagare}
+          canUseWhatsApp={canUseWhatsApp}
         />
       )}
 
@@ -2889,15 +2974,18 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           setDocumentoModalTipo(undefined);
           setDocumentoModalCategoria(undefined);
           setDocumentoModalTipoHoja(undefined);
+          setDocumentoModalIncludeHeader(true);
         }}
         initialText={documentoInitialText}
         documentId={documentoModalDocId}
         tipo={documentoModalTipo}
         categoria={documentoModalCategoria}
         tipoHoja={documentoModalTipoHoja}
+        initialIncludeHeader={documentoModalIncludeHeader}
         currentUser={currentUser}
         config={config}
         olgaDocsCount={olgaDocsCount}
+        canUseWhatsApp={canUseWhatsApp}
       />
 
             {/* Modal de Beneficios Plan Full */}

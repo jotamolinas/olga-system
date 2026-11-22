@@ -45,6 +45,7 @@ import {
   extraerDocBase 
 } from '../services/personaDedup';
 import { deletePersonaFromFirestore, syncPersonaToFirestore, fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
+import { sincronizarRetroactivoTodosLosPagares, getPagaresFromStorage } from '../services/personaSync';
 
 interface PersonasTabProps {
   personas?: Persona[];
@@ -221,6 +222,8 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
   const [successMsg, setSuccessMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDepurando, setIsDepurando] = useState(false);
+  const [isSyncingRetroactivo, setIsSyncingRetroactivo] = useState(false);
+  const [syncFeedbackBanner, setSyncFeedbackBanner] = useState<string | null>(null);
 
   // Detección reactiva de registros duplicados en el Fichero
   const gruposDuplicados = useMemo(() => {
@@ -486,6 +489,49 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
       setTimeout(() => setErrorMsg(''), 4000);
     } finally {
       setIsDepurando(false);
+    }
+  };
+
+  // Sincronización retroactiva: revisa pagarés y auto-registra firmantes faltantes en el Fichero de Personas
+  const handleSincronizarFirmantesConFichero = async () => {
+    if (isSyncingRetroactivo) return;
+    setIsSyncingRetroactivo(true);
+    setSyncFeedbackBanner(null);
+    try {
+      const effectiveWs = String(
+        workspaceId || currentUser?.uid || auth?.currentUser?.uid || userData?.tenant_id || userData?.uid || ''
+      ).trim();
+      const pagaresFuente =
+        pagaresEfectivos.length > 0 ? pagaresEfectivos : getPagaresFromStorage(effectiveWs);
+      const basePersonas = [...listaPersonas];
+
+      const res = sincronizarRetroactivoTodosLosPagares(
+        pagaresFuente,
+        basePersonas,
+        (nueva) => {
+          if (onAddPersona) {
+            onAddPersona(nueva);
+          }
+        },
+        effectiveWs
+      );
+
+      if (res.syncPromises && res.syncPromises.length > 0) {
+        await Promise.allSettled(res.syncPromises);
+      }
+
+      if (res.agregadas.length > 0) {
+        guardarListaPersistente(basePersonas);
+      }
+
+      setSyncFeedbackBanner(res.mensaje);
+      setTimeout(() => setSyncFeedbackBanner(null), 7000);
+    } catch (err) {
+      console.error('Error al sincronizar firmantes con el Fichero de Personas:', err);
+      setErrorMsg('Ocurrió un error al sincronizar los firmantes con el fichero.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    } finally {
+      setTimeout(() => setIsSyncingRetroactivo(false), 500);
     }
   };
 
@@ -1266,8 +1312,23 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               </button>
             </div>
 
-            {/* Herramienta de Auditoría y Limpieza de Duplicados */}
-            <div className="flex items-center gap-2">
+            {/* Herramienta de Sincronización de Firmantes y Auditoría de Duplicados */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSincronizarFirmantesConFichero()}
+                disabled={isSyncingRetroactivo}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                title="Detección retroactiva: Revisa todos los pagarés y auto-registra a los firmantes no fichados en el Fichero de Personas"
+              >
+                {isSyncingRetroactivo ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" />
+                ) : (
+                  <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />
+                )}
+                <span>Sincronizar Firmantes con Fichero</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleDepurarDuplicados}
@@ -1289,6 +1350,22 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
               </button>
             </div>
           </div>
+
+          {syncFeedbackBanner && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 p-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fade-in">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <p className="text-xs font-semibold text-emerald-900">{syncFeedbackBanner}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncFeedbackBanner(null)}
+                className="text-emerald-700 hover:text-emerald-900 font-bold text-xs p-1 rounded-lg cursor-pointer shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Banner Activo de Detección de Duplicados en el Fichero */}
           {totalDuplicadosCount > 0 && (

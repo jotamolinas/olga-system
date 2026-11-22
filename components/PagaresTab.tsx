@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, startTransition } from 'react';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { createPortal } from 'react-dom';
 import { Pagare, Persona, FrecuenciaConfig, MonedaConfig, GlobalConfig, TipoNegociacion, PaymentScheduleItem, TipoCronogramaItem, formatCurrencyValue, TipoDocumento } from '../types';
-import { Plus, Trash2, Calendar, DollarSign, Users, FileText, Banknote, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Users, FileText, Banknote, CheckCircle, AlertTriangle, Search, ShieldCheck, ScanLine, Loader2, UserCheck, Clipboard, Check, Lock, MoreVertical, Printer, XCircle, MessageCircle } from 'lucide-react';
 import { NumericFormat } from 'react-number-format';
 import { analyzePagareImage } from '../services/gemini';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
@@ -16,6 +16,8 @@ import {
   savePagaresToStorage 
 } from '../services/personaSync';
 import { ModalDetallePagare } from './ModalDetallePagare';
+import { WhatsAppSendModal } from './WhatsAppSendModal';
+import { generatePagarePdfBase64 } from '../services/pdfExport';
 
 interface PagaresTabProps {
   pagares: Pagare[];
@@ -33,7 +35,125 @@ interface PagaresTabProps {
   initialEditingId?: string | null;
   onClose?: () => void;
   esPlanFull?: boolean;
+  canUseWhatsApp?: boolean;
 }
+
+const parseLocalDateYmd = (raw?: string): Date | null => {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (match) {
+    const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  const parsed = new Date(trimmed);
+  if (isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const getPagareStatusDetails = (pag: Pagare) => {
+  let badgeStatus: 'vencido' | 'proximo' | 'al_dia' | 'pagado' | 'anulado' = 'al_dia';
+  let nextDueDate: Date | null = null;
+  let nextDueDateRaw: string | null = null;
+  let diasDiferencia: number | null = null;
+  let cuotasPendientesCount = 0;
+  const totalCuotasCount = pag.cronograma?.length || 0;
+
+  if (pag.status === 'anulado' || (pag as any).estado === 'Anulado') {
+    return {
+      badgeStatus: 'anulado' as const,
+      nextDueDate: null,
+      nextDueDateRaw: null,
+      diasDiferencia: null,
+      cuotasPendientesCount: 0,
+      totalCuotasCount,
+      weight: 5,
+    };
+  }
+
+  if (pag.status === 'cobrado' || (pag as any).estado === 'Cobrado') {
+    return {
+      badgeStatus: 'pagado' as const,
+      nextDueDate: null,
+      nextDueDateRaw: null,
+      diasDiferencia: null,
+      cuotasPendientesCount: 0,
+      totalCuotasCount,
+      weight: 4,
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (pag.cronograma && pag.cronograma.length > 0) {
+    const pendingCuotas = pag.cronograma.filter((c: any) => c.estado !== 'cobrado' && !c.pagado);
+    cuotasPendientesCount = pendingCuotas.length;
+
+    if (pendingCuotas.length === 0) {
+      badgeStatus = 'pagado';
+    } else {
+      let hasVencido = false;
+      let hasProximo = false;
+      let minDiff = 999999;
+
+      const sortedPending = [...pendingCuotas].sort((a: any, b: any) => {
+        const da = parseLocalDateYmd(a.fecha_pag || a.fecha)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const dbDate = parseLocalDateYmd(b.fecha_pag || b.fecha)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return da - dbDate;
+      });
+
+      const nextC = sortedPending[0];
+      nextDueDateRaw = nextC?.fecha_pag || (nextC as any)?.fecha || null;
+      nextDueDate = parseLocalDateYmd(nextDueDateRaw || undefined);
+
+      for (const c of sortedPending) {
+        const cDateLoop = parseLocalDateYmd(c.fecha_pag || (c as any).fecha);
+        if (!cDateLoop) continue;
+        const diffDays = Math.round((cDateLoop.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays < minDiff) {
+          minDiff = diffDays;
+        }
+
+        if (diffDays < 0) {
+          hasVencido = true;
+        } else if (diffDays <= 5) {
+          hasProximo = true;
+        }
+      }
+
+      diasDiferencia = minDiff === 999999 ? null : minDiff;
+
+      if (hasVencido) badgeStatus = 'vencido';
+      else if (hasProximo) badgeStatus = 'proximo';
+      else badgeStatus = 'al_dia';
+    }
+  } else {
+    const fallbackDueRaw = pag.fecha_primer_pago || (pag as any).fechaVencimiento || null;
+    nextDueDateRaw = fallbackDueRaw;
+    nextDueDate = parseLocalDateYmd(fallbackDueRaw || undefined);
+    if (nextDueDate) {
+      const diffDays = Math.round((nextDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      diasDiferencia = diffDays;
+      if (diffDays < 0) badgeStatus = 'vencido';
+      else if (diffDays <= 5) badgeStatus = 'proximo';
+      else badgeStatus = 'al_dia';
+    } else {
+      badgeStatus = 'al_dia';
+    }
+  }
+
+  let weight = 5;
+  if (badgeStatus === 'vencido') weight = 1;
+  else if (badgeStatus === 'proximo') weight = 2;
+  else if (badgeStatus === 'al_dia') weight = 3;
+  else if (badgeStatus === 'pagado') weight = 4;
+
+  return { badgeStatus, nextDueDate, nextDueDateRaw, diasDiferencia, cuotasPendientesCount, totalCuotasCount, weight };
+};
 
 export const PagaresTab: React.FC<PagaresTabProps> = ({
   pagares,
@@ -50,7 +170,8 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   initialPanelView = 'list',
   initialEditingId = null,
   onClose,
-  esPlanFull
+  esPlanFull,
+  canUseWhatsApp
 }) => {
   // FASE 3: Asignación de Propiedad al Workspace
   const { workspaceId } = useWorkspace(auth?.currentUser, userData);
@@ -62,6 +183,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   const isOperador = activeUserData?.rol === 'operador' || activeUserData?.role === 'operador';
   const esAdmin = isAdmin || auth?.currentUser?.email === 'jotamolinas@gmail.com' || isOperador;
   const esFull = esPlanFull !== undefined ? esPlanFull : (rawPlan.includes('full') || (esAdmin && rawPlan.includes('full')));
+  const isWhatsAppEnabled =
+    typeof canUseWhatsApp === 'boolean'
+      ? canUseWhatsApp
+      : auth?.currentUser?.email === 'jotamolinas@gmail.com' || Boolean(activeUserData?.whatsappEnabled);
+  const [pagareForWhatsApp, setPagareForWhatsApp] = useState<Pagare | null>(null);
   const isAprobado = String(activeUserData?.estadoPago).toUpperCase() === 'APROBADO' || String(activeUserData?.estadoPlataforma).toUpperCase() === 'APROBADO';
   const tienePlanPago = rawPlan.includes('pro') || rawPlan.includes('empresa') || rawPlan.includes('full') || rawPlan.includes('básico') || rawPlan.includes('basico') || isAprobado || esAdmin;
   const accesoBloqueadoPorTrial = !tienePlanPago && (isTrialExpired || !pruebaActiva || diasRestantes <= 0);
@@ -105,7 +231,6 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
 
   // Sincronización Automática con Fichero de Personas
   const [syncAlertBanner, setSyncAlertBanner] = useState<{ tipo: 'success' | 'info'; texto: string } | null>(null);
-  const [isSyncingRetroactivo, setIsSyncingRetroactivo] = useState(false);
 
   // Fase 8: Trazabilidad UX - Código de Soporte Técnico
   const [copiedSupportId, setCopiedSupportId] = useState<string | null>(null);
@@ -1369,30 +1494,6 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
     });
   };
 
-  // Detección Retroactiva de todos los pagarés
-  const handleSincronizarTodosRetroactivo = async () => {
-    setIsSyncingRetroactivo(true);
-    try {
-      const res = sincronizarRetroactivoTodosLosPagares(
-        pagares,
-        personas,
-        (nueva) => {
-          onAddPersona(nueva);
-        },
-        workspaceId
-      );
-      if (res.syncPromises && res.syncPromises.length > 0) {
-        await Promise.allSettled(res.syncPromises);
-      }
-      setSyncAlertBanner({
-        tipo: 'success',
-        texto: res.mensaje
-      });
-    } finally {
-      setTimeout(() => setIsSyncingRetroactivo(false), 500);
-    }
-  };
-
   const handleCreateNewPagare = () => {
     setFormError(null);
     if (!acreedorNombreRaw.trim()) {
@@ -1766,16 +1867,6 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full box-border lg:w-auto justify-end px-1">
-          <button
-            type="button"
-            onClick={handleSincronizarTodosRetroactivo}
-            disabled={isSyncingRetroactivo}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-all bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 shadow-sm disabled:opacity-50"
-            title="Detección retroactiva: Revisa todos los pagarés y auto-registra a los firmantes no fichados en el Fichero de Clientes"
-          >
-            {isSyncingRetroactivo ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF3131]" /> : <UserCheck className="w-3.5 h-3.5 text-[#FF3131]" />}
-            <span>Sincronizar Firmantes con Fichero</span>
-          </button>
           {isAdmin && (
             <div className="flex items-center">
               <input  autoComplete="nope" 
@@ -1800,98 +1891,6 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
       </div>
 
       {panelView === 'list' || panelView === 'list_anulados' ? (() => {
-        /* Función auxiliar de clasificación y pesaje por estado de pagaré */
-        const getPagareStatusDetails = (pag: Pagare) => {
-          let badgeStatus: 'vencido' | 'proximo' | 'al_dia' | 'pagado' | 'anulado' | null = null;
-          let nextDueDate: Date | null = null;
-          let diasDiferencia: number | null = null;
-          let cuotasPendientesCount = 0;
-          let totalCuotasCount = pag.cronograma?.length || 0;
-
-          if (pag.status === 'anulado' || (pag as any).estado === 'Anulado') {
-            return {
-              badgeStatus: 'anulado' as const,
-              nextDueDate: null,
-              diasDiferencia: null,
-              cuotasPendientesCount: 0,
-              totalCuotasCount,
-              weight: 5
-            };
-          }
-
-          if (pag.cronograma && pag.cronograma.length > 0) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const pendingCuotas = pag.cronograma.filter((c: any) => c.estado !== 'cobrado' && !c.pagado);
-            cuotasPendientesCount = pendingCuotas.length;
-
-            if (pendingCuotas.length === 0) {
-              badgeStatus = 'pagado';
-            } else {
-              let hasVencido = false;
-              let hasProximo = false;
-              let minDiff = 999999;
-
-              const sortedPending = [...pendingCuotas].sort((a: any, b: any) => new Date(a.fecha_pag).getTime() - new Date(b.fecha_pag).getTime());
-
-              const nextC = sortedPending[0];
-              const cDate = new Date(nextC.fecha_pag);
-              const parts = nextC.fecha_pag.split('-');
-              if (parts.length === 3) {
-                cDate.setFullYear(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-              }
-              cDate.setHours(0, 0, 0, 0);
-              nextDueDate = cDate;
-
-              for (const c of sortedPending) {
-                const cDateLoop = new Date(c.fecha_pag);
-                const partsL = c.fecha_pag.split('-');
-                if (partsL.length === 3) {
-                  cDateLoop.setFullYear(parseInt(partsL[0]), parseInt(partsL[1]) - 1, parseInt(partsL[2]));
-                }
-                cDateLoop.setHours(0, 0, 0, 0);
-                const diffDays = Math.ceil((cDateLoop.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-                if (diffDays < minDiff) {
-                  minDiff = diffDays;
-                }
-
-                if (diffDays < 0) {
-                  hasVencido = true;
-                } else if (diffDays <= 5) {
-                  hasProximo = true;
-                }
-              }
-
-              diasDiferencia = minDiff;
-
-              if (hasVencido) badgeStatus = 'vencido';
-              else if (hasProximo) badgeStatus = 'proximo';
-              else badgeStatus = 'al_dia';
-            }
-          } else if (pag.status === 'cobrado' || (pag as any).estado === 'Cobrado') {
-            badgeStatus = 'pagado';
-          } else {
-            badgeStatus = 'al_dia';
-          }
-
-          // Prioridad de ordenamiento:
-          // 1°: Vencidos (rojos) -> 1
-          // 2°: Próximos a vencer (amarillos) -> 2
-          // 3°: Al día (verdes) -> 3
-          // 4°: Pagados (esmeralda oscuro) -> 4
-          // 5°: Anulados / Otros -> 5
-          let weight = 5;
-          if (badgeStatus === 'vencido') weight = 1;
-          else if (badgeStatus === 'proximo') weight = 2;
-          else if (badgeStatus === 'al_dia') weight = 3;
-          else if (badgeStatus === 'pagado') weight = 4;
-          else if (badgeStatus === 'anulado') weight = 5;
-
-          return { badgeStatus, nextDueDate, diasDiferencia, cuotasPendientesCount, totalCuotasCount, weight };
-        };
-
         const basePagares = panelView === 'list' 
           ? pagares.filter(p => p.status !== 'anulado') 
           : pagares.filter(p => p.status === 'anulado');
@@ -1913,6 +1912,14 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
         const countProximos = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'proximo').length;
         const countAlDia = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'al_dia').length;
         const countPagados = basePagares.filter(p => getPagareStatusDetails(p).badgeStatus === 'pagado').length;
+
+        const summaryParts: string[] = [];
+        if (countVencidos > 0) {
+          summaryParts.push(`${countVencidos} ${countVencidos === 1 ? 'pagaré vencido' : 'pagarés vencidos'}`);
+        }
+        if (countProximos > 0) {
+          summaryParts.push(`${countProximos} por vencer esta semana`);
+        }
 
         return (
           /* LIST VIEW OF CREATED PROMISSORY NOTES */
@@ -1966,6 +1973,27 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
               )}
             </div>
 
+            {/* Resumen rápido de vencimientos arriba de la lista */}
+            {panelView === 'list' && summaryParts.length > 0 && (
+              <div
+                className={`mb-6 px-4 py-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs font-bold ${
+                  countVencidos > 0
+                    ? 'bg-red-50/90 dark:bg-red-950/40 border-red-200 dark:border-red-800/70 text-red-800 dark:text-red-200'
+                    : 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/70 text-amber-900 dark:text-amber-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className={`w-4 h-4 shrink-0 ${countVencidos > 0 ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                  <span>⚠️ {summaryParts.join(' · ')}</span>
+                </div>
+                {isWhatsAppEnabled && (
+                  <span className="text-[11px] font-semibold opacity-85">
+                    Usá «Recordar por WhatsApp» en cada tarjeta para enviar el aviso con PDF adjunto.
+                  </span>
+                )}
+              </div>
+            )}
+
             {pagaresOrdenados.length === 0 ? (
               <div className="py-24 text-center bg-slate-50 border border-dashed rounded-3xl border-slate-200">
                 <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -1985,7 +2013,11 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                 {pagaresOrdenados.map((pag) => {
                   const acreedor = personas.find(p => p.id === pag.acreedor_id);
                   const deudor = personas.find(p => p.id === pag.deudor_id);
-                  const { badgeStatus, nextDueDate } = getPagareStatusDetails(pag);
+                  const { badgeStatus, nextDueDate, diasDiferencia } = getPagareStatusDetails(pag);
+                  const isPendingPagare = badgeStatus !== 'anulado' && badgeStatus !== 'pagado';
+                  const isUrgentReminder = badgeStatus === 'vencido' || badgeStatus === 'proximo';
+                  const diasVencido = diasDiferencia !== null ? Math.abs(diasDiferencia) : 0;
+                  const diasParaVencer = diasDiferencia !== null ? Math.max(0, diasDiferencia) : 0;
 
                   let dateStr = 'Fecha reciente';
                   if (pag.created_at) {
@@ -2015,7 +2047,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                     >
                       <div>
                         {/* 1. CABECERA DE LA TARJETA (Idéntica a Escritos) */}
-                        <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 overflow-hidden min-w-0">
                             <div className="w-10 h-10 bg-slate-900 dark:bg-slate-800 text-[#FF3131] rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
                               <FileText className="w-5 h-5 text-[#FF3131]" />
@@ -2032,29 +2064,37 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                           </div>
 
                           {/* Pill de Estado + Menú Kebab */}
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0">
                             {badgeStatus === 'vencido' && (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-red-50 text-red-600 border-red-200 shrink-0">
-                                Vencido
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 border-red-300 dark:border-red-800 shrink-0 whitespace-nowrap">
+                                {diasDiferencia !== null
+                                  ? diasVencido === 1
+                                    ? 'Vencido hace 1 día'
+                                    : `Vencido hace ${diasVencido} días`
+                                  : 'Vencido'}
                               </span>
                             )}
                             {badgeStatus === 'proximo' && (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-amber-50 text-amber-600 border-amber-200 shrink-0">
-                                Próximo
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800 shrink-0 whitespace-nowrap">
+                                {diasParaVencer === 0
+                                  ? 'Vence hoy'
+                                  : diasParaVencer === 1
+                                    ? 'Vence en 1 día'
+                                    : `Vence en ${diasParaVencer} días`}
                               </span>
                             )}
                             {badgeStatus === 'al_dia' && (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 shrink-0">
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 shrink-0 whitespace-nowrap">
                                 Al Día
                               </span>
                             )}
                             {badgeStatus === 'pagado' && (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0 whitespace-nowrap">
                                 Pagado
                               </span>
                             )}
                             {badgeStatus === 'anulado' && (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-slate-50 text-slate-500 border-slate-200 shrink-0">
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border bg-slate-50 text-slate-500 border-slate-200 shrink-0 whitespace-nowrap">
                                 Eliminado
                               </span>
                             )}
@@ -2084,7 +2124,7 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                                     }} 
                                   />
                                   <div 
-                                    className="absolute right-0 top-9 z-50 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 duration-150 text-xs font-bold"
+                                    className="absolute right-0 top-9 z-50 w-52 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 duration-150 text-xs font-bold"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <button
@@ -2099,6 +2139,21 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                                       <Printer className="w-3.5 h-3.5 text-slate-400" />
                                       <span>Imprimir / Notarial</span>
                                     </button>
+
+                                    {isWhatsAppEnabled && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActivePagareMenuId(null);
+                                          setPagareForWhatsApp(pag);
+                                        }}
+                                        className="w-full px-3.5 py-2 text-left text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>{isPendingPagare ? 'Recordar por WhatsApp' : 'Enviar por WhatsApp'}</span>
+                                      </button>
+                                    )}
 
                                     <button
                                       type="button"
@@ -2146,21 +2201,28 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                             </div>
                             {(() => {
                               const pendingIndex = pag.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
-                              if (pendingIndex !== -1 && pag.cronograma) {
-                                return (
-                                  <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-2 py-0.5 rounded-lg shrink-0">
-                                    Cuota {pag.cronograma[pendingIndex].numero_cuota}/{pag.cronograma.length}
-                                  </span>
-                                );
-                              }
-                              if (nextDueDate) {
-                                return (
-                                  <span className="text-[10px] font-medium text-slate-400 shrink-0">
-                                    Vence: {nextDueDate.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit' })}
-                                  </span>
-                                );
-                              }
-                              return null;
+                              return (
+                                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                  {pendingIndex !== -1 && pag.cronograma && (
+                                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-2 py-0.5 rounded-lg">
+                                      Cuota {pag.cronograma[pendingIndex].numero_cuota}/{pag.cronograma.length}
+                                    </span>
+                                  )}
+                                  {nextDueDate && isPendingPagare && (
+                                    <span
+                                      className={`text-[10px] font-semibold ${
+                                        badgeStatus === 'vencido'
+                                          ? 'text-red-600 dark:text-red-400'
+                                          : badgeStatus === 'proximo'
+                                            ? 'text-amber-700 dark:text-amber-400'
+                                            : 'text-slate-400'
+                                      }`}
+                                    >
+                                      Vence: {nextDueDate.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                    </span>
+                                  )}
+                                </div>
+                              );
                             })()}
                           </div>
                         </div>
@@ -2183,23 +2245,65 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
                       </div>
 
                       {/* 3. PIE DE LA TARJETA Y ACCIONES */}
-                      <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
-                        {/* A la izquierda: Botón de EDITAR */}
-                        {(pag.status !== 'anulado' && pag.estado !== 'Anulado') ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditPagare(pag);
-                            }}
-                            className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
-                            title="Editar datos del pagaré"
-                          >
-                            EDITAR
-                          </button>
-                        ) : (
-                          <span className="text-[10px] font-bold text-slate-400">Eliminado</span>
-                        )}
+                      <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-4 flex flex-wrap items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                        {/* A la izquierda: Botón de EDITAR + Recordar por WhatsApp */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(pag.status !== 'anulado' && pag.estado !== 'Anulado') ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditPagare(pag);
+                              }}
+                              className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
+                              title="Editar datos del pagaré"
+                            >
+                              EDITAR
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-400">Eliminado</span>
+                          )}
+
+                          {isWhatsAppEnabled && isPendingPagare && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPagareForWhatsApp(pag);
+                              }}
+                              className={`text-[10px] px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap ${
+                                badgeStatus === 'vencido'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ring-2 ring-red-500/40'
+                                  : badgeStatus === 'proximo'
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ring-2 ring-amber-400/50'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                              }`}
+                              title={
+                                isUrgentReminder
+                                  ? 'Enviar recordatorio de vencimiento con PDF adjunto por WhatsApp'
+                                  : 'Recordar vencimiento y enviar copia PDF por WhatsApp'
+                              }
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              <span>Recordar por WhatsApp</span>
+                            </button>
+                          )}
+
+                          {isWhatsAppEnabled && badgeStatus === 'pagado' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPagareForWhatsApp(pag);
+                              }}
+                              className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                              title="Enviar copia del pagaré por WhatsApp"
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              <span>Enviar por WhatsApp</span>
+                            </button>
+                          )}
+                        </div>
 
                         {/* A la derecha: Botón de COBRAR CUOTA */}
                         {(pag.status !== 'anulado' && pag.estado !== 'Anulado' && pag.status !== 'cobrado' && pag.estado !== 'Cobrado') ? (
@@ -3595,8 +3699,173 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
           personas={personas}
           onOpenPDFPreview={(p) => handleAbrirPagare(p)}
           userData={userData}
+          canUseWhatsApp={isWhatsAppEnabled}
+          onSendWhatsApp={(p) => setPagareForWhatsApp(p)}
         />
       )}
+
+      {isWhatsAppEnabled && pagareForWhatsApp && (() => {
+        const acreedorPersona = personas.find((p) => p.id === pagareForWhatsApp.acreedor_id);
+        const normDoc = (v?: string) => String(v || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+        const deudorDocNorm = normDoc(pagareForWhatsApp.deudor_documento_raw);
+        const deudorNameNorm = String(
+          pagareForWhatsApp.deudor_nombre_raw || (pagareForWhatsApp as any).nombreDeudor || ''
+        )
+          .trim()
+          .toLowerCase();
+
+        const deudorPersona =
+          personas.find((p) => p.id === pagareForWhatsApp.deudor_id) ||
+          (deudorDocNorm ? personas.find((p) => normDoc(p.nro_documento) === deudorDocNorm) : undefined) ||
+          (deudorNameNorm
+            ? personas.find(
+                (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim().toLowerCase() === deudorNameNorm
+              )
+            : undefined);
+
+        const codeudor1Persona = personas.find((p) => p.id === pagareForWhatsApp.codeudor1_id);
+        const codeudor2Persona = personas.find((p) => p.id === pagareForWhatsApp.codeudor2_id);
+
+        const nombreAcreedorWa =
+          pagareForWhatsApp.acreedor_nombre_raw ||
+          (acreedorPersona ? `${acreedorPersona.nombre || ''} ${acreedorPersona.apellido || ''}`.trim() : '') ||
+          'Acreedor / Beneficiario';
+        const docAcreedorWa =
+          pagareForWhatsApp.acreedor_documento_raw || acreedorPersona?.nro_documento || '';
+        const domAcreedorWa =
+          pagareForWhatsApp.acreedor_domicilio_raw || acreedorPersona?.domicilio || '';
+
+        const nombreDeudorWa =
+          pagareForWhatsApp.deudor_nombre_raw ||
+          (deudorPersona ? `${deudorPersona.nombre || ''} ${deudorPersona.apellido || ''}`.trim() : '') ||
+          (pagareForWhatsApp as any).nombreDeudor ||
+          'Cliente';
+        const docDeudorWa =
+          pagareForWhatsApp.deudor_documento_raw || deudorPersona?.nro_documento || '';
+        const domDeudorWa =
+          pagareForWhatsApp.deudor_domicilio_raw || deudorPersona?.domicilio || '';
+        const telefonoDeudorWa = String(
+          (pagareForWhatsApp as any).deudor_telefono_raw ||
+            (pagareForWhatsApp as any).deudorTelefono ||
+            (pagareForWhatsApp as any).telefonoDeudor ||
+            deudorPersona?.telefono ||
+            ''
+        ).trim();
+
+        const montoValor = Number(pagareForWhatsApp.valor_total || (pagareForWhatsApp as any).monto || 0);
+        const monCode = (pagareForWhatsApp.moneda || 'PYG').toUpperCase();
+        const monSimbolo = monCode === 'USD' ? 'US$' : monCode === 'BRL' ? 'R$' : 'Gs.';
+        const montoFormateado = `${formatCurrencyValue(montoValor, pagareForWhatsApp.moneda || 'PYG')} ${monSimbolo}`;
+        const montoParaMensaje =
+          monCode === 'PYG' || monCode === 'GS'
+            ? `Gs. ${formatCurrencyValue(montoValor, 'PYG')}`
+            : `${monSimbolo} ${formatCurrencyValue(montoValor, monCode)}`;
+
+        const statusDetailsWa = getPagareStatusDetails(pagareForWhatsApp);
+        const rawFechaVenc =
+          statusDetailsWa.nextDueDateRaw ||
+          pagareForWhatsApp.cronograma?.find((c: any) => c.estado !== 'cobrado' && c.pagado !== true)?.fecha_pag ||
+          pagareForWhatsApp.cronograma?.[0]?.fecha_pag ||
+          pagareForWhatsApp.fecha_primer_pago ||
+          '';
+        const fechaVencDate = parseLocalDateYmd(rawFechaVenc || undefined);
+        const fechaVencFmt = fechaVencDate
+          ? `${String(fechaVencDate.getDate()).padStart(2, '0')}/${String(fechaVencDate.getMonth() + 1).padStart(2, '0')}/${fechaVencDate.getFullYear()}`
+          : rawFechaVenc || 'A confirmar';
+        const escribaniaNombreWa =
+          activeUserData?.razonSocial || activeUserData?.nombreEscribania || config?.escribania?.nombre || 'Escribanía Titular';
+        const correlativoStr = String(pagareForWhatsApp.correlativo || 'S/N').padStart(4, '0');
+
+        const totalCuotas = pagareForWhatsApp.cronograma?.length || 1;
+        const nextPendingIdx = pagareForWhatsApp.cronograma?.findIndex((c: any) => c.estado !== 'cobrado' && c.pagado !== true) ?? -1;
+        const cuotaPlazo =
+          totalCuotas > 1
+            ? nextPendingIdx >= 0
+              ? `Cuota ${pagareForWhatsApp.cronograma[nextPendingIdx].numero_cuota} de ${totalCuotas}`
+              : `${totalCuotas} cuotas`
+            : 'Pago único';
+
+        const pdfPagare = generatePagarePdfBase64({
+          numero: correlativoStr,
+          certificadoFirmasNro: pagareForWhatsApp.certificado_firmas_nro,
+          escribania: {
+            nombre: escribaniaNombreWa,
+            ruc: activeUserData?.ruc || '',
+            registro: activeUserData?.registroNotarial || config?.escribania?.nro_registro || '',
+            telefono: activeUserData?.telefono || config?.escribania?.telefono || '',
+            direccion: activeUserData?.direccion || config?.escribania?.direccion || '',
+          },
+          acreedorNombre: nombreAcreedorWa,
+          acreedorDocumento: docAcreedorWa,
+          acreedorDomicilio: domAcreedorWa,
+          deudorNombre: nombreDeudorWa,
+          deudorDocumento: docDeudorWa,
+          deudorDomicilio: domDeudorWa,
+          codeudor1Nombre:
+            pagareForWhatsApp.codeudor1_nombre_raw ||
+            (codeudor1Persona ? `${codeudor1Persona.nombre || ''} ${codeudor1Persona.apellido || ''}`.trim() : ''),
+          codeudor1Documento: pagareForWhatsApp.codeudor1_documento_raw || codeudor1Persona?.nro_documento,
+          codeudor2Nombre:
+            pagareForWhatsApp.codeudor2_nombre_raw ||
+            (codeudor2Persona ? `${codeudor2Persona.nombre || ''} ${codeudor2Persona.apellido || ''}`.trim() : ''),
+          codeudor2Documento: pagareForWhatsApp.codeudor2_documento_raw || codeudor2Persona?.nro_documento,
+          montoValor,
+          moneda: monCode,
+          cuotaPlazo,
+          fechaEmision: pagareForWhatsApp.created_at,
+          fechaVencimiento: rawFechaVenc,
+          lugarPago:
+            (pagareForWhatsApp as any).ciudadEmision ||
+            (pagareForWhatsApp as any).ciudad ||
+            activeUserData?.ciudad ||
+            config?.escribania?.ciudad ||
+            config?.escribania?.direccion ||
+            'Asunción, Paraguay',
+          tasaInteres:
+            pagareForWhatsApp.interesPersonalizado ||
+            pagareForWhatsApp.tasaInteres ||
+            pagareForWhatsApp.tasa_interes,
+          cuerpoTexto:
+            pagareForWhatsApp.texto_personalizado ||
+            pagareForWhatsApp.textoPersonalizado ||
+            pagareForWhatsApp.textoCuerpo ||
+            pagareForWhatsApp.contenido,
+        });
+
+        let defaultMsg: string;
+        if (statusDetailsWa.badgeStatus === 'vencido') {
+          defaultMsg = `Estimado/a ${nombreDeudorWa}, le informamos desde ${escribaniaNombreWa} que el Pagaré Nº ${correlativoStr} por ${montoParaMensaje} registró vencimiento el ${fechaVencFmt}. Adjuntamos copia y quedamos atentos para coordinar la regularización.`;
+        } else if (statusDetailsWa.badgeStatus === 'proximo' || statusDetailsWa.badgeStatus === 'al_dia') {
+          defaultMsg = `Estimado/a ${nombreDeudorWa}, le recordamos cordialmente desde ${escribaniaNombreWa} que el Pagaré Nº ${correlativoStr} por ${montoParaMensaje} vence el ${fechaVencFmt}. Adjuntamos copia para su referencia. Quedamos a disposición.`;
+        } else {
+          defaultMsg = [
+            `Estimado/a ${nombreDeudorWa},`,
+            '',
+            `Le remitimos adjunto en PDF su Pagaré Notarial Nº ${correlativoStr}:`,
+            '',
+            `• Deudor: ${nombreDeudorWa}`,
+            `• Monto: ${montoFormateado}`,
+            `• Fecha de vencimiento: ${fechaVencFmt}`,
+            `• Escribanía: ${escribaniaNombreWa}`,
+            '',
+            'Quedamos a su disposición ante cualquier consulta.',
+          ].join('\n');
+        }
+
+        return (
+          <WhatsAppSendModal
+            isOpen={!!pagareForWhatsApp}
+            onClose={() => setPagareForWhatsApp(null)}
+            workspaceId={workspaceId || pagareForWhatsApp.userId || auth?.currentUser?.uid || ''}
+            defaultPhone={telefonoDeudorWa}
+            defaultMessage={defaultMsg}
+            documentTitle={`Pagaré Notarial Nº ${correlativoStr}`}
+            fileBase64={pdfPagare.fileBase64}
+            fileName={pdfPagare.fileName}
+            mimetype="application/pdf"
+          />
+        );
+      })()}
 
     </div>
   );

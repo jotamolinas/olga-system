@@ -23,12 +23,31 @@ import {
   ShieldCheck,
   Download,
   KeyRound,
-  Lock as LockIcon
+  Lock as LockIcon,
+  MessageCircle
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 
+export type SidebarTabId =
+  | 'tablero'
+  | 'pagares'
+  | 'personas'
+  | 'escritos'
+  | 'config'
+  | 'chat'
+  | 'knowledge'
+  | 'monitor'
+  | 'planes'
+  | 'pagos'
+  | 'soporte'
+  | 'cuenta'
+  | 'lienzo'
+  | 'facturacion'
+  | 'onboarding-sifen'
+  | 'whatsapp';
+
 export interface SidebarProps {
-  activeTab: string;
+  activeTab: SidebarTabId | string;
   setActiveTab: (tab: any) => void;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
@@ -55,6 +74,9 @@ export interface SidebarProps {
   isSoftBlocked?: boolean;
   hasUnreadChatResponse?: boolean;
   isChatLoading?: boolean;
+  canUseWhatsApp?: boolean;
+  canUseLienzo?: boolean;
+  canUsePresupuesto?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -84,7 +106,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   handleInstallClick,
   isSoftBlocked = false,
   hasUnreadChatResponse = false,
-  isChatLoading = false
+  isChatLoading = false,
+  canUseWhatsApp: canUseWhatsAppProp,
+  canUseLienzo: canUseLienzoProp,
+  canUsePresupuesto: canUsePresupuestoProp,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -121,8 +146,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const esSkinDorado = esAdmin || planLower.includes('full');
   // Plan Full y Plan Empresa tienen acceso a El Oráculo
   const tieneOraculo = esAdmin || planLower.includes('full') || planLower.includes('empresa');
-  // Plan Pro, Full y Empresa tienen acceso a Lienzo Notarial y Presupuestos
-  const tieneLienzoYPresupuestos = esAdmin || planLower.includes('pro') || planLower.includes('empresa') || planLower.includes('full');
+  // Plan Pro, Full y Empresa tienen acceso base a Lienzo Notarial y Presupuestos
+  const planIncluyeLienzoYPresupuestos = esAdmin || planLower.includes('pro') || planLower.includes('empresa') || planLower.includes('full');
 
   // En Plan Full y Empresarial se llama 'El Oráculo'; en Básico y Pro es 'Asistente IA'
   const nombreAsistente = tieneOraculo ? 'El Oráculo' : 'Asistente IA';
@@ -202,16 +227,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isAdmin
   );
 
+  const getExplicitFlag = (field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled'): boolean | undefined => {
+    if (typeof userProfile?.[field] === 'boolean') return userProfile[field];
+    if (typeof userData?.[field] === 'boolean') return userData[field];
+    return undefined;
+  };
+
+  const resolveAddon = (
+    propOverride: boolean | undefined,
+    field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled',
+    defaultByPlan: boolean
+  ): boolean => {
+    if (typeof propOverride === 'boolean') return propOverride;
+    if (isSuperAdmin) return true;
+    const explicit = getExplicitFlag(field);
+    if (explicit === true) return true;
+    if (explicit === false) return false;
+    return defaultByPlan;
+  };
+
+  const canUseWhatsApp = resolveAddon(canUseWhatsAppProp, 'whatsappEnabled', false);
+  const canUseLienzo = resolveAddon(canUseLienzoProp, 'lienzoEnabled', planIncluyeLienzoYPresupuestos);
+  const canUsePresupuesto = resolveAddon(canUsePresupuestoProp, 'presupuestoEnabled', planIncluyeLienzoYPresupuestos);
+
   const navItems: NavItem[] = [
     { id: 'tablero', label: 'Dashboard', icon: Activity },
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
     { id: 'personas', label: 'Fichero Personas', icon: Users },
     { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
-    // Lienzo Notarial y Presupuesto: Disponibles exclusivamente a partir de Plan Pro, Full, Empresa o Admin
-    ...(tieneLienzoYPresupuestos ? [
-      { id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp },
-      { id: 'facturacion', label: 'Presupuesto', icon: CreditCard },
-    ] : []),
+    // Lienzo Notarial y Presupuesto: Controlados por permisos modulares (o herencia del plan)
+    ...(canUseLienzo ? [{ id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp }] : []),
+    ...(canUsePresupuesto ? [{ id: 'facturacion', label: 'Presupuesto', icon: CreditCard }] : []),
     // Asistente IA / El Oráculo
     {
       id: 'chat',
@@ -219,6 +265,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: tieneOraculo ? Sparkles : MessageSquare,
       customRenderLabel: () => nombreAsistente
     },
+    // Conexión QR WhatsApp (Feature Flag)
+    ...(canUseWhatsApp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
     // Soporte
     {
       id: 'soporte',
@@ -362,8 +410,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const isActive = activeTab === item.id;
             const labelText = item.customRenderLabel ? item.customRenderLabel() : item.label;
 
-            // Bloqueo estricto si isSoftBlocked es true para Lienzo Notarial y Presupuesto
-            const isModuleLocked = isSoftBlocked && (item.id === 'lienzo' || item.id === 'facturacion');
+            // Bloqueo estricto si isSoftBlocked es true (salvo habilitación explícita por Superadmin)
+            const isModuleLocked =
+              isSoftBlocked &&
+              ((item.id === 'lienzo' && getExplicitFlag('lienzoEnabled') !== true) ||
+                (item.id === 'facturacion' && getExplicitFlag('presupuestoEnabled') !== true));
 
             return (
               <button
@@ -407,11 +458,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="relative shrink-0 inline-flex items-center justify-center">
                   <Icon
                     className={`w-4 h-4 shrink-0 transition-colors stroke-[1.75] ${
-                      isActive
-                        ? esPlanFull
-                          ? 'text-amber-400'
-                          : 'text-white'
-                        : 'text-slate-400 group-hover:text-slate-200'
+                      item.id === 'whatsapp'
+                        ? isActive
+                          ? 'text-emerald-400'
+                          : 'text-emerald-500 group-hover:text-emerald-400'
+                        : isActive
+                          ? esPlanFull
+                            ? 'text-amber-400'
+                            : 'text-white'
+                          : 'text-slate-400 group-hover:text-slate-200'
                     }`}
                   />
                   {item.id === 'chat' && isChatLoading && (

@@ -8,7 +8,7 @@ import {
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
   MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, X,
-  Megaphone, Copy, Bell, Send, Eye, ChevronDown, ChevronUp
+  Megaphone, Copy, Bell, Send, Eye, ChevronDown, ChevronUp, MessageCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -31,8 +31,50 @@ export interface RegisteredUser {
   diasRestantes?: number;
   isRecent: boolean;
   categoriaCuenta: 'cliente' | 'cortesia' | 'equipo';
+  whatsappEnabled?: boolean;
+  lienzoEnabled?: boolean;
+  presupuestoEnabled?: boolean;
   raw: any;
 }
+
+type AddonField = 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled';
+
+const ADDON_MODULES: { field: AddonField; shortLabel: string; fullLabel: string }[] = [
+  { field: 'whatsappEnabled', shortLabel: 'WhatsApp', fullLabel: 'WhatsApp IA' },
+  { field: 'lienzoEnabled', shortLabel: 'Lienzo', fullLabel: 'Lienzo Notarial' },
+  { field: 'presupuestoEnabled', shortLabel: 'Presup.', fullLabel: 'Presupuestos' },
+];
+
+const getEffectiveAddonState = (
+  user: RegisteredUser,
+  field: AddonField
+): { enabled: boolean; isInherited: boolean } => {
+  const emailLower = String(user.email || '').toLowerCase();
+  const roleUpper = String(user.raw?.role || user.raw?.rol || '').toUpperCase();
+  const isUserSuperAdmin =
+    emailLower === 'jotamolinas@gmail.com' ||
+    roleUpper === 'ADMIN' ||
+    roleUpper === 'SUPERADMIN';
+
+  if (isUserSuperAdmin) {
+    return { enabled: true, isInherited: false };
+  }
+
+  const rawVal = user.raw?.[field] ?? user[field];
+  if (rawVal === true) return { enabled: true, isInherited: false };
+  if (rawVal === false) return { enabled: false, isInherited: false };
+
+  if (field === 'whatsappEnabled') {
+    return { enabled: false, isInherited: true };
+  }
+
+  const planLower = String(user.plan || '').toLowerCase();
+  const planIncludesProPlus =
+    planLower.includes('pro') ||
+    planLower.includes('empresa') ||
+    planLower.includes('full');
+  return { enabled: planIncludesProPlus, isInherited: true };
+};
 
 interface PendingPayment {
   id: string;
@@ -471,6 +513,80 @@ export const SuperAdminDashboard: React.FC = () => {
     }
   };
 
+  const [togglingAddonKeys, setTogglingAddonKeys] = useState<Record<string, boolean>>({});
+  const [whatsappToast, setWhatsappToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const whatsappToastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (whatsappToastTimerRef.current !== null) {
+        window.clearTimeout(whatsappToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showWhatsAppToast = (kind: 'success' | 'error', message: string) => {
+    if (whatsappToastTimerRef.current !== null) {
+      window.clearTimeout(whatsappToastTimerRef.current);
+    }
+    setWhatsappToast({ kind, message });
+    whatsappToastTimerRef.current = window.setTimeout(() => {
+      setWhatsappToast(null);
+      whatsappToastTimerRef.current = null;
+    }, 3500);
+  };
+
+  const handleToggleAddon = async (user: RegisteredUser, field: AddonField) => {
+    const toggleKey = `${user.id}:${field}`;
+    if (togglingAddonKeys[toggleKey]) return;
+
+    const { enabled: currentEnabled } = getEffectiveAddonState(user, field);
+    const prevExplicitValue = user.raw?.[field] ?? user[field];
+    const nextValue = !currentEnabled;
+    const displayName = user.razonSocial || user.nombre || user.email || user.id;
+    const addonMeta = ADDON_MODULES.find((m) => m.field === field);
+    const moduleLabel = addonMeta?.fullLabel || field;
+
+    setTogglingAddonKeys((prev) => ({ ...prev, [toggleKey]: true }));
+    setRegisteredUsers((prev) =>
+      prev.map((u) =>
+        u.id === user.id
+          ? {
+              ...u,
+              [field]: nextValue,
+              raw: u.raw ? { ...u.raw, [field]: nextValue } : { [field]: nextValue },
+            }
+          : u
+      )
+    );
+
+    try {
+      await updateDoc(doc(db, 'users', user.id), { [field]: nextValue });
+      showWhatsAppToast(
+        'success',
+        nextValue
+          ? `${moduleLabel} habilitado para ${displayName}.`
+          : `${moduleLabel} revocado para ${displayName}.`
+      );
+    } catch (err) {
+      console.error(`Error al actualizar ${field}:`, err);
+      setRegisteredUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id
+            ? {
+                ...u,
+                [field]: prevExplicitValue,
+                raw: u.raw ? { ...u.raw, [field]: prevExplicitValue } : { [field]: prevExplicitValue },
+              }
+            : u
+        )
+      );
+      showWhatsAppToast('error', `No se pudo actualizar ${moduleLabel} para ${displayName}.`);
+    } finally {
+      setTogglingAddonKeys((prev) => ({ ...prev, [toggleKey]: false }));
+    }
+  };
+
   const formatWhatsAppNumber = (tel: string) => {
     if (!tel) return '';
     let cleaned = tel.replace(/[^0-9]/g, '');
@@ -767,6 +883,9 @@ export const SuperAdminDashboard: React.FC = () => {
             diasRestantes,
             isRecent,
             categoriaCuenta,
+            whatsappEnabled: typeof data.whatsappEnabled === 'boolean' ? data.whatsappEnabled : undefined,
+            lienzoEnabled: typeof data.lienzoEnabled === 'boolean' ? data.lienzoEnabled : undefined,
+            presupuestoEnabled: typeof data.presupuestoEnabled === 'boolean' ? data.presupuestoEnabled : undefined,
             raw: data
           });
         });
@@ -1054,6 +1173,23 @@ export const SuperAdminDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-2 md:p-4 w-full box-border h-full overflow-x-hidden">
+      {whatsappToast && (
+        <div
+          role="status"
+          className={`fixed top-4 right-4 z-[80] flex items-center gap-2.5 px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+            whatsappToast.kind === 'success'
+              ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
+              : 'bg-red-950/90 border-red-500/40 text-red-200'
+          }`}
+        >
+          {whatsappToast.kind === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          )}
+          <span>{whatsappToast.message}</span>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden overflow-x-hidden">
         {/* Header / Subtabs */}
         <div className="mb-3 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1533,100 +1669,142 @@ export const SuperAdminDashboard: React.FC = () => {
                       const isPendiente = user.estadoSuscripcion === 'pendiente';
 
                       return (
-                        <div key={user.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors gap-2">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
-                              {inicial}
+                        <div key={user.id} className="flex flex-col py-2.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors gap-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
+                                {inicial}
+                              </div>
+                              <div className="min-w-0 truncate">
+                                <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
+                                <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0 truncate">
-                              <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
-                              <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* 1. WhatsApp Commercial Button */}
+                              <a
+                                href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                                title={user.telefono ? `Contactar por WhatsApp (${user.telefono})` : 'Sin teléfono registrado'}
+                                onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+
+                              {/* 2. Corporate Gmail Button */}
+                              <a
+                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg transition-colors flex items-center justify-center"
+                                title={`Enviar correo corporativo a ${user.email}`}
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                              </a>
+
+                              {/* 3. Open Offer / Campaign Modal Button */}
+                              <button
+                                type="button"
+                                onClick={() => openOfertaModal(user)}
+                                className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                                title="Oferta / Campaña personalizada"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                              </button>
+
+                              <select
+                                value={user.categoriaCuenta || 'cliente'}
+                                onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+                                className={`border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer ${
+                                  user.categoriaCuenta === 'cortesia' 
+                                    ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                    : user.categoriaCuenta === 'equipo'
+                                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                }`}
+                                title="Clasificación de cuenta"
+                              >
+                                <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+                                <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+                                <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+                              </select>
+
+                              <select
+                                value={user.plan || 'Prueba Gratuita'}
+                                onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+                                className="bg-[#09090b] border border-white/10 rounded-lg text-[10px] text-gray-300 px-2 py-1 outline-none cursor-pointer"
+                                title="Cambiar plan en vivo"
+                              >
+                                <option value="Prueba Gratuita">Prueba (5d)</option>
+                                <option value="Plan Básico">Plan Básico</option>
+                                <option value="Plan Pro">Plan Pro</option>
+                                <option value="Plan Empresa">Plan Empresa</option>
+                                <option value="Plan Full">Plan Full</option>
+                              </select>
+
+                              <div>
+                                {isActivo ? (
+                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
+                                    Activo
+                                  </span>
+                                ) : isPrueba ? (
+                                  <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
+                                    Prueba ({user.diasRestantes ?? 5}d)
+                                  </span>
+                                ) : isPendiente ? (
+                                  <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
+                                    Pendiente
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
+                                    Vencido
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {/* 1. WhatsApp Commercial Button */}
-                            <a
-                              href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
-                              title={user.telefono ? `Contactar por WhatsApp (${user.telefono})` : 'Sin teléfono registrado'}
-                              onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                            </a>
-
-                            {/* 2. Corporate Gmail Button */}
-                            <a
-                              href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg transition-colors flex items-center justify-center"
-                              title={`Enviar correo corporativo a ${user.email}`}
-                            >
-                              <Mail className="w-3.5 h-3.5" />
-                            </a>
-
-                            {/* 3. Open Offer / Campaign Modal Button */}
-                            <button
-                              type="button"
-                              onClick={() => openOfertaModal(user)}
-                              className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
-                              title="Oferta / Campaña personalizada"
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                            </button>
-
-                            <select
-                              value={user.categoriaCuenta || 'cliente'}
-                              onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
-                              className={`border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer ${
-                                user.categoriaCuenta === 'cortesia' 
-                                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
-                                  : user.categoriaCuenta === 'equipo'
-                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              }`}
-                              title="Clasificación de cuenta"
-                            >
-                              <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
-                              <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
-                              <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
-                            </select>
-
-                            <select
-                              value={user.plan || 'Prueba Gratuita'}
-                              onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
-                              className="bg-[#09090b] border border-white/10 rounded-lg text-[10px] text-gray-300 px-2 py-1 outline-none cursor-pointer"
-                              title="Cambiar plan en vivo"
-                            >
-                              <option value="Prueba Gratuita">Prueba (5d)</option>
-                              <option value="Plan Básico">Plan Básico</option>
-                              <option value="Plan Pro">Plan Pro</option>
-                              <option value="Plan Empresa">Plan Empresa</option>
-                              <option value="Plan Full">Plan Full</option>
-                            </select>
-
-                            <div>
-                              {isActivo ? (
-                                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-                                  Activo
-                                </span>
-                              ) : isPrueba ? (
-                                <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
-                                  Prueba ({user.diasRestantes ?? 5}d)
-                                </span>
-                              ) : isPendiente ? (
-                                <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
-                                  Pendiente
-                                </span>
-                              ) : (
-                                <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
-                                  Vencido
-                                </span>
-                              )}
-                            </div>
+                          {/* Fila compacta: 3 switches independientes de Módulos / Add-ons */}
+                          <div className="flex flex-wrap items-center gap-1.5 pl-9">
+                            <span className="text-[9px] uppercase tracking-wider font-semibold text-gray-500 mr-0.5">
+                              Add-ons:
+                            </span>
+                            {ADDON_MODULES.map((mod) => {
+                              const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
+                              const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
+                              return (
+                                <button
+                                  key={mod.field}
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={enabled}
+                                  disabled={isBusy}
+                                  onClick={() => handleToggleAddon(user, mod.field)}
+                                  title={`${mod.fullLabel}: ${enabled ? 'Activo' : 'Inactivo'}${isInherited ? ' (heredado del plan)' : ' (manual)'} — clic para cambiar`}
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                                    enabled
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                      : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'
+                                  }`}
+                                >
+                                  <span>{mod.shortLabel}</span>
+                                  <span
+                                    className={`relative inline-flex h-3 w-5 items-center rounded-full transition-colors ${
+                                      enabled ? 'bg-emerald-500' : 'bg-zinc-700'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform ${
+                                        enabled ? 'translate-x-2.5' : 'translate-x-0.5'
+                                      }`}
+                                    />
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1706,6 +1884,7 @@ export const SuperAdminDashboard: React.FC = () => {
                       <th className="p-3.5">Categoría</th>
                       <th className="p-3.5">Plan</th>
                       <th className="p-3.5">Estado</th>
+                      <th className="p-3.5 text-left whitespace-nowrap">Módulos / Add-ons</th>
                       <th className="p-3.5 text-right">Acciones Comerciales</th>
                     </tr>
                   </thead>
@@ -1785,6 +1964,59 @@ export const SuperAdminDashboard: React.FC = () => {
                                 Vencido
                               </span>
                             )}
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex flex-col gap-1.5 min-w-[175px]">
+                              {ADDON_MODULES.map((mod) => {
+                                const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
+                                const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
+                                return (
+                                  <div
+                                    key={mod.field}
+                                    className="flex items-center justify-between gap-2.5"
+                                  >
+                                    <span
+                                      className={`text-[11px] font-medium whitespace-nowrap ${
+                                        enabled ? 'text-emerald-300' : 'text-gray-400'
+                                      }`}
+                                      title={isInherited ? 'Heredado del plan' : 'Configuración manual'}
+                                    >
+                                      {mod.shortLabel}
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={enabled}
+                                        disabled={isBusy}
+                                        onClick={() => handleToggleAddon(user, mod.field)}
+                                        title={`${mod.fullLabel}: ${enabled ? 'Activo' : 'Inactivo'}${isInherited ? ' (heredado del plan)' : ' (manual)'} — clic para cambiar`}
+                                        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50 ${
+                                          enabled
+                                            ? 'bg-emerald-500 border-emerald-400/50'
+                                            : 'bg-zinc-800 border-white/10'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform ${
+                                            enabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                                          }`}
+                                        />
+                                      </button>
+                                      <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border whitespace-nowrap ${
+                                          enabled
+                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                            : 'bg-white/5 text-gray-500 border-white/10'
+                                        }`}
+                                      >
+                                        {enabled ? 'Activo' : 'Inactivo'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </td>
                           <td className="p-3.5 text-right">
                             <div className="flex items-center justify-end gap-2">

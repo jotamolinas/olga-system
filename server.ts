@@ -349,10 +349,85 @@ const formatGeminiError = (
   return { status, message: msgStr };
 };
 
+const WORKSPACE_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+
+const getWhatsAppConfig = () => {
+  const rawUrl = (process.env.OLGA_WA_URL || '').trim().replace(/\/+$/, '');
+  const secret = (process.env.OLGA_WA_SECRET || '').trim() || 'OLGA_SUPER_SECRET_2026';
+  return { rawUrl, secret };
+};
+
+const parseValidatedWhatsAppBaseUrl = (rawUrl: string): string => {
+  if (!rawUrl) {
+    throw new ApiHttpError(
+      500,
+      'El servicio de WhatsApp no está configurado en el servidor (OLGA_WA_URL).'
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new ApiHttpError(500, 'La URL configurada para el motor de WhatsApp es inválida.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ApiHttpError(500, 'Protocolo no permitido para el motor de WhatsApp.');
+  }
+  return parsed.toString().replace(/\/+$/, '');
+};
+
+const callWhatsAppEngine = async (
+  endpointPath: string,
+  method: 'GET' | 'POST',
+  body?: Record<string, unknown>
+): Promise<Record<string, any>> => {
+  const { rawUrl, secret } = getWhatsAppConfig();
+  const baseUrl = parseValidatedWhatsAppBaseUrl(rawUrl);
+  const targetUrl = `${baseUrl}${endpointPath}`;
+
+  let upstream: globalThis.Response;
+  try {
+    upstream = await fetch(targetUrl, {
+      method,
+      headers: {
+        'x-api-key': secret,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (err) {
+    console.error(`[whatsapp-proxy] Error de red en ${endpointPath}:`, err);
+    throw new ApiHttpError(500, 'No se pudo conectar con el motor de WhatsApp.');
+  }
+
+  let data: any = null;
+  const rawText = await upstream.text();
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!upstream.ok) {
+    const upstreamErr =
+      (data && typeof data.error === 'string' && data.error.trim()) ||
+      (data && typeof data.message === 'string' && data.message.trim()) ||
+      `El motor de WhatsApp devolvió un error (${upstream.status}).`;
+    const mappedStatus = upstream.status >= 400 && upstream.status < 500 ? 400 : 500;
+    throw new ApiHttpError(mappedStatus, upstreamErr);
+  }
+
+  return data && typeof data === 'object' ? data : {};
+};
+
 async function startServer() {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
   // Proxy ligero para consultas DNIT/RUC en desarrollo y producción
   app.use('/api/dnit', async (req: Request, res: Response, next: NextFunction) => {
@@ -945,6 +1020,971 @@ ${prompt}
         'No se pudo generar la redacción en este momento. Por favor, intenta nuevamente.'
       );
       res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
+  // 5. Proxy seguro para motor propio olga-whatsapp-engine
+  app.post('/api/whatsapp/connect', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.body?.workspaceId === 'string' ? req.body.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+      const data = await callWhatsAppEngine(`/connect/${encodeURIComponent(workspaceId)}`, 'POST');
+      res.json({
+        status: data.status ?? 'connecting',
+        qr: data.qr ?? null,
+        phone: data.phone ?? null,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al iniciar la conexión de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.get('/api/whatsapp/status/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+      const data = await callWhatsAppEngine(`/status/${encodeURIComponent(workspaceId)}`, 'GET');
+      res.json({
+        status: data.status ?? 'disconnected',
+        qr: data.qr ?? null,
+        phone: data.phone ?? null,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al consultar el estado de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/whatsapp/send', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.body?.workspaceId === 'string' ? req.body.workspaceId.trim() : '';
+      const rawPhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+      const rawJid = typeof req.body?.jid === 'string' ? req.body.jid.trim() : '';
+      const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const jid = rawJid.slice(0, 160);
+      const cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+      if (!jid && (!cleanPhone || cleanPhone.length < 7 || cleanPhone.length > 20)) {
+        res.status(400).json({ error: 'Número de teléfono o JID inválido. Usa formato internacional (ej. 595981123456).' });
+        return;
+      }
+
+      if (!message || message.length > 4096) {
+        res.status(400).json({ error: 'El mensaje es obligatorio y no puede superar 4096 caracteres.' });
+        return;
+      }
+
+      await callWhatsAppEngine('/send', 'POST', {
+        workspaceId,
+        phone: cleanPhone,
+        ...(jid ? { jid } : {}),
+        message,
+      });
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al enviar el mensaje de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/whatsapp/send-document', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.body?.workspaceId === 'string' ? req.body.workspaceId.trim() : '';
+      const rawPhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+      const rawJid = typeof req.body?.jid === 'string' ? req.body.jid.trim() : '';
+      const rawFileBase64 = typeof req.body?.fileBase64 === 'string' ? req.body.fileBase64 : '';
+      const rawFileName = typeof req.body?.fileName === 'string' ? req.body.fileName.trim() : '';
+      const rawMimetype = typeof req.body?.mimetype === 'string' ? req.body.mimetype.trim().toLowerCase() : '';
+      const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim().slice(0, 4096) : '';
+
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const jid = rawJid.slice(0, 160);
+      const cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+      if (!jid && (!cleanPhone || cleanPhone.length < 7 || cleanPhone.length > 20)) {
+        res.status(400).json({ error: 'Número de teléfono o JID inválido. Usa formato internacional (ej. 595981123456).' });
+        return;
+      }
+
+      const fileBase64 = cleanBase64Payload(rawFileBase64);
+      if (!fileBase64) {
+        res.status(400).json({ error: 'Se requiere fileBase64 para enviar el documento.' });
+        return;
+      }
+
+      const fileName = (rawFileName.replace(/[\\/:*?"<>|\r\n]/g, '_') || 'documento.pdf').slice(0, 200);
+      const mimetype = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(rawMimetype) ? rawMimetype : 'application/pdf';
+
+      await callWhatsAppEngine('/send-document', 'POST', {
+        workspaceId,
+        phone: cleanPhone,
+        ...(jid ? { jid } : {}),
+        fileBase64,
+        fileName,
+        mimetype,
+        caption,
+      });
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al enviar el documento por WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  const WHATSAPP_ANALYZE_ALLOWED_MIME_TYPES = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'audio/ogg',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/aac',
+    'audio/wav',
+    'audio/webm',
+    'audio/amr',
+    'audio/3gpp',
+    'audio/flac',
+  ]);
+
+  const extractMimeFromDataUri = (rawData: unknown): string => {
+    if (typeof rawData !== 'string') return '';
+    const match = /^data:([^;,\s]+);base64,/i.exec(rawData.trim());
+    return match ? match[1].trim().toLowerCase() : '';
+  };
+
+  const normalizeAnalyzeMime = (
+    rawMime: unknown,
+    rawMediaType: unknown,
+    rawBase64?: unknown
+  ): string => {
+    let mime =
+      (typeof rawMime === 'string' ? rawMime.split(';')[0].trim().toLowerCase() : '') ||
+      extractMimeFromDataUri(rawBase64);
+    if (mime === 'image/jpg') mime = 'image/jpeg';
+    if (mime === 'audio/mp3') mime = 'audio/mpeg';
+    if (mime === 'audio/x-wav') mime = 'audio/wav';
+    if (mime === 'audio/m4a' || mime === 'audio/x-m4a') mime = 'audio/mp4';
+    if (mime === 'audio/opus') mime = 'audio/ogg';
+    if (mime === 'application/ogg') mime = 'audio/ogg';
+
+    if (!mime || mime === 'application/octet-stream') {
+      const mediaType = typeof rawMediaType === 'string' ? rawMediaType.trim().toLowerCase() : '';
+      if (mediaType === 'image') mime = 'image/jpeg';
+      else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') mime = 'audio/ogg';
+      else if (mediaType === 'document' || mediaType === 'pdf') mime = 'application/pdf';
+    }
+    return mime;
+  };
+
+  const sanitizeNullableString = (val: unknown): string | null => {
+    if (typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    if (
+      !trimmed ||
+      trimmed.toLowerCase() === 'null' ||
+      trimmed.toLowerCase() === 'n/a' ||
+      trimmed.toLowerCase() === 'no especificado' ||
+      trimmed.toLowerCase() === 'no disponible'
+    ) {
+      return null;
+    }
+    return trimmed;
+  };
+
+  app.get('/api/whatsapp/inbox/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const data = await callWhatsAppEngine(`/inbox/${encodeURIComponent(workspaceId)}`, 'GET');
+      const messages = Array.isArray(data.messages)
+        ? data.messages
+        : Array.isArray(data)
+          ? data
+          : [];
+
+      res.json({ ok: true, messages });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al consultar la bandeja de entrada de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.get('/api/whatsapp/activity/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const data = await callWhatsAppEngine(`/activity/${encodeURIComponent(workspaceId)}`, 'GET');
+      const activities = Array.isArray(data.activities)
+        ? data.activities
+        : Array.isArray(data)
+          ? data
+          : [];
+
+      res.json({ ok: true, activities });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al consultar la actividad de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.get('/api/whatsapp/config/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const data = await callWhatsAppEngine(`/config/${encodeURIComponent(workspaceId)}`, 'GET');
+      const rawCfg = data?.config && typeof data.config === 'object' ? data.config : data;
+
+      const autoReplyEnabled =
+        typeof rawCfg?.autoReplyEnabled === 'boolean'
+          ? rawCfg.autoReplyEnabled
+          : typeof rawCfg?.enabled === 'boolean'
+            ? rawCfg.enabled
+            : true;
+      const delaySeconds =
+        typeof rawCfg?.delaySeconds === 'number' && Number.isFinite(rawCfg.delaySeconds)
+          ? rawCfg.delaySeconds
+          : 120;
+      const cooldownMinutes =
+        typeof rawCfg?.cooldownMinutes === 'number' && Number.isFinite(rawCfg.cooldownMinutes)
+          ? rawCfg.cooldownMinutes
+          : 0;
+      const businessHoursEnabled =
+        typeof rawCfg?.businessHoursEnabled === 'boolean' ? rawCfg.businessHoursEnabled : false;
+      const businessStart =
+        typeof rawCfg?.businessStart === 'string' && /^\d{2}:\d{2}$/.test(rawCfg.businessStart.trim())
+          ? rawCfg.businessStart.trim()
+          : '08:00';
+      const businessEnd =
+        typeof rawCfg?.businessEnd === 'string' && /^\d{2}:\d{2}$/.test(rawCfg.businessEnd.trim())
+          ? rawCfg.businessEnd.trim()
+          : '17:00';
+      const autoReplyMessage =
+        typeof rawCfg?.autoReplyMessage === 'string'
+          ? rawCfg.autoReplyMessage
+          : typeof rawCfg?.message === 'string'
+            ? rawCfg.message
+            : '';
+      const afterHoursMessage =
+        typeof rawCfg?.afterHoursMessage === 'string' ? rawCfg.afterHoursMessage : '';
+      const mediaReplyEnabled =
+        typeof rawCfg?.mediaReplyEnabled === 'boolean' ? rawCfg.mediaReplyEnabled : false;
+      const mediaReplyMessage =
+        typeof rawCfg?.mediaReplyMessage === 'string' ? rawCfg.mediaReplyMessage : '';
+      const rawExcluded = Array.isArray(rawCfg?.excludedJids)
+        ? rawCfg.excludedJids
+        : Array.isArray(data?.excludedJids)
+          ? data.excludedJids
+          : [];
+      const excludedJids = rawExcluded.filter(
+        (j: unknown): j is string => typeof j === 'string' && j.trim().length > 0
+      );
+
+      res.json({
+        ok: true,
+        autoReplyEnabled,
+        delaySeconds,
+        cooldownMinutes,
+        businessHoursEnabled,
+        businessStart,
+        businessEnd,
+        autoReplyMessage,
+        afterHoursMessage,
+        mediaReplyEnabled,
+        mediaReplyMessage,
+        excludedJids,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al consultar la configuración de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/whatsapp/config/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      if (typeof req.body?.autoReplyEnabled !== 'boolean') {
+        res.status(400).json({ error: 'El campo autoReplyEnabled (booleano) es obligatorio.' });
+        return;
+      }
+
+      const rawBody =
+        req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+          ? (req.body as Record<string, unknown>)
+          : {};
+      const safePassthrough: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rawBody)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        safePassthrough[key] = value;
+      }
+
+      const rawDelay = Number(rawBody.delaySeconds ?? 120);
+      const delaySeconds =
+        Number.isFinite(rawDelay) && rawDelay >= 10 && rawDelay <= 3600 ? Math.round(rawDelay) : 120;
+
+      const rawCooldown = Number(rawBody.cooldownMinutes ?? 0);
+      const cooldownMinutes =
+        Number.isFinite(rawCooldown) && rawCooldown >= 0 && rawCooldown <= 10080
+          ? Math.round(rawCooldown)
+          : 0;
+
+      const businessHoursEnabled =
+        typeof rawBody.businessHoursEnabled === 'boolean' ? rawBody.businessHoursEnabled : false;
+
+      const rawBusinessStart = typeof rawBody.businessStart === 'string' ? rawBody.businessStart.trim() : '';
+      const businessStart = /^\d{2}:\d{2}$/.test(rawBusinessStart) ? rawBusinessStart : '08:00';
+
+      const rawBusinessEnd = typeof rawBody.businessEnd === 'string' ? rawBody.businessEnd.trim() : '';
+      const businessEnd = /^\d{2}:\d{2}$/.test(rawBusinessEnd) ? rawBusinessEnd : '17:00';
+
+      const autoReplyMessage =
+        typeof rawBody.autoReplyMessage === 'string' ? rawBody.autoReplyMessage.trim().slice(0, 2000) : '';
+      const afterHoursMessage =
+        typeof rawBody.afterHoursMessage === 'string' ? rawBody.afterHoursMessage.trim().slice(0, 2000) : '';
+      const mediaReplyEnabled =
+        typeof rawBody.mediaReplyEnabled === 'boolean' ? rawBody.mediaReplyEnabled : false;
+      const mediaReplyMessage =
+        typeof rawBody.mediaReplyMessage === 'string' ? rawBody.mediaReplyMessage.trim().slice(0, 2000) : '';
+
+      const forwardPayload: Record<string, unknown> = {
+        ...safePassthrough,
+        autoReplyEnabled: rawBody.autoReplyEnabled,
+        delaySeconds,
+        cooldownMinutes,
+        businessHoursEnabled,
+        businessStart,
+        businessEnd,
+        autoReplyMessage,
+        afterHoursMessage,
+        mediaReplyEnabled,
+        mediaReplyMessage,
+      };
+
+      const data = await callWhatsAppEngine(
+        `/config/${encodeURIComponent(workspaceId)}`,
+        'POST',
+        forwardPayload
+      );
+
+      res.json({
+        ok: true,
+        autoReplyEnabled:
+          typeof data?.autoReplyEnabled === 'boolean' ? data.autoReplyEnabled : rawBody.autoReplyEnabled,
+        delaySeconds: typeof data?.delaySeconds === 'number' ? data.delaySeconds : delaySeconds,
+        cooldownMinutes:
+          typeof data?.cooldownMinutes === 'number' ? data.cooldownMinutes : cooldownMinutes,
+        businessHoursEnabled:
+          typeof data?.businessHoursEnabled === 'boolean'
+            ? data.businessHoursEnabled
+            : businessHoursEnabled,
+        businessStart: typeof data?.businessStart === 'string' ? data.businessStart : businessStart,
+        businessEnd: typeof data?.businessEnd === 'string' ? data.businessEnd : businessEnd,
+        autoReplyMessage:
+          typeof data?.autoReplyMessage === 'string' ? data.autoReplyMessage : autoReplyMessage,
+        afterHoursMessage:
+          typeof data?.afterHoursMessage === 'string' ? data.afterHoursMessage : afterHoursMessage,
+        mediaReplyEnabled:
+          typeof data?.mediaReplyEnabled === 'boolean' ? data.mediaReplyEnabled : mediaReplyEnabled,
+        mediaReplyMessage:
+          typeof data?.mediaReplyMessage === 'string' ? data.mediaReplyMessage : mediaReplyMessage,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al guardar la configuración de WhatsApp.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/whatsapp/mute/:workspaceId', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const workspaceId = typeof req.params?.workspaceId === 'string' ? req.params.workspaceId.trim() : '';
+      if (!WORKSPACE_ID_REGEX.test(workspaceId)) {
+        res.status(400).json({ error: 'workspaceId inválido o requerido.' });
+        return;
+      }
+
+      const jid = typeof req.body?.jid === 'string' ? req.body.jid.trim().slice(0, 140) : '';
+      if (!jid) {
+        res.status(400).json({ error: 'El campo jid es obligatorio.' });
+        return;
+      }
+
+      if (typeof req.body?.muted !== 'boolean') {
+        res.status(400).json({ error: 'El campo muted (booleano) es obligatorio.' });
+        return;
+      }
+
+      const data = await callWhatsAppEngine(`/mute/${encodeURIComponent(workspaceId)}`, 'POST', {
+        jid,
+        muted: req.body.muted,
+      });
+
+      const rawExcluded = Array.isArray(data?.excludedJids)
+        ? data.excludedJids
+        : Array.isArray(data?.config?.excludedJids)
+          ? data.config.excludedJids
+          : [];
+      const excludedJids = rawExcluded.filter(
+        (item: unknown): item is string => typeof item === 'string' && item.trim().length > 0
+      );
+
+      res.json({
+        ok: true,
+        excludedJids,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      const message = err instanceof Error ? err.message : 'Error al actualizar el estado del chat personal.';
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/whatsapp/analyze', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const pushName = typeof req.body?.pushName === 'string' ? req.body.pushName.trim().slice(0, 200) : '';
+      const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim().slice(0, 40) : '';
+
+      interface RawAnalyzeMessage {
+        text?: unknown;
+        mediaType?: unknown;
+        mimetype?: unknown;
+        mediaBase64?: unknown;
+        timestamp?: unknown;
+      }
+
+      const rawMessagesInput: RawAnalyzeMessage[] = Array.isArray(req.body?.messages) && req.body.messages.length > 0
+        ? req.body.messages
+        : [
+            {
+              text: req.body?.text,
+              mediaType: req.body?.mediaType,
+              mimetype: req.body?.mimetype,
+              mediaBase64: req.body?.mediaBase64,
+              timestamp: req.body?.timestamp,
+            },
+          ];
+
+      const parseMsgTs = (ts: unknown, fallbackIndex: number): number => {
+        if (typeof ts === 'number' && Number.isFinite(ts)) {
+          return ts < 1_000_000_000_000 ? ts * 1000 : ts;
+        }
+        if (typeof ts === 'string' && ts.trim()) {
+          const n = Number(ts);
+          if (Number.isFinite(n) && n > 0) return n < 1_000_000_000_000 ? n * 1000 : n;
+          const p = Date.parse(ts);
+          if (Number.isFinite(p)) return p;
+        }
+        return fallbackIndex;
+      };
+
+      const sortedMessages = rawMessagesInput
+        .slice(0, 40)
+        .map((m, idx) => ({
+          raw: m && typeof m === 'object' ? m : {},
+          idx,
+          ts: parseMsgTs((m as RawAnalyzeMessage)?.timestamp, idx),
+        }))
+        .sort((a, b) => (a.ts !== b.ts ? a.ts - b.ts : a.idx - b.idx));
+
+      const textLines: string[] = [];
+      const mediaParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+      const MAX_MEDIA_PARTS = 12;
+
+      for (const entry of sortedMessages) {
+        const msgObj = entry.raw;
+        const msgText = typeof msgObj.text === 'string' ? msgObj.text.trim().slice(0, 8000) : '';
+        const msgMediaType = typeof msgObj.mediaType === 'string' ? msgObj.mediaType.trim().slice(0, 64) : '';
+        const rawMediaBase64 = typeof msgObj.mediaBase64 === 'string' ? msgObj.mediaBase64 : '';
+        const mediaBase64 = rawMediaBase64 ? cleanBase64Payload(rawMediaBase64) : '';
+        const resolvedMime = mediaBase64
+          ? normalizeAnalyzeMime(msgObj.mimetype, msgMediaType, rawMediaBase64)
+          : '';
+
+        if (mediaBase64 && (!resolvedMime || !WHATSAPP_ANALYZE_ALLOWED_MIME_TYPES.has(resolvedMime))) {
+          continue;
+        }
+
+        const timeLabel =
+          entry.ts > 1_000_000_000
+            ? new Date(entry.ts).toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' })
+            : `#${entry.idx + 1}`;
+
+        let attachmentTag = '';
+        if (mediaBase64 && resolvedMime && mediaParts.length < MAX_MEDIA_PARTS) {
+          mediaParts.push({
+            inlineData: {
+              mimeType: resolvedMime,
+              data: mediaBase64,
+            },
+          });
+          const labelTipo = resolvedMime.startsWith('image/')
+            ? 'Imagen'
+            : resolvedMime.startsWith('audio/')
+              ? 'Audio / Nota de voz'
+              : 'Documento PDF';
+          attachmentTag = ` [Adjunto #${mediaParts.length}: ${labelTipo}]`;
+        }
+
+        if (msgText || attachmentTag) {
+          textLines.push(`[${timeLabel}]${attachmentTag} ${msgText || '(sin texto adicional)'}`.trim());
+        }
+      }
+
+      if (textLines.length === 0 && mediaParts.length === 0) {
+        res.status(400).json({
+          error: 'La conversación no contiene texto ni archivos multimedia válidos para analizar.',
+        });
+        return;
+      }
+
+      const ai = getGenAI();
+
+      const promptContext = [
+        'Analiza en conjunto toda la conversación entrante de WhatsApp de un mismo cliente (mensajes en orden cronológico + todas las imágenes, PDFs y notas de voz adjuntas).',
+        '',
+        `Cliente / Contacto: ${pushName || 'Sin nombre visible'} | Teléfono: ${phone || 'No informado'} | Mensajes analizados: ${sortedMessages.length} | Adjuntos multimedia: ${mediaParts.length}`,
+        '',
+        'HISTORIAL CRONOLÓGICO DE MENSAJES:',
+        textLines.length > 0 ? textLines.join('\n') : '(Solo archivos adjuntos sin texto)',
+        '',
+        'INSTRUCCIONES DE EXTRACCIÓN NOTARIAL (PARAGUAY):',
+        '- Unifica la información de todos los mensajes y documentos adjuntos (ej. fotos de Cédula de Identidad paraguaya frente/dorso, constancia RUC/DNIT, títulos, audios, condiciones enviadas por texto).',
+        '- Identifica el trámite o documento notarial solicitado (ej. Contrato Privado de Alquiler, Compraventa de Inmueble, Transferencia de Automotor, Poder Especial, Pagaré, Certificación de Firmas, etc.).',
+        '- En "partes", lista TODAS las personas físicas o jurídicas identificadas (ej. Locadora, Locatario, Vendedor, Comprador, Deudor, Acreedor, Cliente) con su rol, nombreCompleto, documento (C.I. o RUC con DV) y direccion si figura (si algún dato no figura, devuelve cadena vacía "" o null).',
+        '- En "datosClave", enumera cada dato clave de la operación en formato claro "Etiqueta: Valor" (ej. "Monto: Gs. 3.500.000", "Ubicación: Barrio Villa Morra, Asunción", "Fecha inicio: 01/12/2026", "Plazo: 12 meses").',
+        '- En "respuestaSugerida", redacta una respuesta cordial, formal y profesional de la escribanía confirmando la recepción de todos los datos/documentos e indicando el siguiente paso.',
+        '- Responde ÚNICAMENTE con un objeto JSON válido sin bloques de código markdown.',
+      ].join('\n');
+
+      const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+        { text: promptContext },
+        ...mediaParts,
+      ];
+
+      let rawOutput = '';
+      let lastModelError: unknown = null;
+
+      for (const model of COMPATIBLE_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts }],
+            config: {
+              systemInstruction:
+                'Eres O.L.G.A., asistente jurídica experta de una Escribanía Pública en la República del Paraguay. Extrae datos notariales y responde únicamente en formato JSON válido sin bloques markdown.',
+              responseMimeType: 'application/json',
+              maxOutputTokens: 4096,
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  resumen: {
+                    type: Type.STRING,
+                    description: 'Resumen unificado de toda la conversación y condiciones del trámite.',
+                  },
+                  tramite: {
+                    type: Type.STRING,
+                    description: 'Tipo de documento o trámite solicitado (ej. Contrato Privado de Alquiler).',
+                  },
+                  partes: {
+                    type: Type.ARRAY,
+                    description: 'Lista de personas o entidades involucradas detectadas en la conversación y adjuntos.',
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        rol: {
+                          type: Type.STRING,
+                          description: 'Rol en el trámite (ej. Locadora, Locatario, Comprador, Vendedor, Cliente).',
+                        },
+                        nombreCompleto: {
+                          type: Type.STRING,
+                          description: 'Nombre y apellido completo o razón social, o cadena vacía si no figura.',
+                        },
+                        documento: {
+                          type: Type.STRING,
+                          description: 'Número de C.I. o RUC paraguayo, o cadena vacía si no figura.',
+                        },
+                        direccion: {
+                          type: Type.STRING,
+                          description: 'Dirección o domicilio detectado, o cadena vacía si no figura.',
+                        },
+                      },
+                      required: ['rol', 'nombreCompleto', 'documento', 'direccion'],
+                    },
+                  },
+                  datosClave: {
+                    type: Type.ARRAY,
+                    description: 'Lista de condiciones o datos clave del trámite (ej. "Monto: ...", "Ubicación: ...", "Fecha inicio: ...").',
+                    items: {
+                      type: Type.STRING,
+                    },
+                  },
+                  respuestaSugerida: {
+                    type: Type.STRING,
+                    description: 'Respuesta cordial y profesional de la escribanía confirmando recepción de todos los datos.',
+                  },
+                },
+                required: ['resumen', 'tramite', 'partes', 'datosClave', 'respuestaSugerida'],
+              },
+              ...(model === 'gemini-4-hydrogen'
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                : {}),
+            },
+          });
+
+          if (response?.text && response.text.trim()) {
+            rawOutput = response.text.trim();
+            break;
+          }
+        } catch (modelErr: unknown) {
+          lastModelError = modelErr;
+          console.error(`[WA Analyze Error] Fallo con modelo '${model}':`, modelErr);
+        }
+      }
+
+      if (!rawOutput) {
+        if (lastModelError) {
+          throw lastModelError;
+        }
+        throw new Error('La respuesta de Gemini estuvo vacía.');
+      }
+
+      const cleanedJson = rawOutput
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(cleanedJson);
+      } catch (parseErr) {
+        console.error('[WA Analyze Error] Respuesta JSON inválida de Gemini:', cleanedJson, parseErr);
+        throw new Error(`No se pudo interpretar el JSON de Gemini: ${(parseErr as Error)?.message || parseErr}`);
+      }
+
+      const rawPartes = Array.isArray(parsed.partes) ? parsed.partes : [];
+      const partes = rawPartes
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map((item) => ({
+          rol:
+            typeof item.rol === 'string' && item.rol.trim()
+              ? item.rol.trim()
+              : 'Cliente / Interviniente',
+          nombreCompleto: sanitizeNullableString(item.nombreCompleto),
+          documento: sanitizeNullableString(item.documento),
+          direccion: sanitizeNullableString(item.direccion),
+        }))
+        .filter((p) => p.nombreCompleto || p.documento || p.direccion);
+
+      const datosClave = Array.isArray(parsed.datosClave)
+        ? parsed.datosClave
+            .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+            .map((d) => d.trim())
+        : [];
+
+      const analysis = {
+        resumen:
+          typeof parsed.resumen === 'string' && parsed.resumen.trim()
+            ? parsed.resumen.trim()
+            : 'Conversación analizada correctamente.',
+        tramite:
+          typeof parsed.tramite === 'string' && parsed.tramite.trim()
+            ? parsed.tramite.trim()
+            : 'Consulta notarial',
+        partes,
+        datosClave,
+        respuestaSugerida:
+          typeof parsed.respuestaSugerida === 'string' && parsed.respuestaSugerida.trim()
+            ? parsed.respuestaSugerida.trim()
+            : '¡Hola! Recibimos todos tus mensajes y documentos en la Escribanía. En breve te confirmamos los detalles para avanzar con tu trámite.',
+      };
+
+      res.json({ ok: true, ...analysis, analysis });
+    } catch (err: any) {
+      console.error('[WA Analyze Error]:', err);
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: err?.message || 'Error analizando conversación' });
+    }
+  });
+
+  app.post('/api/whatsapp/generate-contract', verifyApiAuth, async (req: Request, res: Response) => {
+    try {
+      const tramite = typeof req.body?.tramite === 'string' ? req.body.tramite.trim().slice(0, 300) : '';
+      const resumen = typeof req.body?.resumen === 'string' ? req.body.resumen.trim().slice(0, 8000) : '';
+
+      if (!tramite && !resumen) {
+        res.status(400).json({ error: 'Se requiere el trámite o resumen del análisis para redactar el documento.' });
+        return;
+      }
+
+      const rawPartes = Array.isArray(req.body?.partes) ? req.body.partes.slice(0, 20) : [];
+      const partesText = rawPartes
+        .filter((p: unknown): p is Record<string, unknown> => Boolean(p && typeof p === 'object'))
+        .map((p, idx) => {
+          const rol = typeof p.rol === 'string' && p.rol.trim() ? p.rol.trim() : `Parte ${idx + 1}`;
+          const nombre = typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim() ? p.nombreCompleto.trim() : 'No especificado';
+          const doc = typeof p.documento === 'string' && p.documento.trim() ? p.documento.trim() : 'No especificado';
+          const dir = typeof p.direccion === 'string' && p.direccion.trim() ? p.direccion.trim() : 'No especificada';
+          return `- ${rol}: ${nombre} | C.I./RUC: ${doc} | Dirección: ${dir}`;
+        })
+        .join('\n');
+
+      const rawDatosClave = Array.isArray(req.body?.datosClave) ? req.body.datosClave.slice(0, 30) : [];
+      const datosClaveText = rawDatosClave
+        .filter((d: unknown): d is string => typeof d === 'string' && d.trim().length > 0)
+        .map((d) => `- ${d.trim()}`)
+        .join('\n');
+
+      const escObj = req.body?.escribania && typeof req.body.escribania === 'object' ? req.body.escribania : {};
+      const escNombre = typeof escObj.nombre === 'string' && escObj.nombre.trim() ? escObj.nombre.trim() : 'Escribanía Pública';
+      const escRegistro = typeof escObj.registro === 'string' && escObj.registro.trim() ? escObj.registro.trim() : '';
+      const escDireccion = typeof escObj.direccion === 'string' && escObj.direccion.trim() ? escObj.direccion.trim() : '';
+
+      const hoyEs = new Date().toLocaleDateString('es-PY', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+
+      const ai = getGenAI();
+
+      const prompt = [
+        'Redacta el instrumento legal/notarial COMPLETO, EXTENSO y listo para firmar (extensión equivalente a ~2 páginas A4, entre 850 y 1.400 palabras), con máximo rigor jurídico conforme al Código Civil de la República del Paraguay (Ley N° 1.183/85) y leyes concordantes. ESTÁ PROHIBIDO entregar resúmenes o borradores cortos.',
+        '',
+        `TRÁMITE DETECTADO: ${tramite || 'Contrato Privado'}`,
+        `RESUMEN DEL CASO: ${resumen || 'Sin resumen adicional'}`,
+        `FECHA DE REFERENCIA: ${hoyEs}`,
+        `ESCRIBANÍA INTERVINIENTE: ${escNombre}${escRegistro ? ` (Registro N° ${escRegistro})` : ''}${escDireccion ? ` - ${escDireccion}` : ''}`,
+        '',
+        'PARTES INTERVINIENTES EXTRAÍDAS:',
+        partesText || '- (Sin partes estructuradas; incluir marcadores claros [completar] donde falten datos)',
+        '',
+        'DATOS CLAVE Y CONDICIONES DE LA OPERACIÓN:',
+        datosClaveText || '- (Usar los datos mencionados en el resumen)',
+        '',
+        'REQUISITOS OBLIGATORIOS DE CONTENIDO JURÍDICO (~2 PÁGINAS A4):',
+        '1. En "titulo", devuelve un título breve y formal (ej. "Contrato Privado de Locación de Inmueble", "Contrato Privado de Compraventa").',
+        '2. En "categoria", clasifica EXACTAMENTE con una de estas opciones: "Alquiler", "Compraventa", "Traspasos", "Pagarés", "Contratos Privados".',
+        '3. Desarrolla el encabezado de comparecencia completo (ciudad/país, fecha, nombres completos, nacionalidad/capacidad legal, C.I. Nº / RUC, domicilios reales y el carácter con que comparece cada parte; usa únicamente los datos proporcionados y coloca [completar] solo si un dato puntual no figura).',
+        '4. Desarrolla entre 9 y 12 CLÁUSULAS COMPLETAS, NUMERADAS EN MAYÚSCULAS Y BIEN FUNDAMENTADAS según el tipo de acto:',
+        '   - Para contratos de locación/alquiler: PRIMERA: OBJETO E INDIVIDUALIZACIÓN, SEGUNDA: DESTINO, TERCERA: PLAZO DE DURACIÓN, CUARTA: PRECIO Y FORMA DE PAGO (monto en números y letras), QUINTA: GARANTÍA / DEPÓSITO (respetando expresamente si las partes pactaron sin garantía o depósito), SEXTA: SERVICIOS PÚBLICOS E IMPUESTOS, SÉPTIMA: ESTADO DE CONSERVACIÓN Y MEJORAS, OCTAVA: PROHIBICIÓN DE SUBLOCACIÓN Y CESIÓN, NOVENA: MORA, INCUMPLIMIENTO Y RESCISIÓN, DÉCIMA: JURISDICCIÓN Y DOMICILIOS ESPECIALES (y cláusulas adicionales pertinentes como entrega de llaves o inventario).',
+        '   - Para compraventas, traspasos u otros contratos: desarrolla igualmente entre 9 y 12 cláusulas equivalentes (Objeto, Precio y forma de pago, Entrega de posesión/tradición, Evicción y vicios redhibitorios, Gastos e impuestos, Mora automática, Rescisión, Domicilios especiales, Jurisdicción ordinaria paraguaya, etc.).',
+        '5. Termina el cuerpo con un párrafo independiente de cierre: "En prueba de conformidad y aceptación, las partes suscriben el presente instrumento en dos ejemplares de un mismo tenor y a un solo efecto, en el lugar y fecha arriba indicados."',
+        '',
+        'REGLAS ESTRICTAS DE FORMATO Y PÁRRAFOS (MUY IMPORTANTE):',
+        '- Entrega ÚNICAMENTE texto plano limpio (PROHIBIDO usar markdown, asteriscos *, almohadillas #, negritas **, comillas invertidas ` ni etiquetas HTML como <br> o <p>).',
+        '- PROHIBIDO texto corrido en un solo bloque: separa OBLIGATORIAMENTE con DOBLE SALTO DE LÍNEA (\\n\\n) entre:',
+        '  * El título en mayúsculas (en la primera línea).',
+        '  * El párrafo de comparecencia.',
+        '  * CADA UNA de las cláusulas (PRIMERA:, SEGUNDA:, TERCERA:, etc. SIEMPRE debe comenzar en un párrafo nuevo precedido por \\n\\n).',
+        '  * El párrafo de cierre ("En prueba de conformidad...").',
+        '- BLOQUE DE FIRMAS: NO pegues las firmas en la misma línea del cierre. Separa el bloque de firmas del cierre con AL MENOS 3 SALTOS DE LÍNEA (\\n\\n\\n), y deja también \\n\\n\\n arriba de cada firmante para que exista espacio generoso para la firma manuscrita, siguiendo EXACTAMENTE este esquema:',
+        '',
+        '',
+        '____________________________________',
+        'NOMBRE COMPLETO DE LA PARTE 1',
+        'C.I. Nº X.XXX.XXX',
+        'LA LOCADORA (o carácter correspondiente)',
+        '',
+        '',
+        '____________________________________',
+        'NOMBRE COMPLETO DE LA PARTE 2',
+        'C.I. Nº X.XXX.XXX',
+        'EL LOCATARIO (o carácter correspondiente)',
+      ].join('\n');
+
+      let rawOutput = '';
+      let lastModelError: unknown = null;
+
+      for (const model of COMPATIBLE_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+              systemInstruction:
+                'Eres O.L.G.A., escribana pública y abogada especialista en derecho civil y notarial de la República del Paraguay. Redactas contratos e instrumentos legales completos (~2 páginas A4, 9 a 12 cláusulas desarrolladas), con separación estricta de párrafos mediante doble salto de línea (\\n\\n) y bloque de firmas separado al pie (\\n\\n\\n), en texto plano sin markdown. Responde únicamente JSON válido.',
+              responseMimeType: 'application/json',
+              maxOutputTokens: 8192,
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  titulo: {
+                    type: Type.STRING,
+                    description: 'Título formal del documento.',
+                  },
+                  categoria: {
+                    type: Type.STRING,
+                    description: "Exactamente una de: 'Alquiler', 'Compraventa', 'Traspasos', 'Pagarés', 'Contratos Privados'.",
+                  },
+                  texto: {
+                    type: Type.STRING,
+                    description: 'Cuerpo completo (~2 páginas A4, 9-12 cláusulas) en texto plano con \\n\\n entre cada cláusula y párrafo, y bloque de firmas al pie separado con \\n\\n\\n.',
+                  },
+                },
+                required: ['titulo', 'categoria', 'texto'],
+              },
+              ...(model === 'gemini-4-hydrogen'
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                : {}),
+            },
+          });
+
+          if (response?.text && response.text.trim()) {
+            rawOutput = response.text.trim();
+            break;
+          }
+        } catch (modelErr: unknown) {
+          lastModelError = modelErr;
+          console.error(`[WA Generate Contract Error] Fallo con modelo '${model}':`, modelErr);
+        }
+      }
+
+      if (!rawOutput) {
+        if (lastModelError) throw lastModelError;
+        throw new Error('La respuesta de Gemini al redactar el contrato estuvo vacía.');
+      }
+
+      const cleanedJson = rawOutput
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(cleanedJson);
+      } catch (parseErr) {
+        console.error('[WA Generate Contract Error] JSON inválido:', cleanedJson, parseErr);
+        throw new Error(`No se pudo interpretar el JSON del contrato: ${(parseErr as Error)?.message || parseErr}`);
+      }
+
+      const ALLOWED_CATEGORIES = new Set([
+        'Alquiler',
+        'Compraventa',
+        'Traspasos',
+        'Pagarés',
+        'Contratos Privados',
+      ]);
+
+      const rawCat = typeof parsed.categoria === 'string' ? parsed.categoria.trim() : '';
+      let categoria = 'Contratos Privados';
+      if (ALLOWED_CATEGORIES.has(rawCat)) {
+        categoria = rawCat;
+      } else {
+        const lower = `${rawCat} ${tramite}`.toLowerCase();
+        if (lower.includes('alquiler') || lower.includes('locaci') || lower.includes('arrendam')) {
+          categoria = 'Alquiler';
+        } else if (lower.includes('compraventa') || lower.includes('compra') || lower.includes('venta')) {
+          categoria = 'Compraventa';
+        } else if (lower.includes('traspaso') || lower.includes('transferen')) {
+          categoria = 'Traspasos';
+        } else if (lower.includes('pagar')) {
+          categoria = 'Pagarés';
+        }
+      }
+
+      const titulo =
+        (typeof parsed.titulo === 'string' && parsed.titulo.trim()) ||
+        tramite ||
+        'Contrato Privado';
+
+      const normalizeGeneratedContractText = (input: string): string => {
+        let txt = input
+          .replace(/\r\n/g, '\n')
+          .replace(/```[\w-]*\n?/g, '')
+          .replace(/^#{1,6}\s+/gm, '')
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*\*/g, '')
+          .replace(/(^|[^\w*])\*([^*\n]+)\*(?=[^\w*]|$)/g, '$1$2')
+          .replace(/<\/?(?:br|p|div|b|strong|i|em|u)[^>]*>/gi, '')
+          .trim();
+
+        if (!txt) return '';
+
+        // 1. Garantizar doble salto de línea (\n\n) después del título en mayúsculas si viene con salto simple
+        txt = txt.replace(/^([^\n]{4,140})\n(?!\n)/, '$1\n\n');
+
+        // 2. Garantizar \n\n antes de cada cláusula numerada (PRIMERA:, SEGUNDA:, ..., DUODÉCIMA:)
+        txt = txt.replace(
+          /([^\n])\s*(?:\n\s*)?((?:CLÁUSULA\s+)?(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[ÉE]PTIMA|OCTAVA|NOVENA|D[ÉE]CIMA(?:\s+(?:PRIMERA|SEGUNDA|TERCERA))?|UND[ÉE]CIMA|DUOD[ÉE]CIMA|DECIMOPRIMERA|DECIMOSEGUNDA)\s*[:.\-–])/g,
+          '$1\n\n$2'
+        );
+        // También si ya tenía un solo \n al principio de línea antes de PRIMERA:, SEGUNDA:, etc., elevarlo a \n\n
+        txt = txt.replace(
+          /([^\n])\n((?:CLÁUSULA\s+)?(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[ÉE]PTIMA|OCTAVA|NOVENA|D[ÉE]CIMA(?:\s+(?:PRIMERA|SEGUNDA|TERCERA))?|UND[ÉE]CIMA|DUOD[ÉE]CIMA|DECIMOPRIMERA|DECIMOSEGUNDA)\s*[:.\-–])/g,
+          '$1\n\n$2'
+        );
+
+        // 3. Garantizar \n\n antes de "En prueba de conformidad"
+        txt = txt.replace(
+          /([^\n])\s*(?:\n\s*)?(En prueba de conformidad|EN PRUEBA DE CONFORMIDAD)/g,
+          '$1\n\n$2'
+        );
+        txt = txt.replace(
+          /([^\n])\n(En prueba de conformidad|EN PRUEBA DE CONFORMIDAD)/g,
+          '$1\n\n$2'
+        );
+
+        // 4. Garantizar separación generosa (\n\n\n) antes de cada línea de firma (______...)
+        txt = txt.replace(/\s*(_{6,})\s*/g, '\n\n\n____________________________________\n');
+
+        // Limpiar exceso de saltos de línea (>3) preservando \n\n\n antes de firmas
+        txt = txt.replace(/\n{4,}/g, '\n\n\n').trim();
+
+        return txt;
+      };
+
+      const rawTexto = typeof parsed.texto === 'string' ? parsed.texto : '';
+      const texto = normalizeGeneratedContractText(rawTexto);
+
+      if (!texto) {
+        throw new Error('Gemini devolvió un borrador de documento vacío.');
+      }
+
+      res.json({ ok: true, titulo, categoria, texto });
+    } catch (err: any) {
+      console.error('[WA Generate Contract Error]:', err);
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: err?.message || 'Error redactando el documento legal con IA' });
     }
   });
 
