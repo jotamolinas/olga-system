@@ -62,7 +62,7 @@ export interface AdminTramiteRecord {
 
 // Chat & AI
 import { sendMessageToOlga } from './services/gemini';
-import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, setDoc, getDoc, getDocs, collection, query, where, onSnapshot, or, serverTimestamp, Timestamp, arrayUnion } from 'firebase/firestore';
 import { db, auth } from './services/auth';
 import ReactMarkdown from 'react-markdown';
 
@@ -104,7 +104,9 @@ import {
   User as UserIcon, LogOut,
   AlertTriangle, LifeBuoy , Award, Download, HelpCircle,
   Stamp,
-  Loader2
+  Loader2,
+  Megaphone,
+  Wrench
 } from 'lucide-react';
 
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
@@ -440,6 +442,197 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
     return () => unsubscribe(); // Limpieza estricta de memoria
   }, [workspaceId]); // Dependencia única
+
+  // Aviso Global de Plataforma (system_config/global_announcement)
+  const [globalAnnouncement, setGlobalAnnouncement] = useState<{
+    active: boolean;
+    announcementId: string;
+    title: string;
+    message: string;
+    type: 'novedad' | 'mantenimiento' | 'promocion';
+    targetSegment: 'all' | 'active' | 'trial' | 'expired' | 'cortesia';
+    versionKey: string;
+  } | null>(null);
+
+  const [dismissedAnnouncementKey, setDismissedAnnouncementKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('olga_dismissed_announcement_version') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setGlobalAnnouncement(null);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'system_config', 'global_announcement'),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setGlobalAnnouncement((prev) => (prev === null ? prev : null));
+          return;
+        }
+        const data = snapshot.data() as any;
+        if (!data?.active) {
+          setGlobalAnnouncement((prev) => (prev === null ? prev : null));
+          return;
+        }
+
+        const updatedAtMs =
+          typeof data.updatedAt?.toMillis === 'function'
+            ? data.updatedAt.toMillis()
+            : typeof data.updatedAt?.seconds === 'number'
+              ? data.updatedAt.seconds * 1000
+              : typeof data.updatedAt === 'number'
+                ? data.updatedAt
+                : 0;
+
+        const title = String(data.title || '').trim();
+        const message = String(data.message || '').trim();
+        const announcementId =
+          String(data.announcementId || '').trim() ||
+          (updatedAtMs ? String(updatedAtMs) : `${title}::${message}`);
+        const versionKey = announcementId;
+
+        const type: 'novedad' | 'mantenimiento' | 'promocion' =
+          data.type === 'mantenimiento' || data.type === 'promocion' ? data.type : 'novedad';
+
+        const targetSegment: 'all' | 'active' | 'trial' | 'expired' | 'cortesia' =
+          ['all', 'active', 'trial', 'expired', 'cortesia'].includes(String(data.targetSegment))
+            ? data.targetSegment
+            : 'all';
+
+        setGlobalAnnouncement((prev) => {
+          if (
+            prev &&
+            prev.active &&
+            prev.announcementId === announcementId &&
+            prev.title === title &&
+            prev.message === message &&
+            prev.type === type &&
+            prev.targetSegment === targetSegment &&
+            prev.versionKey === versionKey
+          ) {
+            return prev;
+          }
+          return {
+            active: true,
+            announcementId,
+            title,
+            message,
+            type,
+            targetSegment,
+            versionKey,
+          };
+        });
+      },
+      (error) => {
+        console.error('Error al escuchar aviso global de plataforma:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
+
+  const shouldShowGlobalAnnouncement = (() => {
+    if (!globalAnnouncement || !globalAnnouncement.active) return false;
+    if (!globalAnnouncement.title && !globalAnnouncement.message) return false;
+    if (dismissedAnnouncementKey === globalAnnouncement.versionKey) return false;
+    try {
+      if (localStorage.getItem('olga_dismissed_announcement_version') === globalAnnouncement.versionKey) {
+        return false;
+      }
+    } catch {}
+
+    const emailStr = String(currentUser?.email || userProfile?.email || userData?.email || '').toLowerCase();
+    let categoriaCuenta = userProfile?.categoriaCuenta || userData?.categoriaCuenta;
+    if (!categoriaCuenta) {
+      if (emailStr.includes('jotamolinas') || emailStr.includes('probit.com.py') || emailStr.includes('olga')) {
+        categoriaCuenta = 'equipo';
+      } else {
+        categoriaCuenta = 'cliente';
+      }
+    }
+
+    switch (globalAnnouncement.targetSegment) {
+      case 'all':
+        return true;
+      case 'cortesia':
+        return categoriaCuenta === 'cortesia' || categoriaCuenta === 'equipo';
+      case 'active':
+        return categoriaCuenta === 'cliente' && tienePlanPago && !isSoftBlocked;
+      case 'trial':
+        return categoriaCuenta === 'cliente' && !tienePlanPago && !isSoftBlocked && pruebaActiva;
+      case 'expired':
+        return isSoftBlocked;
+      default:
+        return true;
+    }
+  })();
+
+  const recordedSeenAnnouncementRef = useRef<Set<string>>(new Set());
+  const currentAnnouncementId = globalAnnouncement?.announcementId || '';
+  const currentUserId = currentUser?.uid || '';
+  const currentViewerName = String(
+    userProfile?.razonSocial ||
+      userProfile?.nombre ||
+      userData?.razonSocial ||
+      userData?.nombre ||
+      currentUser?.displayName ||
+      currentUser?.email?.split('@')[0] ||
+      'Usuario'
+  ).trim();
+  const currentViewerEmail = String(currentUser?.email || userProfile?.email || userData?.email || '').trim();
+
+  useEffect(() => {
+    if (!shouldShowGlobalAnnouncement || !currentAnnouncementId || !currentUserId) return;
+
+    const seenStorageKey = `olga_seen_announcement_${currentAnnouncementId}_${currentUserId}`;
+    if (recordedSeenAnnouncementRef.current.has(seenStorageKey)) return;
+
+    try {
+      if (localStorage.getItem(seenStorageKey) === '1') {
+        recordedSeenAnnouncementRef.current.add(seenStorageKey);
+        return;
+      }
+    } catch {}
+
+    recordedSeenAnnouncementRef.current.add(seenStorageKey);
+
+    updateDoc(doc(db, 'system_config', 'global_announcement'), {
+      vistoPor: arrayUnion({
+        uid: currentUserId,
+        nombre: currentViewerName,
+        email: currentViewerEmail,
+        vistoEn: new Date().toISOString(),
+      }),
+    })
+      .then(() => {
+        try {
+          localStorage.setItem(seenStorageKey, '1');
+        } catch {}
+      })
+      .catch((error) => {
+        console.error('Error registrando lectura de aviso global:', error);
+      });
+  }, [
+    shouldShowGlobalAnnouncement,
+    currentAnnouncementId,
+    currentUserId,
+    currentViewerName,
+    currentViewerEmail,
+  ]);
+
+  const handleDismissGlobalAnnouncement = () => {
+    if (!globalAnnouncement) return;
+    try {
+      localStorage.setItem('olga_dismissed_announcement_version', globalAnnouncement.versionKey);
+    } catch {}
+    setDismissedAnnouncementKey(globalAnnouncement.versionKey);
+  };
   
   // Plan selection and Checkout Modal state
   const [activePlan, setActivePlan] = useState<'ninguno' | 'Intermedio' | 'Pro'>('ninguno');
@@ -1977,6 +2170,78 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             {(() => {
               return (
                 <>
+                  {/* AVISO GLOBAL DE PLATAFORMA (SuperAdmin -> Usuarios segmentados) */}
+                  {shouldShowGlobalAnnouncement && globalAnnouncement && (() => {
+                    const isMantenimiento = globalAnnouncement.type === 'mantenimiento';
+                    const isPromocion = globalAnnouncement.type === 'promocion';
+                    const containerCls = isMantenimiento
+                      ? 'bg-amber-50 border-amber-300 text-amber-950'
+                      : isPromocion
+                        ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-amber-50 border-emerald-300 text-emerald-950'
+                        : 'bg-gradient-to-r from-blue-50 via-indigo-50 to-amber-50/60 border-blue-200 text-slate-900';
+                    const iconBoxCls = isMantenimiento
+                      ? 'bg-amber-100 text-amber-700'
+                      : isPromocion
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-blue-100 text-blue-700';
+                    const badgeCls = isMantenimiento
+                      ? 'bg-amber-200/70 text-amber-900'
+                      : isPromocion
+                        ? 'bg-emerald-200/70 text-emerald-900'
+                        : 'bg-blue-100 text-blue-800';
+                    const badgeLabel = isMantenimiento
+                      ? 'Mantenimiento'
+                      : isPromocion
+                        ? 'Promoción'
+                        : 'Novedad';
+
+                    return (
+                      <div
+                        className={`border rounded-2xl p-4 flex items-start justify-between gap-4 shrink-0 mb-5 shadow-sm print:hidden ${
+                          activeTab === 'monitor' ? 'mx-4 mt-3 mb-2' : activeTab === 'chat' ? 'mx-4 mt-4 md:mx-0 md:mt-0' : ''
+                        } ${containerCls}`}
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${iconBoxCls}`}>
+                            {isMantenimiento ? (
+                              <Wrench className="w-5 h-5" />
+                            ) : isPromocion ? (
+                              <Sparkles className="w-5 h-5" />
+                            ) : (
+                              <Megaphone className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeCls}`}>
+                                {badgeLabel}
+                              </span>
+                              {globalAnnouncement.title && (
+                                <p className="text-sm font-bold leading-snug">
+                                  {globalAnnouncement.title}
+                                </p>
+                              )}
+                            </div>
+                            {globalAnnouncement.message && (
+                              <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line">
+                                {globalAnnouncement.message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDismissGlobalAnnouncement}
+                          className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0 cursor-pointer"
+                          aria-label="Cerrar aviso"
+                          title="Cerrar aviso"
+                        >
+                          <X className="w-4 h-4 opacity-70" />
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   {/* BANNERS UNIFICADOS (Reglas estrictas de 3 estados) */}
 
                   {/* Estado 1 (Softblocked): Si isSoftBlocked es true (sea ex-trial o ex-pago), muestra UNICAMENTE el banner ROJO */}

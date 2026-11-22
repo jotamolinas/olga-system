@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, setDoc, onSnapshot, query, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/auth';
-import { normalizePersona } from '../services/firestore';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
 import { 
   KeyRound, CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
-  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, Database, X
+  MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, X,
+  Megaphone, Copy, Bell, Send, Eye, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -167,144 +167,239 @@ const buildOfertaTemplateContent = (
   }
 };
 
+type CampaignSegment = 'all' | 'active' | 'trial' | 'expired' | 'cortesia';
+type AnnouncementType = 'novedad' | 'mantenimiento' | 'promocion';
+type CenterTab = 'aviso' | 'masiva';
+
+interface AnnouncementViewer {
+  uid: string;
+  nombre: string;
+  email: string;
+  vistoEn: string;
+}
+
+interface GlobalAnnouncementDoc {
+  active: boolean;
+  announcementId?: string;
+  title: string;
+  message: string;
+  type: AnnouncementType;
+  targetSegment: CampaignSegment;
+  vistoPor?: AnnouncementViewer[];
+  updatedAt?: any;
+}
+
+const SEGMENT_OPTIONS: { id: CampaignSegment; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'active', label: 'Clientes Activos' },
+  { id: 'trial', label: 'En Prueba' },
+  { id: 'expired', label: 'Vencidos' },
+  { id: 'cortesia', label: 'Cortesía / Equipo' },
+];
+
+const ANNOUNCEMENT_QUICK_TEMPLATES: {
+  id: string;
+  label: string;
+  type: AnnouncementType;
+  title: string;
+  message: string;
+}[] = [
+  {
+    id: 'nueva_actualizacion',
+    label: 'Nueva actualización disponible',
+    type: 'novedad',
+    title: 'Nueva actualización disponible en O.L.G.A.',
+    message:
+      'Mejoramos la precisión de impresión oficial multipágina y la velocidad de El Oráculo Legal IA para tus contratos y dictámenes notariales.',
+  },
+  {
+    id: 'proximas_novedades',
+    label: 'Próximas novedades en O.L.G.A.',
+    type: 'novedad',
+    title: 'Próximas novedades para tu escribanía',
+    message:
+      'Muy pronto habilitaremos nuevas herramientas de automatización documental y facturación electrónica SIFEN integradas en tu consola.',
+  },
+  {
+    id: 'mantenimiento',
+    label: 'Aviso de mantenimiento',
+    type: 'mantenimiento',
+    title: 'Ventana programada de mantenimiento',
+    message:
+      'Realizaremos tareas de optimización de servidores hoy de 22:00 a 22:20 hs. Tus documentos y pagarés permanecerán resguardados sin interrupciones.',
+  },
+  {
+    id: 'promo_especial',
+    label: 'Promoción especial',
+    type: 'promocion',
+    title: 'Beneficio exclusivo por tiempo limitado',
+    message:
+      'Activa o actualiza a Plan Pro / Empresa / Full esta semana y accede a condiciones preferenciales y soporte prioritario.',
+  },
+];
+
+const MASS_CAMPAIGN_TEMPLATES: {
+  id: string;
+  label: string;
+  asunto: string;
+  mensaje: string;
+}[] = [
+  {
+    id: 'novedades',
+    label: 'Novedades y Actualizaciones',
+    asunto: 'Novedades en O.L.G.A. Notarial — Nuevas mejoras para tu escribanía',
+    mensaje:
+      '¡Hola {nombre}! Te saluda el equipo de O.L.G.A. Notarial.\n\nQueremos contarte que lanzamos nuevas mejoras en El Oráculo Legal IA, impresión multipágina de contratos y gestión de pagarés para agilizar el trabajo diario de tu estudio.\n\nIngresa hoy a tu consola para probar las últimas funciones.\n\nSoporte O.L.G.A.: soporte@olgatech.com.py | WhatsApp +595 983 440021',
+  },
+  {
+    id: 'rescate_vencidos',
+    label: 'Rescate de Vencidos',
+    asunto: 'Reactiva tu cuenta en O.L.G.A. con un beneficio especial',
+    mensaje:
+      '¡Hola {nombre}! Te escribimos desde O.L.G.A. Notarial.\n\nVimos que tu período de acceso finalizó y queremos invitarte a reactivar tu cuenta con un descuento especial en el primer mes o una extensión breve de cortesía para que retomes tus escritos y pagarés.\n\nRespondenos por este medio y lo activamos al instante.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
+  },
+  {
+    id: 'cierre_prueba',
+    label: 'Cierre de Prueba',
+    asunto: 'Últimos días de prueba en O.L.G.A. — Activa tu plan con beneficio',
+    mensaje:
+      '¡Hola {nombre}! Esperamos que estés aprovechando tu prueba gratuita en O.L.G.A. Notarial.\n\nAntes de que termine tu evaluación, queremos ofrecerte un beneficio de bienvenida para activar Plan Básico o Plan Pro hoy mismo y conservar toda tu gestión sin pausas.\n\nEscribinos y te pasamos los datos de activación.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
+  },
+  {
+    id: 'promo_upgrade',
+    label: 'Promo Upgrade',
+    asunto: 'Desbloquea El Oráculo IA, Lienzo Notarial y Presupuestos en O.L.G.A.',
+    mensaje:
+      '¡Hola {nombre}! Gracias por formar parte de O.L.G.A. Notarial.\n\nTenemos una promoción exclusiva de upgrade al Plan Empresa / Plan Full para que desbloquees El Oráculo Legal IA, el Lienzo Notarial Oficial y el módulo de Presupuestos con condición preferencial.\n\nAvísanos si querés que actualicemos tu plan hoy.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
+  },
+];
+
 export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0, clientesCount: 0, equipoCortesiaCount: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
-  const [migratingPersonas, setMigratingPersonas] = useState(false);
-  const [migrationSummary, setMigrationSummary] = useState<{
-    migrados: number;
-    normalizados: number;
-    totalOrigen: number;
-    totalDestino: number;
-    errores: string[];
-  } | null>(null);
 
-  const handleMigrarYUnificarFichero = async () => {
-    if (migratingPersonas) return;
-    setMigratingPersonas(true);
-    setMigrationSummary(null);
+  // Centro de Avisos & Campañas Masivas state
+  const [centerModalOpen, setCenterModalOpen] = useState(false);
+  const [centerTab, setCenterTab] = useState<CenterTab>('aviso');
+  const [campaignSegment, setCampaignSegment] = useState<CampaignSegment>('all');
+  const [announcementType, setAnnouncementType] = useState<AnnouncementType>('novedad');
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementMessage, setAnnouncementMessage] = useState('');
+  const [publishingAnnouncement, setPublishingAnnouncement] = useState(false);
+  const [announcementFeedback, setAnnouncementFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [floatingToast, setFloatingToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState<GlobalAnnouncementDoc | null>(null);
+  const [showViewersList, setShowViewersList] = useState(false);
+  const [campaignSubject, setCampaignSubject] = useState(MASS_CAMPAIGN_TEMPLATES[0].asunto);
+  const [campaignBody, setCampaignBody] = useState(MASS_CAMPAIGN_TEMPLATES[0].mensaje);
+  const [emailsCopiedCount, setEmailsCopiedCount] = useState<number | null>(null);
+  const [sentWhatsappIds, setSentWhatsappIds] = useState<string[]>([]);
+  const centerModalOpenRef = useRef(false);
+  centerModalOpenRef.current = centerModalOpen;
 
-    const errores: string[] = [];
-    let migrados = 0;
-    let normalizados = 0;
+  const showToast = (kind: 'ok' | 'err', text: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setFloatingToast({ kind, text });
+    toastTimerRef.current = window.setTimeout(() => {
+      setFloatingToast(null);
+      toastTimerRef.current = null;
+    }, 5000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handlePublicarAviso = async () => {
+    if (!announcementTitle.trim() || !announcementMessage.trim()) {
+      const msg = 'Ingresa un título y un mensaje antes de publicar el aviso.';
+      setAnnouncementFeedback({ kind: 'err', text: msg });
+      showToast('err', msg);
+      return;
+    }
+    setPublishingAnnouncement(true);
+    setAnnouncementFeedback(null);
+    const segmentLabel = SEGMENT_OPTIONS.find((s) => s.id === campaignSegment)?.label || campaignSegment;
+    const targetCount = segmentCounts[campaignSegment] ?? 0;
 
     try {
-      const [snapOrigen, snapDestino] = await Promise.all([
-        getDocs(collection(db, 'personas')),
-        getDocs(collection(db, 'directorio_personas'))
-      ]);
-
-      type BatchOp = { id: string; payload: Record<string, any>; tipo: 'migrado' | 'normalizado' };
-      const ops: BatchOp[] = [];
-      const idsMigrados = new Set<string>();
-
-      snapOrigen.docs.forEach((d) => {
-        const raw = d.data() || {};
-        const norm = normalizePersona(raw, d.id);
-        const ownedByWorkspace = String(raw.ownedByWorkspace ?? raw.userId ?? raw.createdBy ?? raw.creator_id ?? '').trim();
-        const userId = String(raw.userId ?? raw.createdBy ?? raw.ownedByWorkspace ?? raw.creator_id ?? '').trim();
-        const nombreCompleto = norm.nombre_o_razon_social || `${norm.nombre} ${norm.apellido || ''}`.trim();
-
-        idsMigrados.add(d.id);
-        ops.push({
-          id: d.id,
-          tipo: 'migrado',
-          payload: {
-            ...norm,
-            id: d.id,
-            nombre: norm.nombre,
-            apellido: norm.apellido ?? '',
-            nombre_o_razon_social: nombreCompleto,
-            nro_documento: norm.nro_documento,
-            documento_numero: norm.documento_numero || norm.nro_documento,
-            ownedByWorkspace,
-            userId,
-            createdBy: norm.createdBy || userId || ownedByWorkspace,
-            fechaActualizacion: serverTimestamp()
-          }
-        });
+      await setDoc(doc(db, 'system_config', 'global_announcement'), {
+        active: true,
+        announcementId: String(Date.now()),
+        title: announcementTitle.trim(),
+        message: announcementMessage.trim(),
+        type: announcementType,
+        targetSegment: campaignSegment,
+        vistoPor: [],
+        updatedAt: serverTimestamp(),
       });
-
-      snapDestino.docs.forEach((d) => {
-        if (idsMigrados.has(d.id)) return;
-        const raw = d.data() || {};
-        const needsBackfill =
-          !raw.ownedByWorkspace ||
-          !raw.userId ||
-          raw.nombre === undefined ||
-          raw.nombre_o_razon_social === undefined ||
-          raw.documento_numero === undefined ||
-          raw.nro_documento === undefined;
-
-        if (!needsBackfill) return;
-
-        const norm = normalizePersona(raw, d.id);
-        const ownedByWorkspace = String(raw.ownedByWorkspace ?? raw.userId ?? raw.createdBy ?? raw.creator_id ?? '').trim();
-        const userId = String(raw.userId ?? raw.createdBy ?? raw.ownedByWorkspace ?? raw.creator_id ?? '').trim();
-        const nombreCompleto = norm.nombre_o_razon_social || `${norm.nombre} ${norm.apellido || ''}`.trim();
-
-        ops.push({
-          id: d.id,
-          tipo: 'normalizado',
-          payload: {
-            ...norm,
-            id: d.id,
-            nombre: norm.nombre,
-            apellido: norm.apellido ?? '',
-            nombre_o_razon_social: nombreCompleto,
-            nro_documento: norm.nro_documento,
-            documento_numero: norm.documento_numero || norm.nro_documento,
-            ownedByWorkspace,
-            userId,
-            createdBy: norm.createdBy || userId || ownedByWorkspace,
-            fechaActualizacion: serverTimestamp()
-          }
-        });
-      });
-
-      const MAX_BATCH = 400;
-      for (let i = 0; i < ops.length; i += MAX_BATCH) {
-        const chunk = ops.slice(i, i + MAX_BATCH);
-        const batch = writeBatch(db);
-        chunk.forEach((op) => {
-          const ref = doc(db, 'directorio_personas', op.id);
-          batch.set(ref, op.payload, { merge: true });
-        });
-        try {
-          await batch.commit();
-          chunk.forEach((op) => {
-            if (op.tipo === 'migrado') migrados += 1;
-            else normalizados += 1;
-          });
-        } catch (batchErr: any) {
-          console.error('Error en lote de migración:', batchErr);
-          errores.push(batchErr?.message || `Error ejecutando lote ${Math.floor(i / MAX_BATCH) + 1}`);
-        }
-      }
-
-      setMigrationSummary({
-        migrados,
-        normalizados,
-        totalOrigen: snapOrigen.size,
-        totalDestino: snapDestino.size,
-        errores
-      });
+      setShowViewersList(false);
+      const okMsg = `✅ Aviso publicado para ${targetCount} usuarios del segmento ${segmentLabel}`;
+      setAnnouncementFeedback({ kind: 'ok', text: okMsg });
+      showToast('ok', okMsg);
     } catch (err: any) {
-      console.error('Error general en migración de fichero:', err);
-      errores.push(err?.message || 'Error al leer colecciones en Firestore.');
-      setMigrationSummary({
-        migrados,
-        normalizados,
-        totalOrigen: 0,
-        totalDestino: 0,
-        errores
-      });
+      console.error('Error al publicar aviso global:', err);
+      const errMsg = err?.message || 'No se pudo publicar el aviso en Firestore.';
+      setAnnouncementFeedback({ kind: 'err', text: errMsg });
+      showToast('err', `Error al publicar: ${errMsg}`);
     } finally {
-      setMigratingPersonas(false);
+      setPublishingAnnouncement(false);
     }
+  };
+
+  const handleDesactivarAviso = async () => {
+    setPublishingAnnouncement(true);
+    setAnnouncementFeedback(null);
+    try {
+      await setDoc(
+        doc(db, 'system_config', 'global_announcement'),
+        {
+          active: false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setShowViewersList(false);
+      const okMsg = 'Aviso global desactivado correctamente.';
+      setAnnouncementFeedback({ kind: 'ok', text: okMsg });
+      showToast('ok', okMsg);
+    } catch (err: any) {
+      console.error('Error al desactivar aviso global:', err);
+      const errMsg = err?.message || 'No se pudo desactivar el aviso.';
+      setAnnouncementFeedback({ kind: 'err', text: errMsg });
+      showToast('err', `Error al desactivar: ${errMsg}`);
+    } finally {
+      setPublishingAnnouncement(false);
+    }
+  };
+
+  const handleCopySegmentEmails = async (emails: string[]) => {
+    if (emails.length === 0) return;
+    const textToCopy = emails.join(', ');
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = textToCopy;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setEmailsCopiedCount(emails.length);
+    setTimeout(() => setEmailsCopiedCount(null), 3000);
   };
 
   const handleMarcarEnProceso = async (ticketId: string) => {
@@ -430,6 +525,10 @@ export const SuperAdminDashboard: React.FC = () => {
           setOfertaModalUser(null);
           return;
         }
+        if (centerModalOpenRef.current) {
+          setCenterModalOpen(false);
+          return;
+        }
         setExpandedModule(null);
         setAiModalOpen(false);
         setPagosModalOpen(false);
@@ -477,6 +576,45 @@ export const SuperAdminDashboard: React.FC = () => {
       return true;
     });
   }, [registeredUsers, userSearchTerm, userFilter]);
+
+  const segmentCounts = useMemo<Record<CampaignSegment, number>>(() => ({
+    all: registeredUsers.length,
+    active: registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'activo').length,
+    trial: registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'prueba').length,
+    expired: registeredUsers.filter((u) => u.estadoSuscripcion === 'vencido').length,
+    cortesia: registeredUsers.filter((u) => u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo').length,
+  }), [registeredUsers]);
+
+  const segmentedUsers = useMemo(() => {
+    switch (campaignSegment) {
+      case 'active':
+        return registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'activo');
+      case 'trial':
+        return registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'prueba');
+      case 'expired':
+        return registeredUsers.filter((u) => u.estadoSuscripcion === 'vencido');
+      case 'cortesia':
+        return registeredUsers.filter((u) => u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo');
+      case 'all':
+      default:
+        return registeredUsers;
+    }
+  }, [registeredUsers, campaignSegment]);
+
+  const segmentValidEmails = useMemo(() => {
+    const unique = new Set<string>();
+    segmentedUsers.forEach((u) => {
+      const mail = (u.email || '').trim();
+      if (mail && mail.includes('@')) unique.add(mail);
+    });
+    return Array.from(unique);
+  }, [segmentedUsers]);
+
+  const segmentPhoneUsers = useMemo(() => {
+    return segmentedUsers
+      .map((u) => ({ user: u, whatsappNumber: formatWhatsAppNumber(u.telefono || '') }))
+      .filter((item) => Boolean(item.whatsappNumber));
+  }, [segmentedUsers]);
 
   const getUserTimestamp = (u: any): number => {
     if (!u) return 0;
@@ -788,10 +926,44 @@ export const SuperAdminDashboard: React.FC = () => {
       console.error("Error inicializando listener de tickets:", err);
     }
 
+    // 4. Listener de aviso global en plataforma
+    let unsubscribeAnnouncement: (() => void) | null = null;
+    try {
+      unsubscribeAnnouncement = onSnapshot(
+        doc(db, 'system_config', 'global_announcement'),
+        (snap) => {
+          if (!isMounted) return;
+          if (snap.exists()) {
+            const d = snap.data() as Partial<GlobalAnnouncementDoc>;
+            setLiveAnnouncement({
+              active: Boolean(d.active),
+              announcementId: String(d.announcementId || ''),
+              title: String(d.title || ''),
+              message: String(d.message || ''),
+              type: d.type === 'mantenimiento' || d.type === 'promocion' ? d.type : 'novedad',
+              targetSegment: ['all', 'active', 'trial', 'expired', 'cortesia'].includes(String(d.targetSegment))
+                ? (d.targetSegment as CampaignSegment)
+                : 'all',
+              vistoPor: Array.isArray(d.vistoPor) ? d.vistoPor : [],
+              updatedAt: d.updatedAt,
+            });
+          } else {
+            setLiveAnnouncement(null);
+          }
+        },
+        (err) => {
+          console.error('Error en snapshot de aviso global:', err);
+        }
+      );
+    } catch (err) {
+      console.error('Error inicializando listener de aviso global:', err);
+    }
+
     return () => {
       isMounted = false;
       if (unsubscribeUsers) unsubscribeUsers();
       if (unsubscribeTickets) unsubscribeTickets();
+      if (unsubscribeAnnouncement) unsubscribeAnnouncement();
     };
   }, []);
 
@@ -896,17 +1068,18 @@ export const SuperAdminDashboard: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={handleMigrarYUnificarFichero}
-              disabled={migratingPersonas}
-              className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-amber-500/15 hover:bg-amber-500/25 disabled:opacity-50 text-amber-300 border border-amber-500/30 transition-all flex items-center gap-2 cursor-pointer"
-              title="Herramienta temporal para migrar personas → directorio_personas y normalizar campos"
+              onClick={() => {
+                setAnnouncementFeedback(null);
+                setCenterModalOpen(true);
+              }}
+              className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition-all flex items-center gap-2 cursor-pointer"
+              title="Abrir Centro de Avisos y Campañas Masivas"
             >
-              <Database className={`w-3.5 h-3.5 text-amber-400 ${migratingPersonas ? 'animate-spin' : ''}`} />
-              <span>
-                {migratingPersonas
-                  ? 'Migrando y unificando...'
-                  : 'Migrar y Unificar Fichero (personas → directorio_personas)'}
-              </span>
+              <Megaphone className="w-3.5 h-3.5 text-purple-400" />
+              <span>Avisos & Campañas</span>
+              {liveAnnouncement?.active && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Hay un aviso activo en plataforma" />
+              )}
             </button>
 
             <div className="inline-flex items-center bg-[#121214] border border-white/5 rounded-xl p-1 shadow-sm shrink-0">
@@ -937,35 +1110,6 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {migrationSummary && (
-          <div className={`mb-3 shrink-0 rounded-2xl border px-4 py-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-            migrationSummary.errores.length > 0
-              ? 'bg-red-500/10 border-red-500/30 text-red-200'
-              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-          }`}>
-            <div className="space-y-0.5">
-              <p className="font-bold">
-                Resultado de Unificación (personas → directorio_personas):
-              </p>
-              <p className="text-[11px] opacity-90">
-                Migrados desde <code className="font-mono">personas</code>: <strong>{migrationSummary.migrados}</strong> / {migrationSummary.totalOrigen} • Normalizados/Backfill en <code className="font-mono">directorio_personas</code>: <strong>{migrationSummary.normalizados}</strong> (de {migrationSummary.totalDestino} existentes) • Errores: <strong>{migrationSummary.errores.length}</strong>
-              </p>
-              {migrationSummary.errores.length > 0 && (
-                <p className="text-[11px] text-red-300">
-                  {migrationSummary.errores.join(' | ')}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setMigrationSummary(null)}
-              className="self-start sm:self-center px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold cursor-pointer"
-            >
-              Cerrar
-            </button>
-          </div>
-        )}
 
         {adminSubTab === 'onboarding' ? (
           <div className="flex-1 overflow-y-auto">
@@ -2315,6 +2459,559 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           );
         })()}
+        {/* MODAL: CENTRO DE AVISOS & CAMPAÑAS MASIVAS */}
+        {centerModalOpen && (() => {
+          const gmailBccHref =
+            segmentValidEmails.length > 0 && campaignSubject.trim() && campaignBody.trim()
+              ? `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(segmentValidEmails.join(','))}&su=${encodeURIComponent(campaignSubject)}&body=${encodeURIComponent(campaignBody)}`
+              : '#';
+
+          return (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
+              <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-5 md:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-200 text-gray-200">
+                {/* Header */}
+                <div className="flex items-start justify-between border-b border-white/10 pb-4 mb-4 shrink-0 gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2.5 bg-purple-500/15 rounded-2xl border border-purple-500/30 text-purple-400 shrink-0">
+                      <Megaphone className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-bold text-white truncate">
+                        Centro de Avisos & Campañas
+                      </h2>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Publica banners globales en O.L.G.A. o ejecuta campañas segmentadas por Gmail y WhatsApp.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCenterModalOpen(false)}
+                    className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer shrink-0"
+                    title="Cerrar (ESC)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Selector de Audiencia (Segmentación en vivo) */}
+                <div className="mb-4 shrink-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Audiencia objetivo ({segmentedUsers.length} usuarios seleccionados)
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {SEGMENT_OPTIONS.map((seg) => {
+                      const active = campaignSegment === seg.id;
+                      const count = segmentCounts[seg.id];
+                      return (
+                        <button
+                          key={seg.id}
+                          type="button"
+                          onClick={() => setCampaignSegment(seg.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                            active
+                              ? 'bg-purple-600/25 border-purple-500/50 text-white'
+                              : 'bg-[#09090b] border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                          }`}
+                        >
+                          <span>{seg.label}</span>
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                              active ? 'bg-purple-500/30 text-purple-100' : 'bg-white/5 text-gray-400'
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Pestañas del Centro */}
+                <div className="inline-flex items-center bg-[#09090b] border border-white/10 rounded-xl p-1 mb-4 shrink-0 self-start">
+                  <button
+                    type="button"
+                    onClick={() => setCenterTab('aviso')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                      centerTab === 'aviso'
+                        ? 'bg-white/10 text-white shadow-xs'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    <Bell className="w-3.5 h-3.5 text-amber-400" />
+                    Aviso en Plataforma (Banner)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCenterTab('masiva')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                      centerTab === 'masiva'
+                        ? 'bg-white/10 text-white shadow-xs'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    <Send className="w-3.5 h-3.5 text-blue-400" />
+                    Campaña Masiva (Email & WhatsApp)
+                  </button>
+                </div>
+
+                {/* Contenido Scrollable */}
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-4">
+                  {centerTab === 'aviso' ? (
+                    <>
+                      {liveAnnouncement?.active && (() => {
+                        const rawViewers = Array.isArray(liveAnnouncement.vistoPor) ? liveAnnouncement.vistoPor : [];
+                        const uniqueViewersMap = new Map<string, AnnouncementViewer>();
+                        rawViewers.forEach((v) => {
+                          if (v && v.uid) {
+                            uniqueViewersMap.set(v.uid, v);
+                          }
+                        });
+                        const uniqueViewers = Array.from(uniqueViewersMap.values());
+                        const totalObjetivo = segmentCounts[liveAnnouncement.targetSegment] ?? 0;
+
+                        return (
+                          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    Aviso activo actualmente
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 uppercase font-mono">
+                                    {liveAnnouncement.type} • {liveAnnouncement.targetSegment}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-bold text-white mt-1.5 truncate" title={liveAnnouncement.title}>
+                                  {liveAnnouncement.title}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2.5 mt-2">
+                                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-200 bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-1 rounded-lg">
+                                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                    Recibido / Visto por <strong>{uniqueViewers.length}</strong> de <strong>{totalObjetivo}</strong> usuarios
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowViewersList((prev) => !prev)}
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-200 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <span>Ver quiénes lo vieron</span>
+                                    {showViewersList ? (
+                                      <ChevronUp className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleDesactivarAviso}
+                                disabled={publishingAnnouncement}
+                                className="px-3 py-1.5 rounded-xl bg-red-600/25 hover:bg-red-600/40 disabled:opacity-50 text-red-300 border border-red-500/35 text-xs font-bold transition-colors cursor-pointer shrink-0 self-start sm:self-center"
+                              >
+                                Desactivar Aviso
+                              </button>
+                            </div>
+
+                            {showViewersList && (
+                              <div className="bg-[#09090b]/90 border border-white/10 rounded-xl p-2.5 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
+                                {uniqueViewers.length === 0 ? (
+                                  <p className="text-[11px] text-gray-400 text-center py-2">
+                                    Aún ningún usuario del segmento ha visualizado este aviso.
+                                  </p>
+                                ) : (
+                                  <div className="divide-y divide-white/5">
+                                    {uniqueViewers.map((viewer) => {
+                                      let horaFmt = '';
+                                      if (viewer.vistoEn) {
+                                        const dt = new Date(viewer.vistoEn);
+                                        if (!isNaN(dt.getTime())) {
+                                          horaFmt = dt.toLocaleString('es-PY', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          });
+                                        }
+                                      }
+                                      return (
+                                        <div
+                                          key={viewer.uid}
+                                          className="py-1.5 px-1 flex items-center justify-between gap-2 text-[11px]"
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="font-semibold text-gray-200 truncate">
+                                              {viewer.nombre || viewer.email || viewer.uid}
+                                            </p>
+                                            {viewer.email && (
+                                              <p className="text-[10px] text-gray-500 truncate">{viewer.email}</p>
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] font-mono text-emerald-300 shrink-0">
+                                            {horaFmt || 'Visto'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Tipo de Aviso */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                          Tipo de aviso
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {[
+                            {
+                              id: 'novedad' as AnnouncementType,
+                              label: 'Novedad / Actualización',
+                              clsActive: 'bg-blue-500/20 border-blue-400/50 text-blue-200',
+                            },
+                            {
+                              id: 'mantenimiento' as AnnouncementType,
+                              label: 'Mantenimiento / Cambio',
+                              clsActive: 'bg-amber-500/20 border-amber-400/50 text-amber-200',
+                            },
+                            {
+                              id: 'promocion' as AnnouncementType,
+                              label: 'Promoción / Oferta',
+                              clsActive: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200',
+                            },
+                          ].map((t) => {
+                            const selected = announcementType === t.id;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setAnnouncementType(t.id)}
+                                className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer text-center ${
+                                  selected
+                                    ? t.clsActive
+                                    : 'bg-[#09090b] border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {t.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Plantillas rápidas */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                          Plantillas rápidas
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ANNOUNCEMENT_QUICK_TEMPLATES.map((tpl) => (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              onClick={() => {
+                                setAnnouncementType(tpl.type);
+                                setAnnouncementTitle(tpl.title);
+                                setAnnouncementMessage(tpl.message);
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-[#09090b] hover:bg-white/5 border border-white/10 hover:border-purple-500/40 text-[11px] font-medium text-gray-300 transition-colors cursor-pointer"
+                            >
+                              {tpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Título & Mensaje */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                            Título del aviso
+                          </label>
+                          <input
+                            type="text"
+                            value={announcementTitle}
+                            onChange={(e) => setAnnouncementTitle(e.target.value)}
+                            placeholder="Ej: Nueva actualización disponible en O.L.G.A."
+                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                            Mensaje del banner
+                          </label>
+                          <textarea
+                            rows={4}
+                            value={announcementMessage}
+                            onChange={(e) => setAnnouncementMessage(e.target.value)}
+                            placeholder="Redacta el aviso que verán los usuarios del segmento seleccionado..."
+                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors resize-y leading-relaxed"
+                          />
+                        </div>
+                      </div>
+
+                      {announcementFeedback && (
+                        <div
+                          className={`rounded-xl px-3.5 py-2.5 text-xs border flex items-center gap-2 ${
+                            announcementFeedback.kind === 'ok'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                              : 'bg-red-500/10 border-red-500/30 text-red-300'
+                          }`}
+                        >
+                          {announcementFeedback.kind === 'ok' ? (
+                            <CheckCircle className="w-4 h-4 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                          )}
+                          <span>{announcementFeedback.text}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Plantillas Campaña Masiva */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                          Plantillas rápidas de campaña
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {MASS_CAMPAIGN_TEMPLATES.map((tpl) => (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              onClick={() => {
+                                setCampaignSubject(tpl.asunto);
+                                setCampaignBody(tpl.mensaje);
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-[#09090b] hover:bg-white/5 border border-white/10 hover:border-blue-500/40 text-[11px] font-medium text-gray-300 transition-colors cursor-pointer"
+                            >
+                              {tpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Asunto & Mensaje */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                            Asunto (para Gmail CCO)
+                          </label>
+                          <input
+                            type="text"
+                            value={campaignSubject}
+                            onChange={(e) => setCampaignSubject(e.target.value)}
+                            placeholder="Asunto de la campaña..."
+                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                              Mensaje
+                            </label>
+                            <span className="text-[10px] text-gray-500">
+                              Usa <code className="font-mono text-purple-300">{'{nombre}'}</code> para personalizar cada WhatsApp
+                            </span>
+                          </div>
+                          <textarea
+                            rows={5}
+                            value={campaignBody}
+                            onChange={(e) => setCampaignBody(e.target.value)}
+                            placeholder="Escribe el mensaje de la campaña..."
+                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors resize-y leading-relaxed"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Acciones de Email en Lote */}
+                      <div className="bg-[#09090b] border border-white/10 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="text-xs">
+                          <p className="font-bold text-white">
+                            Envío por Correo Electrónico ({segmentValidEmails.length} emails válidos)
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            Copia los destinatarios o abre Gmail directamente con copia oculta (CCO).
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            disabled={segmentValidEmails.length === 0}
+                            onClick={() => handleCopySegmentEmails(segmentValidEmails)}
+                            className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            {emailsCopiedCount !== null ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-emerald-300">¡{emailsCopiedCount} correos copiados!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copiar Correos</span>
+                              </>
+                            )}
+                          </button>
+
+                          <a
+                            href={gmailBccHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-disabled={segmentValidEmails.length === 0 || !campaignSubject.trim() || !campaignBody.trim()}
+                            onClick={(e) => {
+                              if (segmentValidEmails.length === 0 || !campaignSubject.trim() || !campaignBody.trim()) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border ${
+                              segmentValidEmails.length > 0 && campaignSubject.trim() && campaignBody.trim()
+                                ? 'bg-blue-600/25 hover:bg-blue-600/40 text-blue-300 border-blue-500/35 cursor-pointer'
+                                : 'bg-white/5 text-gray-500 border-white/5 cursor-not-allowed opacity-60'
+                            }`}
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            Abrir en Gmail (CCO)
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Lista rápida de WhatsApp del segmento */}
+                      <div className="bg-[#09090b] border border-white/10 rounded-2xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-green-400" />
+                            Envío rápido por WhatsApp ({segmentPhoneUsers.length} con teléfono)
+                          </p>
+                        </div>
+
+                        {segmentPhoneUsers.length === 0 ? (
+                          <p className="text-[11px] text-gray-500 py-3 text-center">
+                            No hay usuarios con teléfono registrado en este segmento.
+                          </p>
+                        ) : (
+                          <div className="max-h-52 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 divide-y divide-white/5 pr-1">
+                            {segmentPhoneUsers.map(({ user: segUser, whatsappNumber }) => {
+                              const nombrePersona = segUser.razonSocial || segUser.nombre || 'Escribano/a';
+                              const mensajePersonalizado = campaignBody.replace(/\{nombre\}/gi, nombrePersona);
+                              const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensajePersonalizado)}`;
+                              const isSent = sentWhatsappIds.includes(segUser.id);
+                              return (
+                                <div
+                                  key={segUser.id}
+                                  className="py-2 flex items-center justify-between gap-3"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-gray-200 truncate">
+                                      {nombrePersona}
+                                    </p>
+                                    <p className="text-[10px] text-gray-500 font-mono truncate">
+                                      {segUser.telefono} • {segUser.plan || 'Prueba Gratuita'}
+                                    </p>
+                                  </div>
+                                  <a
+                                    href={waUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => {
+                                      if (!campaignBody.trim()) {
+                                        e.preventDefault();
+                                        return;
+                                      }
+                                      setSentWhatsappIds((prev) =>
+                                        prev.includes(segUser.id) ? prev : [...prev, segUser.id]
+                                      );
+                                    }}
+                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors shrink-0 border ${
+                                      isSent
+                                        ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                                        : 'bg-green-600/20 hover:bg-green-600/35 text-green-300 border-green-500/30'
+                                    }`}
+                                  >
+                                    {isSent ? (
+                                      <>
+                                        <Check className="w-3 h-3" />
+                                        Enviado ✓
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Phone className="w-3 h-3" />
+                                        Enviar WhatsApp
+                                      </>
+                                    )}
+                                  </a>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between gap-3 pt-4 border-t border-white/10 mt-4 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCenterModalOpen(false)}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                  {centerTab === 'aviso' && (
+                    <button
+                      type="button"
+                      onClick={handlePublicarAviso}
+                      disabled={publishingAnnouncement}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <Megaphone className="w-3.5 h-3.5" />
+                      {publishingAnnouncement ? 'Publicando...' : 'Publicar Aviso'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* TOAST FLOTANTE FIJO (Confirmación inmediata de Avisos) */}
+        {floatingToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`fixed bottom-5 right-5 z-[80] max-w-md rounded-2xl px-4 py-3 shadow-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 ${
+              floatingToast.kind === 'ok'
+                ? 'bg-emerald-950/95 border-emerald-500/45 text-emerald-100'
+                : 'bg-red-950/95 border-red-500/45 text-red-100'
+            }`}
+          >
+            {floatingToast.kind === 'ok' ? (
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            )}
+            <span className="leading-snug">{floatingToast.text}</span>
+            <button
+              type="button"
+              onClick={() => setFloatingToast(null)}
+              className="p-1 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition-colors cursor-pointer shrink-0"
+              aria-label="Cerrar notificación"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
