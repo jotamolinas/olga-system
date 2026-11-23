@@ -315,7 +315,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* ============================================================== */}
         {/* 1. CABECERA: PERFIL COMPACTO + LOGO + BOTÓN FIJAR            */}
         {/* ============================================================== */}
-        <div className="p-3 border-b border-slate-800 shrink-0">
+        <div className="safe-drawer-pt px-3 pb-3 border-b border-slate-800 shrink-0">
           {isExpanded ? (
             <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-2.5 flex items-center justify-between gap-2.5 relative shadow-sm">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">

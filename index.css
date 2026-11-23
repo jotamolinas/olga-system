@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Safe Area iOS PWA (respetar barra de estado/notch en móvil y mantener escritorio intacto) */
+.safe-header-pt {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+.safe-drawer-pt {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+}
+
+@media (min-width: 768px) {
+    .safe-header-pt {
+        padding-top: 1.25rem;
+    }
+
+    .safe-drawer-pt {
+        padding-top: 0.75rem;
+    }
+}
+
 @media print {
     @page {
         size: 216mm 330mm portrait;
