@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, getDocs, doc, updateDoc, setDoc, onSnapshot, query, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, onSnapshot, query, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/auth';
 import { SuperAdminOnboarding } from './SuperAdminOnboarding';
+import {
+  NotificationsCenterModal,
+  type AnnouncementHistoryItem,
+  type AnnouncementType,
+  type CampaignSegment,
+  type GlobalAnnouncementDoc,
+} from './NotificationsCenterModal';
 import { 
   KeyRound, CheckCircle, XCircle, AlertTriangle, Users, FileText, 
   Activity, ExternalLink, ShieldCheck, ShieldAlert, Shield, 
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
   MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, X,
-  Megaphone, Copy, Bell, Send, Eye, ChevronDown, ChevronUp, MessageCircle
+  Megaphone, Bell, MessageCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -198,140 +205,22 @@ const buildOfertaTemplateContent = (
   }
 };
 
-type CampaignSegment = 'all' | 'active' | 'trial' | 'expired' | 'cortesia';
-type AnnouncementType = 'novedad' | 'mantenimiento' | 'promocion';
-type CenterTab = 'aviso' | 'masiva';
-
-interface AnnouncementViewer {
-  uid: string;
-  nombre: string;
-  email: string;
-  vistoEn: string;
-}
-
-interface GlobalAnnouncementDoc {
-  active: boolean;
-  announcementId?: string;
-  title: string;
-  message: string;
-  type: AnnouncementType;
-  targetSegment: CampaignSegment;
-  vistoPor?: AnnouncementViewer[];
-  updatedAt?: any;
-}
-
-const SEGMENT_OPTIONS: { id: CampaignSegment; label: string }[] = [
-  { id: 'all', label: 'Todos' },
-  { id: 'active', label: 'Clientes Activos' },
-  { id: 'trial', label: 'En Prueba' },
-  { id: 'expired', label: 'Vencidos' },
-  { id: 'cortesia', label: 'Cortesía / Equipo' },
-];
-
-const ANNOUNCEMENT_QUICK_TEMPLATES: {
-  id: string;
-  label: string;
-  type: AnnouncementType;
-  title: string;
-  message: string;
-}[] = [
-  {
-    id: 'nueva_actualizacion',
-    label: 'Nueva actualización disponible',
-    type: 'novedad',
-    title: 'Nueva actualización disponible en O.L.G.A.',
-    message:
-      'Mejoramos la precisión de impresión oficial multipágina y la velocidad de El Oráculo Legal IA para tus contratos y dictámenes notariales.',
-  },
-  {
-    id: 'proximas_novedades',
-    label: 'Próximas novedades en O.L.G.A.',
-    type: 'novedad',
-    title: 'Próximas novedades para tu escribanía',
-    message:
-      'Muy pronto habilitaremos nuevas herramientas de automatización documental y facturación electrónica SIFEN integradas en tu consola.',
-  },
-  {
-    id: 'mantenimiento',
-    label: 'Aviso de mantenimiento',
-    type: 'mantenimiento',
-    title: 'Ventana programada de mantenimiento',
-    message:
-      'Realizaremos tareas de optimización de servidores hoy de 22:00 a 22:20 hs. Tus documentos y pagarés permanecerán resguardados sin interrupciones.',
-  },
-  {
-    id: 'promo_especial',
-    label: 'Promoción especial',
-    type: 'promocion',
-    title: 'Beneficio exclusivo por tiempo limitado',
-    message:
-      'Activa o actualiza a Plan Pro / Empresa / Full esta semana y accede a condiciones preferenciales y soporte prioritario.',
-  },
-];
-
-const MASS_CAMPAIGN_TEMPLATES: {
-  id: string;
-  label: string;
-  asunto: string;
-  mensaje: string;
-}[] = [
-  {
-    id: 'novedades',
-    label: 'Novedades y Actualizaciones',
-    asunto: 'Novedades en O.L.G.A. Notarial — Nuevas mejoras para tu escribanía',
-    mensaje:
-      '¡Hola {nombre}! Te saluda el equipo de O.L.G.A. Notarial.\n\nQueremos contarte que lanzamos nuevas mejoras en El Oráculo Legal IA, impresión multipágina de contratos y gestión de pagarés para agilizar el trabajo diario de tu estudio.\n\nIngresa hoy a tu consola para probar las últimas funciones.\n\nSoporte O.L.G.A.: soporte@olgatech.com.py | WhatsApp +595 983 440021',
-  },
-  {
-    id: 'rescate_vencidos',
-    label: 'Rescate de Vencidos',
-    asunto: 'Reactiva tu cuenta en O.L.G.A. con un beneficio especial',
-    mensaje:
-      '¡Hola {nombre}! Te escribimos desde O.L.G.A. Notarial.\n\nVimos que tu período de acceso finalizó y queremos invitarte a reactivar tu cuenta con un descuento especial en el primer mes o una extensión breve de cortesía para que retomes tus escritos y pagarés.\n\nRespondenos por este medio y lo activamos al instante.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
-  },
-  {
-    id: 'cierre_prueba',
-    label: 'Cierre de Prueba',
-    asunto: 'Últimos días de prueba en O.L.G.A. — Activa tu plan con beneficio',
-    mensaje:
-      '¡Hola {nombre}! Esperamos que estés aprovechando tu prueba gratuita en O.L.G.A. Notarial.\n\nAntes de que termine tu evaluación, queremos ofrecerte un beneficio de bienvenida para activar Plan Básico o Plan Pro hoy mismo y conservar toda tu gestión sin pausas.\n\nEscribinos y te pasamos los datos de activación.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
-  },
-  {
-    id: 'promo_upgrade',
-    label: 'Promo Upgrade',
-    asunto: 'Desbloquea El Oráculo IA, Lienzo Notarial y Presupuestos en O.L.G.A.',
-    mensaje:
-      '¡Hola {nombre}! Gracias por formar parte de O.L.G.A. Notarial.\n\nTenemos una promoción exclusiva de upgrade al Plan Empresa / Plan Full para que desbloquees El Oráculo Legal IA, el Lienzo Notarial Oficial y el módulo de Presupuestos con condición preferencial.\n\nAvísanos si querés que actualicemos tu plan hoy.\n\nContacto: soporte@olgatech.com.py | WhatsApp +595 983 440021',
-  },
-];
-
 export const SuperAdminDashboard: React.FC = () => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
-  const [mobileAdminTab, setMobileAdminTab] = useState<'resumen' | 'usuarios' | 'pagares' | 'sifen_avisos'>('resumen');
+  const [mobileAdminTab, setMobileAdminTab] = useState<'resumen' | 'usuarios' | 'pagares' | 'sifen'>('resumen');
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0, clientesCount: 0, equipoCortesiaCount: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingTickets, setPendingTickets] = useState<any[]>([]);
 
-  // Centro de Avisos & Campañas Masivas state
-  const [centerModalOpen, setCenterModalOpen] = useState(false);
-  const [centerTab, setCenterTab] = useState<CenterTab>('aviso');
-  const [campaignSegment, setCampaignSegment] = useState<CampaignSegment>('all');
-  const [announcementType, setAnnouncementType] = useState<AnnouncementType>('novedad');
-  const [announcementTitle, setAnnouncementTitle] = useState('');
-  const [announcementMessage, setAnnouncementMessage] = useState('');
-  const [publishingAnnouncement, setPublishingAnnouncement] = useState(false);
-  const [announcementFeedback, setAnnouncementFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // Centro de Notificaciones unificado
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const notificationsModalOpenRef = useRef(false);
+  notificationsModalOpenRef.current = notificationsModalOpen;
   const [floatingToast, setFloatingToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const [liveAnnouncement, setLiveAnnouncement] = useState<GlobalAnnouncementDoc | null>(null);
-  const [showViewersList, setShowViewersList] = useState(false);
-  const [campaignSubject, setCampaignSubject] = useState(MASS_CAMPAIGN_TEMPLATES[0].asunto);
-  const [campaignBody, setCampaignBody] = useState(MASS_CAMPAIGN_TEMPLATES[0].mensaje);
-  const [emailsCopiedCount, setEmailsCopiedCount] = useState<number | null>(null);
-  const [sentWhatsappIds, setSentWhatsappIds] = useState<string[]>([]);
-  const centerModalOpenRef = useRef(false);
-  centerModalOpenRef.current = centerModalOpen;
+  const [announcementHistory, setAnnouncementHistory] = useState<AnnouncementHistoryItem[]>([]);
 
   const showToast = (kind: 'ok' | 'err', text: string) => {
     if (toastTimerRef.current) {
@@ -351,88 +240,6 @@ export const SuperAdminDashboard: React.FC = () => {
       }
     };
   }, []);
-
-  const handlePublicarAviso = async () => {
-    if (!announcementTitle.trim() || !announcementMessage.trim()) {
-      const msg = 'Ingresa un título y un mensaje antes de publicar el aviso.';
-      setAnnouncementFeedback({ kind: 'err', text: msg });
-      showToast('err', msg);
-      return;
-    }
-    setPublishingAnnouncement(true);
-    setAnnouncementFeedback(null);
-    const segmentLabel = SEGMENT_OPTIONS.find((s) => s.id === campaignSegment)?.label || campaignSegment;
-    const targetCount = segmentCounts[campaignSegment] ?? 0;
-
-    try {
-      await setDoc(doc(db, 'system_config', 'global_announcement'), {
-        active: true,
-        announcementId: String(Date.now()),
-        title: announcementTitle.trim(),
-        message: announcementMessage.trim(),
-        type: announcementType,
-        targetSegment: campaignSegment,
-        vistoPor: [],
-        updatedAt: serverTimestamp(),
-      });
-      setShowViewersList(false);
-      const okMsg = `✅ Aviso publicado para ${targetCount} usuarios del segmento ${segmentLabel}`;
-      setAnnouncementFeedback({ kind: 'ok', text: okMsg });
-      showToast('ok', okMsg);
-    } catch (err: any) {
-      console.error('Error al publicar aviso global:', err);
-      const errMsg = err?.message || 'No se pudo publicar el aviso en Firestore.';
-      setAnnouncementFeedback({ kind: 'err', text: errMsg });
-      showToast('err', `Error al publicar: ${errMsg}`);
-    } finally {
-      setPublishingAnnouncement(false);
-    }
-  };
-
-  const handleDesactivarAviso = async () => {
-    setPublishingAnnouncement(true);
-    setAnnouncementFeedback(null);
-    try {
-      await setDoc(
-        doc(db, 'system_config', 'global_announcement'),
-        {
-          active: false,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      setShowViewersList(false);
-      const okMsg = 'Aviso global desactivado correctamente.';
-      setAnnouncementFeedback({ kind: 'ok', text: okMsg });
-      showToast('ok', okMsg);
-    } catch (err: any) {
-      console.error('Error al desactivar aviso global:', err);
-      const errMsg = err?.message || 'No se pudo desactivar el aviso.';
-      setAnnouncementFeedback({ kind: 'err', text: errMsg });
-      showToast('err', `Error al desactivar: ${errMsg}`);
-    } finally {
-      setPublishingAnnouncement(false);
-    }
-  };
-
-  const handleCopySegmentEmails = async (emails: string[]) => {
-    if (emails.length === 0) return;
-    const textToCopy = emails.join(', ');
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = textToCopy;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    }
-    setEmailsCopiedCount(emails.length);
-    setTimeout(() => setEmailsCopiedCount(null), 3000);
-  };
 
   const handleMarcarEnProceso = async (ticketId: string) => {
     try {
@@ -616,6 +423,8 @@ export const SuperAdminDashboard: React.FC = () => {
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
   const [reciboSeleccionado, setReciboSeleccionado] = useState<string | null>(null);
+  const [rejectConfirmUserId, setRejectConfirmUserId] = useState<string | null>(null);
+  const [processingPaymentUserId, setProcessingPaymentUserId] = useState<string | null>(null);
 
   const [pagaresGlobal, setPagaresGlobal] = useState<PagareGlobal[]>([]);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<{pagare: PagareGlobal, reporte: {riesgo: string, razones: string[]}} | null>(null);
@@ -632,8 +441,8 @@ export const SuperAdminDashboard: React.FC = () => {
           setOfertaModalUser(null);
           return;
         }
-        if (centerModalOpenRef.current) {
-          setCenterModalOpen(false);
+        if (notificationsModalOpenRef.current) {
+          setNotificationsModalOpen(false);
           return;
         }
         setExpandedModule(null);
@@ -787,45 +596,6 @@ export const SuperAdminDashboard: React.FC = () => {
         lastActivityLabel: formatShortDate(item.lastActivityMs),
       }));
   }, [pagaresGlobal, registeredUsers]);
-
-  const segmentCounts = useMemo<Record<CampaignSegment, number>>(() => ({
-    all: registeredUsers.length,
-    active: registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'activo').length,
-    trial: registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'prueba').length,
-    expired: registeredUsers.filter((u) => u.estadoSuscripcion === 'vencido').length,
-    cortesia: registeredUsers.filter((u) => u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo').length,
-  }), [registeredUsers]);
-
-  const segmentedUsers = useMemo(() => {
-    switch (campaignSegment) {
-      case 'active':
-        return registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'activo');
-      case 'trial':
-        return registeredUsers.filter((u) => u.categoriaCuenta === 'cliente' && u.estadoSuscripcion === 'prueba');
-      case 'expired':
-        return registeredUsers.filter((u) => u.estadoSuscripcion === 'vencido');
-      case 'cortesia':
-        return registeredUsers.filter((u) => u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo');
-      case 'all':
-      default:
-        return registeredUsers;
-    }
-  }, [registeredUsers, campaignSegment]);
-
-  const segmentValidEmails = useMemo(() => {
-    const unique = new Set<string>();
-    segmentedUsers.forEach((u) => {
-      const mail = (u.email || '').trim();
-      if (mail && mail.includes('@')) unique.add(mail);
-    });
-    return Array.from(unique);
-  }, [segmentedUsers]);
-
-  const segmentPhoneUsers = useMemo(() => {
-    return segmentedUsers
-      .map((u) => ({ user: u, whatsappNumber: formatWhatsAppNumber(u.telefono || '') }))
-      .filter((item) => Boolean(item.whatsappNumber));
-  }, [segmentedUsers]);
 
   const getUserTimestamp = (u: any): number => {
     if (!u) return 0;
@@ -1149,20 +919,51 @@ export const SuperAdminDashboard: React.FC = () => {
           if (!isMounted) return;
           if (snap.exists()) {
             const d = snap.data() as Partial<GlobalAnnouncementDoc>;
-            setLiveAnnouncement({
+            const validTypes: AnnouncementType[] = ['informativo', 'importante', 'novedad', 'mantenimiento', 'promocion'];
+            const validSegments: CampaignSegment[] = ['all', 'plan_full', 'active', 'trial', 'expired', 'cortesia'];
+            const parsedType: AnnouncementType = validTypes.includes(d.type as AnnouncementType)
+              ? (d.type as AnnouncementType)
+              : 'novedad';
+            const parsedSegment: CampaignSegment = validSegments.includes(d.targetSegment as CampaignSegment)
+              ? (d.targetSegment as CampaignSegment)
+              : 'all';
+
+            const docObj: GlobalAnnouncementDoc = {
               active: Boolean(d.active),
               announcementId: String(d.announcementId || ''),
               title: String(d.title || ''),
               message: String(d.message || ''),
-              type: d.type === 'mantenimiento' || d.type === 'promocion' ? d.type : 'novedad',
-              targetSegment: ['all', 'active', 'trial', 'expired', 'cortesia'].includes(String(d.targetSegment))
-                ? (d.targetSegment as CampaignSegment)
-                : 'all',
+              type: parsedType,
+              targetSegment: parsedSegment,
               vistoPor: Array.isArray(d.vistoPor) ? d.vistoPor : [],
+              historialReciente: Array.isArray(d.historialReciente) ? d.historialReciente : [],
               updatedAt: d.updatedAt,
-            });
+            };
+            setLiveAnnouncement(docObj);
+
+            if (Array.isArray(d.historialReciente) && d.historialReciente.length > 0) {
+              setAnnouncementHistory(d.historialReciente);
+            } else if (docObj.title) {
+              const updatedAtIso =
+                typeof (d.updatedAt as any)?.toDate === 'function'
+                  ? (d.updatedAt as any).toDate().toISOString()
+                  : new Date().toISOString();
+              setAnnouncementHistory([
+                {
+                  announcementId: docObj.announcementId || 'current',
+                  title: docObj.title,
+                  message: docObj.message,
+                  type: parsedType,
+                  targetSegment: parsedSegment,
+                  sentAt: updatedAtIso,
+                },
+              ]);
+            } else {
+              setAnnouncementHistory([]);
+            }
           } else {
             setLiveAnnouncement(null);
+            setAnnouncementHistory([]);
           }
         },
         (err) => {
@@ -1192,6 +993,7 @@ export const SuperAdminDashboard: React.FC = () => {
   };
 
   const handleAprobar = async (userId: string, planSolicitado: string, modalidadPago?: string) => {
+    setProcessingPaymentUserId(userId);
     try {
       const userRef = doc(db, 'users', userId);
       const fechaActual = new Date();
@@ -1213,10 +1015,34 @@ export const SuperAdminDashboard: React.FC = () => {
       });
 
       setPendingPayments(prev => prev.filter(p => p.userId !== userId));
+      setRejectConfirmUserId(null);
       showToast('ok', `¡Suscripción aprobada! Plan "${planSolicitado}" vigente hasta ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
       console.error(err);
       showToast('err', 'Error al aprobar la suscripción.');
+    } finally {
+      setProcessingPaymentUserId(null);
+    }
+  };
+
+  const handleRechazarPago = async (pago: PendingPayment) => {
+    const targetId = pago.userId || pago.id;
+    setProcessingPaymentUserId(targetId);
+    try {
+      await updateDoc(doc(db, 'users', targetId), {
+        estadoPago: 'RECHAZADO',
+        estadoPlataforma: 'Rechazado',
+        planSolicitado: '',
+        fechaRechazo: new Date().toISOString(),
+      });
+      setPendingPayments(prev => prev.filter(p => (p.userId || p.id) !== targetId));
+      setRejectConfirmUserId(null);
+      showToast('ok', `Comprobante rechazado para ${pago.nombreCliente || pago.email}.`);
+    } catch (err) {
+      console.error('Error al rechazar comprobante:', err);
+      showToast('err', 'No se pudo rechazar el comprobante.');
+    } finally {
+      setProcessingPaymentUserId(null);
     }
   };
 
@@ -1492,6 +1318,43 @@ export const SuperAdminDashboard: React.FC = () => {
     );
   };
 
+  const renderBulkNotificationsCard = (_isMobileView: boolean) => {
+    const totalCount = registeredUsers.length || metrics.totalUsers || 0;
+
+    return (
+      <button
+        type="button"
+        onClick={() => setNotificationsModalOpen(true)}
+        className="w-full min-h-[72px] bg-[#121214] border border-white/10 hover:border-purple-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 flex items-center justify-between gap-3 text-left cursor-pointer active:scale-[0.99] transition-all shadow-sm"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/25 flex items-center justify-center text-base shrink-0">
+            <span aria-hidden="true">📢</span>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-200 truncate">
+                Notificaciones Masivas
+              </p>
+              {liveAnnouncement?.active && (
+                <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
+                  Activo
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-400 truncate mt-0.5">
+              Centro de Notificaciones • {loadingUsers ? '...' : totalCount} {totalCount === 1 ? 'usuario' : 'usuarios'}
+            </p>
+          </div>
+        </div>
+
+        <span className="px-2.5 py-1 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[11px] font-bold whitespace-nowrap shrink-0">
+          Abrir →
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="flex-1 min-h-screen md:min-h-0 md:h-full overflow-y-auto md:overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-3 pb-24 md:p-4 w-full box-border overflow-x-hidden">
       {whatsappToast && (
@@ -1525,15 +1388,12 @@ export const SuperAdminDashboard: React.FC = () => {
           <div className="hidden md:flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => {
-                setAnnouncementFeedback(null);
-                setCenterModalOpen(true);
-              }}
+              onClick={() => setNotificationsModalOpen(true)}
               className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition-all flex items-center gap-2 cursor-pointer"
-              title="Abrir Centro de Avisos y Campañas Masivas"
+              title="Abrir Centro de Notificaciones"
             >
               <Megaphone className="w-3.5 h-3.5 text-purple-400" />
-              <span>Avisos & Campañas</span>
+              <span>Centro de Notificaciones</span>
               {liveAnnouncement?.active && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Hay un aviso activo en plataforma" />
               )}
@@ -1619,162 +1479,112 @@ export const SuperAdminDashboard: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setMobileAdminTab('sifen_avisos')}
+            onClick={() => setNotificationsModalOpen(true)}
+            className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 border-purple-500/35"
+          >
+            <Bell className="w-3.5 h-3.5 text-purple-300" />
+            <span>Notificaciones</span>
+            {liveAnnouncement?.active && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileAdminTab('sifen')}
             className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 border transition-colors cursor-pointer ${
-              mobileAdminTab === 'sifen_avisos'
+              mobileAdminTab === 'sifen'
                 ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                 : 'bg-[#121214] text-gray-300 border-white/10'
             }`}
           >
             <KeyRound className="w-3.5 h-3.5" />
-            <span>SIFEN / Avisos</span>
-            {liveAnnouncement?.active && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            <span>SIFEN</span>
           </button>
         </nav>
 
         {/* VISTA MÓVIL (md:hidden) */}
-        <div className="md:hidden space-y-4">
+        <div className="md:hidden space-y-3">
           {mobileAdminTab === 'resumen' && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Grid KPIs compacto 2x2 */}
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setMobileAdminTab('usuarios')}
-                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
                 >
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Usuarios</span>
                     <div className="p-1.5 bg-blue-500/15 rounded-lg border border-blue-500/20">
                       <Users className="w-3.5 h-3.5 text-blue-400" />
                     </div>
                   </div>
-                  <p className="text-2xl font-light text-white">{loadingUsers ? '...' : metrics.totalUsers}</p>
+                  <p className="text-xl sm:text-2xl font-light text-white">{loadingUsers ? '...' : metrics.totalUsers}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{metrics.clientesCount} clientes</p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setMobileAdminTab('pagares')}
-                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
                 >
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pagarés</span>
                     <div className="p-1.5 bg-emerald-500/15 rounded-lg border border-emerald-500/20">
                       <FileText className="w-3.5 h-3.5 text-emerald-400" />
                     </div>
                   </div>
-                  <p className="text-2xl font-light text-white">{loading ? '...' : metrics.totalPagares}</p>
+                  <p className="text-xl sm:text-2xl font-light text-white">{loading ? '...' : metrics.totalPagares}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{pagareIssuersRanking.length} emisores</p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setAiModalOpen(true)}
-                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                  className="bg-[#121214] border border-white/10 rounded-2xl p-3 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
                 >
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Consultas IA</span>
                     <div className="p-1.5 bg-purple-500/15 rounded-lg border border-purple-500/20">
                       <Activity className="w-3.5 h-3.5 text-purple-400" />
                     </div>
                   </div>
-                  <p className="text-2xl font-light text-white">{loading ? '...' : metrics.aiQueries}</p>
+                  <p className="text-xl sm:text-2xl font-light text-white">{loading ? '...' : metrics.aiQueries}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">Ver desglose</p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPagosModalOpen(true)}
-                  className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                  className={`rounded-2xl p-3 text-left flex flex-col justify-between cursor-pointer active:scale-[0.99] transition-all border ${
+                    pendingPayments.length > 0
+                      ? 'bg-amber-500/[0.08] border-amber-500/70 ring-1 ring-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.12)]'
+                      : 'bg-[#121214] border-white/10'
+                  }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pagos Pend.</span>
-                    <div className="p-1.5 bg-orange-500/15 rounded-lg border border-orange-500/20">
-                      <CreditCard className="w-3.5 h-3.5 text-orange-400" />
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${pendingPayments.length > 0 ? 'text-amber-300' : 'text-gray-400'}`}>
+                      Pagos Pend.
+                    </span>
+                    <div className={`p-1.5 rounded-lg border ${pendingPayments.length > 0 ? 'bg-amber-500/20 border-amber-500/40' : 'bg-orange-500/15 border-orange-500/20'}`}>
+                      <CreditCard className={`w-3.5 h-3.5 ${pendingPayments.length > 0 ? 'text-amber-300' : 'text-orange-400'}`} />
                     </div>
                   </div>
-                  <p className={`text-2xl font-light ${pendingPayments.length > 0 ? 'text-orange-400 font-normal' : 'text-white'}`}>
+                  <p className={`text-xl sm:text-2xl font-light ${pendingPayments.length > 0 ? 'text-amber-300 font-semibold' : 'text-white'}`}>
                     {loadingPayments ? '...' : pendingPayments.length}
                   </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Por aprobar</p>
+                  <p className={`text-[10px] mt-0.5 ${pendingPayments.length > 0 ? 'text-amber-200/90 font-semibold' : 'text-gray-400'}`}>
+                    {pendingPayments.length > 0 ? 'Por aprobar • Tocar' : 'Por aprobar'}
+                  </p>
                 </button>
               </div>
 
-              {/* Pagos Pendientes */}
-              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
-                    <CreditCard className="w-4 h-4 text-orange-400" />
-                    Pagos Pendientes
-                  </span>
-                  <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold ${
-                    pendingPayments.length > 0
-                      ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
-                      : 'bg-white/5 text-gray-400'
-                  }`}>
-                    {pendingPayments.length} pendientes
-                  </span>
-                </div>
-
-                {loadingPayments ? (
-                  <div className="py-6 flex justify-center">
-                    <div className="w-5 h-5 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-                  </div>
-                ) : pendingPayments.length === 0 ? (
-                  <div className="py-5 text-center flex flex-col items-center">
-                    <CheckCircle className="w-6 h-6 text-emerald-500/40 mb-1.5" />
-                    <p className="text-xs text-gray-400">Al día con las suscripciones</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {pendingPayments.map((pago) => {
-                      const nombreEscribano = pago.nombreCliente || pago.email || 'Escribano';
-                      const montoFormatted =
-                        pago.montoAPagar && pago.montoAPagar > 0
-                          ? `Gs. ${pago.montoAPagar.toLocaleString('es-PY')}`
-                          : pago.planSolicitado || 'Plan';
-
-                      return (
-                        <div
-                          key={pago.id}
-                          className="p-3 rounded-xl bg-[#09090b] border border-white/10 space-y-2.5"
-                        >
-                          <div>
-                            <p className="text-xs font-bold text-white break-words">{nombreEscribano}</p>
-                            <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
-                              {montoFormatted} • {pago.planSolicitado}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {pago.urlComprobante && (
-                              <button
-                                type="button"
-                                onClick={() => setReciboSeleccionado(pago.urlComprobante)}
-                                className="flex-1 min-h-[38px] bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" /> Revisar Recibo
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago)}
-                              className="flex-1 min-h-[38px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" /> Aprobar Plan
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              {/* Tarjeta compacta: Notificaciones Masivas */}
+              {renderBulkNotificationsCard(true)}
 
               {/* Buzón de Consultas */}
-              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="bg-[#121214] border border-white/10 rounded-2xl p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
                     <MessageSquare className="w-4 h-4 text-amber-400" />
@@ -1790,8 +1600,8 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
 
                 {pendingTickets.length === 0 ? (
-                  <div className="py-5 text-center flex flex-col items-center">
-                    <CheckCircle className="w-6 h-6 text-emerald-500/40 mb-1.5" />
+                  <div className="py-3 text-center flex flex-col items-center">
+                    <CheckCircle className="w-5 h-5 text-emerald-500/40 mb-1" />
                     <p className="text-xs text-gray-400">No hay consultas pendientes</p>
                   </div>
                 ) : (
@@ -2086,53 +1896,9 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {mobileAdminTab === 'sifen_avisos' && (
-            <div className="space-y-4">
-              {/* Centro de Avisos & Campañas */}
-              <div className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Megaphone className="w-4 h-4 text-purple-400" />
-                      Avisos & Campañas Masivas
-                    </h3>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Publica banners globales en plataforma o lanza campañas segmentadas por Email y WhatsApp.
-                    </p>
-                  </div>
-                  {liveAnnouncement?.active && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
-                      Activo
-                    </span>
-                  )}
-                </div>
-
-                {liveAnnouncement?.active && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs">
-                    <p className="font-bold text-emerald-200">{liveAnnouncement.title}</p>
-                    <p className="text-[11px] text-emerald-300/80 mt-0.5">
-                      Segmento: {liveAnnouncement.targetSegment} • Visto por {Array.isArray(liveAnnouncement.vistoPor) ? liveAnnouncement.vistoPor.length : 0} usuarios
-                    </p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAnnouncementFeedback(null);
-                    setCenterModalOpen(true);
-                  }}
-                  className="w-full min-h-[44px] px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                >
-                  <Megaphone className="w-4 h-4" />
-                  <span>Abrir Centro de Avisos & Campañas</span>
-                </button>
-              </div>
-
-              {/* Onboarding SIFEN inline */}
-              <div className="bg-[#121214] border border-white/10 rounded-2xl p-2">
-                <SuperAdminOnboarding />
-              </div>
+          {mobileAdminTab === 'sifen' && (
+            <div className="bg-[#121214] border border-white/10 rounded-2xl p-2">
+              <SuperAdminOnboarding />
             </div>
           )}
         </div>
@@ -2206,17 +1972,34 @@ export const SuperAdminDashboard: React.FC = () => {
 
               <div 
                 onClick={() => setPagosModalOpen(true)}
-                className="bg-[#121214] border border-white/5 hover:border-orange-500/40 hover:bg-white/[0.02] rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all"
-                title="Click para revisar pagos pendientes"
+                className={`rounded-2xl p-3.5 shadow-sm flex flex-col justify-between cursor-pointer transition-all border ${
+                  pendingPayments.length > 0
+                    ? 'bg-amber-500/[0.08] border-amber-500/70 ring-1 ring-amber-500/30 hover:border-amber-400'
+                    : 'bg-[#121214] border-white/5 hover:border-orange-500/40 hover:bg-white/[0.02]'
+                }`}
+                title="Click para revisar, aprobar o rechazar pagos pendientes"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Pagos Pendientes</span>
-                  <div className="p-1 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
+                  <span className={`text-[10px] font-semibold uppercase tracking-widest ${pendingPayments.length > 0 ? 'text-amber-300' : 'text-gray-500'}`}>
+                    Pagos Pendientes
+                  </span>
+                  <div className={`p-1 rounded-lg border ${pendingPayments.length > 0 ? 'bg-amber-500/20 border-amber-500/40' : 'bg-orange-500/10 border-orange-500/20'}`}>
+                    <AlertTriangle className={`w-3.5 h-3.5 ${pendingPayments.length > 0 ? 'text-amber-300' : 'text-orange-400'}`} />
                   </div>
                 </div>
                 <div>
-                  {loadingPayments ? <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div> : <p className={`text-2xl font-light mt-0.5 ${pendingPayments.length > 0 ? 'text-orange-400' : 'text-white'}`}>{pendingPayments.length}</p>}
+                  {loadingPayments ? (
+                    <div className="h-6 w-16 bg-zinc-800/60 rounded animate-pulse"></div>
+                  ) : (
+                    <>
+                      <p className={`text-2xl font-light mt-0.5 ${pendingPayments.length > 0 ? 'text-amber-300 font-semibold' : 'text-white'}`}>
+                        {pendingPayments.length}
+                      </p>
+                      <p className={`text-[10px] mt-1 ${pendingPayments.length > 0 ? 'text-amber-200/90 font-semibold' : 'text-gray-400'}`}>
+                        {pendingPayments.length > 0 ? 'Por aprobar • Click para revisar' : 'Por aprobar'}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2271,76 +2054,9 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Gestión de Cobros */}
-                <div className="bg-[#121214] border border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <CreditCard className="w-3 h-3 text-orange-400" /> Gestión de Cobros
-                    </span>
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-mono ${
-                      pendingPayments.length > 0 
-                        ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20 font-bold' 
-                        : 'text-gray-500 bg-white/5'
-                    }`}>
-                      {pendingPayments.length} pendientes
-                    </span>
-                  </div>
-
-                  <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-1.5">
-                    {loadingPayments ? (
-                      <div className="p-4 flex justify-center items-center">
-                        <div className="w-4 h-4 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
-                      </div>
-                    ) : pendingPayments.length === 0 ? (
-                      <div className="py-4 text-center flex flex-col items-center justify-center">
-                        <CheckCircle className="w-5 h-5 text-emerald-500/30 mb-1" />
-                        <p className="text-[11px] text-gray-400 font-medium">Al día con las suscripciones</p>
-                      </div>
-                    ) : (
-                      pendingPayments.map((pago) => {
-                        const nombreEscribano = pago.nombreCliente || pago.email || 'Escribano';
-                        const montoFormatted = pago.montoAPagar && pago.montoAPagar > 0 
-                          ? `Gs. ${pago.montoAPagar.toLocaleString('es-PY')}` 
-                          : pago.planSolicitado || 'Plan';
-
-                        return (
-                          <div 
-                            key={pago.id}
-                            className="flex items-center justify-between py-1.5 px-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 transition-colors gap-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[11px] text-gray-200 font-medium truncate" title={nombreEscribano}>
-                                {nombreEscribano}
-                              </p>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <span className="text-white font-medium text-[10px] font-mono">
-                                  {montoFormatted}
-                                </span>
-                                <span className="text-[9px] text-gray-500 truncate">• {pago.planSolicitado}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1 shrink-0">
-                              {pago.urlComprobante && (
-                                <button
-                                  onClick={() => setReciboSeleccionado(pago.urlComprobante)}
-                                  className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
-                                >
-                                  <ExternalLink className="w-2.5 h-2.5" /> Revisar
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago)}
-                                className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-[9px] px-1.5 py-0.5 rounded transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <CheckCircle className="w-2.5 h-2.5" /> Aprobar
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                {/* Notificaciones Masivas (Aviso a Todos) */}
+                <div className="shrink-0">
+                  {renderBulkNotificationsCard(false)}
                 </div>
 
                 {/* Buzón de Consultas */}
@@ -3160,67 +2876,134 @@ export const SuperAdminDashboard: React.FC = () => {
 
         {/* MODAL: PAGOS PENDIENTES */}
         {pagosModalOpen && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
-            <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-4 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-orange-500/10 rounded-2xl border border-orange-500/20 text-orange-400">
-                    <AlertTriangle className="w-5 h-5" />
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 md:p-8 animate-in fade-in duration-200">
+            <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col max-h-[88vh] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-4 shrink-0 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-amber-500/15 rounded-2xl border border-amber-500/30 text-amber-400 shrink-0">
+                    <CreditCard className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-white">Gestión de Cobros y Suscripciones Pendientes</h2>
-                    <p className="text-xs text-gray-400">Verificación de comprobantes de transferencia y aprobación de planes</p>
+                  <div className="min-w-0">
+                    <h2 className="text-sm sm:text-base font-bold text-white truncate">
+                      Pagos Pendientes ({pendingPayments.length})
+                    </h2>
+                    <p className="text-xs text-gray-400 truncate">
+                      Revisa comprobantes y aprueba o rechaza suscripciones
+                    </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPagosModalOpen(false)}
-                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer"
+                  onClick={() => {
+                    setPagosModalOpen(false);
+                    setRejectConfirmUserId(null);
+                  }}
+                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer shrink-0"
+                  aria-label="Cerrar modal de pagos"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
                 {pendingPayments.length === 0 ? (
                   <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-2" />
+                    <CheckCircle className="w-8 h-8 text-emerald-500/40 mb-2" />
                     <p className="font-medium text-gray-300">No hay pagos pendientes de verificación en este momento.</p>
                   </div>
                 ) : (
-                  pendingPayments.map(pago => (
-                    <div key={pago.id} className="p-4 bg-white/[0.02] border border-white/10 rounded-2xl flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-bold text-white text-sm">{pago.nombreCliente || pago.email}</p>
-                        <p className="text-gray-400 mt-0.5">Plan solicitado: <span className="text-white font-medium">{pago.planSolicitado}</span> • Monto: <span className="font-mono text-emerald-400 font-bold">Gs. {(pago.montoAPagar || 0).toLocaleString('es-PY')}</span></p>
+                  pendingPayments.map((pago) => {
+                    const targetId = pago.userId || pago.id;
+                    const isBusy = processingPaymentUserId === targetId;
+                    const isConfirmingReject = rejectConfirmUserId === targetId;
+
+                    return (
+                      <div
+                        key={pago.id}
+                        className="p-3.5 sm:p-4 bg-white/[0.02] border border-white/10 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-white text-sm break-words">
+                            {pago.nombreCliente || pago.email}
+                          </p>
+                          {pago.email && pago.nombreCliente && (
+                            <p className="text-[11px] text-gray-400 truncate mt-0.5">{pago.email}</p>
+                          )}
+                          <p className="text-gray-300 mt-1 text-xs">
+                            Plan: <span className="text-white font-semibold">{pago.planSolicitado}</span>
+                            {' • '}
+                            <span className="font-mono text-emerald-400 font-bold">
+                              Gs. {(pago.montoAPagar || 0).toLocaleString('es-PY')}
+                            </span>
+                            {pago.modalidadPago ? ` (${pago.modalidadPago})` : ''}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          {pago.urlComprobante && (
+                            <button
+                              type="button"
+                              onClick={() => setReciboSeleccionado(pago.urlComprobante)}
+                              className="min-h-[38px] px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" /> Ver Recibo
+                            </button>
+                          )}
+
+                          {isConfirmingReject ? (
+                            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-xl px-2 py-1">
+                              <span className="text-[11px] text-red-200 font-semibold">¿Rechazar?</span>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleRechazarPago(pago)}
+                                className="px-2.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                              >
+                                {isBusy ? '...' : 'Sí'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => setRejectConfirmUserId(null)}
+                                className="px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-[11px] font-semibold cursor-pointer"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleAprobar(targetId, pago.planSolicitado || '', pago.modalidadPago)}
+                                className="min-h-[38px] px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 disabled:opacity-50 text-emerald-300 border border-emerald-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" /> Aprobar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => setRejectConfirmUserId(targetId)}
+                                className="min-h-[38px] px-3 py-1.5 bg-red-600/20 hover:bg-red-600/35 disabled:opacity-50 text-red-300 border border-red-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <XCircle className="w-3.5 h-3.5" /> Rechazar
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {pago.urlComprobante && (
-                          <button
-                            type="button"
-                            onClick={() => { setReciboSeleccionado(pago.urlComprobante); setPagosModalOpen(false); }}
-                            className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-xl font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" /> Ver Recibo
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => { handleAprobar(pago.userId || pago.id, pago.planSolicitado || '', pago.modalidadPago); }}
-                          className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 rounded-xl font-semibold transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" /> Aprobar Plan
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               <div className="flex justify-end pt-4 border-t border-white/15 mt-4 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setPagosModalOpen(false)}
+                  onClick={() => {
+                    setPagosModalOpen(false);
+                    setRejectConfirmUserId(null);
+                  }}
                   className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cerrar
@@ -3318,7 +3101,7 @@ export const SuperAdminDashboard: React.FC = () => {
 
         {/* Modal Recibo */}
         {reciboSeleccionado && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
             <div className="relative max-w-4xl max-h-screen overflow-hidden flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl p-4">
               <button
                 onClick={() => setReciboSeleccionado(null)}
@@ -3614,531 +3397,16 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           );
         })()}
-        {/* MODAL: CENTRO DE AVISOS & CAMPAÑAS MASIVAS */}
-        {centerModalOpen && (() => {
-          const gmailBccHref =
-            segmentValidEmails.length > 0 && campaignSubject.trim() && campaignBody.trim()
-              ? `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(segmentValidEmails.join(','))}&su=${encodeURIComponent(campaignSubject)}&body=${encodeURIComponent(campaignBody)}`
-              : '#';
-
-          return (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
-              <div className="w-full max-w-3xl bg-[#121214] border border-white/10 rounded-3xl p-5 md:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-200 text-gray-200">
-                {/* Header */}
-                <div className="flex items-start justify-between border-b border-white/10 pb-4 mb-4 shrink-0 gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="p-2.5 bg-purple-500/15 rounded-2xl border border-purple-500/30 text-purple-400 shrink-0">
-                      <Megaphone className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="text-base font-bold text-white truncate">
-                        Centro de Avisos & Campañas
-                      </h2>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Publica banners globales en O.L.G.A. o ejecuta campañas segmentadas por Gmail y WhatsApp.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCenterModalOpen(false)}
-                    className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-2 rounded-xl border border-white/10 transition-all cursor-pointer shrink-0"
-                    title="Cerrar (ESC)"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Selector de Audiencia (Segmentación en vivo) */}
-                <div className="mb-4 shrink-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                      Audiencia objetivo ({segmentedUsers.length} usuarios seleccionados)
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {SEGMENT_OPTIONS.map((seg) => {
-                      const active = campaignSegment === seg.id;
-                      const count = segmentCounts[seg.id];
-                      return (
-                        <button
-                          key={seg.id}
-                          type="button"
-                          onClick={() => setCampaignSegment(seg.id)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
-                            active
-                              ? 'bg-purple-600/25 border-purple-500/50 text-white'
-                              : 'bg-[#09090b] border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                          }`}
-                        >
-                          <span>{seg.label}</span>
-                          <span
-                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                              active ? 'bg-purple-500/30 text-purple-100' : 'bg-white/5 text-gray-400'
-                            }`}
-                          >
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Pestañas del Centro */}
-                <div className="inline-flex items-center bg-[#09090b] border border-white/10 rounded-xl p-1 mb-4 shrink-0 self-start">
-                  <button
-                    type="button"
-                    onClick={() => setCenterTab('aviso')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer ${
-                      centerTab === 'aviso'
-                        ? 'bg-white/10 text-white shadow-xs'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    <Bell className="w-3.5 h-3.5 text-amber-400" />
-                    Aviso en Plataforma (Banner)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCenterTab('masiva')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer ${
-                      centerTab === 'masiva'
-                        ? 'bg-white/10 text-white shadow-xs'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    <Send className="w-3.5 h-3.5 text-blue-400" />
-                    Campaña Masiva (Email & WhatsApp)
-                  </button>
-                </div>
-
-                {/* Contenido Scrollable */}
-                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1 space-y-4">
-                  {centerTab === 'aviso' ? (
-                    <>
-                      {liveAnnouncement?.active && (() => {
-                        const rawViewers = Array.isArray(liveAnnouncement.vistoPor) ? liveAnnouncement.vistoPor : [];
-                        const uniqueViewersMap = new Map<string, AnnouncementViewer>();
-                        rawViewers.forEach((v) => {
-                          if (v && v.uid) {
-                            uniqueViewersMap.set(v.uid, v);
-                          }
-                        });
-                        const uniqueViewers = Array.from(uniqueViewersMap.values());
-                        const totalObjetivo = segmentCounts[liveAnnouncement.targetSegment] ?? 0;
-
-                        return (
-                          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                    Aviso activo actualmente
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 uppercase font-mono">
-                                    {liveAnnouncement.type} • {liveAnnouncement.targetSegment}
-                                  </span>
-                                </div>
-                                <p className="text-xs font-bold text-white mt-1.5 truncate" title={liveAnnouncement.title}>
-                                  {liveAnnouncement.title}
-                                </p>
-                                <div className="flex flex-wrap items-center gap-2.5 mt-2">
-                                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-200 bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-1 rounded-lg">
-                                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                                    Recibido / Visto por <strong>{uniqueViewers.length}</strong> de <strong>{totalObjetivo}</strong> usuarios
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowViewersList((prev) => !prev)}
-                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-200 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    <span>Ver quiénes lo vieron</span>
-                                    {showViewersList ? (
-                                      <ChevronUp className="w-3.5 h-3.5" />
-                                    ) : (
-                                      <ChevronDown className="w-3.5 h-3.5" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={handleDesactivarAviso}
-                                disabled={publishingAnnouncement}
-                                className="px-3 py-1.5 rounded-xl bg-red-600/25 hover:bg-red-600/40 disabled:opacity-50 text-red-300 border border-red-500/35 text-xs font-bold transition-colors cursor-pointer shrink-0 self-start sm:self-center"
-                              >
-                                Desactivar Aviso
-                              </button>
-                            </div>
-
-                            {showViewersList && (
-                              <div className="bg-[#09090b]/90 border border-white/10 rounded-xl p-2.5 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
-                                {uniqueViewers.length === 0 ? (
-                                  <p className="text-[11px] text-gray-400 text-center py-2">
-                                    Aún ningún usuario del segmento ha visualizado este aviso.
-                                  </p>
-                                ) : (
-                                  <div className="divide-y divide-white/5">
-                                    {uniqueViewers.map((viewer) => {
-                                      let horaFmt = '';
-                                      if (viewer.vistoEn) {
-                                        const dt = new Date(viewer.vistoEn);
-                                        if (!isNaN(dt.getTime())) {
-                                          horaFmt = dt.toLocaleString('es-PY', {
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                          });
-                                        }
-                                      }
-                                      return (
-                                        <div
-                                          key={viewer.uid}
-                                          className="py-1.5 px-1 flex items-center justify-between gap-2 text-[11px]"
-                                        >
-                                          <div className="min-w-0">
-                                            <p className="font-semibold text-gray-200 truncate">
-                                              {viewer.nombre || viewer.email || viewer.uid}
-                                            </p>
-                                            {viewer.email && (
-                                              <p className="text-[10px] text-gray-500 truncate">{viewer.email}</p>
-                                            )}
-                                          </div>
-                                          <span className="text-[10px] font-mono text-emerald-300 shrink-0">
-                                            {horaFmt || 'Visto'}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Tipo de Aviso */}
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-                          Tipo de aviso
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          {[
-                            {
-                              id: 'novedad' as AnnouncementType,
-                              label: 'Novedad / Actualización',
-                              clsActive: 'bg-blue-500/20 border-blue-400/50 text-blue-200',
-                            },
-                            {
-                              id: 'mantenimiento' as AnnouncementType,
-                              label: 'Mantenimiento / Cambio',
-                              clsActive: 'bg-amber-500/20 border-amber-400/50 text-amber-200',
-                            },
-                            {
-                              id: 'promocion' as AnnouncementType,
-                              label: 'Promoción / Oferta',
-                              clsActive: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200',
-                            },
-                          ].map((t) => {
-                            const selected = announcementType === t.id;
-                            return (
-                              <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => setAnnouncementType(t.id)}
-                                className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer text-center ${
-                                  selected
-                                    ? t.clsActive
-                                    : 'bg-[#09090b] border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                                }`}
-                              >
-                                {t.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Plantillas rápidas */}
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-                          Plantillas rápidas
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {ANNOUNCEMENT_QUICK_TEMPLATES.map((tpl) => (
-                            <button
-                              key={tpl.id}
-                              type="button"
-                              onClick={() => {
-                                setAnnouncementType(tpl.type);
-                                setAnnouncementTitle(tpl.title);
-                                setAnnouncementMessage(tpl.message);
-                              }}
-                              className="px-2.5 py-1.5 rounded-xl bg-[#09090b] hover:bg-white/5 border border-white/10 hover:border-purple-500/40 text-[11px] font-medium text-gray-300 transition-colors cursor-pointer"
-                            >
-                              {tpl.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Título & Mensaje */}
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
-                            Título del aviso
-                          </label>
-                          <input
-                            type="text"
-                            value={announcementTitle}
-                            onChange={(e) => setAnnouncementTitle(e.target.value)}
-                            placeholder="Ej: Nueva actualización disponible en O.L.G.A."
-                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
-                            Mensaje del banner
-                          </label>
-                          <textarea
-                            rows={4}
-                            value={announcementMessage}
-                            onChange={(e) => setAnnouncementMessage(e.target.value)}
-                            placeholder="Redacta el aviso que verán los usuarios del segmento seleccionado..."
-                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors resize-y leading-relaxed"
-                          />
-                        </div>
-                      </div>
-
-                      {announcementFeedback && (
-                        <div
-                          className={`rounded-xl px-3.5 py-2.5 text-xs border flex items-center gap-2 ${
-                            announcementFeedback.kind === 'ok'
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                              : 'bg-red-500/10 border-red-500/30 text-red-300'
-                          }`}
-                        >
-                          {announcementFeedback.kind === 'ok' ? (
-                            <CheckCircle className="w-4 h-4 shrink-0" />
-                          ) : (
-                            <AlertTriangle className="w-4 h-4 shrink-0" />
-                          )}
-                          <span>{announcementFeedback.text}</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {/* Plantillas Campaña Masiva */}
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-                          Plantillas rápidas de campaña
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {MASS_CAMPAIGN_TEMPLATES.map((tpl) => (
-                            <button
-                              key={tpl.id}
-                              type="button"
-                              onClick={() => {
-                                setCampaignSubject(tpl.asunto);
-                                setCampaignBody(tpl.mensaje);
-                              }}
-                              className="px-2.5 py-1.5 rounded-xl bg-[#09090b] hover:bg-white/5 border border-white/10 hover:border-blue-500/40 text-[11px] font-medium text-gray-300 transition-colors cursor-pointer"
-                            >
-                              {tpl.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Asunto & Mensaje */}
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
-                            Asunto (para Gmail CCO)
-                          </label>
-                          <input
-                            type="text"
-                            value={campaignSubject}
-                            onChange={(e) => setCampaignSubject(e.target.value)}
-                            placeholder="Asunto de la campaña..."
-                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                              Mensaje
-                            </label>
-                            <span className="text-[10px] text-gray-500">
-                              Usa <code className="font-mono text-purple-300">{'{nombre}'}</code> para personalizar cada WhatsApp
-                            </span>
-                          </div>
-                          <textarea
-                            rows={5}
-                            value={campaignBody}
-                            onChange={(e) => setCampaignBody(e.target.value)}
-                            placeholder="Escribe el mensaje de la campaña..."
-                            className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors resize-y leading-relaxed"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Acciones de Email en Lote */}
-                      <div className="bg-[#09090b] border border-white/10 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="text-xs">
-                          <p className="font-bold text-white">
-                            Envío por Correo Electrónico ({segmentValidEmails.length} emails válidos)
-                          </p>
-                          <p className="text-[11px] text-gray-400">
-                            Copia los destinatarios o abre Gmail directamente con copia oculta (CCO).
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            disabled={segmentValidEmails.length === 0}
-                            onClick={() => handleCopySegmentEmails(segmentValidEmails)}
-                            className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            {emailsCopiedCount !== null ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                <span className="text-emerald-300">¡{emailsCopiedCount} correos copiados!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copiar Correos</span>
-                              </>
-                            )}
-                          </button>
-
-                          <a
-                            href={gmailBccHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-disabled={segmentValidEmails.length === 0 || !campaignSubject.trim() || !campaignBody.trim()}
-                            onClick={(e) => {
-                              if (segmentValidEmails.length === 0 || !campaignSubject.trim() || !campaignBody.trim()) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border ${
-                              segmentValidEmails.length > 0 && campaignSubject.trim() && campaignBody.trim()
-                                ? 'bg-blue-600/25 hover:bg-blue-600/40 text-blue-300 border-blue-500/35 cursor-pointer'
-                                : 'bg-white/5 text-gray-500 border-white/5 cursor-not-allowed opacity-60'
-                            }`}
-                          >
-                            <Mail className="w-3.5 h-3.5" />
-                            Abrir en Gmail (CCO)
-                          </a>
-                        </div>
-                      </div>
-
-                      {/* Lista rápida de WhatsApp del segmento */}
-                      <div className="bg-[#09090b] border border-white/10 rounded-2xl p-3.5 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-green-400" />
-                            Envío rápido por WhatsApp ({segmentPhoneUsers.length} con teléfono)
-                          </p>
-                        </div>
-
-                        {segmentPhoneUsers.length === 0 ? (
-                          <p className="text-[11px] text-gray-500 py-3 text-center">
-                            No hay usuarios con teléfono registrado en este segmento.
-                          </p>
-                        ) : (
-                          <div className="max-h-52 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 divide-y divide-white/5 pr-1">
-                            {segmentPhoneUsers.map(({ user: segUser, whatsappNumber }) => {
-                              const nombrePersona = segUser.razonSocial || segUser.nombre || 'Escribano/a';
-                              const mensajePersonalizado = campaignBody.replace(/\{nombre\}/gi, nombrePersona);
-                              const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensajePersonalizado)}`;
-                              const isSent = sentWhatsappIds.includes(segUser.id);
-                              return (
-                                <div
-                                  key={segUser.id}
-                                  className="py-2 flex items-center justify-between gap-3"
-                                >
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-semibold text-gray-200 truncate">
-                                      {nombrePersona}
-                                    </p>
-                                    <p className="text-[10px] text-gray-500 font-mono truncate">
-                                      {segUser.telefono} • {segUser.plan || 'Prueba Gratuita'}
-                                    </p>
-                                  </div>
-                                  <a
-                                    href={waUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={(e) => {
-                                      if (!campaignBody.trim()) {
-                                        e.preventDefault();
-                                        return;
-                                      }
-                                      setSentWhatsappIds((prev) =>
-                                        prev.includes(segUser.id) ? prev : [...prev, segUser.id]
-                                      );
-                                    }}
-                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors shrink-0 border ${
-                                      isSent
-                                        ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
-                                        : 'bg-green-600/20 hover:bg-green-600/35 text-green-300 border-green-500/30'
-                                    }`}
-                                  >
-                                    {isSent ? (
-                                      <>
-                                        <Check className="w-3 h-3" />
-                                        Enviado ✓
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Phone className="w-3 h-3" />
-                                        Enviar WhatsApp
-                                      </>
-                                    )}
-                                  </a>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between gap-3 pt-4 border-t border-white/10 mt-4 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setCenterModalOpen(false)}
-                    className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
-                  >
-                    Cerrar
-                  </button>
-                  {centerTab === 'aviso' && (
-                    <button
-                      type="button"
-                      onClick={handlePublicarAviso}
-                      disabled={publishingAnnouncement}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <Megaphone className="w-3.5 h-3.5" />
-                      {publishingAnnouncement ? 'Publicando...' : 'Publicar Aviso'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {/* MODAL UNIFICADO: CENTRO DE NOTIFICACIONES */}
+        <NotificationsCenterModal
+          isOpen={notificationsModalOpen}
+          onClose={() => setNotificationsModalOpen(false)}
+          registeredUsers={registeredUsers}
+          liveAnnouncement={liveAnnouncement}
+          announcementHistory={announcementHistory}
+          formatWhatsAppNumber={formatWhatsAppNumber}
+          onShowToast={showToast}
+        />
 
         {/* TOAST FLOTANTE FIJO (Confirmación inmediata de Avisos) */}
         {floatingToast && (

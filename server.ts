@@ -1023,6 +1023,109 @@ ${prompt}
     }
   });
 
+  // 4b. Redacción asistida de Notificaciones / Avisos Institucionales (SuperAdmin)
+  app.post('/api/gemini/draft-notification', verifyApiAuth, async (req: Request, res: Response) => {
+    const body = req.body as {
+      draft?: unknown;
+      type?: unknown;
+      targetSegment?: unknown;
+    };
+
+    const draft = typeof body?.draft === 'string' ? body.draft.trim().slice(0, 2000) : '';
+    const type = typeof body?.type === 'string' ? body.type.trim().slice(0, 40) : 'informativo';
+    const targetSegment = typeof body?.targetSegment === 'string' ? body.targetSegment.trim().slice(0, 40) : 'all';
+
+    if (!draft) {
+      res.status(400).json({ error: 'Escribe una idea o borrador corto antes de redactar con IA.' });
+      return;
+    }
+
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAI();
+    } catch (err) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
+
+    const segmentHintMap: Record<string, string> = {
+      all: 'Todos los usuarios de O.L.G.A.',
+      plan_full: 'Usuarios con Plan Full',
+      active: 'Clientes con suscripción activa',
+      trial: 'Usuarios en período de prueba gratuita',
+      expired: 'Usuarios con cuenta vencida',
+      cortesia: 'Cuentas de cortesía y equipo interno',
+    };
+    const audienceLabel = segmentHintMap[targetSegment] || 'Usuarios de O.L.G.A.';
+
+    const promptText = `Convierte la siguiente idea o borrador en un aviso institucional formal, claro y profesional para la plataforma O.L.G.A. Notarial (software notarial para escribanías y estudios jurídicos en Paraguay).
+
+Categoría del aviso: ${type}
+Audiencia objetivo: ${audienceLabel}
+Idea del administrador:
+"""
+${draft}
+"""
+
+Reglas:
+- El título debe ser breve, claro y directo (idealmente entre 25 y 65 caracteres, sin emojis excesivos ni signos repetidos).
+- El mensaje debe tener entre 2 y 4 oraciones claras, formales (trato profesional de "estimado usuario" o tono institucional neutro) y tranquilizadoras si corresponde.
+- Respeta exactamente los hechos, horarios y detalles dados en la idea. No inventes precios, fechas ni garantías que no estén en la idea.`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: {
+          systemInstruction:
+            'Eres O.L.G.A., asistente de comunicación institucional para escribanías y profesionales del derecho en Paraguay. Devuelve únicamente el objeto JSON solicitado con title y message en español.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: {
+                type: Type.STRING,
+                description: 'Título breve y claro del aviso institucional.',
+              },
+              message: {
+                type: Type.STRING,
+                description: 'Cuerpo del aviso claro, formal y profesional.',
+              },
+            },
+            required: ['title', 'message'],
+          },
+          maxOutputTokens: 1024,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      const rawText = (response?.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+      if (!rawText) {
+        res.status(502).json({ error: 'La IA no devolvió una redacción válida. Intenta nuevamente.' });
+        return;
+      }
+
+      const parsed = JSON.parse(rawText) as { title?: unknown; message?: unknown };
+      const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+      const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+
+      if (!title || !message) {
+        res.status(502).json({ error: 'La respuesta de IA estuvo incompleta. Intenta nuevamente.' });
+        return;
+      }
+
+      res.json({ title, message });
+    } catch (err: unknown) {
+      console.error('[draft-notification] Error:', err);
+      const formatted = formatGeminiError(
+        err,
+        'No se pudo redactar el aviso con IA en este momento. Puedes escribirlo manualmente.'
+      );
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
   // 5. Proxy seguro para motor propio olga-whatsapp-engine
   app.post('/api/whatsapp/connect', verifyApiAuth, async (req: Request, res: Response) => {
     try {

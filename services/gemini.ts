@@ -245,3 +245,49 @@ export const redactarEscritoConIA = async (
 
   throw new Error('No se pudo generar la redacción en este momento. Por favor, intenta nuevamente.');
 };
+
+export const draftNotificationWithAI = async (
+  draft: string,
+  options?: { type?: string; targetSegment?: string }
+): Promise<{ title: string; message: string }> => {
+  const cleanDraft = draft.trim();
+  if (!cleanDraft) {
+    throw new Error('Escribe una idea o borrador corto antes de redactar con IA.');
+  }
+
+  const headers = await getAuthHeaders();
+  const response = await fetch('/api/gemini/draft-notification', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      draft: cleanDraft,
+      type: options?.type,
+      targetSegment: options?.targetSegment,
+    }),
+  });
+
+  if (!response.ok) {
+    const errMsg = await parseJsonError(
+      response,
+      'No se pudo redactar el aviso con IA en este momento. Puedes escribirlo manualmente.'
+    );
+    throw new Error(errMsg);
+  }
+
+  const payload = await response.json();
+  if (
+    payload &&
+    typeof payload.title === 'string' &&
+    payload.title.trim() &&
+    typeof payload.message === 'string' &&
+    payload.message.trim()
+  ) {
+    return {
+      title: payload.title.trim(),
+      message: payload.message.trim(),
+    };
+  }
+
+  throw new Error('La IA no devolvió un título y mensaje válidos. Intenta nuevamente.');
+};
+

@@ -107,7 +107,8 @@ import {
   Stamp,
   Loader2,
   Megaphone,
-  Wrench
+  Wrench,
+  Bell
 } from 'lucide-react';
 
 const Logo: React.FC<{ light?: boolean; large?: boolean; mini?: boolean }> = ({ light = false, large = false, mini = false }) => (
@@ -465,8 +466,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     announcementId: string;
     title: string;
     message: string;
-    type: 'novedad' | 'mantenimiento' | 'promocion';
-    targetSegment: 'all' | 'active' | 'trial' | 'expired' | 'cortesia';
+    type: 'informativo' | 'importante' | 'novedad' | 'mantenimiento' | 'promocion';
+    targetSegment: 'all' | 'active' | 'plan_full' | 'trial' | 'expired' | 'cortesia';
     versionKey: string;
   } | null>(null);
 
@@ -513,11 +514,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           (updatedAtMs ? String(updatedAtMs) : `${title}::${message}`);
         const versionKey = announcementId;
 
-        const type: 'novedad' | 'mantenimiento' | 'promocion' =
-          data.type === 'mantenimiento' || data.type === 'promocion' ? data.type : 'novedad';
+        const type: 'informativo' | 'importante' | 'novedad' | 'mantenimiento' | 'promocion' =
+          ['informativo', 'importante', 'novedad', 'mantenimiento', 'promocion'].includes(String(data.type))
+            ? data.type
+            : 'novedad';
 
-        const targetSegment: 'all' | 'active' | 'trial' | 'expired' | 'cortesia' =
-          ['all', 'active', 'trial', 'expired', 'cortesia'].includes(String(data.targetSegment))
+        const targetSegment: 'all' | 'active' | 'plan_full' | 'trial' | 'expired' | 'cortesia' =
+          ['all', 'active', 'plan_full', 'trial', 'expired', 'cortesia'].includes(String(data.targetSegment))
             ? data.targetSegment
             : 'all';
 
@@ -564,6 +567,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     } catch {}
 
     const emailStr = String(currentUser?.email || userProfile?.email || userData?.email || '').toLowerCase();
+    const rawUserPlan = String(
+      userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || ''
+    ).toLowerCase();
     let categoriaCuenta = userProfile?.categoriaCuenta || userData?.categoriaCuenta;
     if (!categoriaCuenta) {
       if (emailStr.includes('jotamolinas') || emailStr.includes('probit.com.py') || emailStr.includes('olga')) {
@@ -576,6 +582,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     switch (globalAnnouncement.targetSegment) {
       case 'all':
         return true;
+      case 'plan_full':
+        return rawUserPlan.includes('full') && !isSoftBlocked;
       case 'cortesia':
         return categoriaCuenta === 'cortesia' || categoriaCuenta === 'equipo';
       case 'active':
@@ -2155,26 +2163,38 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                   {shouldShowGlobalAnnouncement && globalAnnouncement && (() => {
                     const isMantenimiento = globalAnnouncement.type === 'mantenimiento';
                     const isPromocion = globalAnnouncement.type === 'promocion';
-                    const containerCls = isMantenimiento
+                    const isImportante = globalAnnouncement.type === 'importante';
+                    const isInformativo = globalAnnouncement.type === 'informativo';
+                    const containerCls = isMantenimiento || isImportante
                       ? 'bg-amber-50 border-amber-300 text-amber-950'
                       : isPromocion
                         ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-amber-50 border-emerald-300 text-emerald-950'
-                        : 'bg-gradient-to-r from-blue-50 via-indigo-50 to-amber-50/60 border-blue-200 text-slate-900';
-                    const iconBoxCls = isMantenimiento
+                        : isInformativo
+                          ? 'bg-slate-50 border-slate-300 text-slate-900'
+                          : 'bg-gradient-to-r from-blue-50 via-indigo-50 to-amber-50/60 border-blue-200 text-slate-900';
+                    const iconBoxCls = isMantenimiento || isImportante
                       ? 'bg-amber-100 text-amber-700'
                       : isPromocion
                         ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-blue-100 text-blue-700';
-                    const badgeCls = isMantenimiento
+                        : isInformativo
+                          ? 'bg-slate-200/80 text-slate-700'
+                          : 'bg-blue-100 text-blue-700';
+                    const badgeCls = isMantenimiento || isImportante
                       ? 'bg-amber-200/70 text-amber-900'
                       : isPromocion
                         ? 'bg-emerald-200/70 text-emerald-900'
-                        : 'bg-blue-100 text-blue-800';
+                        : isInformativo
+                          ? 'bg-slate-200 text-slate-800'
+                          : 'bg-blue-100 text-blue-800';
                     const badgeLabel = isMantenimiento
                       ? 'Mantenimiento'
-                      : isPromocion
-                        ? 'Promoción'
-                        : 'Novedad';
+                      : isImportante
+                        ? 'Importante'
+                        : isPromocion
+                          ? 'Promoción'
+                          : isInformativo
+                            ? 'Informativo'
+                            : 'Novedad';
 
                     return (
                       <div
@@ -2186,8 +2206,12 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                           <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${iconBoxCls}`}>
                             {isMantenimiento ? (
                               <Wrench className="w-5 h-5" />
+                            ) : isImportante ? (
+                              <AlertTriangle className="w-5 h-5" />
                             ) : isPromocion ? (
                               <Sparkles className="w-5 h-5" />
+                            ) : isInformativo ? (
+                              <Bell className="w-5 h-5" />
                             ) : (
                               <Megaphone className="w-5 h-5" />
                             )}
