@@ -25,8 +25,11 @@ import {
   ChevronDown,
   ChevronUp,
   Bot,
+  ShieldCheck,
+  RotateCcw,
+  X,
 } from 'lucide-react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/auth';
 import {
   fetchPersonasFromFirestore,
@@ -128,6 +131,30 @@ const DEFAULT_AFTER_HOURS_MESSAGE =
 
 const DEFAULT_MEDIA_REPLY_MESSAGE =
   '¡Recibimos tu documento/cédula correctamente! Lo estamos revisando y en breve te confirmamos.';
+
+const DEFAULT_WORK_KEYWORDS: string[] = [
+  'escribania',
+  'escritura',
+  'pagare',
+  'certificacion',
+  'poder',
+  'presupuesto',
+  'honorarios',
+  'transferencia',
+  'firma',
+  'contrato',
+  'vehiculo',
+  'terreno',
+  'sociedad',
+  'ruc',
+];
+
+const normalizeFilterText = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
 const DELAY_OPTIONS: Array<{ seconds: number; label: string }> = [
   { seconds: 60, label: '1 min' },
@@ -443,6 +470,13 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
   const [afterHoursMessage, setAfterHoursMessage] = useState<string>(DEFAULT_AFTER_HOURS_MESSAGE);
   const [mediaReplyEnabled, setMediaReplyEnabled] = useState<boolean>(false);
   const [mediaReplyMessage, setMediaReplyMessage] = useState<string>(DEFAULT_MEDIA_REPLY_MESSAGE);
+  const [aiReceptionistEnabled, setAiReceptionistEnabled] = useState<boolean>(true);
+  const [showFallbackMessages, setShowFallbackMessages] = useState<boolean>(false);
+  const [workFilterEnabled, setWorkFilterEnabled] = useState<boolean>(true);
+  const [allowDocuments, setAllowDocuments] = useState<boolean>(true);
+  const [workKeywords, setWorkKeywords] = useState<string[]>(DEFAULT_WORK_KEYWORDS);
+  const [newKeywordInput, setNewKeywordInput] = useState<string>('');
+  const [liveTestMessage, setLiveTestMessage] = useState<string>('');
   const [showConfigMessageBox, setShowConfigMessageBox] = useState<boolean>(false);
   const [isSavingWaConfig, setIsSavingWaConfig] = useState<boolean>(false);
   const [waConfigSavedBadge, setWaConfigSavedBadge] = useState<boolean>(false);
@@ -783,13 +817,74 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
     };
   }, []);
 
-  // Carga de configuración avanzada de Respuesta Automática
+  // Carga de configuración avanzada de Respuesta Automática (Firestore + servidor WhatsApp)
   useEffect(() => {
     if (!workspaceId) return;
     let active = true;
 
+    const applyConfigFields = (cfg: Record<string, any>) => {
+      if (typeof cfg.autoReplyEnabled === 'boolean') {
+        setAutoReplyEnabled(cfg.autoReplyEnabled);
+      }
+      if (typeof cfg.delaySeconds === 'number' && Number.isFinite(cfg.delaySeconds)) {
+        setDelaySeconds(cfg.delaySeconds);
+      }
+      if (typeof cfg.cooldownMinutes === 'number' && Number.isFinite(cfg.cooldownMinutes)) {
+        setCooldownMinutes(cfg.cooldownMinutes);
+      }
+      if (typeof cfg.businessHoursEnabled === 'boolean') {
+        setBusinessHoursEnabled(cfg.businessHoursEnabled);
+      }
+      if (typeof cfg.businessStart === 'string' && /^\d{2}:\d{2}$/.test(cfg.businessStart.trim())) {
+        setBusinessStart(cfg.businessStart.trim());
+      }
+      if (typeof cfg.businessEnd === 'string' && /^\d{2}:\d{2}$/.test(cfg.businessEnd.trim())) {
+        setBusinessEnd(cfg.businessEnd.trim());
+      }
+      if (typeof cfg.autoReplyMessage === 'string' && cfg.autoReplyMessage.trim()) {
+        setAutoReplyMessage(cfg.autoReplyMessage);
+      }
+      if (typeof cfg.afterHoursMessage === 'string' && cfg.afterHoursMessage.trim()) {
+        setAfterHoursMessage(cfg.afterHoursMessage);
+      }
+      if (typeof cfg.mediaReplyEnabled === 'boolean') {
+        setMediaReplyEnabled(cfg.mediaReplyEnabled);
+      }
+      if (typeof cfg.mediaReplyMessage === 'string' && cfg.mediaReplyMessage.trim()) {
+        setMediaReplyMessage(cfg.mediaReplyMessage);
+      }
+      if (typeof cfg.aiReceptionistEnabled === 'boolean') {
+        setAiReceptionistEnabled(cfg.aiReceptionistEnabled);
+      }
+      if (typeof cfg.workFilterEnabled === 'boolean') {
+        setWorkFilterEnabled(cfg.workFilterEnabled);
+      }
+      if (typeof cfg.allowDocuments === 'boolean') {
+        setAllowDocuments(cfg.allowDocuments);
+      }
+      if (Array.isArray(cfg.workKeywords)) {
+        setWorkKeywords(
+          cfg.workKeywords
+            .filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0)
+            .map((k: string) => k.trim())
+        );
+      }
+      if (Array.isArray(cfg.excludedJids)) {
+        setExcludedJids(
+          cfg.excludedJids.filter((j: unknown): j is string => typeof j === 'string' && j.trim().length > 0)
+        );
+      }
+    };
+
     const loadWaConfig = async () => {
       try {
+        if (auth.currentUser) {
+          const fsSnap = await getDoc(doc(db, 'users', workspaceId, 'whatsapp_config', 'settings')).catch(() => null);
+          if (active && fsSnap?.exists()) {
+            applyConfigFields(fsSnap.data() as Record<string, any>);
+          }
+        }
+
         const headers = await getAuthHeaders(false);
         const res = await fetch(`/api/whatsapp/config/${encodeURIComponent(workspaceId)}`, {
           method: 'GET',
@@ -798,41 +893,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
         const data = await res.json().catch(() => ({}));
         if (!active || !res.ok) return;
 
-        if (typeof data.autoReplyEnabled === 'boolean') {
-          setAutoReplyEnabled(data.autoReplyEnabled);
-        }
-        if (typeof data.delaySeconds === 'number' && Number.isFinite(data.delaySeconds)) {
-          setDelaySeconds(data.delaySeconds);
-        }
-        if (typeof data.cooldownMinutes === 'number' && Number.isFinite(data.cooldownMinutes)) {
-          setCooldownMinutes(data.cooldownMinutes);
-        }
-        if (typeof data.businessHoursEnabled === 'boolean') {
-          setBusinessHoursEnabled(data.businessHoursEnabled);
-        }
-        if (typeof data.businessStart === 'string' && /^\d{2}:\d{2}$/.test(data.businessStart.trim())) {
-          setBusinessStart(data.businessStart.trim());
-        }
-        if (typeof data.businessEnd === 'string' && /^\d{2}:\d{2}$/.test(data.businessEnd.trim())) {
-          setBusinessEnd(data.businessEnd.trim());
-        }
-        if (typeof data.autoReplyMessage === 'string' && data.autoReplyMessage.trim()) {
-          setAutoReplyMessage(data.autoReplyMessage);
-        }
-        if (typeof data.afterHoursMessage === 'string' && data.afterHoursMessage.trim()) {
-          setAfterHoursMessage(data.afterHoursMessage);
-        }
-        if (typeof data.mediaReplyEnabled === 'boolean') {
-          setMediaReplyEnabled(data.mediaReplyEnabled);
-        }
-        if (typeof data.mediaReplyMessage === 'string' && data.mediaReplyMessage.trim()) {
-          setMediaReplyMessage(data.mediaReplyMessage);
-        }
-        if (Array.isArray(data.excludedJids)) {
-          setExcludedJids(
-            data.excludedJids.filter((j: unknown): j is string => typeof j === 'string' && j.trim().length > 0)
-          );
-        }
+        applyConfigFields(data);
       } catch {
         // Mantener valores por defecto si aún no hay configuración guardada
       }
@@ -856,13 +917,16 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
       afterHoursMessage: string;
       mediaReplyEnabled: boolean;
       mediaReplyMessage: string;
+      aiReceptionistEnabled: boolean;
+      workFilterEnabled: boolean;
+      allowDocuments: boolean;
+      workKeywords: string[];
     }>,
     feedbackText: string
   ) => {
     if (!workspaceId || isSavingWaConfig) return false;
     setIsSavingWaConfig(true);
     try {
-      const headers = await getAuthHeaders(true);
       const payload = {
         autoReplyEnabled: overrides.autoReplyEnabled ?? autoReplyEnabled,
         delaySeconds: overrides.delaySeconds ?? (delaySeconds || 120),
@@ -874,7 +938,24 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
         afterHoursMessage: overrides.afterHoursMessage ?? afterHoursMessage,
         mediaReplyEnabled: overrides.mediaReplyEnabled ?? mediaReplyEnabled,
         mediaReplyMessage: overrides.mediaReplyMessage ?? mediaReplyMessage,
+        aiReceptionistEnabled: overrides.aiReceptionistEnabled ?? aiReceptionistEnabled,
+        workFilterEnabled: overrides.workFilterEnabled ?? workFilterEnabled,
+        allowDocuments: overrides.allowDocuments ?? allowDocuments,
+        workKeywords: overrides.workKeywords ?? workKeywords,
       };
+
+      if (auth.currentUser) {
+        await setDoc(
+          doc(db, 'users', workspaceId, 'whatsapp_config', 'settings'),
+          {
+            ...payload,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      const headers = await getAuthHeaders(true);
       const res = await fetch(`/api/whatsapp/config/${encodeURIComponent(workspaceId)}`, {
         method: 'POST',
         headers,
@@ -882,7 +963,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'No se pudo guardar la configuración.');
+        throw new Error(data.error || 'No se pudo sincronizar la configuración con WhatsApp.');
       }
       showWaConfigNotice('success', feedbackText);
       return true;
@@ -894,6 +975,49 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
       setIsSavingWaConfig(false);
     }
   };
+
+  const handleAddWorkKeyword = () => {
+    const parts = newKeywordInput
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (parts.length === 0) return;
+
+    setWorkKeywords((prev) => {
+      const existingNormalized = new Set(prev.map(normalizeFilterText));
+      const next = [...prev];
+      for (const rawItem of parts) {
+        const clean = rawItem.slice(0, 60);
+        const norm = normalizeFilterText(clean);
+        if (norm && !existingNormalized.has(norm) && next.length < 100) {
+          existingNormalized.add(norm);
+          next.push(clean);
+        }
+      }
+      return next;
+    });
+    setNewKeywordInput('');
+  };
+
+  const handleRemoveWorkKeyword = (keywordToRemove: string) => {
+    setWorkKeywords((prev) => prev.filter((k) => k !== keywordToRemove));
+  };
+
+  const handleRestoreSuggestedKeywords = () => {
+    setWorkKeywords([...DEFAULT_WORK_KEYWORDS]);
+  };
+
+  const liveTestMatchedKeyword = useMemo(() => {
+    const normalizedInput = normalizeFilterText(liveTestMessage);
+    if (!normalizedInput) return null;
+    for (const kw of workKeywords) {
+      const normKw = normalizeFilterText(kw);
+      if (normKw && normalizedInput.includes(normKw)) {
+        return kw;
+      }
+    }
+    return null;
+  }, [liveTestMessage, workKeywords]);
 
   const delayMinutesLabel = Math.max(1, Math.round((delaySeconds || 120) / 60));
 
@@ -1608,7 +1732,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
     : 'Sesión activa';
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-5 animate-fade-in">
+    <div className="w-full max-w-5xl mx-auto space-y-5 animate-fade-in overflow-x-hidden">
       {/* Cabecera compacta cuando está conectado; cabecera completa en QR / desconectado / carga */}
       {!isInitialLoading && status === 'connected' ? (
         <div className="space-y-3">
@@ -1884,6 +2008,84 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
 
           {showConfigMessageBox && (
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+              {/* Selector visual: Recepcionista IA vs Mensaje Fijo */}
+              <div className="w-full p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0B0F17]/70 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                    💬 ¿Cómo debe responder O.L.G.A.?
+                  </h4>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Modo activo:{' '}
+                    <strong className="text-emerald-700 dark:text-emerald-300">
+                      {aiReceptionistEnabled ? 'Recepcionista IA' : 'Mensaje Fijo'}
+                    </strong>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Opción A: Recepcionista IA */}
+                  <button
+                    type="button"
+                    aria-pressed={aiReceptionistEnabled}
+                    disabled={isSavingWaConfig}
+                    onClick={() => setAiReceptionistEnabled(true)}
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer disabled:opacity-60 flex flex-col justify-between gap-2 ${
+                      aiReceptionistEnabled
+                        ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-500/15 ring-1 ring-emerald-500/30 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/90 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                          🤖 Recepcionista IA
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-500/25 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 whitespace-nowrap">
+                          Recomendado
+                        </span>
+                      </div>
+                      {aiReceptionistEnabled && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="hidden sm:inline">Activo</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Lee lo que escribió el cliente y responde de forma natural como una secretaria real (sin inventar precios ni turnos).
+                    </p>
+                  </button>
+
+                  {/* Opción B: Mensaje Fijo */}
+                  <button
+                    type="button"
+                    aria-pressed={!aiReceptionistEnabled}
+                    disabled={isSavingWaConfig}
+                    onClick={() => setAiReceptionistEnabled(false)}
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer disabled:opacity-60 flex flex-col justify-between gap-2 ${
+                      !aiReceptionistEnabled
+                        ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-500/15 ring-1 ring-emerald-500/30 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/90 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                        📝 Mensaje Fijo (Manual)
+                      </span>
+                      {!aiReceptionistEnabled && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="hidden sm:inline">Activo</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Envía siempre el texto exacto que escribas en la caja de abajo, sin usar inteligencia artificial.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               {/* 1. Delay y 2. Frecuencia anti-spam */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0B0F17]/70 space-y-2">
@@ -1995,45 +2197,122 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
                       </label>
                     </div>
 
-                    <div className="space-y-1">
-                      <label
-                        htmlFor="wa-after-hours-msg"
-                        className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300"
-                      >
-                        Mensaje fuera de horario
-                      </label>
-                      <textarea
-                        id="wa-after-hours-msg"
-                        rows={2}
-                        value={afterHoursMessage}
-                        onChange={(e) => setAfterHoursMessage(e.target.value)}
-                        disabled={isSavingWaConfig}
-                        placeholder="Mensaje que enviará O.L.G.A. cuando el cliente escriba fuera del horario configurado..."
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
-                      />
-                    </div>
+                    {aiReceptionistEnabled ? (
+                      <div className="space-y-1.5 pt-0.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            Mensaje de respaldo (solo se envía si la IA no logra responder en 8 segundos)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowFallbackMessages((prev) => !prev)}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                          >
+                            <span>{showFallbackMessages ? 'Ocultar mensaje de respaldo' : 'Ver mensaje de respaldo'}</span>
+                            {showFallbackMessages ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        {showFallbackMessages && (
+                          <div className="space-y-1">
+                            <label
+                              htmlFor="wa-after-hours-msg"
+                              className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+                            >
+                              Mensaje fuera de horario (respaldo)
+                            </label>
+                            <textarea
+                              id="wa-after-hours-msg"
+                              rows={2}
+                              value={afterHoursMessage}
+                              onChange={(e) => setAfterHoursMessage(e.target.value)}
+                              disabled={isSavingWaConfig}
+                              placeholder="Mensaje de respaldo cuando el cliente escriba fuera del horario configurado..."
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="wa-after-hours-msg"
+                          className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+                        >
+                          Mensaje fuera de horario
+                        </label>
+                        <textarea
+                          id="wa-after-hours-msg"
+                          rows={2}
+                          value={afterHoursMessage}
+                          onChange={(e) => setAfterHoursMessage(e.target.value)}
+                          disabled={isSavingWaConfig}
+                          placeholder="Mensaje que enviará O.L.G.A. cuando el cliente escriba fuera del horario configurado..."
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* 4. Mensaje de ausencia habitual y 5. Confirmación de Documentos / Cédulas */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0B0F17]/70 space-y-1.5">
-                  <label
-                    htmlFor="wa-auto-reply-msg"
-                    className="block text-xs font-bold text-slate-800 dark:text-slate-100"
-                  >
-                    4. Mensaje de ausencia habitual
-                  </label>
-                  <textarea
-                    id="wa-auto-reply-msg"
-                    rows={3}
-                    value={autoReplyMessage}
-                    onChange={(e) => setAutoReplyMessage(e.target.value)}
-                    disabled={isSavingWaConfig}
-                    placeholder={`Escribe el mensaje automático que enviará O.L.G.A. tras ${delayMinutesLabel} min de ausencia...`}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
-                  />
+                <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0B0F17]/70 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label
+                      htmlFor="wa-auto-reply-msg"
+                      className="block text-xs font-bold text-slate-800 dark:text-slate-100"
+                    >
+                      4. Mensaje de ausencia habitual
+                    </label>
+                    {aiReceptionistEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setShowFallbackMessages((prev) => !prev)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                      >
+                        <span>{showFallbackMessages ? 'Ocultar mensaje de respaldo' : 'Ver mensaje de respaldo'}</span>
+                        {showFallbackMessages ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {aiReceptionistEnabled ? (
+                    <>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Mensaje de respaldo (solo se envía si la IA no logra responder en 8 segundos)
+                      </p>
+                      {showFallbackMessages && (
+                        <textarea
+                          id="wa-auto-reply-msg"
+                          rows={3}
+                          value={autoReplyMessage}
+                          onChange={(e) => setAutoReplyMessage(e.target.value)}
+                          disabled={isSavingWaConfig}
+                          placeholder={`Escribe el mensaje de respaldo que enviará O.L.G.A. tras ${delayMinutesLabel} min si la IA no responde...`}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <textarea
+                      id="wa-auto-reply-msg"
+                      rows={3}
+                      value={autoReplyMessage}
+                      onChange={(e) => setAutoReplyMessage(e.target.value)}
+                      disabled={isSavingWaConfig}
+                      placeholder={`Escribe el mensaje automático que enviará O.L.G.A. tras ${delayMinutesLabel} min de ausencia...`}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y"
+                    />
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0B0F17]/70 space-y-1.5">
@@ -2085,7 +2364,190 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
                 </div>
               </div>
 
-              {/* 6. Botón Guardar configuración */}
+              {/* 6. Tarjeta Filtro Solo Trabajo (Protección para Número Personal) */}
+              <div className="w-full p-3.5 sm:p-4 rounded-xl border border-emerald-200/80 dark:border-emerald-500/30 bg-emerald-50/40 dark:bg-[#0B0F17]/80 space-y-4">
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>🛡️ Filtro Solo Trabajo (Protección para Número Personal)</span>
+                    </h4>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Evita que O.L.G.A. le responda a familiares, amigos o grupos. Solo se activa cuando detecta una consulta de trabajo o un archivo PDF/Word.
+                  </p>
+                </div>
+
+                {/* Switches principal y secundario */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      Activar Filtro Solo Trabajo
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={workFilterEnabled}
+                      disabled={isSavingWaConfig}
+                      onClick={() => setWorkFilterEnabled((prev) => !prev)}
+                      className="inline-flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-60"
+                    >
+                      <span
+                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
+                          workFilterEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                            workFilterEnabled ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                        {workFilterEnabled ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      Aceptar siempre documentos PDF y Word
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={allowDocuments}
+                      disabled={isSavingWaConfig}
+                      onClick={() => setAllowDocuments((prev) => !prev)}
+                      className="inline-flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-60"
+                    >
+                      <span
+                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
+                          allowDocuments ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                            allowDocuments ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                        {allowDocuments ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Editor visual de Palabras Clave */}
+                <div className="space-y-2.5 pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      Palabras clave de trabajo ({workKeywords.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleRestoreSuggestedKeywords}
+                      disabled={isSavingWaConfig}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Restaurar sugeridas</span>
+                    </button>
+                  </div>
+
+                  {/* Chips activos */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {workKeywords.length === 0 ? (
+                      <span className="text-[11px] italic text-slate-500 dark:text-slate-400">
+                        Sin palabras clave cargadas. Agrega una abajo o usa «Restaurar sugeridas».
+                      </span>
+                    ) : (
+                      workKeywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-500/40 text-slate-800 dark:text-slate-100 shadow-2xs max-w-full"
+                        >
+                          <span className="truncate">{keyword}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWorkKeyword(keyword)}
+                            disabled={isSavingWaConfig}
+                            aria-label={`Quitar palabra clave ${keyword}`}
+                            className="p-0.5 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Input para agregar nueva palabra */}
+                  <div className="flex flex-col sm:flex-row gap-2 w-full">
+                    <input
+                      type="text"
+                      value={newKeywordInput}
+                      disabled={isSavingWaConfig}
+                      onChange={(e) => setNewKeywordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddWorkKeyword();
+                        }
+                      }}
+                      placeholder="Ej: sucesión, hipoteca..."
+                      className="w-full flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddWorkKeyword}
+                      disabled={isSavingWaConfig || !newKeywordInput.trim()}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white transition-colors cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
+                    >
+                      <span>+ Agregar</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mini Probador en Vivo */}
+                <div className="pt-3 border-t border-emerald-200/70 dark:border-slate-800 space-y-2">
+                  <label
+                    htmlFor="wa-work-filter-tester"
+                    className="block text-xs font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Prueba un mensaje aquí para ver qué haría O.L.G.A.:
+                  </label>
+                  <input
+                    id="wa-work-filter-tester"
+                    type="text"
+                    value={liveTestMessage}
+                    onChange={(e) => setLiveTestMessage(e.target.value)}
+                    placeholder="Ej: Hola, cuánto sale una certificación de firma o vamos al asado?"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
+                  {liveTestMessage.trim().length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {liveTestMatchedKeyword ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-500/40">
+                          ✅ O.L.G.A. intervendría (Consulta de trabajo)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                          🔇 O.L.G.A. lo ignoraría (Charla personal / ruido)
+                        </span>
+                      )}
+                      {liveTestMatchedKeyword && (
+                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                          Coincidencia: «{liveTestMatchedKeyword}»
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 7. Botón Guardar configuración */}
               <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
                 {waConfigSavedBadge && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">

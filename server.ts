@@ -1305,6 +1305,16 @@ ${prompt}
         typeof rawCfg?.mediaReplyEnabled === 'boolean' ? rawCfg.mediaReplyEnabled : false;
       const mediaReplyMessage =
         typeof rawCfg?.mediaReplyMessage === 'string' ? rawCfg.mediaReplyMessage : '';
+      const hasWorkFilterEnabled = typeof rawCfg?.workFilterEnabled === 'boolean';
+      const hasAllowDocuments = typeof rawCfg?.allowDocuments === 'boolean';
+      const hasAiReceptionistEnabled = typeof rawCfg?.aiReceptionistEnabled === 'boolean';
+      const hasWorkKeywords = Array.isArray(rawCfg?.workKeywords);
+      const workKeywords = hasWorkKeywords
+        ? rawCfg.workKeywords
+            .filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0)
+            .map((k: string) => k.trim().slice(0, 60))
+            .slice(0, 100)
+        : undefined;
       const rawExcluded = Array.isArray(rawCfg?.excludedJids)
         ? rawCfg.excludedJids
         : Array.isArray(data?.excludedJids)
@@ -1326,6 +1336,10 @@ ${prompt}
         afterHoursMessage,
         mediaReplyEnabled,
         mediaReplyMessage,
+        ...(hasAiReceptionistEnabled ? { aiReceptionistEnabled: rawCfg.aiReceptionistEnabled } : {}),
+        ...(hasWorkFilterEnabled ? { workFilterEnabled: rawCfg.workFilterEnabled } : {}),
+        ...(hasAllowDocuments ? { allowDocuments: rawCfg.allowDocuments } : {}),
+        ...(workKeywords !== undefined ? { workKeywords } : {}),
         excludedJids,
       });
     } catch (err: unknown) {
@@ -1386,6 +1400,38 @@ ${prompt}
       const mediaReplyMessage =
         typeof rawBody.mediaReplyMessage === 'string' ? rawBody.mediaReplyMessage.trim().slice(0, 2000) : '';
 
+      const aiReceptionistEnabled =
+        typeof rawBody.aiReceptionistEnabled === 'boolean' ? rawBody.aiReceptionistEnabled : true;
+      const workFilterEnabled =
+        typeof rawBody.workFilterEnabled === 'boolean' ? rawBody.workFilterEnabled : true;
+      const allowDocuments =
+        typeof rawBody.allowDocuments === 'boolean' ? rawBody.allowDocuments : true;
+      const defaultWorkKeywords = [
+        'escribania',
+        'escritura',
+        'pagare',
+        'certificacion',
+        'poder',
+        'presupuesto',
+        'honorarios',
+        'transferencia',
+        'firma',
+        'contrato',
+        'vehiculo',
+        'terreno',
+        'sociedad',
+        'ruc',
+      ];
+      const workKeywords = Array.isArray(rawBody.workKeywords)
+        ? Array.from(
+            new Set(
+              rawBody.workKeywords
+                .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+                .map((k) => k.trim().slice(0, 60))
+            )
+          ).slice(0, 100)
+        : defaultWorkKeywords;
+
       const forwardPayload: Record<string, unknown> = {
         ...safePassthrough,
         autoReplyEnabled: rawBody.autoReplyEnabled,
@@ -1398,6 +1444,10 @@ ${prompt}
         afterHoursMessage,
         mediaReplyEnabled,
         mediaReplyMessage,
+        aiReceptionistEnabled,
+        workFilterEnabled,
+        allowDocuments,
+        workKeywords,
       };
 
       const data = await callWhatsAppEngine(
@@ -1427,6 +1477,15 @@ ${prompt}
           typeof data?.mediaReplyEnabled === 'boolean' ? data.mediaReplyEnabled : mediaReplyEnabled,
         mediaReplyMessage:
           typeof data?.mediaReplyMessage === 'string' ? data.mediaReplyMessage : mediaReplyMessage,
+        aiReceptionistEnabled:
+          typeof data?.aiReceptionistEnabled === 'boolean'
+            ? data.aiReceptionistEnabled
+            : aiReceptionistEnabled,
+        workFilterEnabled:
+          typeof data?.workFilterEnabled === 'boolean' ? data.workFilterEnabled : workFilterEnabled,
+        allowDocuments:
+          typeof data?.allowDocuments === 'boolean' ? data.allowDocuments : allowDocuments,
+        workKeywords: Array.isArray(data?.workKeywords) ? data.workKeywords : workKeywords,
       });
     } catch (err: unknown) {
       const status = err instanceof ApiHttpError ? err.status : 500;
