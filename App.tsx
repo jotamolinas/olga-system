@@ -2015,7 +2015,11 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             {/* Hamburger menu button (solo en pantallas móviles) */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl shrink-0 transition-colors border border-slate-200 md:hidden cursor-pointer"
+              className={`p-2 rounded-xl shrink-0 transition-colors border md:hidden cursor-pointer ${
+                isDarkLayout
+                  ? 'bg-[#2c2f36] hover:bg-[#363a42] text-gray-100 border-[#424650]'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+              }`}
               title="Abrir menú"
             >
               <Menu className="w-5 h-5" />
