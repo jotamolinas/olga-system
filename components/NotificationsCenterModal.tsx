@@ -693,26 +693,41 @@ export const NotificationsCenterModal: React.FC<NotificationsCenterModalProps> =
                       id: 'informativo' as AnnouncementType,
                       label: 'Informativo',
                       clsActive: 'bg-blue-500/20 border-blue-400/50 text-blue-200',
+                      defaultTitle: 'Aviso informativo de O.L.G.A.',
+                      defaultMessage:
+                        'Les compartimos una novedad operativa en su consola de O.L.G.A. Sus registros, pagarés y documentos continúan disponibles con normalidad. Ante cualquier consulta, nuestro equipo de soporte está a disposición.',
                     },
                     {
                       id: 'importante' as AnnouncementType,
                       label: 'Importante',
                       clsActive: 'bg-amber-500/20 border-amber-400/50 text-amber-200',
+                      defaultTitle: 'Aviso importante para su cuenta en O.L.G.A.',
+                      defaultMessage:
+                        'Atención: les pedimos revisar los datos de su escribanía, vigencia de timbrado o estado de suscripción en la consola de O.L.G.A. para evitar interrupciones en la emisión de documentos.',
                     },
                     {
                       id: 'novedad' as AnnouncementType,
                       label: 'Novedad',
                       clsActive: 'bg-purple-500/20 border-purple-400/50 text-purple-200',
+                      defaultTitle: 'Nueva mejora disponible en O.L.G.A.',
+                      defaultMessage:
+                        'Ya se encuentra disponible una nueva mejora en O.L.G.A. pensada para agilizar su trabajo diario en la escribanía. Ingrese a su consola para conocerla y utilizarla.',
                     },
                     {
                       id: 'mantenimiento' as AnnouncementType,
                       label: 'Mantenimiento',
-                      clsActive: 'bg-orange-500/20 border-orange-400/50 text-orange-200',
+                      clsActive: 'bg-white text-zinc-950 border-white font-semibold',
+                      defaultTitle: 'Ventana de mantenimiento programado en O.L.G.A.',
+                      defaultMessage:
+                        'Informamos que realizaremos tareas de mantenimiento técnico programado en O.L.G.A. Durante ese breve lapso la plataforma podría presentar pausas momentáneas; sus datos y documentos guardados permanecen seguros.',
                     },
                     {
                       id: 'promocion' as AnnouncementType,
                       label: 'Promoción',
                       clsActive: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200',
+                      defaultTitle: 'Beneficio especial disponible en O.L.G.A.',
+                      defaultMessage:
+                        'Aproveche las condiciones y beneficios vigentes en O.L.G.A. para potenciar la gestión diaria de su escribanía o estudio. Consulte los detalles directamente desde su consola.',
                     },
                   ].map((t) => {
                     const selected = announcementType === t.id;
@@ -720,7 +735,13 @@ export const NotificationsCenterModal: React.FC<NotificationsCenterModalProps> =
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => setAnnouncementType(t.id)}
+                        onClick={() => {
+                          setAnnouncementType(t.id);
+                          setAnnouncementTitle(t.defaultTitle);
+                          setAnnouncementMessage(t.defaultMessage);
+                          setAiDraftError(null);
+                          setAnnouncementFeedback(null);
+                        }}
                         className={`min-h-[38px] px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer text-center truncate ${
                           selected
                             ? t.clsActive
