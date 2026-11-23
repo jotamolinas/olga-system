@@ -681,9 +681,16 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     "5DzZ9vL9y4cGQc4sHatRI2QugBr2",
     "SDz29yL9y4cG0c4sHatRl20ugRc2"
   ];
-  const isActualAdminUser = currentUser && (
-    ADMIN_UIDS.includes(currentUser.uid) || 
-    currentUser.email === "jotamolinas@gmail.com"
+  const firestoreAdminRole = String(
+    userProfile?.role || userProfile?.rol || userData?.role || userData?.rol || ''
+  ).toUpperCase().trim();
+  const isActualAdminUser = Boolean(
+    currentUser && (
+      ADMIN_UIDS.includes(currentUser.uid) ||
+      currentUser.email === "jotamolinas@gmail.com" ||
+      firestoreAdminRole === 'SUPERADMIN' ||
+      firestoreAdminRole === 'ADMIN'
+    )
   );
 
   const isAdmin = forceAdmin && isActualAdminUser;
@@ -1946,7 +1953,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
   // En el workspace compartido, los pagarés pertenecen a la notaría
   const visiblePagares = pagares;
 
-  const isSuperAdminView = role === 'admin' && (activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos');
+  const isAdminConsoleTab = activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos';
+  const isSuperAdminView = (role === 'admin' || forceAdmin) && isAdminConsoleTab;
   const isDarkLayout = isDarkMode || isSuperAdminView;
   const layoutBg = isDarkLayout ? 'bg-[#09090b]' : 'bg-gray-50';
   const layoutText = isDarkLayout ? 'text-gray-200' : 'text-gray-900';
@@ -2157,8 +2165,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         </header>
 
         {/* Scrollable container for tab body content */}
-        <div className={`flex-grow w-full max-w-full overflow-x-hidden overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : activeTab === 'monitor' ? 'p-0 flex flex-col flex-1 overflow-y-auto md:overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
-          <div className={`w-full min-w-0 max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : activeTab === 'monitor' ? 'min-h-full md:h-full flex-1 overflow-visible md:overflow-hidden pb-24 md:pb-0' : 'pb-24'}`}>
+        <div className={`flex-grow w-full max-w-full overflow-x-hidden overflow-y-auto print:overflow-visible print:h-auto print:p-0 ${activeTab === 'chat' ? 'p-0 md:p-8 flex flex-col overflow-y-auto' : (activeTab === 'monitor' || activeTab === 'pagos') ? 'p-0 flex flex-col flex-1 overflow-y-auto md:overflow-hidden' : 'p-4 md:p-8 overflow-y-auto'}`}>
+          <div className={`w-full min-w-0 max-w-7xl mx-auto flex-grow flex flex-col print:max-w-none print:w-full print:p-0 print:pb-0 ${activeTab === 'chat' ? 'pb-0 md:pb-24 h-full' : (activeTab === 'monitor' || activeTab === 'pagos') ? 'min-h-full md:h-full flex-1 overflow-visible md:overflow-hidden pb-24 md:pb-0' : 'pb-24'}`}>
             
             {(() => {
               return (
@@ -2502,12 +2510,60 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             )}
 
             {activeTab === 'monitor' && role === 'admin' && (
-              <SuperAdminDashboard />
+              <SuperAdminDashboard mode="monitor" />
             )}
 
+            {activeTab === 'pagos' && role === 'admin' && (
+              <SuperAdminDashboard mode="pagos" />
+            )}
 
             {activeTab === 'onboarding-sifen' && role === 'admin' && (
               <SuperAdminOnboarding />
+            )}
+
+            {(activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') && role !== 'admin' && (
+              <div className="flex-1 flex items-center justify-center p-6 min-h-[60vh]">
+                <div className="w-full max-w-md bg-[#121214] border border-white/10 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+                  {isCheckingProfile ? (
+                    <>
+                      <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-white">Cargando Monitor Central</h3>
+                        <p className="text-xs text-gray-400">Verificando credenciales de Super Admin...</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto">
+                        <Lock className="w-6 h-6 text-amber-400" />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-base font-bold text-white">Acceso Super Admin Requerido</h3>
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                          {currentUser
+                            ? 'Tu sesión actual no tiene permisos de Super Administrador para esta vista.'
+                            : 'Iniciá sesión con tu cuenta de Super Administrador para acceder al Monitor Central y Gestión de Cobros.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
+                        <a
+                          href="/admin"
+                          className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors text-center"
+                        >
+                          Ir a Login Admin
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('tablero')}
+                          className="w-full sm:w-auto px-4 py-2.5 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Volver al Tablero
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
 
             {activeTab === 'soporte' && role === 'admin' && (

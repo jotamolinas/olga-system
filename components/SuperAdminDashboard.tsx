@@ -99,6 +99,104 @@ interface PagareGlobal {
   userEmail?: string;
 }
 
+interface AdminErrorBoundaryProps {
+  children: React.ReactNode;
+  label?: string;
+}
+
+interface AdminErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class AdminErrorBoundary extends React.Component<AdminErrorBoundaryProps, AdminErrorBoundaryState> {
+  constructor(props: AdminErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error): AdminErrorBoundaryState {
+    return {
+      hasError: true,
+      errorMessage: error?.message || 'Error inesperado al renderizar la vista.',
+    };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[SuperAdminDashboard ErrorBoundary]', this.props.label || 'Monitor', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full min-h-[280px] bg-[#121214] border border-red-500/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center gap-3 text-gray-200">
+          <div className="p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 max-w-md">
+            <h3 className="text-sm font-bold text-white">
+              Ocurrió un problema en {this.props.label || 'Monitor Central'}
+            </h3>
+            <p className="text-xs text-gray-400">
+              Se detectó un dato incompleto o inesperado. Podés reintentar sin perder tus cambios.
+            </p>
+            {this.state.errorMessage && (
+              <p className="text-[11px] font-mono text-red-300/90 bg-red-950/40 border border-red-500/20 rounded-lg px-3 py-1.5 mt-2 break-words">
+                {this.state.errorMessage}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false, errorMessage: '' })}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/15 transition-colors cursor-pointer"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const safeToMillis = (val: any): number => {
+  if (!val) return 0;
+  try {
+    if (typeof val?.toDate === 'function') {
+      const ms = val.toDate().getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    if (typeof val?.seconds === 'number') {
+      return val.seconds * 1000;
+    }
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      return val > 1000000000000 ? val : val * 1000;
+    }
+    if (typeof val === 'string') {
+      const parsed = Date.parse(val);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+};
+
+const safeParseMonto = (val: any): number => {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  if (typeof val === 'string') {
+    const cleaned = Number(val.replace(/[^\d.-]/g, ''));
+    return Number.isFinite(cleaned) ? cleaned : 0;
+  }
+  return 0;
+};
+
+export interface SuperAdminDashboardProps {
+  mode?: 'monitor' | 'pagos';
+}
+
 interface Metrics {
   totalUsers: number;
   activeUsers: number;
@@ -205,9 +303,10 @@ const buildOfertaTemplateContent = (
   }
 };
 
-export const SuperAdminDashboard: React.FC = () => {
+export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode = 'monitor' }) => {
   const [adminSubTab, setAdminSubTab] = useState<'metricas' | 'onboarding'>('metricas');
   const [mobileAdminTab, setMobileAdminTab] = useState<'resumen' | 'usuarios' | 'pagares' | 'sifen'>('resumen');
+  const [reciboLoadError, setReciboLoadError] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>({ totalUsers: 0, activeUsers: 0, totalPagares: 0, aiQueries: 0, alerts: 0, clientesCount: 0, equipoCortesiaCount: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -660,105 +759,110 @@ export const SuperAdminDashboard: React.FC = () => {
         let equipoC = 0;
 
         usersSnap.forEach((docSnap) => {
-          const data = docSnap.data();
-          const docId = docSnap.id;
-          tUsers++;
+          try {
+            const data = docSnap.data() || {};
+            const docId = docSnap.id;
+            tUsers++;
 
-          const userAiUsage = Number(data.usoIA || data.consultasUsadas || data.aiConsultationsCount || 0);
-          aiQ += userAiUsage;
+            const rawAi = Number(data.usoIA ?? data.consultasUsadas ?? data.aiConsultationsCount ?? 0);
+            const userAiUsage = Number.isFinite(rawAi) ? rawAi : 0;
+            aiQ += userAiUsage;
 
-          const emailStr = String(data.email || data.correo || '').toLowerCase();
-          let categoriaCuenta: 'cliente' | 'cortesia' | 'equipo' = data.categoriaCuenta;
-          if (!categoriaCuenta) {
-            if (emailStr.includes('jotamolinas') || emailStr.includes('probit.com.py') || emailStr.includes('olga')) {
-              categoriaCuenta = 'equipo';
-            } else {
-              categoriaCuenta = 'cliente';
+            const emailStr = String(data.email || data.correo || '').toLowerCase();
+            let categoriaCuenta: 'cliente' | 'cortesia' | 'equipo' = data.categoriaCuenta;
+            if (!categoriaCuenta) {
+              if (emailStr.includes('jotamolinas') || emailStr.includes('probit.com.py') || emailStr.includes('olga')) {
+                categoriaCuenta = 'equipo';
+              } else {
+                categoriaCuenta = 'cliente';
+              }
             }
-          }
 
-          if (categoriaCuenta === 'cliente') {
-            clientesC++;
-          } else {
-            equipoC++;
-          }
+            if (categoriaCuenta === 'cliente') {
+              clientesC++;
+            } else {
+              equipoC++;
+            }
 
-          const planStr = String(data.planActual || data.plan || data.planSolicitado || '').toLowerCase();
-          const estadoPago = String(data.estadoPago || '').toUpperCase();
-          const estadoPlataforma = String(data.estadoPlataforma || '').toUpperCase();
+            const planStr = String(data.planActual || data.plan || data.planSolicitado || '').toLowerCase();
+            const estadoPago = String(data.estadoPago || '').toUpperCase();
+            const estadoPlataforma = String(data.estadoPlataforma || '').toUpperCase();
 
-          const isPending = estadoPago === 'PAGO_PENDIENTE_VERIFICACION' || estadoPago === 'PENDIENTE';
-          if (isPending) {
-            pend.push({
-              id: docId,
-              userId: docId,
-              email: data.email || data.correo || data.phoneNumber || data.telefono || docId || 'Desconocido',
-              nombreCliente: data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Cliente sin nombre registrado',
-              montoAPagar: data.montoAPagar || 0,
-              modalidadPago: data.modalidadPago || 'Desconocido',
-              urlComprobante: data.urlComprobante || '',
-              fechaSolicitud: data.fechaSolicitud,
-              planSolicitado: data.planSolicitado || 'Plan desconocido',
-            });
-          }
+            const isPending = estadoPago === 'PAGO_PENDIENTE_VERIFICACION' || estadoPago === 'PENDIENTE';
+            if (isPending) {
+              pend.push({
+                id: docId,
+                userId: docId,
+                email: String(data.email || data.correo || data.phoneNumber || data.telefono || docId || 'Desconocido'),
+                nombreCliente: String(data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Cliente sin nombre registrado'),
+                montoAPagar: safeParseMonto(data.montoAPagar),
+                modalidadPago: String(data.modalidadPago || 'Mensual'),
+                urlComprobante: String(data.urlComprobante || ''),
+                fechaSolicitud: data.fechaSolicitud || data.updatedAt || null,
+                planSolicitado: String(data.planSolicitado || data.ultimoPlanInteres || data.plan || 'Plan solicitado'),
+              });
+            }
 
-          const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('basico') || planStr.includes('básico') || estadoPago === 'APROBADO' || estadoPago === 'ACTIVO' || estadoPlataforma === 'APROBADO';
-          if (isPaidPlan) aUsers++;
+            const isPaidPlan = planStr.includes('pro') || planStr.includes('empresa') || planStr.includes('full') || planStr.includes('basico') || planStr.includes('básico') || estadoPago === 'APROBADO' || estadoPago === 'ACTIVO' || estadoPlataforma === 'APROBADO';
+            if (isPaidPlan) aUsers++;
 
-          const timestamp = getUserTimestamp(data);
+            const timestamp = getUserTimestamp(data);
 
-          let estadoSuscripcion: 'activo' | 'prueba' | 'pendiente' | 'vencido' = 'prueba';
-          let diasRestantes = 5;
+            let estadoSuscripcion: 'activo' | 'prueba' | 'pendiente' | 'vencido' = 'prueba';
+            let diasRestantes = 5;
 
-          if (isPending) {
-            estadoSuscripcion = 'pendiente';
-          } else if (isPaidPlan) {
-            estadoSuscripcion = 'activo';
-          } else {
-            if (timestamp > 0) {
-              const diffMs = Date.now() - timestamp;
-              const daysPassed = diffMs / (1000 * 60 * 60 * 24);
-              diasRestantes = Math.max(0, Math.ceil(5 - daysPassed));
-              if (daysPassed > 5 || diasRestantes <= 0) {
-                estadoSuscripcion = 'vencido';
+            if (isPending) {
+              estadoSuscripcion = 'pendiente';
+            } else if (isPaidPlan) {
+              estadoSuscripcion = 'activo';
+            } else {
+              if (timestamp > 0) {
+                const diffMs = Date.now() - timestamp;
+                const daysPassed = diffMs / (1000 * 60 * 60 * 24);
+                diasRestantes = Math.max(0, Math.ceil(5 - daysPassed));
+                if (daysPassed > 5 || diasRestantes <= 0) {
+                  estadoSuscripcion = 'vencido';
+                } else {
+                  estadoSuscripcion = 'prueba';
+                }
               } else {
                 estadoSuscripcion = 'prueba';
+                diasRestantes = 5;
               }
-            } else {
-              estadoSuscripcion = 'prueba';
-              diasRestantes = 5;
             }
+
+            const isRecent = timestamp > 0 && (Date.now() - timestamp) < (24 * 60 * 60 * 1000);
+
+            usersList.push({
+              id: docId,
+              email: String(data.email || data.correo || ''),
+              telefono: String(data.phoneNumber || data.telefono || data.celular || data.phone || ''),
+              nombre: String(data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Usuario Registrado'),
+              razonSocial: String(data.razonSocial || data.escribania?.nombre || ''),
+              plan: String(data.planActual || data.plan || (estadoSuscripcion === 'activo' ? 'Plan Activo' : 'Prueba Gratuita')),
+              estadoSuscripcion,
+              estadoPago: String(data.estadoPago || data.estadoPlataforma || (estadoSuscripcion === 'activo' ? 'APROBADO' : 'PRUEBA')),
+              modalidadPago: String(data.modalidadPago || (data.tipoPlan ? `Plan ${data.tipoPlan}` : '')),
+              montoAPagar: safeParseMonto(data.montoAPagar),
+              timestamp,
+              fechaFormateada: formatUserDate(timestamp),
+              diasRestantes,
+              isRecent,
+              categoriaCuenta,
+              whatsappEnabled: typeof data.whatsappEnabled === 'boolean' ? data.whatsappEnabled : undefined,
+              lienzoEnabled: typeof data.lienzoEnabled === 'boolean' ? data.lienzoEnabled : undefined,
+              presupuestoEnabled: typeof data.presupuestoEnabled === 'boolean' ? data.presupuestoEnabled : undefined,
+              raw: data
+            });
+          } catch (docErr) {
+            console.error('Error parseando documento de usuario en SuperAdmin:', docSnap?.id, docErr);
           }
-
-          const isRecent = timestamp > 0 && (Date.now() - timestamp) < (24 * 60 * 60 * 1000);
-
-          usersList.push({
-            id: docId,
-            email: data.email || data.correo || '',
-            telefono: data.phoneNumber || data.telefono || data.celular || data.phone || '',
-            nombre: data.nombre || data.razonSocial || data.nombreCompleto || data.displayName || 'Usuario Registrado',
-            razonSocial: data.razonSocial || data.escribania?.nombre || '',
-            plan: data.planActual || data.plan || (estadoSuscripcion === 'activo' ? 'Plan Activo' : 'Prueba Gratuita'),
-            estadoSuscripcion,
-            estadoPago: data.estadoPago || data.estadoPlataforma || (estadoSuscripcion === 'activo' ? 'APROBADO' : 'PRUEBA'),
-            modalidadPago: data.modalidadPago || (data.tipoPlan ? `Plan ${data.tipoPlan}` : ''),
-            montoAPagar: data.montoAPagar || 0,
-            timestamp,
-            fechaFormateada: formatUserDate(timestamp),
-            diasRestantes,
-            isRecent,
-            categoriaCuenta,
-            whatsappEnabled: typeof data.whatsappEnabled === 'boolean' ? data.whatsappEnabled : undefined,
-            lienzoEnabled: typeof data.lienzoEnabled === 'boolean' ? data.lienzoEnabled : undefined,
-            presupuestoEnabled: typeof data.presupuestoEnabled === 'boolean' ? data.presupuestoEnabled : undefined,
-            raw: data
-          });
         });
 
         usersList.sort((a, b) => b.timestamp - a.timestamp);
 
         setRegisteredUsers(usersList);
-        setPendingPayments(pend.sort((a, b) => (b.fechaSolicitud?.toDate?.()?.getTime() || 0) - (a.fechaSolicitud?.toDate?.()?.getTime() || 0)));
+        setPendingPayments(pend.sort((a, b) => safeToMillis(b.fechaSolicitud) - safeToMillis(a.fechaSolicitud)));
         setLoadingUsers(false);
         setLoadingPayments(false);
 
@@ -774,10 +878,12 @@ export const SuperAdminDashboard: React.FC = () => {
       }, (err) => {
         console.error("Error en snapshot en tiempo real de usuarios:", err);
         setLoadingUsers(false);
+        setLoadingPayments(false);
       });
     } catch (err) {
       console.error("Error inicializando listener de usuarios:", err);
       setLoadingUsers(false);
+      setLoadingPayments(false);
     }
 
     // 2. Carga de Pagarés Globales
@@ -993,33 +1099,48 @@ export const SuperAdminDashboard: React.FC = () => {
   };
 
   const handleAprobar = async (userId: string, planSolicitado: string, modalidadPago?: string) => {
+    if (!userId) {
+      showToast('err', 'No se encontró el identificador del usuario para aprobar el pago.');
+      return;
+    }
     setProcessingPaymentUserId(userId);
     try {
       const userRef = doc(db, 'users', userId);
       const fechaActual = new Date();
+      const normalizedPlan =
+        planSolicitado &&
+        planSolicitado !== 'Plan desconocido' &&
+        planSolicitado !== 'Plan solicitado'
+          ? planSolicitado.trim()
+          : 'Plan Básico';
       const esAnual = String(modalidadPago || '').toLowerCase().includes('anual');
       const diasVigencia = esAnual ? 365 : 30;
       const fechaVencimientoMs = Date.now() + (diasVigencia * 24 * 60 * 60 * 1000);
       const fechaVencimiento = new Date(fechaVencimientoMs);
 
       await updateDoc(userRef, {
-        planActual: planSolicitado,
-        plan: planSolicitado,
+        planActual: normalizedPlan,
+        plan: normalizedPlan,
+        planSolicitado: '',
         estadoPago: 'APROBADO',
         estadoPlataforma: 'Aprobado',
         estado_cuenta: 'activa',
         modalidadPago: esAnual ? 'Anual (12 meses)' : 'Mensual (1 mes)',
         fecha_inicio_plan: fechaActual.toISOString(),
         fecha_vencimiento_plan: fechaVencimiento.toISOString(),
-        fechaAprobacion: fechaActual.toISOString()
+        fechaAprobacion: fechaActual.toISOString(),
       });
 
-      setPendingPayments(prev => prev.filter(p => p.userId !== userId));
+      setPendingPayments(prev => {
+        const next = prev.filter(p => (p.userId || p.id) !== userId);
+        setMetrics(m => ({ ...m, alerts: next.length }));
+        return next;
+      });
       setRejectConfirmUserId(null);
-      showToast('ok', `¡Suscripción aprobada! Plan "${planSolicitado}" vigente hasta ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
+      showToast('ok', `¡Suscripción aprobada! Plan "${normalizedPlan}" vigente hasta ${fechaVencimiento.toLocaleDateString('es-ES')}.`);
     } catch (err) {
-      console.error(err);
-      showToast('err', 'Error al aprobar la suscripción.');
+      console.error('Error al aprobar suscripción:', err);
+      showToast('err', 'Error al aprobar la suscripción. Reintentá en unos segundos.');
     } finally {
       setProcessingPaymentUserId(null);
     }
@@ -1027,6 +1148,10 @@ export const SuperAdminDashboard: React.FC = () => {
 
   const handleRechazarPago = async (pago: PendingPayment) => {
     const targetId = pago.userId || pago.id;
+    if (!targetId) {
+      showToast('err', 'No se encontró el identificador del usuario para rechazar el pago.');
+      return;
+    }
     setProcessingPaymentUserId(targetId);
     try {
       await updateDoc(doc(db, 'users', targetId), {
@@ -1035,12 +1160,16 @@ export const SuperAdminDashboard: React.FC = () => {
         planSolicitado: '',
         fechaRechazo: new Date().toISOString(),
       });
-      setPendingPayments(prev => prev.filter(p => (p.userId || p.id) !== targetId));
+      setPendingPayments(prev => {
+        const next = prev.filter(p => (p.userId || p.id) !== targetId);
+        setMetrics(m => ({ ...m, alerts: next.length }));
+        return next;
+      });
       setRejectConfirmUserId(null);
       showToast('ok', `Comprobante rechazado para ${pago.nombreCliente || pago.email}.`);
     } catch (err) {
       console.error('Error al rechazar comprobante:', err);
-      showToast('err', 'No se pudo rechazar el comprobante.');
+      showToast('err', 'No se pudo rechazar el comprobante. Reintentá en unos segundos.');
     } finally {
       setProcessingPaymentUserId(null);
     }
@@ -1355,8 +1484,139 @@ export const SuperAdminDashboard: React.FC = () => {
     );
   };
 
+  const renderPendingPaymentsSection = () => {
+    if (loadingPayments) {
+      return (
+        <div className="py-12 flex flex-col items-center justify-center gap-3 text-gray-400 text-xs">
+          <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-400 rounded-full animate-spin" />
+          <p>Cargando comprobantes pendientes...</p>
+        </div>
+      );
+    }
+
+    if (pendingPayments.length === 0) {
+      return (
+        <div className="py-12 px-4 text-center text-gray-400 flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl">
+          <CheckCircle className="w-9 h-9 text-emerald-500/50 mb-2.5" />
+          <p className="font-semibold text-sm text-gray-200">No hay pagos pendientes de verificación en este momento.</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-md">
+            Cuando un escribano suba un comprobante de transferencia desde Planes, aparecerá aquí para aprobar o rechazar.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {pendingPayments.map((pago) => {
+          const targetId = pago.userId || pago.id;
+          const isBusy = processingPaymentUserId === targetId;
+          const isConfirmingReject = rejectConfirmUserId === targetId;
+          const fechaMs = safeToMillis(pago.fechaSolicitud);
+          const fechaStr = fechaMs > 0 ? formatUserDate(fechaMs) : '';
+          const montoNum = safeParseMonto(pago.montoAPagar);
+
+          return (
+            <div
+              key={pago.id}
+              className="p-3.5 sm:p-4 bg-[#121214] border border-white/10 hover:border-amber-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+            >
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-bold text-white text-sm break-words">
+                    {pago.nombreCliente || pago.email || 'Cliente'}
+                  </p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    Pendiente
+                  </span>
+                </div>
+                {pago.email && pago.nombreCliente && (
+                  <p className="text-[11px] text-gray-400 truncate">{pago.email}</p>
+                )}
+                <p className="text-gray-300 text-xs flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span>Plan: <strong className="text-white">{pago.planSolicitado}</strong></span>
+                  <span>•</span>
+                  <span className="font-mono text-emerald-400 font-bold">
+                    Gs. {montoNum.toLocaleString('es-PY')}
+                  </span>
+                  {pago.modalidadPago && <span className="text-gray-400">({pago.modalidadPago})</span>}
+                </p>
+                {fechaStr && (
+                  <p className="text-[10px] text-gray-500 font-mono">
+                    Enviado: {fechaStr}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {pago.urlComprobante ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReciboLoadError(false);
+                      setReciboSeleccionado(pago.urlComprobante);
+                    }}
+                    className="min-h-[38px] px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Ver Recibo
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-gray-500 px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/10">
+                    Sin archivo adjunto
+                  </span>
+                )}
+
+                {isConfirmingReject ? (
+                  <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-xl px-2.5 py-1.5">
+                    <span className="text-[11px] text-red-200 font-semibold">¿Rechazar?</span>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleRechazarPago(pago)}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                    >
+                      {isBusy ? '...' : 'Sí'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => setRejectConfirmUserId(null)}
+                      className="px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-[11px] font-semibold cursor-pointer"
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleAprobar(targetId, pago.planSolicitado || '', pago.modalidadPago)}
+                      className="min-h-[38px] px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 disabled:opacity-50 text-emerald-300 border border-emerald-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> {isBusy ? 'Procesando...' : 'Aprobar'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => setRejectConfirmUserId(targetId)}
+                      className="min-h-[38px] px-3 py-1.5 bg-red-600/20 hover:bg-red-600/35 disabled:opacity-50 text-red-300 border border-red-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> Rechazar
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <div className="flex-1 min-h-screen md:min-h-0 md:h-full overflow-y-auto md:overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-3 pb-24 md:p-4 w-full box-border overflow-x-hidden">
+    <AdminErrorBoundary label={mode === 'pagos' ? 'Gestión de Cobros' : 'Monitor Central'}>
+    <div className="flex-1 min-h-[calc(100vh-4rem)] md:min-h-0 md:h-full overflow-y-auto md:overflow-hidden flex flex-col bg-[#09090b] text-gray-200 p-3 pb-24 md:p-4 w-full box-border overflow-x-hidden">
       {whatsappToast && (
         <div
           role="status"
@@ -1374,6 +1634,57 @@ export const SuperAdminDashboard: React.FC = () => {
           <span>{whatsappToast.message}</span>
         </div>
       )}
+      {mode === 'pagos' ? (
+        <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col gap-4 overflow-y-auto pr-0.5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-white/10 shrink-0">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+                Gestión de Cobros y Pagos Pendientes
+              </h1>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Verificación de comprobantes bancarios, aprobación de planes y control de suscripciones activas.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
+                pendingPayments.length > 0
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
+                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25'
+              }`}>
+                {pendingPayments.length} {pendingPayments.length === 1 ? 'pago pendiente' : 'pagos pendientes'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+            <div className="bg-[#121214] border border-white/10 rounded-2xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Pagos por Verificar</p>
+              <p className={`text-2xl font-semibold mt-1 ${pendingPayments.length > 0 ? 'text-amber-300' : 'text-white'}`}>
+                {loadingPayments ? '...' : pendingPayments.length}
+              </p>
+            </div>
+            <div className="bg-[#121214] border border-white/10 rounded-2xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Monto Pendiente Total</p>
+              <p className="text-2xl font-semibold text-emerald-400 font-mono mt-1">
+                Gs. {pendingPayments.reduce((acc, p) => acc + safeParseMonto(p.montoAPagar), 0).toLocaleString('es-PY')}
+              </p>
+            </div>
+            <div className="bg-[#121214] border border-white/10 rounded-2xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Suscripciones Activas</p>
+              <p className="text-2xl font-semibold text-white mt-1">
+                {loadingUsers ? '...' : metrics.activeUsers}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0">
+            <AdminErrorBoundary label="la lista de pagos pendientes">
+              {renderPendingPaymentsSection()}
+            </AdminErrorBoundary>
+          </div>
+        </div>
+      ) : (
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col md:overflow-hidden overflow-x-hidden">
         {/* Header / Subtabs */}
         <div className="mb-3 shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2906,95 +3217,9 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
 
               <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
-                {pendingPayments.length === 0 ? (
-                  <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-emerald-500/40 mb-2" />
-                    <p className="font-medium text-gray-300">No hay pagos pendientes de verificación en este momento.</p>
-                  </div>
-                ) : (
-                  pendingPayments.map((pago) => {
-                    const targetId = pago.userId || pago.id;
-                    const isBusy = processingPaymentUserId === targetId;
-                    const isConfirmingReject = rejectConfirmUserId === targetId;
-
-                    return (
-                      <div
-                        key={pago.id}
-                        className="p-3.5 sm:p-4 bg-white/[0.02] border border-white/10 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-white text-sm break-words">
-                            {pago.nombreCliente || pago.email}
-                          </p>
-                          {pago.email && pago.nombreCliente && (
-                            <p className="text-[11px] text-gray-400 truncate mt-0.5">{pago.email}</p>
-                          )}
-                          <p className="text-gray-300 mt-1 text-xs">
-                            Plan: <span className="text-white font-semibold">{pago.planSolicitado}</span>
-                            {' • '}
-                            <span className="font-mono text-emerald-400 font-bold">
-                              Gs. {(pago.montoAPagar || 0).toLocaleString('es-PY')}
-                            </span>
-                            {pago.modalidadPago ? ` (${pago.modalidadPago})` : ''}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                          {pago.urlComprobante && (
-                            <button
-                              type="button"
-                              onClick={() => setReciboSeleccionado(pago.urlComprobante)}
-                              className="min-h-[38px] px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" /> Ver Recibo
-                            </button>
-                          )}
-
-                          {isConfirmingReject ? (
-                            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-xl px-2 py-1">
-                              <span className="text-[11px] text-red-200 font-semibold">¿Rechazar?</span>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleRechazarPago(pago)}
-                                className="px-2.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold cursor-pointer"
-                              >
-                                {isBusy ? '...' : 'Sí'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => setRejectConfirmUserId(null)}
-                                className="px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-[11px] font-semibold cursor-pointer"
-                              >
-                                No
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleAprobar(targetId, pago.planSolicitado || '', pago.modalidadPago)}
-                                className="min-h-[38px] px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/35 disabled:opacity-50 text-emerald-300 border border-emerald-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" /> Aprobar
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => setRejectConfirmUserId(targetId)}
-                                className="min-h-[38px] px-3 py-1.5 bg-red-600/20 hover:bg-red-600/35 disabled:opacity-50 text-red-300 border border-red-500/30 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <XCircle className="w-3.5 h-3.5" /> Rechazar
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                <AdminErrorBoundary label="el detalle de pagos pendientes">
+                  {renderPendingPaymentsSection()}
+                </AdminErrorBoundary>
               </div>
 
               <div className="flex justify-end pt-4 border-t border-white/15 mt-4 shrink-0">
@@ -3099,24 +3324,7 @@ export const SuperAdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Modal Recibo */}
-        {reciboSeleccionado && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-            <div className="relative max-w-4xl max-h-screen overflow-hidden flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl p-4">
-              <button
-                onClick={() => setReciboSeleccionado(null)}
-                className="absolute top-4 right-4 bg-zinc-900/80 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10 cursor-pointer"
-                title="Cerrar"
-              >
-                ✕
-              </button>
-              <h3 className="text-white text-sm font-bold mb-3">Comprobante de Pago Subido por el Usuario</h3>
-              <div className="overflow-auto max-h-[80vh] max-w-full">
-                <img src={reciboSeleccionado} alt="Comprobante de Pago" className="object-contain max-h-[70vh] rounded-xl border border-white/10" />
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Modal Recibo movido al contenedor compartido */}
 
         {/* Modal Auditoría */}
         {auditoriaSeleccionada && (
@@ -3408,34 +3616,102 @@ export const SuperAdminDashboard: React.FC = () => {
           onShowToast={showToast}
         />
 
-        {/* TOAST FLOTANTE FIJO (Confirmación inmediata de Avisos) */}
-        {floatingToast && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={`fixed bottom-5 right-5 z-[80] max-w-md rounded-2xl px-4 py-3 shadow-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 ${
-              floatingToast.kind === 'ok'
-                ? 'bg-emerald-950/95 border-emerald-500/45 text-emerald-100'
-                : 'bg-red-950/95 border-red-500/45 text-red-100'
-            }`}
-          >
-            {floatingToast.kind === 'ok' ? (
-              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-            )}
-            <span className="leading-snug">{floatingToast.text}</span>
-            <button
-              type="button"
-              onClick={() => setFloatingToast(null)}
-              className="p-1 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition-colors cursor-pointer shrink-0"
-              aria-label="Cerrar notificación"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
       </div>
+      )}
+
+      {/* Modal Recibo Compartido (Monitor + Gestión de Cobros) */}
+      {reciboSeleccionado && (() => {
+        const isPdf = /\.pdf(\?|$)/i.test(reciboSeleccionado) || reciboSeleccionado.toLowerCase().includes('application/pdf');
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+            <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col items-center justify-center bg-[#121214] border border-white/10 rounded-2xl p-4 sm:p-5 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setReciboSeleccionado(null);
+                  setReciboLoadError(false);
+                }}
+                className="absolute top-3.5 right-3.5 bg-zinc-900/90 hover:bg-zinc-800 text-white p-2 rounded-full transition-colors z-10 border border-white/10 cursor-pointer"
+                title="Cerrar"
+                aria-label="Cerrar visor de comprobante"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <h3 className="text-white text-sm font-bold pr-8 text-center">Comprobante de Pago Subido por el Usuario</h3>
+              <div className="overflow-auto max-h-[70vh] w-full flex items-center justify-center">
+                {isPdf ? (
+                  <iframe
+                    src={reciboSeleccionado}
+                    title="Comprobante de Pago PDF"
+                    className="w-full h-[65vh] rounded-xl border border-white/10 bg-zinc-900"
+                  />
+                ) : reciboLoadError ? (
+                  <div className="p-8 text-center space-y-3 bg-white/[0.03] border border-white/10 rounded-xl max-w-md">
+                    <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                    <p className="text-xs text-gray-300">
+                      No se pudo previsualizar la imagen directamente aquí (puede tratarse de un PDF o formato externo).
+                    </p>
+                    <a
+                      href={reciboSeleccionado}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600/25 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Abrir Comprobante
+                    </a>
+                  </div>
+                ) : (
+                  <img
+                    src={reciboSeleccionado}
+                    alt="Comprobante de Pago"
+                    onError={() => setReciboLoadError(true)}
+                    className="object-contain max-h-[68vh] rounded-xl border border-white/10"
+                  />
+                )}
+              </div>
+              <div className="flex items-center justify-end w-full pt-2 border-t border-white/10">
+                <a
+                  href={reciboSeleccionado}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl text-xs font-semibold"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TOAST FLOTANTE FIJO (Confirmación inmediata de Avisos y Pagos) */}
+      {floatingToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-5 right-5 z-[80] max-w-md rounded-2xl px-4 py-3 shadow-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 ${
+            floatingToast.kind === 'ok'
+              ? 'bg-emerald-950/95 border-emerald-500/45 text-emerald-100'
+              : 'bg-red-950/95 border-red-500/45 text-red-100'
+          }`}
+        >
+          {floatingToast.kind === 'ok' ? (
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          )}
+          <span className="leading-snug">{floatingToast.text}</span>
+          <button
+            type="button"
+            onClick={() => setFloatingToast(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition-colors cursor-pointer shrink-0"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
+    </AdminErrorBoundary>
   );
 };
