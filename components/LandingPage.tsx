@@ -288,8 +288,8 @@ export const LandingPage: React.FC = () => {
     <div className="min-h-screen bg-white font-sans text-slate-800 flex flex-col selection:bg-red-500/10 selection:text-red-600 relative z-0">
       
       {/* 1. NAVBAR (WHITE / LIGHT THEME) */}
-      <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 shadow-xs">
-        <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 shadow-xs safe-header-top min-h-[64px] flex items-center">
+        <nav className="w-full max-w-7xl mx-auto px-6 min-h-[64px] py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <Logo darkTheme={false} />
           </div>

@@ -35,8 +35,8 @@ export const PrivacidadPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-sans selection:bg-[#FF3131]/30 selection:text-white">
       {/* 1. Header Minimalista */}
-      <header className="sticky top-0 z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 safe-header-top min-h-[64px] flex items-center">
+        <div className="w-full max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 group">
             <svg width="36" height="22" viewBox="0 0 115 65" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 group-hover:scale-105 transition-transform">
               <path d="M2 55H21V28H35V55H49V2H63V55H77V13H91V55H113" stroke="#FF3131" strokeWidth="8" strokeLinejoin="miter" strokeLinecap="butt"/>

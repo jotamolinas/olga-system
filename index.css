@@ -2,23 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Safe Area iOS PWA (respetar barra de estado/notch en móvil y mantener escritorio intacto) */
-.safe-header-pt {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+/* Safe Area global para modo App / iOS PWA (mantiene escritorio en navegador intacto) */
+.safe-header-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 12px);
 }
 
-.safe-drawer-pt {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
-}
-
-@media (min-width: 768px) {
-    .safe-header-pt {
+@media (min-width: 768px) and (display-mode: browser) {
+    .safe-header-top.safe-header-md-py {
         padding-top: 1.25rem;
+        padding-bottom: 1.25rem;
     }
+}
 
-    .safe-drawer-pt {
-        padding-top: 0.75rem;
+@media (display-mode: standalone) {
+    .safe-header-top {
+        padding-top: max(env(safe-area-inset-top, 0px), 48px) !important;
+        padding-bottom: 12px !important;
     }
+}
+
+@supports (-webkit-touch-callout: none) {
+    @media (display-mode: standalone) {
+        .safe-header-top {
+            padding-top: max(env(safe-area-inset-top, 0px), 48px) !important;
+            padding-bottom: 12px !important;
+        }
+    }
+}
+
+html.ios-standalone .safe-header-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 48px) !important;
+    padding-bottom: 12px !important;
 }
 
 @media print {

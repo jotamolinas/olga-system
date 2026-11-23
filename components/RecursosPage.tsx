@@ -57,8 +57,8 @@ const RecursosNavbar: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 shadow-xs">
-      <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+    <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 shadow-xs safe-header-top min-h-[64px] flex items-center">
+      <nav className="w-full max-w-7xl mx-auto px-6 min-h-[64px] py-2 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-4 group">
           <div className="flex flex-col items-center justify-center gap-1">
             <svg

@@ -2002,7 +2002,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             : esPlanFull 
               ? 'bg-[#F4F4F0]/80 border-b border-amber-200/40 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] text-gray-900' 
               : 'bg-white/95 border-b border-slate-200/70 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.03)] text-gray-900'
-        } safe-header-pt pb-3 px-4 md:pb-5 md:px-8 min-h-[64px] flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl print:hidden`}>
+        } safe-header-top safe-header-md-py pb-3 px-4 md:px-8 min-h-[64px] flex items-center justify-between sticky top-0 z-20 backdrop-blur-xl print:hidden`}>
           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             {/* Hamburger menu button (solo en pantallas móviles) */}
             <button
@@ -3130,7 +3130,7 @@ const SuperAdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <header className="border-b border-gray-800 bg-slate-900/80 px-6 py-3.5 flex items-center justify-between backdrop-blur-md">
+      <header className="safe-header-top min-h-[64px] border-b border-gray-800 bg-slate-900/80 px-6 py-3.5 flex items-center justify-between backdrop-blur-md">
         <div className="flex items-center gap-3">
           <a
             href="/consola/admin"
