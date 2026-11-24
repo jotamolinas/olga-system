@@ -36,12 +36,29 @@ import {
   Gavel,
   Scale,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { PagaresTab } from './PagaresTab';
 import { PersonasTab } from './PersonasTab';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
 import { generatePagarePdfBase64 } from '../services/pdfExport';
+import { ParteSecretariaModal } from './ParteSecretariaModal';
+import {
+  DEFAULT_SECRETARIA_SCHEDULE,
+  findLinkedDocumentosForExpediente,
+  formatSecretariaScheduleSummary,
+  LinkedDocResumen,
+  loadAbogadoSecretariaSchedule,
+  markSecretariaReminderPromptedSession,
+  normalizeSecretariaSchedule,
+  sanitizeFrecuenciaDias,
+  sanitizeHoraEnvio,
+  saveAbogadoSecretariaSchedule,
+  SecretariaReminderSchedule,
+  shouldTriggerSecretariaReminder,
+  wasSecretariaReminderPromptedSession,
+} from '../services/secretariaOlga';
 
 interface TableroTabProps {
   pagares: Pagare[];
@@ -830,6 +847,68 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     expediente: Expediente;
     plazo: PlazoProcesal;
   } | null>(null);
+  const [parteModalTarget, setParteModalTarget] = useState<{
+    expediente: Expediente | null;
+    plazo?: PlazoProcesal | null;
+    isScheduledTrigger?: boolean;
+    mode?: 'general' | 'detallado';
+  } | null>(null);
+  const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
+    esAbogado
+      ? loadAbogadoSecretariaSchedule(
+          auth?.currentUser?.uid || currentUser?.uid || userData?.uid,
+          userData,
+          activeWorkspaceId
+        )
+      : { ...DEFAULT_SECRETARIA_SCHEDULE }
+  );
+  const [scheduleDraft, setScheduleDraft] = useState<SecretariaReminderSchedule>(() =>
+    esAbogado
+      ? loadAbogadoSecretariaSchedule(
+          auth?.currentUser?.uid || currentUser?.uid || userData?.uid,
+          userData,
+          activeWorkspaceId
+        )
+      : { ...DEFAULT_SECRETARIA_SCHEDULE }
+  );
+  const [showLegalScheduleEditor, setShowLegalScheduleEditor] = useState(false);
+  const [isSavingLegalSchedule, setIsSavingLegalSchedule] = useState(false);
+  const [legalScheduleFeedback, setLegalScheduleFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const loaded = loadAbogadoSecretariaSchedule(
+      auth?.currentUser?.uid || currentUser?.uid || userData?.uid,
+      userData,
+      activeWorkspaceId
+    );
+    setSecretariaSchedule(loaded);
+    setScheduleDraft(loaded);
+  }, [
+    esAbogado,
+    activeUid,
+    activeWorkspaceId,
+    userData?.secretariaOlgaSchedule,
+    userData?.frecuenciaDias,
+    userData?.horaEnvio,
+    userData?.incluirSabado,
+    userData?.incluirDomingo,
+    userData?.recordatorioActivo,
+    userData?.ultimoEnvioSecretariaFecha,
+  ]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const onScheduleUpdated = (e: any) => {
+      if (e?.detail?.schedule) {
+        const next = normalizeSecretariaSchedule(e.detail.schedule);
+        setSecretariaSchedule(next);
+        setScheduleDraft(next);
+      }
+    };
+    window.addEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    return () => window.removeEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+  }, [esAbogado]);
 
   const ownExpedientes = useMemo(() => {
     if (!esAbogado) return [];
@@ -922,6 +1001,67 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       ),
     [upcomingLegalDeadlines]
   );
+
+  // Programación automática en sesión (EXCLUSIVO ABOGADOS)
+  useEffect(() => {
+    if (!esAbogado) return;
+    const uidKey = activeUid || String(activeWorkspaceId || '').trim() || 'anon';
+    const checkAndTriggerReminder = () => {
+      if (parteModalTarget) return;
+      const evaluation = shouldTriggerSecretariaReminder({
+        schedule: secretariaSchedule,
+        timeZone: 'America/Asuncion',
+      });
+      if (!evaluation.shouldSend) return;
+      if (wasSecretariaReminderPromptedSession(uidKey, evaluation.todayIso)) return;
+      const targetExp = upcomingLegalDeadlines[0]?.expediente || activeLegalExpedientes[0];
+      if (!targetExp) return;
+      const targetPlazo = upcomingLegalDeadlines[0]?.plazo || null;
+      markSecretariaReminderPromptedSession(uidKey, evaluation.todayIso);
+      setParteModalTarget({
+        expediente: targetExp,
+        plazo: targetPlazo,
+        isScheduledTrigger: true,
+        mode: 'general',
+      });
+    };
+
+    checkAndTriggerReminder();
+    const timer = window.setInterval(checkAndTriggerReminder, 30000);
+    return () => window.clearInterval(timer);
+  }, [
+    esAbogado,
+    activeUid,
+    activeWorkspaceId,
+    secretariaSchedule,
+    parteModalTarget,
+    upcomingLegalDeadlines,
+    activeLegalExpedientes,
+  ]);
+
+  const handleSaveLegalSchedule = async () => {
+    if (!esAbogado || isSavingLegalSchedule) return;
+    setIsSavingLegalSchedule(true);
+    setLegalScheduleFeedback(null);
+    try {
+      const normalized = normalizeSecretariaSchedule({
+        ...scheduleDraft,
+        ultimoEnvioFecha: secretariaSchedule.ultimoEnvioFecha ?? scheduleDraft.ultimoEnvioFecha ?? null,
+      });
+      const res = await saveAbogadoSecretariaSchedule({
+        uid: activeUid || userData?.uid,
+        workspaceId: activeWorkspaceId,
+        schedule: normalized,
+      });
+      setSecretariaSchedule(res.schedule);
+      setScheduleDraft(res.schedule);
+      setLegalScheduleFeedback('Programación guardada.');
+      window.setTimeout(() => setLegalScheduleFeedback(null), 3500);
+      setShowLegalScheduleEditor(false);
+    } finally {
+      setIsSavingLegalSchedule(false);
+    }
+  };
 
   const completedLegalDeadlines = useMemo(() => {
     const list: Array<{ expediente: Expediente; plazo: PlazoProcesal }> = [];
@@ -1221,7 +1361,39 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setParteModalTarget({
+                      expediente: upcomingLegalDeadlines[0]?.expediente || activeLegalExpedientes[0] || null,
+                      plazo: upcomingLegalDeadlines[0]?.plazo || null,
+                      isScheduledTrigger: false,
+                      mode: 'general',
+                    })
+                  }
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  title="Generar Parte General Compacto de todas tus causas con plazos pendientes"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Parte Secretaría O.L.G.A.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleDraft(secretariaSchedule);
+                    setShowLegalScheduleEditor((prev) => !prev);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    showLegalScheduleEditor
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-200'
+                      : 'bg-white dark:bg-[#0F141E] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-emerald-400'
+                  }`}
+                  title="Configurar frecuencia, hora y días de envío del parte por WhatsApp"
+                >
+                  <Bell className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>{showLegalScheduleEditor ? 'Ocultar horario' : 'Programar'}</span>
+                </button>
                 {upcomingLegalDeadlines.length > 6 && (
                   <button
                     type="button"
@@ -1241,6 +1413,114 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                 </button>
               </div>
             </div>
+
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-[11px]">
+              <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200 font-semibold">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Secretaría O.L.G.A.: {formatSecretariaScheduleSummary(secretariaSchedule)}</span>
+              </div>
+              {legalScheduleFeedback && (
+                <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                  {legalScheduleFeedback}
+                </span>
+              )}
+            </div>
+
+            {showLegalScheduleEditor && (
+              <div className="mb-3 rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-white dark:bg-[#0F141E] p-3.5 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Cada cuántos días
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={scheduleDraft.frecuenciaDias}
+                      onChange={(e) =>
+                        setScheduleDraft((prev) => ({
+                          ...prev,
+                          frecuenciaDias: sanitizeFrecuenciaDias(e.target.value),
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B0F17] px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                      Hora de envío (HH:mm)
+                    </label>
+                    <input
+                      type="time"
+                      value={scheduleDraft.horaEnvio}
+                      onChange={(e) =>
+                        setScheduleDraft((prev) => ({
+                          ...prev,
+                          horaEnvio: sanitizeHoraEnvio(e.target.value),
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B0F17] px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex flex-col justify-end gap-1.5">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scheduleDraft.incluirSabado}
+                        onChange={(e) =>
+                          setScheduleDraft((prev) => ({
+                            ...prev,
+                            incluirSabado: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>Incluir sábados</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scheduleDraft.incluirDomingo}
+                        onChange={(e) =>
+                          setScheduleDraft((prev) => ({
+                            ...prev,
+                            incluirDomingo: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>Incluir domingos</span>
+                    </label>
+                  </div>
+                  <div className="flex flex-col justify-end gap-2">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scheduleDraft.recordatorioActivo}
+                        onChange={(e) =>
+                          setScheduleDraft((prev) => ({
+                            ...prev,
+                            recordatorioActivo: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>Recordatorio activo</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveLegalSchedule()}
+                      disabled={isSavingLegalSchedule}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      {isSavingLegalSchedule ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>Guardar horario</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {legalDraftError && (
               <div className="mb-3 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs text-red-700 dark:text-red-300 font-semibold">
@@ -1335,6 +1615,15 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => setParteModalTarget({ expediente, plazo })}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                          title="Generar parte Secretaría O.L.G.A. y autoenviar a tu WhatsApp"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Parte WA</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
@@ -2106,6 +2395,18 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
+                            onClick={() => {
+                              setLegalKpiModalCategory(null);
+                              setParteModalTarget({ expediente, plazo });
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                            title="Parte Secretaría O.L.G.A. por WhatsApp"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>Parte WA</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
                             className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer"
                           >
@@ -2521,6 +2822,33 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             </button>
           </div>
         </div>
+      )}
+      {/* Modal Parte Secretaría O.L.G.A. + Autoenvío WhatsApp (EXCLUSIVO ABOGADOS) */}
+      {esAbogado && parteModalTarget && (
+        <ParteSecretariaModal
+          isOpen={Boolean(parteModalTarget)}
+          onClose={() => setParteModalTarget(null)}
+          expediente={parteModalTarget.expediente}
+          allExpedientes={activeLegalExpedientes}
+          defaultMode={parteModalTarget.mode || 'detallado'}
+          initialPlazo={parteModalTarget.plazo || null}
+          userData={userData}
+          currentUser={currentUser}
+          workspaceId={activeWorkspaceId || activeUid}
+          isScheduledTrigger={Boolean(parteModalTarget.isScheduledTrigger)}
+          onScheduleSaved={(saved) => {
+            setSecretariaSchedule(saved);
+            setScheduleDraft(saved);
+          }}
+          linkedDocs={
+            parteModalTarget.expediente
+              ? findLinkedDocumentosForExpediente(
+                  parteModalTarget.expediente,
+                  (Array.isArray(escritos) ? escritos : []) as LinkedDocResumen[]
+                )
+              : []
+          }
+        />
       )}
     </div>
   );

@@ -35,6 +35,19 @@ import {
   limpiarValorEjemplo,
   MEMBRETE_DEFAULT,
 } from '../types/presupuesto';
+import {
+  DEFAULT_SECRETARIA_SCHEDULE,
+  formatSecretariaScheduleSummary,
+  loadAbogadoSecretariaSchedule,
+  loadAbogadoWhatsappSecretaria,
+  normalizeAbogadoWhatsAppPhone,
+  normalizeSecretariaSchedule,
+  sanitizeFrecuenciaDias,
+  sanitizeHoraEnvio,
+  saveAbogadoSecretariaSchedule,
+  saveAbogadoWhatsappSecretaria,
+  SecretariaReminderSchedule,
+} from '../services/secretariaOlga';
 
 export interface ConfiguracionInstitucionalData {
   nombreInstitucion: string;
@@ -331,6 +344,16 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [timbradoVigenciaFin, setTimbradoVigenciaFin] = useState(
     tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : ''
   );
+  const [whatsappSecretaria, setWhatsappSecretaria] = useState(() =>
+    esAbogado
+      ? loadAbogadoWhatsappSecretaria(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+      : ''
+  );
+  const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
+    esAbogado
+      ? loadAbogadoSecretariaSchedule(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+      : { ...DEFAULT_SECRETARIA_SCHEDULE }
+  );
   const [logoPreview, setLogoPreview] = useState<string | null>(firestoreLogo);
 
   // Sincronizar campos cuando cambia la cuenta activa (userKey)
@@ -348,7 +371,35 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     setTimbradoNumero(configurado ? limpiarValorEjemplo(m.timbradoNumero || userData?.timbradoNumero) : '');
     setTimbradoVigenciaInicio(configurado ? limpiarValorEjemplo(m.timbradoVigenciaInicio || userData?.timbradoVigenciaInicio) : '');
     setTimbradoVigenciaFin(configurado ? limpiarValorEjemplo(m.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : '');
-  }, [userKey]);
+    if (esAbogado) {
+      setWhatsappSecretaria(
+        loadAbogadoWhatsappSecretaria(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+      );
+      setSecretariaSchedule(
+        loadAbogadoSecretariaSchedule(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+      );
+    }
+  }, [userKey, esAbogado]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const onWaUpdated = (e: any) => {
+      if (e?.detail?.phone !== undefined) {
+        setWhatsappSecretaria(String(e.detail.phone || ''));
+      }
+    };
+    const onScheduleUpdated = (e: any) => {
+      if (e?.detail?.schedule) {
+        setSecretariaSchedule(normalizeSecretariaSchedule(e.detail.schedule));
+      }
+    };
+    window.addEventListener('olga_abogado_wa_updated', onWaUpdated);
+    window.addEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    return () => {
+      window.removeEventListener('olga_abogado_wa_updated', onWaUpdated);
+      window.removeEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    };
+  }, [esAbogado]);
 
   // Sincronización reactiva del logo directamente desde Firestore (userData)
   useEffect(() => {
@@ -636,9 +687,46 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     };
     guardarMembreteUsuario(nuevoMembrete, userKey);
 
+    const normalizedScheduleForSave = esAbogado
+      ? normalizeSecretariaSchedule({
+          ...secretariaSchedule,
+          updatedAt: new Date().toISOString(),
+        })
+      : null;
+
+    if (esAbogado && normalizedScheduleForSave) {
+      const normalizedWa = whatsappSecretaria.trim()
+        ? normalizeAbogadoWhatsAppPhone(whatsappSecretaria)
+        : '';
+      await saveAbogadoWhatsappSecretaria({
+        uid: currentUserId || userData?.uid,
+        workspaceId: effectiveWorkspaceId,
+        phone: normalizedWa,
+      });
+      await saveAbogadoSecretariaSchedule({
+        uid: currentUserId || userData?.uid,
+        workspaceId: effectiveWorkspaceId,
+        schedule: normalizedScheduleForSave,
+      });
+    }
+
     // 2. Persistir en Firestore estrictamente con updateDoc y mutación parcial
     if (effectiveWorkspaceId) {
       const userRef = doc(db, 'users', effectiveWorkspaceId);
+      const waPayload =
+        esAbogado && normalizedScheduleForSave
+          ? {
+              whatsappSecretaria: whatsappSecretaria.trim()
+                ? normalizeAbogadoWhatsAppPhone(whatsappSecretaria)
+                : '',
+              secretariaOlgaSchedule: normalizedScheduleForSave,
+              frecuenciaDias: normalizedScheduleForSave.frecuenciaDias,
+              horaEnvio: normalizedScheduleForSave.horaEnvio,
+              incluirSabado: normalizedScheduleForSave.incluirSabado,
+              incluirDomingo: normalizedScheduleForSave.incluirDomingo,
+              recordatorioActivo: normalizedScheduleForSave.recordatorioActivo,
+            }
+          : {};
       try {
 
         // Mutación Parcial Exclusiva: solo las propiedades correspondientes al membrete
@@ -657,7 +745,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           timbradoVigenciaInicio,
           timbradoVigenciaFin,
           logo_institucional: logoPreview || null,
-          membreteConfigurado: true
+          membreteConfigurado: true,
+          ...waPayload,
         });
       } catch (err: any) {
         // En caso de no existir el documento, se inicializa sin alterar campos de plan o roles
@@ -677,7 +766,8 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             timbradoVigenciaInicio,
             timbradoVigenciaFin,
             logo_institucional: logoPreview || null,
-            membreteConfigurado: true
+            membreteConfigurado: true,
+            ...waPayload,
           }, { merge: true });
         } else {
           console.error('Error guardando membrete institucional en Firestore:', err);
@@ -1095,6 +1185,123 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   />
                 </div>
               </div>
+
+              {esAbogado && (
+                <div className="mt-4 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300 tracking-wider mb-1.5">
+                      WhatsApp propio — Secretaría O.L.G.A. (Autoenvío de partes)
+                    </label>
+                    <input
+                      type="tel"
+                      value={whatsappSecretaria}
+                      onChange={(e) => setWhatsappSecretaria(e.target.value)}
+                      placeholder="Ej. 0981 123 456 o +595 981 123 456"
+                      className="w-full md:max-w-md bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 outline-none transition-colors"
+                    />
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                      Se usa exclusivamente para autoenviarte los partes y recordatorios diarios de tus expedientes por WhatsApp.
+                    </p>
+                  </div>
+
+                  <div className="pt-3 border-t border-emerald-200/80 dark:border-emerald-800/50 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                        Programación de recordatorios automáticos
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                        {formatSecretariaScheduleSummary(secretariaSchedule)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1">
+                          Frecuencia (días)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          value={secretariaSchedule.frecuenciaDias}
+                          onChange={(e) =>
+                            setSecretariaSchedule((prev) => ({
+                              ...prev,
+                              frecuenciaDias: sanitizeFrecuenciaDias(e.target.value),
+                            }))
+                          }
+                          className="w-full bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1">
+                          Hora de envío (HH:mm)
+                        </label>
+                        <input
+                          type="time"
+                          value={secretariaSchedule.horaEnvio}
+                          onChange={(e) =>
+                            setSecretariaSchedule((prev) => ({
+                              ...prev,
+                              horaEnvio: sanitizeHoraEnvio(e.target.value),
+                            }))
+                          }
+                          className="w-full bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="flex flex-col justify-end gap-1.5">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={secretariaSchedule.incluirSabado}
+                            onChange={(e) =>
+                              setSecretariaSchedule((prev) => ({
+                                ...prev,
+                                incluirSabado: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Notificar los sábados</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={secretariaSchedule.incluirDomingo}
+                            onChange={(e) =>
+                              setSecretariaSchedule((prev) => ({
+                                ...prev,
+                                incluirDomingo: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Notificar los domingos</span>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-col justify-end">
+                        <label className="inline-flex items-center gap-2 text-xs font-bold text-emerald-900 dark:text-emerald-200 cursor-pointer bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 rounded-xl px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={secretariaSchedule.recordatorioActivo}
+                            onChange={(e) =>
+                              setSecretariaSchedule((prev) => ({
+                                ...prev,
+                                recordatorioActivo: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Recordatorio activo</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Grupo 3: Datos de Facturación y Timbrado Fiscal */}

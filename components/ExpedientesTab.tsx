@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Bell,
   BookOpen,
   Briefcase,
+  Calendar,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -17,9 +19,12 @@ import {
   FolderOpen,
   Gavel,
   Loader2,
+  MessageCircle,
   Plus,
+  Save,
   Scale,
   Search,
+  Smartphone,
   Sparkles,
   Trash2,
   Upload,
@@ -45,6 +50,26 @@ import {
 } from '../services/gemini';
 import { auth, db } from '../services/auth';
 import { incrementarUsoIA } from '../services/firestore';
+import { ParteSecretariaModal } from './ParteSecretariaModal';
+import {
+  DEFAULT_SECRETARIA_SCHEDULE,
+  findLinkedDocumentosForExpediente,
+  formatAbogadoWhatsAppDisplay,
+  formatSecretariaScheduleSummary,
+  LinkedDocResumen,
+  loadAbogadoSecretariaSchedule,
+  loadAbogadoWhatsappSecretaria,
+  markSecretariaReminderPromptedSession,
+  normalizeAbogadoWhatsAppPhone,
+  normalizeSecretariaSchedule,
+  sanitizeFrecuenciaDias,
+  sanitizeHoraEnvio,
+  saveAbogadoSecretariaSchedule,
+  saveAbogadoWhatsappSecretaria,
+  SecretariaReminderSchedule,
+  shouldTriggerSecretariaReminder,
+  wasSecretariaReminderPromptedSession,
+} from '../services/secretariaOlga';
 
 interface ExpedientesTabProps {
   expedientes: Expediente[];
@@ -194,6 +219,238 @@ const pickNonEmptyOwnerId = (...candidates: Array<unknown>): string => {
     if (value && value !== 'anon') return value;
   }
   return '';
+};
+
+interface SuggestedNextStep {
+  titulo: string;
+  diasPlazo: number;
+  fechaVencimiento: string;
+  tipo: TipoPlazoProcesal;
+  fundamentoOrientativo: string;
+}
+
+const normProceduralText = (raw: string): string =>
+  String(raw || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const suggestNextProceduralStep = (
+  exp: Expediente,
+  completedPlazo: PlazoProcesal
+): SuggestedNextStep => {
+  const tipoJuicio = exp.tipoJuicio || 'Ordinario';
+  const titleNorm = normProceduralText(completedPlazo.titulo || '');
+
+  const build = (
+    titulo: string,
+    diasPlazo: number,
+    tipo: TipoPlazoProcesal,
+    fundamentoOrientativo: string
+  ): SuggestedNextStep => ({
+    titulo,
+    diasPlazo,
+    fechaVencimiento: addCalendarDaysIso(diasPlazo),
+    tipo,
+    fundamentoOrientativo,
+  });
+
+  if (/(intima|mandamiento|embargo|citacion de remate)/.test(titleNorm)) {
+    if (titleNorm.includes('citacion de remate')) {
+      return build(
+        'Solicitar sentencia de remate',
+        3,
+        'impulso',
+        'Cumplida la citación de remate, corresponde urgir sentencia de remate (Art. 462 CPC).'
+      );
+    }
+    return build(
+      'Controlar oposición de excepciones y pedir citación de remate',
+      5,
+      'plazo_legal',
+      'Plazo de 5 días para oponer excepciones o impulsar la citación de remate (Art. 460 CPC).'
+    );
+  }
+
+  if (/(contest|demanda|traslado de la demanda|emplazam)/.test(titleNorm)) {
+    if (tipoJuicio === 'Ejecutivo') {
+      return build(
+        'Solicitar citación de remate o sentencia de remate',
+        5,
+        'impulso',
+        'Etapa posterior al traslado o contestación en juicio ejecutivo (CPC).'
+      );
+    }
+    if (tipoJuicio === 'Laboral') {
+      return build(
+        'Solicitar audiencia de conciliación y ofrecimiento probatorio',
+        5,
+        'impulso',
+        'Etapa procesal laboral siguiente a la contestación de demanda (CPT).'
+      );
+    }
+    if (tipoJuicio === 'Sucesorio') {
+      return build(
+        'Publicar edictos y agregar constancias al expediente',
+        10,
+        'impulso',
+        'Seguimiento de publicación de edictos sucesorios (Art. 741 CPC).'
+      );
+    }
+    if (tipoJuicio === 'Niñez y Adolescencia') {
+      return build(
+        'Solicitar audiencia de sustanciación y pruebas',
+        3,
+        'impulso',
+        'Impulso prioritario de 3 días para audiencia y pruebas en Niñez.'
+      );
+    }
+    return build(
+      'Ofrecimiento probatorio / solicitar apertura a prueba',
+      10,
+      'impulso',
+      'Plazo orientativo de 10 días para solicitar apertura a prueba u ofrecer medios probatorios (Art. 247 CPC).'
+    );
+  }
+
+  if (/excepcion/.test(titleNorm)) {
+    return build(
+      'Solicitar resolución de excepciones o apertura a prueba',
+      3,
+      'impulso',
+      'Impulso orientativo de 3 días para solicitar resolución del incidente o prosecución (CPC).'
+    );
+  }
+
+  if (/(audiencia|conciliacion)/.test(titleNorm)) {
+    return build(
+      'Ofrecimiento probatorio / solicitar resolución según lo actuado',
+      10,
+      'impulso',
+      'Impulso orientativo de 10 días posterior a la audiencia celebrada.'
+    );
+  }
+
+  if (/(apertura a prueba|ofrecimiento|ofrecer prueba|periodo probatorio)/.test(titleNorm)) {
+    return build(
+      'Diligenciar oficios, cédulas y producción de pruebas',
+      10,
+      'impulso',
+      'Seguimiento de 10 días para diligenciamiento y producción de pruebas admitidas (CPC).'
+    );
+  }
+
+  if (/(diligenc|oficio|pericia|testifical|produccion de prueba)/.test(titleNorm)) {
+    return build(
+      'Solicitar cierre de período probatorio y traslado para alegar',
+      6,
+      'impulso',
+      'Impulso para solicitar informe de actuario, cierre probatorio y alegatos (Art. 379 CPC).'
+    );
+  }
+
+  if (/(alegato|alegar)/.test(titleNorm)) {
+    return build(
+      'Solicitar llamamiento de autos para sentencia',
+      3,
+      'impulso',
+      'Plazo orientativo de 3 días tras los alegatos para solicitar autos para sentencia (CPC).'
+    );
+  }
+
+  if (/(autos para sentencia|sentencia definitiva|sentencia de remate|sentencia)/.test(titleNorm)) {
+    if (titleNorm.includes('autos para sentencia')) {
+      return build(
+        'Urgir dictado de sentencia definitiva / control de despacho',
+        10,
+        'impulso',
+        'Seguimiento orientativo del llamamiento de autos para sentencia.'
+      );
+    }
+    return build(
+      'Controlar notificación de sentencia y cómputo recursivo',
+      5,
+      'plazo_legal',
+      'Control del plazo de 5 días para eventual aclaratoria o apelación (CPC).'
+    );
+  }
+
+  if (/(apelacion|apelar|agravio)/.test(titleNorm)) {
+    return build(
+      'Presentar expresión de agravios o impulsar elevación al Tribunal',
+      5,
+      'plazo_legal',
+      'Plazo orientativo de 5 días para fundamentar recurso ante el Tribunal (CPC).'
+    );
+  }
+
+  if (/(reposicion|aclaratoria|incidente|nulidad)/.test(titleNorm)) {
+    return build(
+      'Solicitar resolución del recurso / traslado pendiente',
+      3,
+      'impulso',
+      'Plazo orientativo de 3 días para solicitar resolución de incidente o recurso (CPC).'
+    );
+  }
+
+  if (/(edicto|declaratoria|heredero|inventario|avaluo)/.test(titleNorm) || tipoJuicio === 'Sucesorio') {
+    if (titleNorm.includes('edicto')) {
+      return build(
+        'Solicitar declaratoria de herederos',
+        10,
+        'impulso',
+        'Cumplido el término de edictos, corresponde solicitar declaratoria de herederos (CPC).'
+      );
+    }
+    if (titleNorm.includes('declaratoria')) {
+      return build(
+        'Presentar inventario, avalúo y partición de bienes',
+        10,
+        'impulso',
+        'Etapa siguiente tras la declaratoria de herederos en juicio sucesorio (CPC).'
+      );
+    }
+    return build(
+      'Solicitar aprobación de operaciones y adjudicación',
+      5,
+      'impulso',
+      'Impulso sucesorio orientativo de 5 días para adjudicación o resolución (CPC).'
+    );
+  }
+
+  if (/(providencia|resolucion|cedula|notificacion|traslado)/.test(titleNorm)) {
+    return build(
+      'Solicitar resolución / prosecución de trámite pendiente',
+      3,
+      'impulso',
+      'Plazo orientativo de 3 días para solicitar providencia o traslado (CPC).'
+    );
+  }
+
+  if (tipoJuicio === 'Penal') {
+    return build(
+      'Controlar requerimiento fiscal o solicitar audiencia',
+      5,
+      'impulso',
+      'Seguimiento procesal penal orientativo a 5 días (CPP).'
+    );
+  }
+
+  if (tipoJuicio === 'Niñez y Adolescencia') {
+    return build(
+      'Solicitar audiencia o resolución prioritaria',
+      3,
+      'impulso',
+      'Impulso prioritario de 3 días en fuero de Niñez y Adolescencia.'
+    );
+  }
+
+  return build(
+    'Impulso procesal: Solicitar resolución o prosecución de trámite',
+    3,
+    'impulso',
+    'Sugerencia orientativa de impulso procesal a 3 días según práctica habitual del CPC.'
+  );
 };
 
 const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
@@ -654,12 +911,206 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     expediente: Expediente;
     plazo: PlazoProcesal;
   } | null>(null);
+  const [nextStepSuggestion, setNextStepSuggestion] = useState<{
+    expedienteId: string;
+    caratula: string;
+    tipoJuicio: string;
+    completedPlazoId: string;
+    completedTitulo: string;
+    suggestedPlazo: SuggestedNextStep;
+  } | null>(null);
+  const [isSavingNextStep, setIsSavingNextStep] = useState(false);
+
+  // Secretaría O.L.G.A. — WhatsApp propio y modal de Parte (EXCLUSIVO ABOGADOS)
+  const [abogadoWaNumber, setAbogadoWaNumber] = useState<string>(() =>
+    esAbogado ? normalizeAbogadoWhatsAppPhone(loadAbogadoWhatsappSecretaria(uid, userData, wsId)) : ''
+  );
+  const [abogadoWaDraft, setAbogadoWaDraft] = useState<string>(() =>
+    esAbogado ? loadAbogadoWhatsappSecretaria(uid, userData, wsId) : ''
+  );
+  const [editingAbogadoWa, setEditingAbogadoWa] = useState(false);
+  const [isSavingAbogadoWa, setIsSavingAbogadoWa] = useState(false);
+  const [abogadoWaFeedback, setAbogadoWaFeedback] = useState<string | null>(null);
+  const [workspaceDocs, setWorkspaceDocs] = useState<LinkedDocResumen[]>([]);
+  const [parteModalTarget, setParteModalTarget] = useState<{
+    expediente: Expediente | null;
+    plazo?: PlazoProcesal | null;
+    isScheduledTrigger?: boolean;
+    mode?: 'general' | 'detallado';
+  } | null>(null);
+  const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
+    esAbogado ? loadAbogadoSecretariaSchedule(uid, userData, wsId) : { ...DEFAULT_SECRETARIA_SCHEDULE }
+  );
+  const [scheduleDraft, setScheduleDraft] = useState<SecretariaReminderSchedule>(() =>
+    esAbogado ? loadAbogadoSecretariaSchedule(uid, userData, wsId) : { ...DEFAULT_SECRETARIA_SCHEDULE }
+  );
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     setDiscardedExpKeys(loadDiscardedExpKeys(storageUid));
     setLocalExpedienteOverrides(loadLocalExpedienteOverrides(storageUid));
     setLocalChecksVersion((v) => v + 1);
   }, [storageUid]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const loaded = loadAbogadoWhatsappSecretaria(uid, userData, wsId);
+    const norm = normalizeAbogadoWhatsAppPhone(loaded);
+    setAbogadoWaNumber(norm);
+    setAbogadoWaDraft(norm ? formatAbogadoWhatsAppDisplay(norm) : loaded);
+  }, [esAbogado, uid, wsId, userData?.whatsappSecretaria, userData?.telefono]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const loadedSched = loadAbogadoSecretariaSchedule(uid, userData, wsId);
+    setSecretariaSchedule(loadedSched);
+    setScheduleDraft(loadedSched);
+  }, [
+    esAbogado,
+    uid,
+    wsId,
+    userData?.secretariaOlgaSchedule,
+    userData?.frecuenciaDias,
+    userData?.horaEnvio,
+    userData?.incluirSabado,
+    userData?.incluirDomingo,
+    userData?.recordatorioActivo,
+    userData?.ultimoEnvioSecretariaFecha,
+  ]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    const onWaUpdated = (e: any) => {
+      const next = normalizeAbogadoWhatsAppPhone(String(e?.detail?.phone || ''));
+      setAbogadoWaNumber(next);
+      setAbogadoWaDraft(next ? formatAbogadoWhatsAppDisplay(next) : '');
+    };
+    const onScheduleUpdated = (e: any) => {
+      if (e?.detail?.schedule) {
+        const nextSched = normalizeSecretariaSchedule(e.detail.schedule);
+        setSecretariaSchedule(nextSched);
+        setScheduleDraft(nextSched);
+      }
+    };
+    window.addEventListener('olga_abogado_wa_updated', onWaUpdated);
+    window.addEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    return () => {
+      window.removeEventListener('olga_abogado_wa_updated', onWaUpdated);
+      window.removeEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    };
+  }, [esAbogado]);
+
+  useEffect(() => {
+    if (!esAbogado) {
+      setWorkspaceDocs([]);
+      return;
+    }
+    const ownerTarget = wsId || uid;
+    if (!ownerTarget) return;
+    const docsMap = new Map<string, LinkedDocResumen>();
+    const unsubs: Array<() => void> = [];
+
+    const commitDocs = () => {
+      setWorkspaceDocs(Array.from(docsMap.values()));
+    };
+
+    const subscribeDocs = (field: 'userId' | 'ownedByWorkspace', val: string) => {
+      const qDocs = query(collection(db, 'documentos_olga'), where(field, '==', val));
+      unsubs.push(
+        onSnapshot(
+          qDocs,
+          (snap) => {
+            snap.docs.forEach((d) => {
+              const data = d.data() as any;
+              if (data?.eliminado === true) return;
+              docsMap.set(d.id, {
+                id: d.id,
+                tipo: data?.tipo,
+                categoria: data?.categoria,
+                storageUrl: data?.storageUrl,
+                pdfUrl: data?.pdfUrl,
+                expedienteId: data?.expedienteId,
+                createdAt: data?.createdAt,
+                texto: typeof data?.texto === 'string' ? data.texto.slice(0, 600) : undefined,
+              });
+            });
+            commitDocs();
+          },
+          () => {
+            // Silencioso si no hay permisos o aún no existen documentos
+          }
+        )
+      );
+    };
+
+    if (uid) subscribeDocs('userId', uid);
+    if (wsId && wsId !== uid) subscribeDocs('ownedByWorkspace', wsId);
+
+    return () => {
+      unsubs.forEach((u) => {
+        try {
+          u();
+        } catch {}
+      });
+    };
+  }, [esAbogado, uid, wsId]);
+
+  const handleSaveAbogadoWaInline = async () => {
+    const norm = normalizeAbogadoWhatsAppPhone(abogadoWaDraft);
+    if (abogadoWaDraft.trim() && norm.length < 8) {
+      setAbogadoWaFeedback('Ingresa un número válido (ej. 0981 123 456).');
+      return;
+    }
+    setIsSavingAbogadoWa(true);
+    setAbogadoWaFeedback(null);
+    try {
+      const res = await saveAbogadoWhatsappSecretaria({
+        uid,
+        workspaceId: wsId,
+        phone: norm,
+      });
+      setAbogadoWaNumber(res.savedPhone);
+      setAbogadoWaDraft(res.savedPhone ? formatAbogadoWhatsAppDisplay(res.savedPhone) : '');
+      setEditingAbogadoWa(false);
+      setAbogadoWaFeedback(
+        res.savedPhone ? 'WhatsApp guardado para partes.' : 'Número quitado.'
+      );
+      window.setTimeout(() => setAbogadoWaFeedback(null), 3000);
+    } catch {
+      setAbogadoWaFeedback('Error al guardar el número.');
+    } finally {
+      setIsSavingAbogadoWa(false);
+    }
+  };
+
+  const handleSaveScheduleInline = async () => {
+    setIsSavingSchedule(true);
+    setScheduleFeedback(null);
+    try {
+      const normalized = normalizeSecretariaSchedule({
+        ...scheduleDraft,
+        frecuenciaDias: sanitizeFrecuenciaDias(scheduleDraft.frecuenciaDias),
+        horaEnvio: sanitizeHoraEnvio(scheduleDraft.horaEnvio),
+        ultimoEnvioFecha: secretariaSchedule.ultimoEnvioFecha ?? scheduleDraft.ultimoEnvioFecha ?? null,
+      });
+      const res = await saveAbogadoSecretariaSchedule({
+        uid,
+        workspaceId: wsId,
+        schedule: normalized,
+      });
+      setSecretariaSchedule(res.schedule);
+      setScheduleDraft(res.schedule);
+      setShowScheduleEditor(false);
+      setScheduleFeedback('Programación guardada.');
+      window.setTimeout(() => setScheduleFeedback(null), 3500);
+    } catch {
+      setScheduleFeedback('No se pudo guardar la programación.');
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
 
   const discardedExpKeySet = useMemo(() => new Set(discardedExpKeys), [discardedExpKeys]);
 
@@ -1036,6 +1487,31 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const warningCount = warningDeadlines.length;
   const activeCasesCount = activeExpedientes.length;
   const completedStepsCount = completedDeadlines.length;
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    if (parteModalTarget) return;
+    const targetExp = upcomingDeadlines[0]?.expediente || activeExpedientes[0] || null;
+    if (!targetExp) return;
+    const targetPlazo = upcomingDeadlines[0]?.plazo || null;
+
+    const checkSchedule = () => {
+      const evaluation = shouldTriggerSecretariaReminder({ schedule: secretariaSchedule });
+      if (!evaluation.shouldSend) return;
+      if (wasSecretariaReminderPromptedSession(uid || wsId, evaluation.todayIso)) return;
+      markSecretariaReminderPromptedSession(uid || wsId, evaluation.todayIso);
+      setParteModalTarget({
+        expediente: targetExp,
+        plazo: targetPlazo,
+        isScheduledTrigger: true,
+        mode: 'general',
+      });
+    };
+
+    checkSchedule();
+    const timer = window.setInterval(checkSchedule, 30000);
+    return () => window.clearInterval(timer);
+  }, [esAbogado, secretariaSchedule, upcomingDeadlines, activeExpedientes, parteModalTarget, uid, wsId]);
 
   const handleSelectExpedienteFromKpiModal = (expId: string) => {
     setKpiModalCategory(null);
@@ -1890,6 +2366,26 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         }
       }
       setLocalChecksVersion((v) => v + 1);
+      if (nextCompletado && targetPlazo) {
+        setPendingMarkDonePrompt((prev) =>
+          prev && prev.expediente.id === latestExp.id && prev.plazo.id === plazoId ? null : prev
+        );
+        const suggestedPlazo = suggestNextProceduralStep(latestExp, targetPlazo);
+        setNextStepSuggestion({
+          expedienteId: latestExp.id,
+          caratula: latestExp.caratula || 'Expediente sin carátula',
+          tipoJuicio: latestExp.tipoJuicio || 'Ordinario',
+          completedPlazoId: plazoId,
+          completedTitulo: targetPlazo.titulo,
+          suggestedPlazo,
+        });
+      } else if (!nextCompletado) {
+        setNextStepSuggestion((prev) =>
+          prev && prev.expedienteId === latestExp.id && prev.completedPlazoId === plazoId
+            ? null
+            : prev
+        );
+      }
     }
 
     // 2. Intentar persistir en Firestore (expedientes/{expedienteId})
@@ -1994,6 +2490,101 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         delete next[toggleKey];
         return next;
       });
+    }
+  };
+
+  const handleConfirmNextStepSuggestion = async () => {
+    if (!esAbogado || !nextStepSuggestion || isSavingNextStep) return;
+    if (isSoftBlocked) {
+      setErrorBanner('Plan expirado: modo solo lectura activado.');
+      return;
+    }
+
+    const exp = effectiveExpedientes.find((item) => item.id === nextStepSuggestion.expedienteId);
+    if (!exp) {
+      setNextStepSuggestion(null);
+      return;
+    }
+
+    setIsSavingNextStep(true);
+    setErrorBanner(null);
+
+    const nowIso = new Date().toISOString();
+    const targetDocId = docIdByExpIdRef.current.get(exp.id) || exp.id;
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(
+        exp.ownedByWorkspace,
+        workspaceId,
+        wsId,
+        currentUser?.uid,
+        userData?.uid,
+        auth?.currentUser?.uid,
+        exp.userId
+      ) || storageUid;
+    const resolvedUserId =
+      pickNonEmptyOwnerId(
+        exp.userId,
+        auth?.currentUser?.uid,
+        currentUser?.uid,
+        userData?.uid,
+        resolvedWorkspaceId
+      ) || resolvedWorkspaceId;
+
+    const nuevoPlazo: PlazoProcesal = {
+      id: `plazo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      titulo: nextStepSuggestion.suggestedPlazo.titulo,
+      fechaVencimiento: nextStepSuggestion.suggestedPlazo.fechaVencimiento,
+      diasPlazo: nextStepSuggestion.suggestedPlazo.diasPlazo,
+      completado: false,
+      completadoEn: null,
+      tipo: nextStepSuggestion.suggestedPlazo.tipo,
+    };
+
+    const updatedPlazos = sanitizePlazosList([...(exp.plazos || []), nuevoPlazo]);
+    const updatedExp: Expediente = {
+      ...exp,
+      userId: resolvedUserId,
+      ownedByWorkspace: resolvedWorkspaceId || resolvedUserId,
+      plazos: updatedPlazos,
+      updatedAt: nowIso,
+    };
+
+    persistLocalExpedienteOverride(updatedExp, exp.id);
+    setLiveExpedientes((prev) =>
+      prev.map((item) =>
+        item.id === updatedExp.id || item.id === targetDocId ? updatedExp : item
+      )
+    );
+
+    try {
+      if (auth?.currentUser?.uid) {
+        if (targetDocId && targetDocId !== exp.id) {
+          await updateDoc(doc(db, 'expedientes', targetDocId), {
+            plazos: updatedPlazos,
+            updatedAt: nowIso,
+            fechaActualizacion: serverTimestamp(),
+          });
+        } else {
+          await onSaveExpediente(updatedExp);
+        }
+      }
+      setNextStepSuggestion(null);
+      showToastSuccess(`Siguiente paso agendado: "${nuevoPlazo.titulo}".`);
+    } catch (err: any) {
+      const code = String(err?.code || '').toLowerCase();
+      const rawMsg = String(err?.message || '').toLowerCase();
+      if (
+        code.includes('permission') ||
+        rawMsg.includes('permission') ||
+        rawMsg.includes('insufficient')
+      ) {
+        setNextStepSuggestion(null);
+        showToastSuccess(`Siguiente paso agendado localmente: "${nuevoPlazo.titulo}".`);
+      } else {
+        setErrorBanner(err?.message || 'No se pudo agendar el siguiente paso procesal.');
+      }
+    } finally {
+      setIsSavingNextStep(false);
     }
   };
 
@@ -2391,6 +2982,215 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         </div>
       )}
 
+      {/* Barra Secretaría O.L.G.A. — Autoenvío WhatsApp propio + Programación (EXCLUSIVO ABOGADOS) */}
+      {esAbogado && (
+        <div className={`rounded-2xl border p-3.5 md:px-5 space-y-3 ${cardSurfaceCls}`}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                <Smartphone className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                    Secretaría O.L.G.A. · WhatsApp propio
+                  </span>
+                  {abogadoWaNumber ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {formatAbogadoWhatsAppDisplay(abogadoWaNumber)}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      Sin número guardado
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    {formatSecretariaScheduleSummary(secretariaSchedule)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  {abogadoWaFeedback ||
+                    scheduleFeedback ||
+                    'Configura tu WhatsApp y horario para recibir el parte de tus causas con enlace directo y recordatorio para revisar y cargar Judisoft.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {editingAbogadoWa || !abogadoWaNumber ? (
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="tel"
+                    value={abogadoWaDraft}
+                    onChange={(e) => {
+                      setAbogadoWaDraft(e.target.value);
+                      setAbogadoWaFeedback(null);
+                    }}
+                    placeholder="Ej. 0981 123 456"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-xs font-bold text-slate-900 dark:text-white outline-none w-44"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSavingAbogadoWa}
+                    onClick={() => void handleSaveAbogadoWaInline()}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingAbogadoWa ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>Guardar</span>
+                  </button>
+                  {abogadoWaNumber && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingAbogadoWa(false);
+                        setAbogadoWaDraft(formatAbogadoWhatsAppDisplay(abogadoWaNumber));
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingAbogadoWa(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Cambiar WhatsApp
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowScheduleEditor((prev) => !prev)}
+                className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{showScheduleEditor ? 'Ocultar horario' : 'Programar'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setParteModalTarget({
+                    expediente: upcomingDeadlines[0]?.expediente || activeExpedientes[0] || null,
+                    plazo: upcomingDeadlines[0]?.plazo || null,
+                    isScheduledTrigger: false,
+                    mode: 'general',
+                  })
+                }
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                title="Generar Parte General Compacto de todas tus causas con plazos pendientes"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Enviar Parte ahora</span>
+              </button>
+            </div>
+          </div>
+
+          {showScheduleEditor && (
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Cada cuántos días
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={scheduleDraft.frecuenciaDias}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setScheduleDraft((prev) => ({
+                      ...prev,
+                      frecuenciaDias: Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1,
+                    }));
+                  }}
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Hora envío (HH:mm)
+                </label>
+                <input
+                  type="time"
+                  value={scheduleDraft.horaEnvio}
+                  onChange={(e) =>
+                    setScheduleDraft((prev) => ({
+                      ...prev,
+                      horaEnvio: e.target.value || '05:00',
+                    }))
+                  }
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pb-1.5">
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduleDraft.incluirSabado}
+                    onChange={(e) =>
+                      setScheduleDraft((prev) => ({ ...prev, incluirSabado: e.target.checked }))
+                    }
+                    className="rounded border-slate-300 text-blue-600"
+                  />
+                  <span>Sábados</span>
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduleDraft.incluirDomingo}
+                    onChange={(e) =>
+                      setScheduleDraft((prev) => ({ ...prev, incluirDomingo: e.target.checked }))
+                    }
+                    className="rounded border-slate-300 text-blue-600"
+                  />
+                  <span>Domingos</span>
+                </label>
+              </div>
+
+              <div className="pb-1.5">
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduleDraft.recordatorioActivo}
+                    onChange={(e) =>
+                      setScheduleDraft((prev) => ({ ...prev, recordatorioActivo: e.target.checked }))
+                    }
+                    className="rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>Recordatorio activo</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={isSavingSchedule}
+                  onClick={() => void handleSaveScheduleInline()}
+                  className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isSavingSchedule ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Bell className="w-3.5 h-3.5" />
+                  )}
+                  <span>Guardar horario</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Previsualización de Análisis PDF cuando se disparó desde una tarjeta */}
       {pendingAnalysisPreview && pendingAnalysisPreview.target !== 'modal' && (
         <div className="rounded-3xl border-2 border-indigo-400 dark:border-indigo-500/60 bg-indigo-50/95 dark:bg-indigo-950/40 p-5 space-y-4 shadow-lg">
@@ -2713,6 +3513,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    {esAbogado && (
+                      <button
+                        type="button"
+                        onClick={() => setParteModalTarget({ expediente, plazo })}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                        title="Generar parte Secretaría O.L.G.A. y autoenviar por WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Parte WA</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={draftingKey === rowDraftKey}
@@ -3160,6 +3971,22 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                             : '✨ Redactar Escrito de Impulso'}
                         </span>
                       </button>
+
+                      {esAbogado && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setParteModalTarget({
+                              expediente: exp,
+                              plazo: nextPlazo || null,
+                            })
+                          }
+                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Parte Secretaría O.L.G.A.</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Último Análisis IA */}
@@ -3338,6 +4165,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                                   </div>
 
                                   <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                    {esAbogado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setParteModalTarget({ expediente: exp, plazo })}
+                                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Generar parte Secretaría O.L.G.A. por WhatsApp"
+                                      >
+                                        <MessageCircle className="w-3 h-3" />
+                                        <span>Parte WA</span>
+                                      </button>
+                                    )}
                                     {!plazo.completado && (
                                       <button
                                         type="button"
@@ -4200,6 +5038,98 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Sugerencia rápida de siguiente etapa procesal tras cumplir una actuación (solo esAbogado === true) */}
+      {esAbogado && nextStepSuggestion && !pendingMarkDonePrompt && (
+        <div
+          role="dialog"
+          aria-live="polite"
+          aria-label="Sugerencia de siguiente etapa procesal"
+          className="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-[430px] z-[90] rounded-2xl border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-[#121824] shadow-2xl p-4 space-y-3 animate-fade-in"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 flex items-center justify-center shrink-0">
+                <CalendarClock className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                    Siguiente paso · {nextStepSuggestion.tipoJuicio}
+                  </span>
+                </div>
+                <h4 className="text-xs font-black text-slate-900 dark:text-white leading-snug mt-1">
+                  {nextStepSuggestion.suggestedPlazo.titulo}
+                </h4>
+                <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                  Vencimiento sugerido: {formatDateShort(nextStepSuggestion.suggestedPlazo.fechaVencimiento)} ({nextStepSuggestion.suggestedPlazo.diasPlazo} días)
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  {nextStepSuggestion.suggestedPlazo.fundamentoOrientativo}
+                </p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">
+                  Tras cumplir: {nextStepSuggestion.completedTitulo} · {nextStepSuggestion.caratula}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNextStepSuggestion(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
+              aria-label="Cerrar sugerencia"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setNextStepSuggestion(null)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Cerrar
+            </button>
+            <button
+              type="button"
+              disabled={isSavingNextStep}
+              onClick={() => void handleConfirmNextStepSuggestion()}
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            >
+              {isSavingNextStep && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>+ Agendar siguiente paso</span>
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Modal Parte Secretaría O.L.G.A. + Autoenvío WhatsApp (EXCLUSIVO ABOGADOS) */}
+      {esAbogado && parteModalTarget && (
+        <ParteSecretariaModal
+          isOpen={Boolean(parteModalTarget)}
+          onClose={() => setParteModalTarget(null)}
+          expediente={parteModalTarget.expediente}
+          allExpedientes={activeExpedientes}
+          defaultMode={parteModalTarget.mode || 'detallado'}
+          initialPlazo={parteModalTarget.plazo || null}
+          userData={userData}
+          currentUser={currentUser}
+          workspaceId={wsId}
+          isScheduledTrigger={Boolean(parteModalTarget.isScheduledTrigger)}
+          linkedDocs={
+            parteModalTarget.expediente
+              ? findLinkedDocumentosForExpediente(parteModalTarget.expediente, workspaceDocs)
+              : []
+          }
+          onWhatsappSaved={(saved) => {
+            setAbogadoWaNumber(saved);
+            setAbogadoWaDraft(saved ? formatAbogadoWhatsAppDisplay(saved) : '');
+          }}
+          onScheduleSaved={(nextSched) => {
+            setSecretariaSchedule(nextSched);
+            setScheduleDraft(nextSched);
+          }}
+        />
       )}
     </div>
   );

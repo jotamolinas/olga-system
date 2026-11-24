@@ -995,6 +995,76 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     setDocumentoModalOpen(true);
   };
 
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandledRef.current || isCheckingProfile || !currentUser || !userProfile) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = String(params.get('tab') || '').trim().toLowerCase();
+    const expIdParam = String(params.get('expedienteId') || params.get('exp') || '').trim();
+    const docIdParam = String(params.get('docId') || '').trim();
+
+    if (!tabParam && !expIdParam && !docIdParam) return;
+    deepLinkHandledRef.current = true;
+
+    if (expIdParam && canUseExpedientes) {
+      setSelectedExpedienteIdForNav(expIdParam);
+      setActiveTab('expedientes');
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+      return;
+    }
+
+    if (docIdParam && esAbogado) {
+      setActiveTab('escritos');
+      void (async () => {
+        try {
+          const docSnap = await getDoc(doc(db, 'documentos_olga', docIdParam));
+          if (docSnap.exists()) {
+            const d = docSnap.data() as any;
+            const ownerIds = new Set(
+              [currentUser?.uid, workspaceId, userProfile?.tenant_id]
+                .map((v) => String(v || '').trim())
+                .filter(Boolean)
+            );
+            const docOwners = [d?.userId, d?.ownedByWorkspace, d?.creator_id]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean);
+            if (docOwners.some((o) => ownerIds.has(o)) && typeof d?.texto === 'string') {
+              handleOpenDocumentModal(
+                d.texto,
+                docSnap.id,
+                d.tipo || 'Escrito Jurídico',
+                d.categoria || 'Expedientes',
+                'blanca',
+                true
+              );
+            }
+          }
+        } catch {
+          // Silencioso si el documento no existe o no pertenece al estudio
+        }
+      })();
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+      return;
+    }
+
+    if (tabParam === 'expedientes' && canUseExpedientes) {
+      setActiveTab('expedientes');
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+    } else if (tabParam === 'escritos') {
+      setActiveTab('escritos');
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {}
+    }
+  }, [isCheckingProfile, currentUser, userProfile, canUseExpedientes, esAbogado, workspaceId]);
+
   // Chat/Olga IA state
   const [chatMessages, setChatMessages] = useState<any[]>([
     {
