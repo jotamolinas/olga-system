@@ -187,6 +187,14 @@ const buildPlazoFallbackKey = (p: Partial<PlazoProcesal>, idx: number): string =
   return `sig:${idx}|${titulo}|${fecha}`;
 };
 
+const pickNonEmptyOwnerId = (...candidates: Array<unknown>): string => {
+  for (const candidate of candidates) {
+    const value = String(candidate ?? '').trim();
+    if (value && value !== 'anon') return value;
+  }
+  return '';
+};
+
 const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   const src = raw && typeof raw === 'object' ? raw : {};
   const rawPlazos = Array.isArray(src.plazos) ? src.plazos : [];
@@ -217,10 +225,13 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   const rawTipo = String(src.tipoJuicio || '').trim();
   const tipoJuicio: TipoJuicioExpediente = rawTipo ? normalizeTipoJuicio(rawTipo) : 'Ordinario';
 
+  const rawUserId = pickNonEmptyOwnerId(src.userId);
+  const rawOwnedByWorkspace = pickNonEmptyOwnerId(src.ownedByWorkspace);
+
   return {
     id: String(src.id || docId).trim() || docId,
-    userId: String(src.userId ?? src.ownedByWorkspace ?? '').trim(),
-    ownedByWorkspace: String(src.ownedByWorkspace ?? src.userId ?? '').trim(),
+    userId: rawUserId || rawOwnedByWorkspace,
+    ownedByWorkspace: rawOwnedByWorkspace || rawUserId,
     caratula: String(src.caratula || '').trim() || 'Expediente sin carátula',
     nroExpediente: String(src.nroExpediente || '').trim(),
     anio: String(src.anio || new Date().getFullYear()).trim(),
@@ -582,6 +593,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   // Redacción IA en progreso
   const [draftingKey, setDraftingKey] = useState<string | null>(null);
+  const [draftingFromPreviewMode, setDraftingFromPreviewMode] = useState<'contestacion' | 'impulso' | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
@@ -1217,7 +1229,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       setDraftPlazos((prev) => [...prev, ...suggestedPlazos]);
       setDraftAnalisisIA(analisisObj);
       setPendingAnalysisPreview(null);
-      showToastSuccess('Análisis IA aplicado al formulario. Revisa los datos y guarda el expediente.');
+      showToastSuccess(
+        esAbogado
+          ? 'Datos y plazos cargados al formulario. Revisa y guarda el expediente.'
+          : 'Análisis IA aplicado al formulario. Revisa los datos y guarda el expediente.'
+      );
       return;
     }
 
@@ -1227,24 +1243,168 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       return;
     }
 
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(
+        exp.ownedByWorkspace,
+        workspaceId,
+        wsId,
+        currentUser?.uid,
+        userData?.uid,
+        auth?.currentUser?.uid,
+        exp.userId
+      ) || (esAbogado ? storageUid : '');
+    const resolvedUserId =
+      pickNonEmptyOwnerId(
+        exp.userId,
+        auth?.currentUser?.uid,
+        currentUser?.uid,
+        userData?.uid,
+        resolvedWorkspaceId
+      ) || resolvedWorkspaceId;
+
+    const updatedExp: Expediente = {
+      ...exp,
+      userId: resolvedUserId,
+      ownedByWorkspace: resolvedWorkspaceId,
+      caratula: exp.caratula || result.caratula || exp.caratula,
+      nroExpediente: exp.nroExpediente || result.nroExpediente || '',
+      anio: exp.anio || result.anio || String(new Date().getFullYear()),
+      juzgado: exp.juzgado || result.juzgado || '',
+      tipoJuicio: exp.tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
+      plazos: [...(exp.plazos || []), ...suggestedPlazos],
+      ultimoAnalisisIA: analisisObj,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (esAbogado) {
+      persistLocalExpedienteOverride(updatedExp, exp.id);
+      setLiveExpedientes((prev) => {
+        const exists = prev.some((item) => item.id === updatedExp.id);
+        return exists
+          ? prev.map((item) => (item.id === updatedExp.id ? updatedExp : item))
+          : [updatedExp, ...prev];
+      });
+    }
+
     try {
-      const updatedExp: Expediente = {
-        ...exp,
-        caratula: exp.caratula || result.caratula || exp.caratula,
-        nroExpediente: exp.nroExpediente || result.nroExpediente || '',
-        anio: exp.anio || result.anio || String(new Date().getFullYear()),
-        juzgado: exp.juzgado || result.juzgado || '',
-        tipoJuicio: exp.tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
-        plazos: [...(exp.plazos || []), ...suggestedPlazos],
-        ultimoAnalisisIA: analisisObj,
-        updatedAt: new Date().toISOString(),
-      };
       await onSaveExpediente(updatedExp);
       setPendingAnalysisPreview(null);
       setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
       showToastSuccess(`Se cargaron ${suggestedPlazos.length} plazos/impulsos desde "${fileName}".`);
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo guardar el análisis en el expediente.');
+      const code = String(err?.code || '').toLowerCase();
+      const rawMsg = String(err?.message || '').toLowerCase();
+      if (
+        esAbogado &&
+        (code.includes('permission') || rawMsg.includes('permission') || rawMsg.includes('insufficient'))
+      ) {
+        setPendingAnalysisPreview(null);
+        setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
+        showToastSuccess(`Datos y ${suggestedPlazos.length} plazos/impulsos cargados localmente desde "${fileName}".`);
+      } else {
+        setErrorBanner(err?.message || 'No se pudo guardar el análisis en el expediente.');
+      }
+    }
+  };
+
+  const handleDraftFromPendingAnalysis = async (modo: 'contestacion' | 'impulso') => {
+    if (!pendingAnalysisPreview || draftingFromPreviewMode) return;
+    const { target, fileName, result } = pendingAnalysisPreview;
+    const suggestedPlazos = buildPlazosFromAnalysis(result);
+    const nowIso = new Date().toISOString();
+    const analisisObj: ExpedienteAnalisisIA = {
+      caratula: result.caratula,
+      nroExpediente: result.nroExpediente,
+      anio: result.anio,
+      juzgado: result.juzgado,
+      tipoJuicio: normalizeTipoJuicio(result.tipoJuicio),
+      rolParteSugerido: normalizeRolParte(result.rolParteSugerido),
+      resumenHechos: result.resumenHechos,
+      fundamentoCPC: result.fundamentoCPC,
+      plazoPrincipal: result.plazoPrincipal,
+      impulsosSugeridos: result.impulsosSugeridos,
+      analizadoAt: nowIso,
+      archivoNombre: fileName,
+    };
+
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(workspaceId, wsId, currentUser?.uid, userData?.uid, auth?.currentUser?.uid) ||
+      storageUid;
+    const resolvedUserId =
+      pickNonEmptyOwnerId(auth?.currentUser?.uid, currentUser?.uid, userData?.uid, resolvedWorkspaceId) ||
+      resolvedWorkspaceId;
+
+    let expForDraft: Expediente;
+    if (target === 'modal') {
+      expForDraft = {
+        id: editingExpediente?.id || `draft-${Date.now()}`,
+        userId: pickNonEmptyOwnerId(editingExpediente?.userId, resolvedUserId) || resolvedUserId,
+        ownedByWorkspace:
+          pickNonEmptyOwnerId(editingExpediente?.ownedByWorkspace, resolvedWorkspaceId) ||
+          resolvedWorkspaceId,
+        caratula: (caratula || '').trim() || result.caratula || fileName || 'Expediente analizado',
+        nroExpediente: (nroExpediente || '').trim() || result.nroExpediente || '',
+        anio: (anio || '').trim() || result.anio || String(new Date().getFullYear()),
+        juzgado: (juzgado || '').trim() || result.juzgado || '',
+        tipoJuicio: tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
+        rolParte: rolParte || normalizeRolParte(result.rolParteSugerido),
+        estado: estado || 'En trámite',
+        plazos: [...draftPlazos, ...suggestedPlazos],
+        ultimoAnalisisIA: analisisObj,
+        notas: (notas || '').trim(),
+        clienteNombre: (clienteNombre || '').trim(),
+        clienteId: (clienteId || '').trim(),
+        createdAt: editingExpediente?.createdAt || nowIso,
+        updatedAt: nowIso,
+      };
+    } else {
+      const existingExp = effectiveExpedientes.find((e) => e.id === target);
+      expForDraft = existingExp
+        ? {
+            ...existingExp,
+            userId: pickNonEmptyOwnerId(existingExp.userId, resolvedUserId) || resolvedUserId,
+            ownedByWorkspace:
+              pickNonEmptyOwnerId(existingExp.ownedByWorkspace, resolvedWorkspaceId) ||
+              resolvedWorkspaceId,
+            caratula: existingExp.caratula || result.caratula || fileName,
+            nroExpediente: existingExp.nroExpediente || result.nroExpediente || '',
+            anio: existingExp.anio || result.anio || String(new Date().getFullYear()),
+            juzgado: existingExp.juzgado || result.juzgado || '',
+            tipoJuicio: existingExp.tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
+            plazos: [...(existingExp.plazos || []), ...suggestedPlazos],
+            ultimoAnalisisIA: analisisObj,
+            updatedAt: nowIso,
+          }
+        : {
+            id: `draft-${Date.now()}`,
+            userId: resolvedUserId,
+            ownedByWorkspace: resolvedWorkspaceId,
+            caratula: result.caratula || fileName || 'Expediente analizado',
+            nroExpediente: result.nroExpediente || '',
+            anio: result.anio || String(new Date().getFullYear()),
+            juzgado: result.juzgado || '',
+            tipoJuicio: normalizeTipoJuicio(result.tipoJuicio),
+            rolParte: normalizeRolParte(result.rolParteSugerido),
+            estado: 'En trámite',
+            plazos: suggestedPlazos,
+            ultimoAnalisisIA: analisisObj,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          };
+    }
+
+    const plazoObjetivo =
+      modo === 'impulso'
+        ? suggestedPlazos.find((p) => p.tipo === 'impulso') ||
+          suggestedPlazos[0] ||
+          (expForDraft.plazos || []).find((p) => !p.completado)
+        : suggestedPlazos.find((p) => p.tipo === 'plazo_legal') || suggestedPlazos[0];
+
+    setDraftingFromPreviewMode(modo);
+    try {
+      await handleRedactarConIA(expForDraft, modo, plazoObjetivo);
+    } finally {
+      setDraftingFromPreviewMode(null);
     }
   };
 
@@ -1320,10 +1480,26 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       return;
     }
 
-    const effectiveUid = String(
-      workspaceId || currentUser?.uid || userData?.uid || auth?.currentUser?.uid || (esAbogado ? storageUid : '')
-    ).trim();
-    if (!effectiveUid && !esAbogado) {
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(
+        editingExpediente?.ownedByWorkspace,
+        workspaceId,
+        wsId,
+        currentUser?.uid,
+        userData?.uid,
+        auth?.currentUser?.uid,
+        editingExpediente?.userId
+      ) || (esAbogado ? storageUid : '');
+    const resolvedUserId =
+      pickNonEmptyOwnerId(
+        editingExpediente?.userId,
+        auth?.currentUser?.uid,
+        currentUser?.uid,
+        userData?.uid,
+        resolvedWorkspaceId
+      ) || resolvedWorkspaceId;
+
+    if (!resolvedUserId && !esAbogado) {
       setModalError('No se detectó una sesión activa para guardar el expediente. Recarga o inicia sesión nuevamente.');
       return;
     }
@@ -1340,8 +1516,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       : `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const expToSave: Expediente = {
       id: resolvedDocId,
-      userId: String(editingExpediente?.userId || effectiveUid || storageUid),
-      ownedByWorkspace: String(editingExpediente?.ownedByWorkspace || effectiveUid || storageUid),
+      userId: resolvedUserId,
+      ownedByWorkspace: resolvedWorkspaceId || resolvedUserId,
       caratula: caratula.trim(),
       nroExpediente: (nroExpediente || '').trim(),
       anio: (anio || '').trim() || String(new Date().getFullYear()),
@@ -1356,7 +1532,13 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       clienteId: (clienteId || '').trim(),
       createdAt: editingExpediente?.createdAt || nowIso,
       updatedAt: nowIso,
-      creator_id: String(editingExpediente?.creator_id || auth?.currentUser?.uid || effectiveUid || storageUid),
+      creator_id:
+        pickNonEmptyOwnerId(
+          editingExpediente?.creator_id,
+          auth?.currentUser?.uid,
+          currentUser?.uid,
+          resolvedUserId
+        ) || resolvedUserId,
       creator_name: String(
         editingExpediente?.creator_name ||
           auth?.currentUser?.displayName ||
@@ -1593,12 +1775,22 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           const errCode = String(updateErr?.code || '').toLowerCase();
           const errMsg = String(updateErr?.message || '').toLowerCase();
           if (errCode.includes('not-found') || errMsg.includes('no document to update')) {
+            const fallbackWorkspaceId = pickNonEmptyOwnerId(
+              latestExp.ownedByWorkspace,
+              workspaceId,
+              wsId,
+              activeUid,
+              latestExp.userId
+            );
+            const fallbackUserId =
+              pickNonEmptyOwnerId(latestExp.userId, activeUid, fallbackWorkspaceId) ||
+              fallbackWorkspaceId;
             await setDoc(
               expRef,
               {
                 id: targetDocId,
-                userId: String(latestExp.userId || wsId || activeUid),
-                ownedByWorkspace: String(latestExp.ownedByWorkspace || wsId || activeUid),
+                userId: fallbackUserId,
+                ownedByWorkspace: fallbackWorkspaceId || fallbackUserId,
                 caratula: latestExp.caratula || 'Expediente sin carátula',
                 nroExpediente: latestExp.nroExpediente || '',
                 anio: latestExp.anio || String(new Date().getFullYear()),
@@ -1682,42 +1874,120 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       setErrorBanner('Completa el título y la fecha de vencimiento del plazo.');
       return;
     }
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(
+        exp.ownedByWorkspace,
+        workspaceId,
+        wsId,
+        currentUser?.uid,
+        userData?.uid,
+        auth?.currentUser?.uid,
+        exp.userId
+      ) || (esAbogado ? storageUid : '');
+    const resolvedUserId =
+      pickNonEmptyOwnerId(
+        exp.userId,
+        auth?.currentUser?.uid,
+        currentUser?.uid,
+        userData?.uid,
+        resolvedWorkspaceId
+      ) || resolvedWorkspaceId;
+
+    const nuevo: PlazoProcesal = {
+      id: `plazo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      titulo: newPlazoTitulo.trim(),
+      fechaVencimiento: newPlazoFecha,
+      diasPlazo: Math.max(0, Number(newPlazoDias) || 0),
+      completado: false,
+      completadoEn: null,
+      tipo: newPlazoTipo,
+    };
+    const updatedExp: Expediente = {
+      ...exp,
+      userId: resolvedUserId,
+      ownedByWorkspace: resolvedWorkspaceId || resolvedUserId,
+      plazos: [...(exp.plazos || []), nuevo],
+      updatedAt: new Date().toISOString(),
+    };
+    if (esAbogado) {
+      persistLocalExpedienteOverride(updatedExp, exp.id);
+      setLiveExpedientes((prev) =>
+        prev.map((item) => (item.id === updatedExp.id ? updatedExp : item))
+      );
+    }
     try {
-      const nuevo: PlazoProcesal = {
-        id: `plazo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        titulo: newPlazoTitulo.trim(),
-        fechaVencimiento: newPlazoFecha,
-        diasPlazo: Math.max(0, Number(newPlazoDias) || 0),
-        completado: false,
-        completadoEn: null,
-        tipo: newPlazoTipo,
-      };
-      await onSaveExpediente({
-        ...exp,
-        plazos: [...(exp.plazos || []), nuevo],
-        updatedAt: new Date().toISOString(),
-      });
+      await onSaveExpediente(updatedExp);
       setAddingPlazoForExpId(null);
       setNewPlazoTitulo('');
       setNewPlazoDias('5');
       setNewPlazoFecha(addCalendarDaysIso(5));
       showToastSuccess('Plazo procesal agregado al cronograma.');
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo agregar el plazo procesal.');
+      const code = String(err?.code || '').toLowerCase();
+      const rawMsg = String(err?.message || '').toLowerCase();
+      if (
+        esAbogado &&
+        (code.includes('permission') || rawMsg.includes('permission') || rawMsg.includes('insufficient'))
+      ) {
+        setAddingPlazoForExpId(null);
+        setNewPlazoTitulo('');
+        setNewPlazoDias('5');
+        setNewPlazoFecha(addCalendarDaysIso(5));
+        showToastSuccess('Plazo procesal agregado en tu vista local.');
+      } else {
+        setErrorBanner(err?.message || 'No se pudo agregar el plazo procesal.');
+      }
     }
   };
 
   const handleDeletePlazoInline = async (exp: Expediente, plazoId: string) => {
     if (isSoftBlocked) return;
+    const resolvedWorkspaceId =
+      pickNonEmptyOwnerId(
+        exp.ownedByWorkspace,
+        workspaceId,
+        wsId,
+        currentUser?.uid,
+        userData?.uid,
+        auth?.currentUser?.uid,
+        exp.userId
+      ) || (esAbogado ? storageUid : '');
+    const resolvedUserId =
+      pickNonEmptyOwnerId(
+        exp.userId,
+        auth?.currentUser?.uid,
+        currentUser?.uid,
+        userData?.uid,
+        resolvedWorkspaceId
+      ) || resolvedWorkspaceId;
+
+    const updatedPlazos = (exp.plazos || []).filter((p) => p.id !== plazoId);
+    const updatedExp: Expediente = {
+      ...exp,
+      userId: resolvedUserId,
+      ownedByWorkspace: resolvedWorkspaceId || resolvedUserId,
+      plazos: updatedPlazos,
+      updatedAt: new Date().toISOString(),
+    };
+    if (esAbogado) {
+      persistLocalExpedienteOverride(updatedExp, exp.id);
+      setLiveExpedientes((prev) =>
+        prev.map((item) => (item.id === updatedExp.id ? updatedExp : item))
+      );
+    }
     try {
-      const updatedPlazos = (exp.plazos || []).filter((p) => p.id !== plazoId);
-      await onSaveExpediente({
-        ...exp,
-        plazos: updatedPlazos,
-        updatedAt: new Date().toISOString(),
-      });
+      await onSaveExpediente(updatedExp);
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo eliminar el plazo.');
+      const code = String(err?.code || '').toLowerCase();
+      const rawMsg = String(err?.message || '').toLowerCase();
+      if (
+        !(
+          esAbogado &&
+          (code.includes('permission') || rawMsg.includes('permission') || rawMsg.includes('insufficient'))
+        )
+      ) {
+        setErrorBanner(err?.message || 'No se pudo eliminar el plazo.');
+      }
     }
   };
 
@@ -1747,12 +2017,12 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       });
       const tituloModal =
         modo === 'contestacion'
-          ? `Contestación de Demanda - ${exp.caratula.slice(0, 48)}`
+          ? `${esAbogado ? 'Contestación / Respuesta' : 'Contestación de Demanda'} - ${exp.caratula.slice(0, 48)}`
           : `Impulso: ${(plazoObjetivo?.titulo || exp.caratula).slice(0, 48)}`;
       void incrementarUsoIA(currentUser?.uid || userData?.uid);
       onOpenDocument(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
 
-      if (esAbogado) {
+      if (esAbogado && !String(exp.id || '').startsWith('draft-')) {
         const pendingInExp = (exp.plazos || []).filter((p) => p && p.completado !== true);
         const linkedPlazo =
           (plazoObjetivo && plazoObjetivo.completado !== true ? plazoObjetivo : null) ||
@@ -1915,7 +2185,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               </span>
             </div>
             <p className="text-slate-400 text-xs md:text-sm mt-1.5 max-w-2xl">
-              Control de causas judiciales, análisis de demandas/cédulas PDF, vencimientos e impulsos procesales para{' '}
+              {esAbogado
+                ? 'Control de causas judiciales, análisis con IA de documentos, PDFs o fotos (demandas, cédulas, providencias, autos, oficios y escritos), vencimientos e impulsos procesales para '
+                : 'Control de causas judiciales, análisis de demandas/cédulas PDF, vencimientos e impulsos procesales para '}
               <span className="text-slate-200 font-semibold">{estudioNombre}</span>.
             </p>
           </div>
@@ -1932,7 +2204,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             className="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Analizar Demanda PDF</span>
+            <span>{esAbogado ? 'Analizar Documento / PDF / Foto' : 'Analizar Demanda PDF'}</span>
           </button>
 
           <button
@@ -1990,10 +2262,14 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-black text-indigo-950 dark:text-indigo-100">
-                  Análisis IA listo: {pendingAnalysisPreview.fileName}
+                  {esAbogado
+                    ? `Resumen jurídico listo: ${pendingAnalysisPreview.fileName}`
+                    : `Análisis IA listo: ${pendingAnalysisPreview.fileName}`}
                 </h3>
                 <p className="text-xs text-indigo-800 dark:text-indigo-300 mt-0.5">
-                  Confirma para actualizar el expediente y cargar los plazos e impulsos sugeridos.
+                  {esAbogado
+                    ? 'Elige qué deseas hacer con este documento: cargar datos y plazos al expediente o redactar directamente con IA.'
+                    : 'Confirma para actualizar el expediente y cargar los plazos e impulsos sugeridos.'}
                 </p>
               </div>
             </div>
@@ -2008,7 +2284,14 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
             <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-3 border border-indigo-200 dark:border-indigo-800/60">
-              <p className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px]">Resumen Procesal</p>
+              <p className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px]">
+                {esAbogado ? 'Resumen Jurídico del Documento' : 'Resumen Procesal'}
+              </p>
+              {esAbogado && pendingAnalysisPreview.result.caratula && (
+                <p className="text-xs font-bold text-slate-900 dark:text-white mt-1">
+                  {pendingAnalysisPreview.result.caratula}
+                </p>
+              )}
               <p className="text-slate-800 dark:text-slate-200 mt-1 leading-relaxed">
                 {pendingAnalysisPreview.result.resumenHechos}
               </p>
@@ -2041,10 +2324,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                   </span>
                 </div>
               ))}
+              {esAbogado &&
+                !pendingAnalysisPreview.result.plazoPrincipal &&
+                (pendingAnalysisPreview.result.impulsosSugeridos || []).length === 0 && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                    No se detectaron vencimientos automáticos en este documento. Igualmente puedes guardar el resumen o redactar un escrito con IA.
+                  </p>
+                )}
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => setPendingAnalysisPreview(null)}
@@ -2058,8 +2348,48 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md"
             >
               <Check className="w-4 h-4" />
-              <span>Confirmar y Cargar al Expediente</span>
+              <span>
+                {esAbogado ? 'Cargar datos y plazos al expediente' : 'Confirmar y Cargar al Expediente'}
+              </span>
             </button>
+            {esAbogado && (
+              <>
+                <button
+                  type="button"
+                  disabled={Boolean(draftingFromPreviewMode)}
+                  onClick={() => void handleDraftFromPendingAnalysis('contestacion')}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 dark:text-slate-950 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {draftingFromPreviewMode === 'contestacion' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4" />
+                  )}
+                  <span>
+                    {draftingFromPreviewMode === 'contestacion'
+                      ? 'Redactando...'
+                      : 'Redactar contestación / respuesta con IA'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(draftingFromPreviewMode)}
+                  onClick={() => void handleDraftFromPendingAnalysis('impulso')}
+                  className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {draftingFromPreviewMode === 'impulso' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileText className="w-4 h-4" />
+                  )}
+                  <span>
+                    {draftingFromPreviewMode === 'impulso'
+                      ? 'Redactando...'
+                      : 'Redactar impulso / escrito con IA'}
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2318,7 +2648,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             </h3>
             <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
               {effectiveExpedientes.length === 0
-                ? 'Registra tu primera causa manualmente o sube una Demanda / Cédula en PDF para que O.L.G.A. extraiga la carátula, calcule plazos según el CPC de Paraguay y te ayude a redactar escritos.'
+                ? esAbogado
+                  ? 'Registra tu primera causa manualmente o sube cualquier documento del expediente (demanda, cédula, providencia, auto, oficio o escrito en PDF o foto) para que O.L.G.A. resuma el caso, detecte plazos según el CPC de Paraguay y te ayude a redactar escritos.'
+                  : 'Registra tu primera causa manualmente o sube una Demanda / Cédula en PDF para que O.L.G.A. extraiga la carátula, calcule plazos según el CPC de Paraguay y te ayude a redactar escritos.'
                 : 'Prueba limpiando los filtros o cambiando el texto de búsqueda.'}
             </p>
           </div>
@@ -2334,7 +2666,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider inline-flex items-center gap-2 transition-colors cursor-pointer shadow-md disabled:opacity-50"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>Subir Demanda PDF con IA</span>
+                <span>
+                  {esAbogado ? 'Analizar Documento / PDF / Foto con IA' : 'Subir Demanda PDF con IA'}
+                </span>
               </button>
               <button
                 type="button"
@@ -2639,7 +2973,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                         ) : (
                           <FileSearch className="w-4 h-4" />
                         )}
-                        <span>{isAnalyzingThis ? 'Analizando PDF...' : '✨ Analizar Demanda PDF'}</span>
+                        <span>
+                          {isAnalyzingThis
+                            ? esAbogado
+                              ? 'Analizando documento...'
+                              : 'Analizando PDF...'
+                            : esAbogado
+                              ? '✨ Analizar Documento / PDF / Foto'
+                              : '✨ Analizar Demanda PDF'}
+                        </span>
                       </button>
 
                       <button
@@ -2656,7 +2998,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                         <span>
                           {draftingKey === contestacionKey
                             ? 'Redactando...'
-                            : '✨ Redactar Contestación de Demanda'}
+                            : esAbogado
+                              ? '✨ Redactar Contestación / Respuesta'
+                              : '✨ Redactar Contestación de Demanda'}
                         </span>
                       </button>
 
@@ -2947,10 +3291,14 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                     </div>
                     <div>
                       <p className="text-xs font-black text-indigo-950 dark:text-indigo-100">
-                        ✨ Analizar Demanda o Cédula PDF con IA
+                        {esAbogado
+                          ? '✨ Analizar Documento / PDF / Foto con IA'
+                          : '✨ Analizar Demanda o Cédula PDF con IA'}
                       </p>
                       <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
-                        Extrae carátula, juzgado, tipo de juicio y calcula el plazo procesal según el CPC de Paraguay.
+                        {esAbogado
+                          ? 'Sube demandas, cédulas de notificación, providencias, autos, oficios, escritos o constancias del expediente para resumir, detectar plazos CPC y redactar con IA.'
+                          : 'Extrae carátula, juzgado, tipo de juicio y calcula el plazo procesal según el CPC de Paraguay.'}
                       </p>
                     </div>
                   </div>
@@ -2979,7 +3327,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-black text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
                         <FileCheck2 className="w-4 h-4" />
-                        Sugerencia IA ({pendingAnalysisPreview.fileName})
+                        {esAbogado
+                          ? `Resumen jurídico (${pendingAnalysisPreview.fileName})`
+                          : `Sugerencia IA (${pendingAnalysisPreview.fileName})`}
                       </span>
                       <button
                         type="button"
@@ -2998,20 +3348,80 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                     <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-[11px]">
                       {pendingAnalysisPreview.result.resumenHechos}
                     </p>
+                    {esAbogado && pendingAnalysisPreview.result.fundamentoCPC && (
+                      <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold">
+                        Base CPC: {pendingAnalysisPreview.result.fundamentoCPC}
+                      </p>
+                    )}
                     {pendingAnalysisPreview.result.plazoPrincipal && (
                       <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-red-700 dark:text-red-300">
                         Plazo Principal: {pendingAnalysisPreview.result.plazoPrincipal.titulo} — Vence {formatDateShort(pendingAnalysisPreview.result.plazoPrincipal.fechaVencimiento)}
                       </div>
                     )}
-                    <div className="flex justify-end gap-2 pt-1">
+                    {esAbogado && (pendingAnalysisPreview.result.impulsosSugeridos || []).length > 0 && (
+                      <div className="space-y-1">
+                        {(pendingAnalysisPreview.result.impulsosSugeridos || []).map((imp, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-[11px]"
+                          >
+                            <span className="font-semibold text-slate-700 dark:text-slate-200">{imp.titulo}</span>
+                            <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                              {formatDateShort(imp.fechaVencimiento)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => void handleConfirmPendingAnalysis()}
                         className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        <span>Confirmar y Cargar al Expediente</span>
+                        <span>
+                          {esAbogado ? 'Cargar datos y plazos al expediente' : 'Confirmar y Cargar al Expediente'}
+                        </span>
                       </button>
+                      {esAbogado && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={Boolean(draftingFromPreviewMode)}
+                            onClick={() => void handleDraftFromPendingAnalysis('contestacion')}
+                            className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 dark:text-slate-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {draftingFromPreviewMode === 'contestacion' ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3.5 h-3.5" />
+                            )}
+                            <span>
+                              {draftingFromPreviewMode === 'contestacion'
+                                ? 'Redactando...'
+                                : 'Redactar contestación / respuesta con IA'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(draftingFromPreviewMode)}
+                            onClick={() => void handleDraftFromPendingAnalysis('impulso')}
+                            className="px-3.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {draftingFromPreviewMode === 'impulso' ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            )}
+                            <span>
+                              {draftingFromPreviewMode === 'impulso'
+                                ? 'Redactando...'
+                                : 'Redactar impulso / escrito con IA'}
+                            </span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}

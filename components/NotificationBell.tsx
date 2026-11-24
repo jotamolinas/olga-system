@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import { Expediente, Pagare } from '../types';
 import { calcularAlertasNotariales, AlertaNotarial } from './ConfiguracionTab';
-import { calcDaysUntil } from './ExpedientesTab';
+import {
+  calcDaysUntil,
+  buildExpedienteDismissKeys,
+  loadDiscardedExpKeys,
+  loadLocalPlazoChecksForExpediente,
+} from './ExpedientesTab';
 import { auth, db } from '../services/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -68,17 +73,21 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 }) => {
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activeUid, setActiveUid] = useState<string | null>(currentUser?.uid || auth.currentUser?.uid || null);
+  const [activeUid, setActiveUid] = useState<string | null>(
+    String(currentUser?.uid || auth.currentUser?.uid || '').trim() || null
+  );
 
   useEffect(() => {
+    const syncUid = (authUid?: string | null) => {
+      const nextUid = String(currentUser?.uid || authUid || '').trim() || null;
+      setActiveUid(nextUid);
+    };
+    syncUid(auth.currentUser?.uid);
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setActiveUid(currentUser?.uid || user?.uid || null);
+      syncUid(user?.uid);
     });
-    if (currentUser?.uid) {
-      setActiveUid(currentUser.uid);
-    }
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   const effectiveWorkspaceId = String(workspaceId || activeUid || '').trim();
 
@@ -132,8 +141,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const allowedOwnerIds = useMemo(() => {
     const ids = new Set<string>();
-    if (activeUid) ids.add(String(activeUid).trim());
-    if (effectiveWorkspaceId) ids.add(effectiveWorkspaceId);
+    const cleanUid = String(activeUid || '').trim();
+    const cleanWs = String(effectiveWorkspaceId || '').trim();
+    if (cleanUid && cleanUid !== 'anon') ids.add(cleanUid);
+    if (cleanWs && cleanWs !== 'anon') ids.add(cleanWs);
     return ids;
   }, [activeUid, effectiveWorkspaceId]);
 
@@ -157,19 +168,57 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return calcularAlertasNotariales(pagaresEfectivos, alertasLeidasIds);
   }, [pagaresEfectivos, alertasLeidasIds]);
 
-  // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos) aislados por cuenta
+  // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos) aislados estrictamente por cuenta/workspace activo
   const alertasJudiciales = useMemo<AlertaJudicial[]>(() => {
-    if (!activeUid || !Array.isArray(expedientes) || expedientes.length === 0) return [];
+    const sessionUid = String(currentUser?.uid || activeUid || '').trim();
+    if (!sessionUid || allowedOwnerIds.size === 0 || !Array.isArray(expedientes) || expedientes.length === 0) {
+      return [];
+    }
+    const explicitWorkspaceId = String(workspaceId || '').trim();
+    const discardedSet = esAbogado ? new Set(loadDiscardedExpKeys(sessionUid)) : null;
+
+    const isExpedienteOwnedByActiveSession = (exp: Expediente): boolean => {
+      const ownerUserId = String(exp.userId || '').trim();
+      const ownerWorkspaceId = String(exp.ownedByWorkspace || '').trim();
+
+      // Exigir propietario explícito (nunca emparejar por creator_id ni permitir registros huérfanos)
+      if (!ownerUserId && !ownerWorkspaceId) return false;
+
+      // Si el expediente pertenece a otro workspace, rechazar siempre (evita cruces con cuentas admin)
+      if (ownerWorkspaceId && !allowedOwnerIds.has(ownerWorkspaceId)) {
+        return false;
+      }
+
+      // Si tiene userId explícito de otra cuenta, solo aceptar si comparte explícitamente el workspaceId activo
+      if (ownerUserId && !allowedOwnerIds.has(ownerUserId)) {
+        if (!(explicitWorkspaceId && ownerWorkspaceId === explicitWorkspaceId)) {
+          return false;
+        }
+      }
+
+      return (
+        (Boolean(ownerUserId) && allowedOwnerIds.has(ownerUserId)) ||
+        (Boolean(ownerWorkspaceId) && allowedOwnerIds.has(ownerWorkspaceId))
+      );
+    };
+
     const list: AlertaJudicial[] = [];
     expedientes.forEach((exp) => {
       if (!exp || exp.anulado === true || exp.eliminado === true || exp.estado === 'Finalizado') return;
-      const expOwners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
-        .map((v) => String(v || '').trim())
-        .filter(Boolean);
-      if (expOwners.length === 0 || !expOwners.some((id) => allowedOwnerIds.has(id))) return;
+      if (!isExpedienteOwnedByActiveSession(exp)) return;
+
+      if (discardedSet && discardedSet.size > 0) {
+        const expKeys = buildExpedienteDismissKeys(exp);
+        if (expKeys.some((k) => discardedSet.has(k))) return;
+      }
+
+      const localChecks = esAbogado ? loadLocalPlazoChecksForExpediente(sessionUid, exp.id) : null;
 
       (exp.plazos || []).forEach((plazo) => {
-        if (!plazo || plazo.completado || !plazo.fechaVencimiento) return;
+        if (!plazo || !plazo.fechaVencimiento) return;
+        const localOverride = localChecks?.[plazo.id];
+        const isCompleted = localOverride ? localOverride.completado === true : plazo.completado === true;
+        if (isCompleted) return;
         const dias = calcDaysUntil(plazo.fechaVencimiento);
         if (dias === null || dias > 5) return;
         const alertId = `exp_${exp.id}_${plazo.id}`;
@@ -188,7 +237,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     });
     list.sort((a, b) => a.diasRestantes - b.diasRestantes);
     return list;
-  }, [expedientes, alertasLeidasIds, activeUid, allowedOwnerIds]);
+  }, [expedientes, alertasLeidasIds, activeUid, currentUser?.uid, workspaceId, allowedOwnerIds, esAbogado]);
 
   // Cantidad real de incidencias no leídas
   const totalAlertasNoLeidas = useMemo(() => {

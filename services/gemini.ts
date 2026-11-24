@@ -334,7 +334,7 @@ export const analyzeExpedientePdf = async (
   if (!response.ok) {
     const errMsg = await parseJsonError(
       response,
-      'No se pudo analizar la demanda o cédula en este momento. Intenta nuevamente.'
+      'No se pudo analizar el documento en este momento. Intenta nuevamente.'
     );
     throw new Error(errMsg);
   }

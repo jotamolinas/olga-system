@@ -369,8 +369,10 @@ export const normalizeExpediente = (raw: any, docId: string): Expediente => {
         })
     : [];
 
-  const ownedByWorkspace = String(src.ownedByWorkspace ?? src.userId ?? '').trim();
-  const userId = String(src.userId ?? src.ownedByWorkspace ?? '').trim();
+  const rawOwnedByWorkspace = String(src.ownedByWorkspace || '').trim();
+  const rawUserId = String(src.userId || '').trim();
+  const ownedByWorkspace = rawOwnedByWorkspace || rawUserId;
+  const userId = rawUserId || rawOwnedByWorkspace;
 
   return {
     id,
@@ -398,6 +400,14 @@ export const normalizeExpediente = (raw: any, docId: string): Expediente => {
   };
 };
 
+const pickNonEmptyOwnerId = (...candidates: unknown[]): string => {
+  for (const candidate of candidates) {
+    const clean = String(candidate || '').trim();
+    if (clean && clean !== 'anon') return clean;
+  }
+  return '';
+};
+
 export const syncExpedienteToFirestore = async (
   workspaceIdOrUserId: string,
   expediente: Expediente
@@ -407,18 +417,28 @@ export const syncExpedienteToFirestore = async (
   }
   const uid = String(auth.currentUser.uid).trim();
   const user = auth.currentUser as any;
-  const effectiveWorkspace = String(
-    workspaceIdOrUserId || expediente.ownedByWorkspace || expediente.userId || uid
-  ).trim();
+  const effectiveWorkspace =
+    pickNonEmptyOwnerId(
+      workspaceIdOrUserId,
+      expediente.ownedByWorkspace,
+      expediente.userId,
+      uid
+    ) || uid;
+  const effectiveUserId =
+    pickNonEmptyOwnerId(
+      expediente.userId,
+      uid,
+      effectiveWorkspace
+    ) || effectiveWorkspace;
   const nowIso = new Date().toISOString();
   const normalized = normalizeExpediente(
     {
       ...expediente,
       ownedByWorkspace: effectiveWorkspace,
-      userId: effectiveWorkspace,
+      userId: effectiveUserId,
       createdAt: expediente.createdAt || nowIso,
       updatedAt: nowIso,
-      creator_id: expediente.creator_id || uid,
+      creator_id: pickNonEmptyOwnerId(expediente.creator_id, uid) || uid,
       creator_name:
         expediente.creator_name ||
         user?.displayName ||
@@ -434,6 +454,8 @@ export const syncExpedienteToFirestore = async (
     doc(db, 'expedientes', normalized.id),
     {
       ...cleanPayload,
+      userId: normalized.userId || effectiveUserId,
+      ownedByWorkspace: normalized.ownedByWorkspace || effectiveWorkspace,
       fechaActualizacion: serverTimestamp(),
     },
     { merge: true }
