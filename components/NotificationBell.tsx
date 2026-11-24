@@ -7,10 +7,12 @@ import {
   Clock, 
   Check, 
   Calendar,
-  MessageSquare
+  MessageSquare,
+  Briefcase
 } from 'lucide-react';
-import { Pagare } from '../types';
+import { Expediente, Pagare } from '../types';
 import { calcularAlertasNotariales, AlertaNotarial } from './ConfiguracionTab';
+import { calcDaysUntil } from './ExpedientesTab';
 import { auth, db } from '../services/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -19,13 +21,29 @@ const ALERTAS_LEIDAS_KEY = 'olga_alertas_leidas_ids';
 
 export interface NotificationBellProps {
   pagares?: Pagare[];
+  expedientes?: Expediente[];
   onSelectPagare?: (pagareId: string) => void;
+  onSelectExpediente?: (expedienteId: string) => void;
   currentUser?: any;
+}
+
+interface AlertaJudicial {
+  id: string;
+  expedienteId: string;
+  caratula: string;
+  nroExpediente: string;
+  tituloPlazo: string;
+  fechaVencimiento: string;
+  diasRestantes: number;
+  tipoAlerta: 'vencida' | 'proxima';
+  leida: boolean;
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   pagares = [],
+  expedientes = [],
   onSelectPagare,
+  onSelectExpediente,
   currentUser
 }) => {
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
@@ -99,15 +117,44 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return calcularAlertasNotariales(pagaresEfectivos, alertasLeidasIds);
   }, [pagaresEfectivos, alertasLeidasIds]);
 
+  // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos)
+  const alertasJudiciales = useMemo<AlertaJudicial[]>(() => {
+    if (!Array.isArray(expedientes) || expedientes.length === 0) return [];
+    const list: AlertaJudicial[] = [];
+    expedientes.forEach((exp) => {
+      if (!exp || exp.estado === 'Finalizado') return;
+      (exp.plazos || []).forEach((plazo) => {
+        if (!plazo || plazo.completado || !plazo.fechaVencimiento) return;
+        const dias = calcDaysUntil(plazo.fechaVencimiento);
+        if (dias === null || dias > 5) return;
+        const alertId = `exp_${exp.id}_${plazo.id}`;
+        list.push({
+          id: alertId,
+          expedienteId: exp.id,
+          caratula: exp.caratula || 'Expediente sin carátula',
+          nroExpediente: exp.nroExpediente ? `${exp.nroExpediente}/${exp.anio || ''}` : '',
+          tituloPlazo: plazo.titulo || 'Plazo procesal',
+          fechaVencimiento: plazo.fechaVencimiento,
+          diasRestantes: dias,
+          tipoAlerta: dias <= 0 ? 'vencida' : 'proxima',
+          leida: alertasLeidasIds.includes(alertId),
+        });
+      });
+    });
+    list.sort((a, b) => a.diasRestantes - b.diasRestantes);
+    return list;
+  }, [expedientes, alertasLeidasIds]);
+
   // Cantidad real de incidencias no leídas
   const totalAlertasNoLeidas = useMemo(() => {
     const noLeidasNotariales = alertasNotariales.filter(a => !a.leida).length;
+    const noLeidasJudiciales = alertasJudiciales.filter(a => !a.leida).length;
     const noLeidasTickets = ticketsNotificados.filter(t => {
       const ticketKey = `ticket_${t.id}_${t.estado}`;
       return !alertasLeidasIds.includes(ticketKey);
     }).length;
-    return noLeidasNotariales + noLeidasTickets;
-  }, [alertasNotariales, ticketsNotificados, alertasLeidasIds]);
+    return noLeidasNotariales + noLeidasJudiciales + noLeidasTickets;
+  }, [alertasNotariales, alertasJudiciales, ticketsNotificados, alertasLeidasIds]);
 
   const totalAlertas = totalAlertasNoLeidas;
 
@@ -124,8 +171,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const marcarTodasComoLeidas = () => {
     const allNotarialIds = alertasNotariales.map(a => a.id);
+    const allJudicialIds = alertasJudiciales.map(a => a.id);
     const allTicketIds = ticketsNotificados.map(t => `ticket_${t.id}_${t.estado}`);
-    const updated = Array.from(new Set([...alertasLeidasIds, ...allNotarialIds, ...allTicketIds]));
+    const updated = Array.from(new Set([...alertasLeidasIds, ...allNotarialIds, ...allJudicialIds, ...allTicketIds]));
     setAlertasLeidasIds(updated);
     try {
       localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
@@ -161,6 +209,22 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
     if (onSelectPagare && alerta.pagareId) {
       onSelectPagare(alerta.pagareId);
+      setDropdownAbierto(false);
+    }
+  };
+
+  const alternarLeidaJudicial = (alerta: AlertaJudicial) => {
+    const id = alerta.id;
+    const updated = alertasLeidasIds.includes(id)
+      ? alertasLeidasIds
+      : [...alertasLeidasIds, id];
+    setAlertasLeidasIds(updated);
+    try {
+      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
+    } catch {}
+
+    if (onSelectExpediente && alerta.expedienteId) {
+      onSelectExpediente(alerta.expedienteId);
       setDropdownAbierto(false);
     }
   };
@@ -251,14 +315,70 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               );
             })}
 
-            {alertasNotariales.length === 0 && ticketsNotificados.length === 0 ? (
+            {alertasJudiciales.map((alerta) => (
+              <div
+                key={alerta.id}
+                onClick={() => alternarLeidaJudicial(alerta)}
+                className={`p-3.5 hover:bg-slate-50 transition-colors cursor-pointer text-left ${
+                  !alerta.leida
+                    ? (alerta.tipoAlerta === 'vencida' ? 'bg-red-50/50' : 'bg-amber-50/40')
+                    : 'opacity-70'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-2 py-0.5 text-[9px] font-black uppercase rounded flex items-center gap-1 ${
+                        alerta.tipoAlerta === 'vencida'
+                          ? 'bg-red-100 text-red-700 border border-red-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      <Briefcase className="w-3 h-3" />
+                      <span>
+                        {alerta.diasRestantes < 0
+                          ? `Plazo Vencido (${Math.abs(alerta.diasRestantes)}d)`
+                          : alerta.diasRestantes === 0
+                            ? 'Vence HOY'
+                            : `Plazo Judicial (${alerta.diasRestantes}d)`}
+                      </span>
+                    </span>
+                    {alerta.nroExpediente && (
+                      <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                        Expte. {alerta.nroExpediente}
+                      </span>
+                    )}
+                  </div>
+                  {!alerta.leida ? (
+                    <span className="w-2 h-2 rounded-full bg-[#FF3131] shrink-0 mt-1" title="No leída" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                  )}
+                </div>
+                <span className={`text-xs font-bold block ${!alerta.leida ? 'text-slate-900' : 'text-slate-600'}`}>
+                  {alerta.tituloPlazo}
+                </span>
+                <p className="text-[11px] text-slate-600 mt-0.5 leading-snug truncate">
+                  {alerta.caratula}
+                </p>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-100">
+                  <span className="flex items-center gap-1 font-mono">
+                    <Calendar className="w-3 h-3 text-slate-400" />
+                    {alerta.fechaVencimiento}
+                  </span>
+                  <span className="font-bold text-indigo-700">Ver Expediente →</span>
+                </div>
+              </div>
+            ))}
+
+            {alertasNotariales.length === 0 && alertasJudiciales.length === 0 && ticketsNotificados.length === 0 ? (
               <div className="p-8 text-center text-slate-500 space-y-2">
                 <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
                   <CheckCircle2 className="w-5 h-5 text-slate-400" />
                 </div>
                 <p className="text-xs font-bold text-slate-800">No hay alertas pendientes</p>
                 <p className="text-[11px] text-slate-400 max-w-[240px] mx-auto leading-relaxed">
-                  Todos los pagarés y cuotas del sistema se encuentran al día y sin vencimientos en los próximos 5 días.
+                  Todos los pagarés, plazos procesales y cuotas se encuentran al día en los próximos 5 días.
                 </p>
               </div>
             ) : (
@@ -331,7 +451,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
           <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px]">
             <span className="text-slate-500 font-semibold">
-              {alertasNotariales.length + ticketsNotificados.length} {alertasNotariales.length + ticketsNotificados.length === 1 ? 'incidencia detectada' : 'incidencias detectadas'}
+              {alertasNotariales.length + alertasJudiciales.length + ticketsNotificados.length}{' '}
+              {alertasNotariales.length + alertasJudiciales.length + ticketsNotificados.length === 1
+                ? 'incidencia detectada'
+                : 'incidencias detectadas'}
             </span>
             {alertasLeidasIds.length > 0 && (
               <button

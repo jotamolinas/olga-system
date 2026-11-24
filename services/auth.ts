@@ -240,21 +240,22 @@ export const ensureUserDocumentInFirestore = async (
   return { ...existing, ...payload };
 };
 
-export const confirmPhoneCode = async (code: string): Promise<{ user: User } | null> => {
+export const confirmPhoneCode = async (code: string): Promise<{ user: User; userData?: Record<string, any> } | null> => {
   try {
     const confirmationResult = (window as any).confirmationResult;
     if (!confirmationResult) throw new Error('No hay código pendiente de confirmación');
     
     const result = await confirmationResult.confirm(code);
+    let userData: Record<string, any> | undefined;
     if (result.user) {
-      const sessionId = await registerNewSession(result.user.uid);
-      await ensureUserDocumentInFirestore(result.user, {
+      const sessionId = generateLocalSessionId();
+      userData = await ensureUserDocumentInFirestore(result.user, {
         provider: 'telefono',
         phoneNumber: result.user.phoneNumber || '',
         sessionId,
       });
     }
-    return { user: result.user };
+    return { user: result.user, userData };
   } catch (error) {
     console.error('Error confirmando código SMS:', error);
     throw error;
@@ -280,11 +281,20 @@ export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
-export const registerNewSession = async (uid: string): Promise<string> => {
+export const generateLocalSessionId = (): string => {
   const localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
     : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-  localStorage.setItem('appSessionId', localSessionId);
+  try {
+    localStorage.setItem('appSessionId', localSessionId);
+  } catch (err) {
+    console.warn('Advertencia guardando appSessionId en localStorage:', err);
+  }
+  return localSessionId;
+};
+
+export const registerNewSession = async (uid: string): Promise<string> => {
+  const localSessionId = generateLocalSessionId();
   try {
     await setDoc(doc(db, 'users', uid), { activeSessionId: localSessionId }, { merge: true });
   } catch (err) {
@@ -319,76 +329,164 @@ export const logout = async () => {
   cachedAccessToken = null;
 };
 
-export const emailSignIn = async (email: string, password: string): Promise<{ user: User } | null> => {
+const EXPECTED_AUTH_USER_ERROR_CODES = new Set([
+  'auth/email-already-in-use',
+  'auth/invalid-credential',
+  'auth/wrong-password',
+  'auth/wrong-password-existing',
+  'auth/user-not-found',
+  'auth/weak-password',
+  'auth/invalid-email',
+  'auth/too-many-requests',
+]);
+
+export interface SmartEmailAuthResult {
+  user: User;
+  userData: Record<string, any>;
+  isNewUser: boolean;
+}
+
+const createAuthError = (code: string, message: string): Error & { code: string } => {
+  const err = new Error(message) as Error & { code: string };
+  err.code = code;
+  return err;
+};
+
+const ensureUserProfileSafe = async (user: User, cleanEmail: string): Promise<Record<string, any>> => {
+  const sessionId = generateLocalSessionId();
+  const fallbackProfile: Record<string, any> = {
+    uid: user.uid,
+    email: user.email || cleanEmail,
+    planActual: 'trial',
+    plan: 'trial',
+    estadoSuscripcion: 'trial',
+    estado_cuenta: 'activa',
+    activeSessionId: sessionId,
+  };
+
+  const ensurePromise = ensureUserDocumentInFirestore(user, {
+    provider: 'email',
+    email: user.email || cleanEmail,
+    sessionId,
+  }).catch((err) => {
+    console.warn('No se pudo sincronizar inmediatamente users/{uid}; continuará en segundo plano:', err);
+    return fallbackProfile;
+  });
+
+  const timeoutPromise = new Promise<Record<string, any>>((resolve) => {
+    setTimeout(() => resolve(fallbackProfile), 4500);
+  });
+
+  return Promise.race([ensurePromise, timeoutPromise]);
+};
+
+export const smartEmailAuth = async (
+  email: string,
+  password: string,
+  preferMode: 'login' | 'register' = 'login'
+): Promise<SmartEmailAuthResult> => {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw createAuthError('auth/invalid-email', 'Por favor, ingresa un correo electrónico válido.');
+  }
+  if (cleanPassword.length < 6) {
+    throw createAuthError('auth/weak-password', 'La contraseña debe tener al menos 6 caracteres.');
+  }
+
   try {
     isSigningIn = true;
-    const cleanEmail = (email || '').trim().toLowerCase();
-    let result;
-    try {
-      result = await signInWithEmailAndPassword(auth, cleanEmail, password);
-    } catch (signInErr: any) {
-      const errCode = signInErr?.code || '';
-      if (errCode === 'auth/invalid-credential' || errCode === 'auth/user-not-found' || errCode === 'auth/wrong-password') {
-        try {
-          const signUpRes = await emailSignUp(cleanEmail, password);
-          if (signUpRes && signUpRes.user) {
-            return { user: signUpRes.user };
-          }
-        } catch (signUpErr: any) {
-          if (signUpErr?.code === 'auth/email-already-in-use') {
-            throw new Error('Contraseña incorrecta o credenciales inválidas. Por favor verifícalas o usa Recuperar Contraseña.');
-          }
-          throw signUpErr;
-        }
-      }
-      throw signInErr;
-    }
 
-    if (result.user) {
-      const sessionId = await registerNewSession(result.user.uid);
-      await ensureUserDocumentInFirestore(result.user, {
-        provider: 'email',
-        email: result.user.email || cleanEmail,
-        sessionId,
-      });
+    if (preferMode === 'login') {
+      // Caso A: Usuario en "Iniciar Sesión"
+      try {
+        const result = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        const userData = await ensureUserProfileSafe(result.user, cleanEmail);
+        return { user: result.user, userData, isNewUser: false };
+      } catch (signInErr: any) {
+        const code = signInErr?.code || '';
+        if (code === 'auth/wrong-password') {
+          throw createAuthError(
+            'auth/wrong-password-existing',
+            'Este correo ya tiene una cuenta registrada, pero la contraseña no coincide. Intenta nuevamente o restablece tu contraseña abajo.'
+          );
+        }
+        if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+          try {
+            const created = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+            const userData = await ensureUserProfileSafe(created.user, cleanEmail);
+            return { user: created.user, userData, isNewUser: true };
+          } catch (signUpErr: any) {
+            if (signUpErr?.code === 'auth/email-already-in-use') {
+              // Caso C: El correo ya existía y la contraseña ingresada no coincidió
+              throw createAuthError(
+                'auth/wrong-password-existing',
+                'Este correo ya tiene una cuenta registrada, pero la contraseña no coincide. Intenta nuevamente o restablece tu contraseña abajo.'
+              );
+            }
+            throw signUpErr;
+          }
+        }
+        throw signInErr;
+      }
+    } else {
+      // Caso B: Usuario en "Registrarse"
+      try {
+        const created = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        const userData = await ensureUserProfileSafe(created.user, cleanEmail);
+        return { user: created.user, userData, isNewUser: true };
+      } catch (signUpErr: any) {
+        if (signUpErr?.code === 'auth/email-already-in-use') {
+          try {
+            const signedIn = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+            const userData = await ensureUserProfileSafe(signedIn.user, cleanEmail);
+            return { user: signedIn.user, userData, isNewUser: false };
+          } catch (fallbackSignInErr: any) {
+            const fbCode = fallbackSignInErr?.code || '';
+            if (fbCode === 'auth/wrong-password' || fbCode === 'auth/invalid-credential') {
+              // Caso C: Correo existente con contraseña incorrecta
+              throw createAuthError(
+                'auth/wrong-password-existing',
+                'Este correo ya tiene una cuenta registrada, pero la contraseña no coincide. Intenta nuevamente o restablece tu contraseña abajo.'
+              );
+            }
+            throw fallbackSignInErr;
+          }
+        }
+        throw signUpErr;
+      }
     }
-    return { user: result.user };
-  } catch (error) {
-    console.error('Email sign in error:', error);
+  } catch (error: any) {
+    if (EXPECTED_AUTH_USER_ERROR_CODES.has(error?.code)) {
+      console.warn('Smart email auth aviso:', error?.code);
+    } else {
+      console.error('Smart email auth error:', error);
+    }
     throw error;
   } finally {
     isSigningIn = false;
   }
 };
 
-export const emailSignUp = async (email: string, password: string): Promise<{ user: User } | null> => {
-  try {
-    isSigningIn = true;
-    const cleanEmail = (email || '').trim().toLowerCase();
-    const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    if (result.user) {
-      const sessionId = await registerNewSession(result.user.uid);
-      await ensureUserDocumentInFirestore(result.user, {
-        provider: 'email',
-        email: result.user.email || cleanEmail,
-        sessionId,
-      });
-    }
-    return { user: result.user };
-  } catch (error) {
-    console.error('Email sign up error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
+export const emailSignIn = async (email: string, password: string): Promise<SmartEmailAuthResult> => {
+  return smartEmailAuth(email, password, 'login');
+};
+
+export const emailSignUp = async (email: string, password: string): Promise<SmartEmailAuthResult> => {
+  return smartEmailAuth(email, password, 'register');
 };
 
 export const resetPassword = async (email: string): Promise<void> => {
   try {
     const cleanEmail = (email || '').trim().toLowerCase();
     await sendPasswordResetEmail(auth, cleanEmail);
-  } catch (error) {
-    console.error('Password reset error:', error);
+  } catch (error: any) {
+    if (EXPECTED_AUTH_USER_ERROR_CODES.has(error?.code)) {
+      console.warn('Password reset aviso:', error?.code);
+    } else {
+      console.error('Password reset error:', error);
+    }
     throw error;
   }
 };

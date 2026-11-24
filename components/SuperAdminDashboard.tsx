@@ -41,6 +41,7 @@ export interface RegisteredUser {
   whatsappEnabled?: boolean;
   lienzoEnabled?: boolean;
   presupuestoEnabled?: boolean;
+  tipoPerfil?: string;
   raw: any;
 }
 
@@ -868,6 +869,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
               whatsappEnabled: typeof data.whatsappEnabled === 'boolean' ? data.whatsappEnabled : undefined,
               lienzoEnabled: typeof data.lienzoEnabled === 'boolean' ? data.lienzoEnabled : undefined,
               presupuestoEnabled: typeof data.presupuestoEnabled === 'boolean' ? data.presupuestoEnabled : undefined,
+              tipoPerfil: String(data.tipoPerfil || '').trim(),
               raw: data
             });
           } catch (docErr) {
@@ -1278,6 +1280,28 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
     return user.fechaFormateada !== 'Reciente / No registrada' ? user.fechaFormateada : 'Sin vencimiento';
   };
 
+  const renderTipoPerfilBadge = (user: RegisteredUser) => {
+    const tipoRaw = String(user.tipoPerfil || user.raw?.tipoPerfil || '').trim().toLowerCase();
+    if (tipoRaw === 'abogado') {
+      return (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shrink-0"
+          title="Perfil: Abogado / Estudio Jurídico"
+        >
+          Abogado
+        </span>
+      );
+    }
+    return (
+      <span
+        className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-300/90 border border-amber-500/20 shrink-0"
+        title="Perfil: Escribanía / Notaría"
+      >
+        Escribanía
+      </span>
+    );
+  };
+
   const renderMobileUserCard = (user: RegisteredUser) => {
     const inicial = (user.nombre || user.razonSocial || user.email || 'U').charAt(0).toUpperCase();
     const nombreDisplay = user.razonSocial || user.nombre || user.email;
@@ -1298,9 +1322,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
               {inicial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-white leading-snug break-words">
-                {nombreDisplay}
-              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-sm font-bold text-white leading-snug break-words">
+                  {nombreDisplay}
+                </p>
+                {renderTipoPerfilBadge(user)}
+              </div>
               {user.email && (
                 <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
               )}
@@ -2610,8 +2637,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                               <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
                                 {inicial}
                               </div>
-                              <div className="min-w-0 truncate">
-                                <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
+                                  {renderTipoPerfilBadge(user)}
+                                </div>
                                 <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
                               </div>
                             </div>
@@ -2843,7 +2873,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                                 {inicial}
                               </div>
                               <div>
-                                <p className="font-semibold text-white">{nombreDisplay}</p>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="font-semibold text-white">{nombreDisplay}</p>
+                                  {renderTipoPerfilBadge(user)}
+                                </div>
                                 <p className="text-[10px] text-gray-500">{user.nombre || 'Sin nombre fiscal'}</p>
                               </div>
                             </div>

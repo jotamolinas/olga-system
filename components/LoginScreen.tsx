@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, emailSignIn, emailSignUp, resetPassword, logout, ensureUserDocumentInFirestore, registerNewSession } from '../services/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db, smartEmailAuth, resetPassword, logout, ensureUserDocumentInFirestore, generateLocalSessionId } from '../services/auth';
 import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2, X } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -17,6 +17,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
   const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showResetShortcut, setShowResetShortcut] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [trialExpiredToast, setTrialExpiredToast] = useState<string | null>(null);
   
@@ -149,38 +150,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     return false;
   };
 
-  // Submit autenticación por Correo
+  // Submit autenticación inteligente por Correo (Login y Registro bidireccional)
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPassword = (password || '').trim();
     if (!cleanEmail || !cleanPassword) return;
-    
+
+    if (cleanPassword.length < 6) {
+      setShowResetShortcut(false);
+      setSuccessMessage('');
+      setError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
-      
+      setSuccessMessage('');
+      setShowResetShortcut(false);
       setTrialExpiredToast(null);
-      let authUser: any = null;
-      if (isLogin) {
-        if (typeof sessionStorage !== 'undefined') {
-          sessionStorage.setItem('olga_auth_flow', 'login');
-        }
-        const res = await emailSignIn(cleanEmail, cleanPassword);
-        authUser = res?.user || auth.currentUser;
-      } else {
-        if (typeof sessionStorage !== 'undefined') {
-          sessionStorage.setItem('olga_auth_flow', 'register');
-        }
-        const res = await emailSignUp(cleanEmail, cleanPassword);
-        authUser = res?.user || auth.currentUser;
+
+      const res = await smartEmailAuth(cleanEmail, cleanPassword, isLogin ? 'login' : 'register');
+      const authUser = res?.user || auth.currentUser;
+      const ensuredUserData = res?.userData;
+
+      if (typeof sessionStorage !== 'undefined') {
+        const needsOnboarding =
+          res?.isNewUser ||
+          (!ensuredUserData?.perfilCompletado &&
+            !ensuredUserData?.razonSocial &&
+            !ensuredUserData?.tipoPerfil &&
+            !ensuredUserData?.nombreInstitucion);
+        sessionStorage.setItem('olga_auth_flow', needsOnboarding ? 'register' : 'login');
       }
 
-      if (authUser) {
-        const ensuredUserData = await ensureUserDocumentInFirestore(authUser, {
-          provider: 'email',
-          email: authUser.email || cleanEmail,
-        });
+      if (authUser && ensuredUserData) {
         const isExpired = await validateTrialExpiration(ensuredUserData, authUser.uid);
         if (isExpired) {
           return; // DETÉN la redirección
@@ -194,21 +199,52 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         navigate('/consola');
       }
     } catch (err: any) {
-      console.error('Error email auth:', err);
-      let errorMessage = err.message || 'Error de autenticación';
-      if (err.code === 'auth/invalid-credential' || err.message?.includes('invalid-credential')) {
-        errorMessage = isLogin 
-          ? 'Credenciales inválidas. Verifica tu correo y contraseña. Si aún no te has registrado, haz clic en "Registrarse".'
-          : 'No se pudo crear la cuenta con estas credenciales. Si ya existe, por favor inicia sesión.';
-      } else if (err.code === 'auth/user-not-found') {
-        errorMessage = 'No se encontró una cuenta con este correo. Por favor regístrate primero.';
-      } else if (err.code === 'auth/wrong-password') {
-        errorMessage = 'Contraseña incorrecta. Puedes restablecerla abajo.';
-      } else if (err.code === 'auth/email-already-in-use') {
-        errorMessage = 'Este correo ya está registrado. Por favor inicia sesión.';
-      } else if (err.code === 'auth/too-many-requests') {
-        errorMessage = 'Demasiados intentos fallidos. Por seguridad, el acceso temporal está bloqueado. Por favor, espera unos minutos o usa Recuperar Contraseña.';
+      const errCode = err?.code || '';
+      const isExpectedAuthInputError = [
+        'auth/invalid-credential',
+        'auth/user-not-found',
+        'auth/wrong-password',
+        'auth/wrong-password-existing',
+        'auth/email-already-in-use',
+        'auth/weak-password',
+        'auth/invalid-email',
+        'auth/too-many-requests',
+      ].includes(errCode);
+
+      if (isExpectedAuthInputError) {
+        console.warn('Aviso email auth:', errCode);
+      } else {
+        console.error('Error email auth:', err);
       }
+
+      let errorMessage = 'No pudimos completar tu acceso. Intenta nuevamente en unos segundos.';
+      let enableResetBtn = false;
+
+      if (
+        errCode === 'auth/wrong-password-existing' ||
+        errCode === 'auth/wrong-password' ||
+        errCode === 'auth/invalid-credential' ||
+        errCode === 'auth/email-already-in-use'
+      ) {
+        setIsLogin(true);
+        enableResetBtn = true;
+        errorMessage =
+          'Este correo ya tiene una cuenta registrada, pero la contraseña no coincide. Intenta nuevamente o restablece tu contraseña abajo.';
+      } else if (errCode === 'auth/weak-password') {
+        errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
+      } else if (errCode === 'auth/invalid-email') {
+        errorMessage = 'Por favor, ingresa un correo electrónico válido.';
+      } else if (errCode === 'auth/too-many-requests') {
+        enableResetBtn = true;
+        errorMessage =
+          'Demasiados intentos seguidos. Espera unos minutos o restablece tu contraseña para recuperar el acceso.';
+      } else if (errCode === 'auth/network-request-failed') {
+        errorMessage = 'Sin conexión a internet. Verifica tu red e intenta nuevamente.';
+      } else if (typeof err?.message === 'string' && !err.message.includes('Firebase:')) {
+        errorMessage = err.message;
+      }
+
+      setShowResetShortcut(enableResetBtn);
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -217,22 +253,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
 
   // Restablecer contraseña
   const handleResetPassword = async () => {
-    if (!email) {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) {
       setSuccessMessage('');
       setError('Por favor, ingresa tu correo electrónico para restablecer la contraseña.');
       return;
     }
-    
+
     try {
       setLoading(true);
       setError('');
+      setShowResetShortcut(false);
       setSuccessMessage('');
-      await resetPassword(email);
-      setSuccessMessage('Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada o spam.');
+      await resetPassword(cleanEmail);
+      setSuccessMessage(
+        'Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada o carpeta de spam.'
+      );
     } catch (err: any) {
-      console.error('Error reset password:', err);
+      const errCode = err?.code || '';
+      if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-email' || errCode === 'auth/too-many-requests') {
+        console.warn('Aviso reset password:', errCode);
+      } else {
+        console.error('Error reset password:', err);
+      }
       setSuccessMessage('');
-      setError(err.message || 'Error al enviar el correo de restablecimiento.');
+      if (errCode === 'auth/user-not-found') {
+        setError('Aún no existe una cuenta con ese correo electrónico. Puedes crear una ingresando tu contraseña.');
+      } else if (errCode === 'auth/invalid-email') {
+        setError('Por favor, ingresa un correo electrónico válido.');
+      } else if (errCode === 'auth/too-many-requests') {
+        setError('Ya enviamos una solicitud reciente. Revisa tu correo o espera unos minutos.');
+      } else {
+        setError('No pudimos enviar el correo de recuperación en este momento. Intenta nuevamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -326,12 +379,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       const res = await confirmationResult.confirm(cleanCode);
       const authUser = res?.user || auth.currentUser;
       if (authUser) {
-        const sessionId = await registerNewSession(authUser.uid);
+        const sessionId = generateLocalSessionId();
         const ensuredUserData = await ensureUserDocumentInFirestore(authUser, {
           provider: 'telefono',
           phoneNumber: authUser.phoneNumber || phoneNumber.replace(/[\s-]/g, '').trim(),
           sessionId,
         });
+        if (
+          typeof sessionStorage !== 'undefined' &&
+          !ensuredUserData?.perfilCompletado &&
+          !ensuredUserData?.razonSocial &&
+          !ensuredUserData?.tipoPerfil &&
+          !ensuredUserData?.nombreInstitucion
+        ) {
+          sessionStorage.setItem('olga_auth_flow', 'register');
+        }
         const isExpired = await validateTrialExpiration(ensuredUserData, authUser.uid);
         if (isExpired) {
           return; // DETÉN la redirección
@@ -379,8 +441,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           sessionStorage.setItem('olga_auth_flow', 'google');
         }
 
-        // Garantizar creación/sincronización completa de users/{uid} en Firestore
-        const sessionId = await registerNewSession(result.user.uid);
+        // Garantizar creación/sincronización completa de users/{uid} en Firestore en una sola escritura
+        const sessionId = generateLocalSessionId();
         const userData = await ensureUserDocumentInFirestore(result.user, {
           provider: 'google',
           email: result.user.email || '',
@@ -484,7 +546,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         <div className="w-full box-border grid grid-cols-2 p-1 bg-slate-900/80 rounded-xl mb-4 border border-slate-800 relative z-10 shadow-inner">
           <button
             type="button"
-            onClick={() => { setIsLogin(true); setError(''); setSuccessMessage(''); }}
+            onClick={() => { setIsLogin(true); setError(''); setShowResetShortcut(false); setSuccessMessage(''); }}
             className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               isLogin 
                 ? 'bg-blue-600 text-white shadow-md' 
@@ -495,7 +557,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           </button>
           <button
             type="button"
-            onClick={() => { setIsLogin(false); setError(''); setSuccessMessage(''); }}
+            onClick={() => { setIsLogin(false); setError(''); setShowResetShortcut(false); setSuccessMessage(''); }}
             className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               !isLogin 
                 ? 'bg-[#FF3131] text-white shadow-md' 
@@ -510,7 +572,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         <div className="w-full box-border grid grid-cols-2 p-1 bg-slate-900/60 rounded-xl mb-6 border border-slate-800/80 relative z-10">
           <button
             type="button"
-            onClick={() => { setAuthMethod('email'); setError(''); setSuccessMessage(''); setOtpSent(false); }}
+            onClick={() => { setAuthMethod('email'); setError(''); setShowResetShortcut(false); setSuccessMessage(''); setOtpSent(false); }}
             className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${
               authMethod === 'email'
                 ? 'bg-slate-800 text-white shadow-sm border border-slate-700'
@@ -522,7 +584,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           </button>
           <button
             type="button"
-            onClick={() => { setAuthMethod('phone'); setError(''); setSuccessMessage(''); }}
+            onClick={() => { setAuthMethod('phone'); setError(''); setShowResetShortcut(false); setSuccessMessage(''); }}
             className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${
               authMethod === 'phone'
                 ? 'bg-slate-800 text-white shadow-sm border border-slate-700'
@@ -563,10 +625,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
               <span>{error}</span>
             </div>
           ) : (
-            <div className="w-full box-border bg-red-950/80 text-red-200 text-xs font-bold p-4 rounded-xl mb-6 border border-red-500/70 relative z-10 flex items-center gap-3 text-left shadow-xl animate-fade-in">
-              <AlertTriangle className="w-5 h-5 text-[#FF3131] shrink-0" />
-              <div className="flex-1">
-                <span>{error}</span>
+            <div className="w-full box-border bg-red-950/80 text-red-200 text-xs font-bold p-4 rounded-xl mb-6 border border-red-500/70 relative z-10 flex items-start gap-3 text-left shadow-xl animate-fade-in">
+              <AlertTriangle className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2.5">
+                <span className="block leading-relaxed">{error}</span>
+                {showResetShortcut && authMethod === 'email' && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void handleResetPassword()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 text-red-100 text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Enviar correo de recuperación</span>
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -596,7 +669,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
                 placeholder="Contraseña"
                 className="w-full box-border bg-slate-900/50 border border-slate-700 text-white font-medium py-4 pl-12 pr-4 rounded-xl outline-none focus:border-[#FF3131] focus:ring-1 focus:ring-[#FF3131] transition-all placeholder:text-slate-500"
                 required
-                minLength={6}
               />
             </div>
             
@@ -746,7 +818,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         <div className="flex flex-col gap-3 mt-6 w-full box-border relative z-10">
           <button
             type="button"
-            onClick={() => { setIsLogin(!isLogin); setError(''); }}
+            onClick={() => { setIsLogin(!isLogin); setError(''); setShowResetShortcut(false); setSuccessMessage(''); }}
             className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             {isLogin ? '¿No tienes cuenta? Regístrate aquí' : '¿Ya tienes cuenta? Inicia sesión'}

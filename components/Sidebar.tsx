@@ -23,7 +23,8 @@ import {
   Download,
   KeyRound,
   Lock as LockIcon,
-  MessageCircle
+  MessageCircle,
+  Briefcase
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 
@@ -42,7 +43,8 @@ export type SidebarTabId =
   | 'lienzo'
   | 'facturacion'
   | 'onboarding-sifen'
-  | 'whatsapp';
+  | 'whatsapp'
+  | 'expedientes';
 
 export interface SidebarProps {
   activeTab: SidebarTabId | string;
@@ -125,14 +127,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Nombre visible del usuario o escribanía
+  const esAbogado = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+
+  const resolvedWorkspaceDisplay =
+    workspaceName && (!esAbogado || workspaceName !== 'Mi Escribanía')
+      ? workspaceName
+      : '';
+
+  // Nombre visible del usuario, escribanía o estudio jurídico
   const displayName = isOperador
     ? (currentUser?.displayName || currentUser?.email || 'Operador Notarial')
-    : (workspaceName || customBranding?.nombreInstitucion || userData?.razonSocial || userData?.nombre || currentUser?.phoneNumber || 'Escribanía Titular');
+    : (
+        userProfile?.razonSocial ||
+        userData?.razonSocial ||
+        customBranding?.nombreInstitucion ||
+        resolvedWorkspaceDisplay ||
+        userProfile?.nombre ||
+        userData?.nombre ||
+        currentUser?.phoneNumber ||
+        (esAbogado ? 'Estudio Jurídico' : 'Escribanía Titular')
+      );
 
   const sublineText = isOperador
-    ? (workspaceName ? `Escribanía ${workspaceName}` : 'Operador Notarial')
-    : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
+    ? (workspaceName ? `${esAbogado ? 'Estudio' : 'Escribanía'} ${workspaceName}` : 'Operador Notarial')
+    : esAbogado
+      ? (role === 'admin' ? 'Administrador' : 'Estudio Jurídico • Panel Legal')
+      : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
 
   // Insignia dinámica de plan
   const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || activePlan || 'basico';
@@ -249,11 +269,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems: NavItem[] = [
     { id: 'tablero', label: 'Dashboard', icon: Activity },
+    ...(esAbogado || isSuperAdmin ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
-    { id: 'personas', label: 'Fichero Personas', icon: Users },
+    { id: 'personas', label: esAbogado ? 'Clientes / Partes' : 'Fichero Personas', icon: Users },
     { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
-    // Lienzo Notarial y Presupuesto: Controlados por permisos modulares (o herencia del plan)
-    ...(canUseLienzo ? [{ id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp }] : []),
+    // Lienzo Notarial (solo Escribanía) y Presupuesto: Controlados por permisos modulares (o herencia del plan)
+    ...(!esAbogado && canUseLienzo ? [{ id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp }] : []),
     ...(canUsePresupuesto ? [{ id: 'facturacion', label: 'Presupuesto', icon: CreditCard }] : []),
     // Asistente IA / El Oráculo
     {
@@ -271,8 +292,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: LifeBuoy,
       customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte'
     },
-    // Configuración de Escribanía / Cuenta
-    { id: 'cuenta', label: 'Configuración Escribanía', icon: Sliders },
+    // Configuración de Escribanía / Estudio / Cuenta
+    { id: 'cuenta', label: esAbogado ? 'Configuración Estudio' : 'Configuración Escribanía', icon: Sliders },
     // Opciones administrativas
     { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },

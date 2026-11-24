@@ -35,6 +35,7 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
         if (docSnap.exists() && isMounted) {
           const data = docSnap.data();
           setWorkspaceData(data);
+          const isAbogadoWs = String(data?.tipoPerfil || userProfile?.tipoPerfil || '').toLowerCase() === 'abogado';
           const resolvedName = String(
             data.razonSocial ||
             data.nombreInstitucion ||
@@ -42,7 +43,7 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
             data.nombre ||
             ''
           ).trim();
-          setWorkspaceName(resolvedName || "Mi Escribanía");
+          setWorkspaceName(resolvedName || (isAbogadoWs ? 'Estudio Jurídico' : 'Mi Escribanía'));
         }
       } catch (error) {
         console.error("Error UI:", error);
@@ -52,7 +53,8 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
     if (isOperador && tenantId) {
       fetchWorkspaceProfile();
     } else if (currentUser || userProfile) {
-      const ownName = userDisplayName || "Mi Escribanía";
+      const isAbogadoWs = String(userProfile?.tipoPerfil || currentUser?.tipoPerfil || '').toLowerCase() === 'abogado';
+      const ownName = userDisplayName || (isAbogadoWs ? 'Estudio Jurídico' : 'Mi Escribanía');
       setWorkspaceName(ownName);
       setWorkspaceData(userProfile || currentUser);
     }

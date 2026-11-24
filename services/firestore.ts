@@ -1,6 +1,6 @@
 import { db, auth } from './auth';
 import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
-import { Persona, Pagare, KnowledgeDoc, TipoPersona, TipoDocumento } from '../types';
+import { Persona, Pagare, KnowledgeDoc, TipoPersona, TipoDocumento, Expediente, PlazoProcesal, TipoJuicioExpediente, RolParteExpediente, EstadoExpediente } from '../types';
 import { depurarDuplicadosLista } from './personaDedup';
 
 const sanitizePlainObject = (input: Record<string, any>): Record<string, any> => {
@@ -289,3 +289,147 @@ export const guardarEscritoToFirestore = async (userId: string, texto: string, t
   });
   return docRef.id;
 };
+
+const VALID_TIPOS_JUICIO: TipoJuicioExpediente[] = [
+  'Ordinario',
+  'Ejecutivo',
+  'Laboral',
+  'Niñez y Adolescencia',
+  'Penal',
+  'Sucesorio',
+  'Otro',
+];
+
+const VALID_ROLES_PARTE: RolParteExpediente[] = [
+  'Demandado',
+  'Actor / Demandante',
+  'Tercero',
+];
+
+const VALID_ESTADOS_EXP: EstadoExpediente[] = [
+  'En trámite',
+  'Pendiente de contestación',
+  'Período probatorio',
+  'Autos para sentencia',
+  'Finalizado',
+];
+
+export const normalizeExpediente = (raw: any, docId: string): Expediente => {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const id = String(src.id ?? docId ?? '').trim() || docId;
+  const rawTipo = String(src.tipoJuicio || 'Ordinario').trim();
+  const tipoJuicio: TipoJuicioExpediente = VALID_TIPOS_JUICIO.includes(rawTipo as TipoJuicioExpediente)
+    ? (rawTipo as TipoJuicioExpediente)
+    : 'Otro';
+
+  const rawRol = String(src.rolParte || 'Actor / Demandante').trim();
+  const rolParte: RolParteExpediente = VALID_ROLES_PARTE.includes(rawRol as RolParteExpediente)
+    ? (rawRol as RolParteExpediente)
+    : 'Actor / Demandante';
+
+  const rawEstado = String(src.estado || 'En trámite').trim();
+  const estado: EstadoExpediente = VALID_ESTADOS_EXP.includes(rawEstado as EstadoExpediente)
+    ? (rawEstado as EstadoExpediente)
+    : 'En trámite';
+
+  const plazos: PlazoProcesal[] = Array.isArray(src.plazos)
+    ? src.plazos
+        .filter((p: any) => p && typeof p === 'object')
+        .map((p: any, idx: number) => ({
+          id: String(p.id || `plazo-${idx}-${Date.now()}`),
+          titulo: String(p.titulo || 'Plazo procesal').trim(),
+          fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+          diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+          completado: Boolean(p.completado),
+          tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+        }))
+    : [];
+
+  const ownedByWorkspace = String(src.ownedByWorkspace ?? src.userId ?? '').trim();
+  const userId = String(src.userId ?? src.ownedByWorkspace ?? '').trim();
+
+  return {
+    id,
+    userId,
+    ownedByWorkspace,
+    caratula: String(src.caratula || '').trim(),
+    nroExpediente: String(src.nroExpediente || '').trim(),
+    anio: String(src.anio || new Date().getFullYear()).trim(),
+    juzgado: String(src.juzgado || '').trim(),
+    tipoJuicio,
+    rolParte,
+    estado,
+    plazos,
+    ultimoAnalisisIA: src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object' ? src.ultimoAnalisisIA : null,
+    notas: src.notas ? String(src.notas) : '',
+    clienteNombre: src.clienteNombre ? String(src.clienteNombre) : '',
+    clienteId: src.clienteId ? String(src.clienteId) : '',
+    createdAt: String(src.createdAt || new Date().toISOString()),
+    updatedAt: String(src.updatedAt || new Date().toISOString()),
+    creator_id: src.creator_id ? String(src.creator_id) : undefined,
+    creator_name: src.creator_name ? String(src.creator_name) : undefined,
+  };
+};
+
+export const syncExpedienteToFirestore = async (
+  workspaceIdOrUserId: string,
+  expediente: Expediente
+): Promise<Expediente> => {
+  if (!auth?.currentUser?.uid) {
+    throw new Error('Debes iniciar sesión para guardar el expediente.');
+  }
+  const uid = String(auth.currentUser.uid).trim();
+  const user = auth.currentUser as any;
+  const effectiveWorkspace = String(
+    workspaceIdOrUserId || expediente.ownedByWorkspace || expediente.userId || uid
+  ).trim();
+  const nowIso = new Date().toISOString();
+  const normalized = normalizeExpediente(
+    {
+      ...expediente,
+      ownedByWorkspace: effectiveWorkspace,
+      userId: effectiveWorkspace,
+      createdAt: expediente.createdAt || nowIso,
+      updatedAt: nowIso,
+      creator_id: expediente.creator_id || uid,
+      creator_name:
+        expediente.creator_name ||
+        user?.displayName ||
+        user?.nombre ||
+        user?.email?.split('@')[0] ||
+        'Usuario',
+    },
+    expediente.id
+  );
+
+  const cleanPayload = sanitizePlainObject(normalized as unknown as Record<string, any>);
+  await setDoc(
+    doc(db, 'expedientes', normalized.id),
+    {
+      ...cleanPayload,
+      fechaActualizacion: serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return normalized;
+};
+
+export const deleteExpedienteFromFirestore = async (expedienteId: string): Promise<void> => {
+  if (!auth?.currentUser?.uid || !expedienteId) return;
+  await deleteDoc(doc(db, 'expedientes', expedienteId));
+};
+
+export const fetchExpedientesFromFirestore = async (workspaceId?: string): Promise<Expediente[]> => {
+  const uid = String(auth?.currentUser?.uid || '').trim();
+  const effectiveWorkspace = String(workspaceId || uid || '').trim();
+  if (!uid && !effectiveWorkspace) return [];
+
+  const q = query(collection(db, 'expedientes'), where('ownedByWorkspace', '==', effectiveWorkspace));
+  const snapshot = await getDocs(q);
+  const results: Expediente[] = [];
+  snapshot.forEach((docSnap) => {
+    results.push(normalizeExpediente(docSnap.data(), docSnap.id));
+  });
+  return results;
+};
+

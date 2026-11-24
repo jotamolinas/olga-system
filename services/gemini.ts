@@ -291,3 +291,94 @@ export const draftNotificationWithAI = async (
   throw new Error('La IA no devolvió un título y mensaje válidos. Intenta nuevamente.');
 };
 
+export interface ExpedientePdfAnalysisPayload {
+  caratula: string;
+  nroExpediente?: string;
+  anio?: string;
+  juzgado: string;
+  tipoJuicio: string;
+  rolParteSugerido: string;
+  resumenHechos: string;
+  fundamentoCPC?: string;
+  plazoPrincipal: {
+    titulo: string;
+    diasPlazo: number;
+    fechaVencimiento: string;
+    tipo: 'plazo_legal' | 'impulso';
+  } | null;
+  impulsosSugeridos: Array<{
+    titulo: string;
+    diasPlazo: number;
+    fechaVencimiento: string;
+    tipo: 'plazo_legal' | 'impulso';
+  }>;
+}
+
+export const analyzeExpedientePdf = async (
+  fileBase64: string,
+  mimeType: string,
+  options?: { fileName?: string; rolParteHint?: string }
+): Promise<ExpedientePdfAnalysisPayload> => {
+  const headers = await getAuthHeaders();
+  const response = await fetch('/api/gemini/analyze-expediente-pdf', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      fileBase64,
+      mimeType,
+      fileName: options?.fileName,
+      rolParteHint: options?.rolParteHint,
+    }),
+  });
+
+  if (!response.ok) {
+    const errMsg = await parseJsonError(
+      response,
+      'No se pudo analizar la demanda o cédula en este momento. Intenta nuevamente.'
+    );
+    throw new Error(errMsg);
+  }
+
+  const payload = await response.json();
+  if (payload?.data && typeof payload.data === 'object') {
+    return payload.data as ExpedientePdfAnalysisPayload;
+  }
+
+  throw new Error('La IA no devolvió datos procesales válidos para este documento.');
+};
+
+export const redactarEscritoJudicialConIA = async (params: {
+  expediente: Record<string, any>;
+  modo: 'contestacion' | 'impulso';
+  plazoObjetivo?: { titulo?: string; fechaVencimiento?: string };
+  estudio?: {
+    razonSocial?: string;
+    nombre?: string;
+    matricula?: string;
+    ciudad?: string;
+  };
+}): Promise<string> => {
+  const headers = await getAuthHeaders();
+  const response = await fetch('/api/gemini/redactar-escrito-judicial', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errMsg = await parseJsonError(
+      response,
+      'No se pudo redactar el escrito judicial en este momento. Intenta nuevamente.'
+    );
+    throw new Error(errMsg);
+  }
+
+  const payload = await response.json();
+  if (typeof payload?.text === 'string' && payload.text.trim()) {
+    return payload.text.trim();
+  }
+
+  throw new Error('La IA no generó texto para el escrito judicial. Intenta nuevamente.');
+};
+
+

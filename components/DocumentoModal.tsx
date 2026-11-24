@@ -294,14 +294,15 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   const isWatermarkRequired = !isWhitelisted && isSoftBlocked;
 
   const isHojaBlanca = paperMode !== 'protocolo';
+  const esAbogadoDoc = String(workspaceData?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
   const nombreEscribaniaHeader =
     workspaceData?.razonSocial ||
     workspaceData?.nombreInstitucion ||
     userData?.razonSocial ||
     userData?.nombreInstitucion ||
-    config?.escribania?.nombre ||
+    (!esAbogadoDoc ? config?.escribania?.nombre : '') ||
     userData?.nombre ||
-    'Escribanía Pública';
+    (esAbogadoDoc ? 'Estudio Jurídico' : 'Escribanía Pública');
   const rucHeader = workspaceData?.ruc || userData?.ruc || '';
   const registroHeader =
     workspaceData?.registroNotarial ||
@@ -831,7 +832,9 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
                   <p className="text-xs font-mono text-slate-600 mt-1">
                     {[
                       registroHeader && registroHeader !== '---'
-                        ? (/reg/i.test(registroHeader) ? registroHeader : `Registro N.º ${registroHeader}`)
+                        ? (esAbogadoDoc
+                            ? (/mat/i.test(registroHeader) ? registroHeader : `Matrícula CSJ N.º ${registroHeader}`)
+                            : (/reg/i.test(registroHeader) ? registroHeader : `Registro N.º ${registroHeader}`))
                         : null,
                       rucHeader && rucHeader !== '---' ? `RUC: ${formatDocClean(rucHeader)}` : null,
                       telefonoHeader ? `Tel.: ${telefonoHeader}` : null,

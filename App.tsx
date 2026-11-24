@@ -5,14 +5,15 @@ import { PrivacidadPage } from './components/PrivacidadPage';
 import { TerminosPage } from './components/TerminosPage';
 import { RecursosPage } from './components/RecursosPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
-import { Persona, GlobalConfig, Pagare } from './types';
+import { Persona, GlobalConfig, Pagare, Expediente } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
 import { User, signOut, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, logout, getAccessToken, ensureUserDocumentInFirestore } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
-  guardarEscritoToFirestore 
+  guardarEscritoToFirestore,
+  normalizeExpediente, syncExpedienteToFirestore, deleteExpedienteFromFirestore
 } from './services/firestore';
 import { buscarPersonaDuplicada, depurarDuplicadosLista } from './services/personaDedup';
 import { LoginScreen } from './components/LoginScreen';
@@ -44,6 +45,7 @@ import { EditorNotarialOficial } from './components/EditorNotarialOficial';
 import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 import { Sidebar } from './components/Sidebar';
 import { WhatsAppTab } from './components/WhatsAppTab';
+import { ExpedientesTab } from './components/ExpedientesTab';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -696,6 +698,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const isAdmin = forceAdmin && isActualAdminUser;
 
   const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || 'basico').toLowerCase().trim();
+  const esAbogado = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+  const canUseExpedientes = esAbogado || isActualAdminUser || role === 'admin';
   // El skin dorado y efecto Glassmorphism es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
   const esPlanPro = planActual.includes('pro');
@@ -765,6 +769,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return saved ? JSON.parse(saved) : INITIAL_CONFIG;
   });
   const [pagares, setPagares] = useState<Pagare[]>([]);
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
 
   // Purgar claves globales antiguas de localStorage para evitar fugas entre cuentas en el mismo navegador
   useEffect(() => {
@@ -861,18 +866,19 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes'>(forceAdmin ? 'monitor' : 'tablero');
 
   useEffect(() => {
     if (isCheckingProfile || !currentUser) return;
     if (
       (activeTab === 'whatsapp' && !canUseWhatsApp) ||
-      (activeTab === 'lienzo' && !canUseLienzo) ||
-      (activeTab === 'facturacion' && !canUsePresupuesto)
+      (activeTab === 'lienzo' && (!canUseLienzo || esAbogado)) ||
+      (activeTab === 'facturacion' && !canUsePresupuesto) ||
+      (activeTab === 'expedientes' && !canUseExpedientes)
     ) {
       setActiveTab('tablero');
     }
-  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, isCheckingProfile, currentUser]);
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, canUseExpedientes, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -1162,7 +1168,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               user.phoneNumber ||
               'Mi Escribanía';
           }
-          if (!data.escribania) {
+          const isAbogadoDoc = String(data.tipoPerfil || '').toLowerCase() === 'abogado';
+          if (!data.escribania && !isAbogadoDoc) {
             updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
           }
           if (!data.fecha_creacion) {
@@ -1393,6 +1400,28 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => unsubscribe();
   }, [workspaceId]);
 
+  // Sincronización en tiempo real de Expedientes Judiciales por Workspace (Abogados y Super Admin)
+  useEffect(() => {
+    if (!workspaceId || !canUseExpedientes) {
+      setExpedientes([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'expedientes'),
+      where('ownedByWorkspace', '==', workspaceId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((docSnap) => normalizeExpediente(docSnap.data(), docSnap.id));
+      setExpedientes(list);
+    }, (error) => {
+      console.error('Fallo en sincronización de expedientes:', error);
+    });
+
+    return () => unsubscribe();
+  }, [workspaceId, canUseExpedientes]);
+
   // FASE 2: Sincronización de Personas por Workspace en directorio_personas (Retrocompatible Multi-Usuario)
   useEffect(() => {
     if (!workspaceId) {
@@ -1594,14 +1623,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     userData?.nombreInstitucion
   );
 
-  const esInicioSesionExistente = typeof window !== 'undefined' && window.sessionStorage?.getItem('olga_auth_flow') === 'login';
-
-  // Solo mostrar FichaProfesional si es un usuario que se registra por primera vez y NO tiene su perfil configurado
-  if (!skipOnboarding && userProfile && !yaTienePerfil && !esInicioSesionExistente) {
+  // Forzar FichaProfesional si el perfil está incompleto hasta que guarde perfilCompletado: true
+  if (!skipOnboarding && userProfile && !yaTienePerfil) {
     return (
       <FichaProfesional 
         currentUser={currentUser}
-                 
         userData={userProfile} 
         onComplete={() => {
           setIsCheckingProfile(true);
@@ -2072,6 +2098,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           setUserProfile(null);
           setPersonas([]);
           setPagares([]);
+          setExpedientes([]);
           setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
         }}
         isStandalone={isStandalone}
@@ -2117,29 +2144,44 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               <h1 className={`text-sm md:text-lg font-serif font-black ${isDarkLayout ? "text-white" : "text-slate-900"} tracking-tight leading-none truncate`}>
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
-                  : (
-                      customBranding.nombreInstitucion?.trim() ||
-                      userData?.razonSocial?.trim() ||
-                      workspaceName?.trim() ||
-                      config.escribania.nombre?.trim() ||
-                      userData?.nombre?.trim() ||
-                      currentUser?.displayName?.trim() ||
-                      currentUser?.phoneNumber?.trim() ||
-                      'Mi Escribanía'
-                    )
+                  : esAbogado
+                    ? (
+                        userProfile?.razonSocial?.trim() ||
+                        userData?.razonSocial?.trim() ||
+                        customBranding.nombreInstitucion?.trim() ||
+                        (workspaceName && workspaceName !== 'Mi Escribanía' ? workspaceName.trim() : '') ||
+                        userProfile?.nombre?.trim() ||
+                        userData?.nombre?.trim() ||
+                        currentUser?.displayName?.trim() ||
+                        currentUser?.phoneNumber?.trim() ||
+                        'Estudio Jurídico'
+                      )
+                    : (
+                        customBranding.nombreInstitucion?.trim() ||
+                        userData?.razonSocial?.trim() ||
+                        workspaceName?.trim() ||
+                        config.escribania.nombre?.trim() ||
+                        userData?.nombre?.trim() ||
+                        currentUser?.displayName?.trim() ||
+                        currentUser?.phoneNumber?.trim() ||
+                        'Mi Escribanía'
+                      )
                 }
               </h1>
               <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
                 {isOperador 
                   ? `Operador Notarial • ${workspaceName || 'Escribanía Titular'}`
-                  : (() => {
-                      const regText = String(customBranding.registroNotarial || '').trim();
-                      const matText = String(userData?.matricula || config.escribania.nro_registro || '').trim();
-                      const tipoLabel = String(userData?.tipoPerfil || 'Escribanía').trim();
-                      if (regText) return `${regText}${matText ? ` • ${matText}` : ''}`;
-                      if (matText) return `${tipoLabel} Titular • Reg. ${matText}`;
-                      return `${tipoLabel} • Panel Notarial`;
-                    })()
+                  : esAbogado
+                    ? 'Estudio Jurídico • Panel Legal'
+                    : (() => {
+                        const regText = String(customBranding.registroNotarial || '').trim();
+                        const matText = String(userData?.matricula || config.escribania.nro_registro || '').trim();
+                        const rawTipo = String(userData?.tipoPerfil || '').trim();
+                        const tipoLabel = !rawTipo || rawTipo.toLowerCase() === 'escribania' ? 'Escribanía' : rawTipo;
+                        if (regText) return `${regText}${matText ? ` • ${matText}` : ''}`;
+                        if (matText) return `${tipoLabel} Titular • Reg. ${matText}`;
+                        return `${tipoLabel} • Panel Notarial`;
+                      })()
                 }
               </p>
             </div>
@@ -2235,16 +2277,20 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               </button>
             )}
 
-            {/* Campana de Notificaciones Notariales Global */}
+            {/* Campana de Notificaciones Notariales y Judiciales Global */}
             <NotificationBell 
               currentUser={currentUser}
-              pagares={pagares} 
+              pagares={pagares}
+              expedientes={canUseExpedientes ? expedientes : []}
               onSelectPagare={(id) => {
                 const found = pagares.find(p => p.id === id);
                 if (found) {
                   handleAbrirPagarePreview(found);
                 }
                 setActiveTab('pagares');
+              }}
+              onSelectExpediente={() => {
+                setActiveTab('expedientes');
               }}
             />
 
@@ -2496,7 +2542,36 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               />
             )}
 
-            {activeTab === 'lienzo' && (
+            {activeTab === 'expedientes' && canUseExpedientes && (
+              <ExpedientesTab
+                expedientes={expedientes}
+                personas={personas}
+                userData={userProfile || userData}
+                workspaceId={currentWorkspaceId || workspaceId}
+                esPlanFull={esPlanFull}
+                isSoftBlocked={isSoftBlocked}
+                onSaveExpediente={async (exp) => {
+                  const targetWs = currentWorkspaceId || workspaceId;
+                  if (!targetWs) {
+                    throw new Error('Workspace no identificado.');
+                  }
+                  const saved = await syncExpedienteToFirestore(targetWs, exp);
+                  setExpedientes((prev) => {
+                    const exists = prev.some((item) => item.id === saved.id);
+                    return exists
+                      ? prev.map((item) => (item.id === saved.id ? saved : item))
+                      : [saved, ...prev];
+                  });
+                }}
+                onDeleteExpediente={async (expedienteId) => {
+                  await deleteExpedienteFromFirestore(expedienteId);
+                  setExpedientes((prev) => prev.filter((item) => item.id !== expedienteId));
+                }}
+                onOpenDocument={handleOpenDocumentModal}
+              />
+            )}
+
+            {activeTab === 'lienzo' && !esAbogado && (
               isSoftBlocked && getExplicitAddonFlag('lienzoEnabled') !== true ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
                   <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />

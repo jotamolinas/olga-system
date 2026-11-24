@@ -217,6 +217,56 @@
           "optional": true
         }
       }
+    },
+    {
+      "name": "expedientes",
+      "description": "Expedientes judiciales, plazos procesales e impulsos de estudios jurídicos.",
+      "security_rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      },
+      "schema": {
+        "userId": {
+          "type": "string"
+        },
+        "ownedByWorkspace": {
+          "type": "string"
+        },
+        "caratula": {
+          "type": "string"
+        },
+        "nroExpediente": {
+          "type": "string"
+        },
+        "anio": {
+          "type": "string"
+        },
+        "juzgado": {
+          "type": "string"
+        },
+        "tipoJuicio": {
+          "type": "string"
+        },
+        "rolParte": {
+          "type": "string"
+        },
+        "estado": {
+          "type": "string"
+        },
+        "plazos": {
+          "type": "array"
+        },
+        "ultimoAnalisisIA": {
+          "type": "object",
+          "optional": true
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      }
     }
   ]
 }

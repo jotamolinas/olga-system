@@ -1126,6 +1126,325 @@ Reglas:
     }
   });
 
+  // 4c. Análisis IA de Demanda / Cédula de Notificación PDF para Expedientes (Código Procesal Civil PY)
+  app.post('/api/gemini/analyze-expediente-pdf', verifyApiAuth, async (req: Request, res: Response) => {
+    const body = req.body as {
+      fileBase64?: unknown;
+      mimeType?: unknown;
+      fileName?: unknown;
+      rolParteHint?: unknown;
+    };
+
+    if (typeof body?.fileBase64 !== 'string' || !body.fileBase64.trim()) {
+      res.status(400).json({ error: 'Se requiere el archivo PDF o imagen de la demanda/cédula para analizar.' });
+      return;
+    }
+
+    let cleanData: string;
+    try {
+      cleanData = cleanBase64Payload(body.fileBase64);
+    } catch (err) {
+      const status = err instanceof ApiHttpError ? err.status : 400;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
+
+    const fileName = typeof body?.fileName === 'string' ? body.fileName.trim().slice(0, 180) : undefined;
+    const cleanMime = normalizeMime(body?.mimeType, fileName);
+    if (!ALLOWED_MIME_TYPES.has(cleanMime)) {
+      res.status(400).json({ error: `Formato no admitido (${cleanMime}). Sube un PDF o imagen JPG/PNG.` });
+      return;
+    }
+
+    const rolParteHint = typeof body?.rolParteHint === 'string' ? body.rolParteHint.trim().slice(0, 60) : '';
+
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAI();
+    } catch (err) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
+
+    const nowInAsuncion = new Date();
+    const todayIso = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Asuncion',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(nowInAsuncion);
+
+    const promptText = `Analiza este documento judicial de Paraguay (puede ser un escrito de demanda, cédula de notificación judicial, providencia, mandamiento de intimación o resolución).
+FECHA ACTUAL EN PARAGUAY (REFERENCIA PARA CÓMPUTO DE PLAZOS): ${todayIso}.
+${rolParteHint ? `ROL DE PARTE INDICADO POR EL USUARIO: ${rolParteHint}.` : ''}
+
+INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal Civil y leyes especiales de Paraguay):
+1. Extrae la carátula completa del expediente (ej: "Juan Pérez c/ Empresa X s/ Cobro de Guaraníes"), número de expediente (si figura), año y juzgado/circunscripción judicial completo.
+2. Clasifica el tipo de juicio en UNO de estos valores exactos: "Ordinario", "Ejecutivo", "Laboral", "Niñez y Adolescencia", "Penal", "Sucesorio", "Otro".
+3. Determina el rol de parte sugerido para el cliente representado ("Demandado", "Actor / Demandante", "Tercero") según la cédula/demanda (si es cédula de traslado de demanda o citación/remate, normalmente es "Demandado"; si es inicio de demanda o providencia a pedido del actor, "Actor / Demandante").
+4. Redacta un resumen técnico claro de los hechos, pretensiones, montos reclamados, documentos acompañados y puntos críticos de defensa o impulso ("resumenHechos"), y cita brevemente los artículos aplicables del Código Procesal Civil / Ley Paraguaya ("fundamentoCPC").
+5. Calcula el plazo procesal principal ("plazoPrincipal"):
+   - Ejemplos CPC Paraguay: Traslado de demanda ordinaria = 18 días hábiles (Art. 222 CPC); Oposición de excepciones en juicio ejecutivo = 5 días hábiles (Art. 460 CPC); Contestación laboral = 6 días hábiles; Recurso de reposición = 3 días hábiles; Apelación = 5 días hábiles; Traslado de incidentes = 5 días hábiles.
+   - Si en el documento aparece fecha de notificación o cargo, úsala como punto de partida; si no aparece, estima a partir de hoy (${todayIso}) contando días hábiles aproximados (lunes a viernes) para entregar una "fechaVencimiento" en estricto formato YYYY-MM-DD.
+6. Sugiere entre 2 y 4 "impulsosSugeridos" ordenados cronológicamente (ej: "Ofrecimiento y diligenciamiento de pruebas", "Pedido de apertura a prueba / urgimiento", "Alegatos de bien probado", "Pedido de autos para sentencia"), cada uno con "titulo", "diasPlazo" (entero positivo), "fechaVencimiento" (YYYY-MM-DD) y "tipo": "impulso".`;
+
+    const expedienteModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+    let lastError: unknown = null;
+
+    for (const model of expedienteModels) {
+      try {
+        const modelConfig: Record<string, unknown> = {
+          systemInstruction:
+            'Eres O.L.G.A., abogada litigante senior experta en derecho procesal civil, laboral y ejecutivo de la República del Paraguay. Analizas demandas y cédulas con precisión y devuelves únicamente el JSON estructurado.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              caratula: { type: Type.STRING, description: 'Carátula completa de la causa.' },
+              nroExpediente: { type: Type.STRING, description: 'Número de expediente o vacío si no consta.' },
+              anio: { type: Type.STRING, description: 'Año del expediente (4 dígitos).' },
+              juzgado: { type: Type.STRING, description: 'Juzgado, secretaría y circunscripción judicial.' },
+              tipoJuicio: {
+                type: Type.STRING,
+                description: 'Uno de: Ordinario, Ejecutivo, Laboral, Niñez y Adolescencia, Penal, Sucesorio, Otro.',
+              },
+              rolParteSugerido: {
+                type: Type.STRING,
+                description: 'Uno de: Demandado, Actor / Demandante, Tercero.',
+              },
+              resumenHechos: {
+                type: Type.STRING,
+                description: 'Resumen técnico jurídico de hechos, pretensiones y riesgos procesales.',
+              },
+              fundamentoCPC: {
+                type: Type.STRING,
+                description: 'Artículos y plazos aplicables del Código Procesal Civil del Paraguay.',
+              },
+              plazoPrincipal: {
+                type: Type.OBJECT,
+                properties: {
+                  titulo: { type: Type.STRING },
+                  diasPlazo: { type: Type.NUMBER },
+                  fechaVencimiento: { type: Type.STRING, description: 'Fecha ISO YYYY-MM-DD' },
+                  tipo: { type: Type.STRING, description: 'plazo_legal' },
+                },
+                required: ['titulo', 'diasPlazo', 'fechaVencimiento', 'tipo'],
+              },
+              impulsosSugeridos: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    titulo: { type: Type.STRING },
+                    diasPlazo: { type: Type.NUMBER },
+                    fechaVencimiento: { type: Type.STRING, description: 'Fecha ISO YYYY-MM-DD' },
+                    tipo: { type: Type.STRING, description: 'impulso' },
+                  },
+                  required: ['titulo', 'diasPlazo', 'fechaVencimiento', 'tipo'],
+                },
+              },
+            },
+            required: [
+              'caratula',
+              'juzgado',
+              'tipoJuicio',
+              'rolParteSugerido',
+              'resumenHechos',
+              'plazoPrincipal',
+              'impulsosSugeridos',
+            ],
+          },
+          maxOutputTokens: 4096,
+          ...(model === 'gemini-4-hydrogen'
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
+        };
+
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: promptText },
+                { inlineData: { data: cleanData, mimeType: cleanMime } },
+              ],
+            },
+          ],
+          config: modelConfig,
+        });
+
+        const rawText = (response?.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+        if (rawText) {
+          const parsed = JSON.parse(rawText);
+          res.json({ data: parsed });
+          return;
+        }
+      } catch (err: unknown) {
+        lastError = err;
+        console.error(`[analyze-expediente-pdf] Detalle técnico con ${model}:`, err);
+      }
+    }
+
+    const formatted = formatGeminiError(
+      lastError,
+      'No se pudo analizar la demanda o cédula en este momento. Intenta nuevamente.'
+    );
+    res.status(formatted.status).json({ error: formatted.message });
+  });
+
+  // 4d. Redacción IA de Escritos Judiciales (Contestación de Demanda o Impulso Procesal)
+  app.post('/api/gemini/redactar-escrito-judicial', verifyApiAuth, async (req: Request, res: Response) => {
+    const body = req.body as {
+      expediente?: Record<string, unknown>;
+      modo?: unknown;
+      plazoObjetivo?: Record<string, unknown>;
+      estudio?: Record<string, unknown>;
+    };
+
+    const expediente = body?.expediente && typeof body.expediente === 'object' ? body.expediente : null;
+    if (!expediente || typeof expediente.caratula !== 'string' || !expediente.caratula.trim()) {
+      res.status(400).json({ error: 'Se requieren los datos del expediente (al menos carátula) para redactar el escrito.' });
+      return;
+    }
+
+    const modo = body?.modo === 'impulso' ? 'impulso' : 'contestacion';
+    const plazoObjetivo = body?.plazoObjetivo && typeof body.plazoObjetivo === 'object' ? body.plazoObjetivo : null;
+    const estudio = body?.estudio && typeof body.estudio === 'object' ? body.estudio : null;
+
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAI();
+    } catch (err) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
+
+    const fechaHoyParaguay = new Date().toLocaleDateString('es-PY', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'America/Asuncion',
+    });
+
+    const caratula = String(expediente.caratula || '').trim();
+    const nroExpediente = String(expediente.nroExpediente || 'S/N').trim();
+    const anio = String(expediente.anio || new Date().getFullYear()).trim();
+    const juzgado = String(expediente.juzgado || 'Juzgado de Primera Instancia en lo Civil y Comercial').trim();
+    const tipoJuicio = String(expediente.tipoJuicio || 'Ordinario').trim();
+    const rolParte = String(expediente.rolParte || 'Demandado').trim();
+    const estado = String(expediente.estado || 'En trámite').trim();
+    const clienteNombre = String(expediente.clienteNombre || '[NOMBRE COMPLETO DEL CLIENTE / MANDANTE]').trim();
+    const notas = String(expediente.notas || '').trim();
+
+    const ultimoAnalisis =
+      expediente.ultimoAnalisisIA && typeof expediente.ultimoAnalisisIA === 'object'
+        ? (expediente.ultimoAnalisisIA as Record<string, unknown>)
+        : null;
+    const resumenHechos = ultimoAnalisis?.resumenHechos ? String(ultimoAnalisis.resumenHechos).slice(0, 6000) : '';
+    const fundamentoCPC = ultimoAnalisis?.fundamentoCPC ? String(ultimoAnalisis.fundamentoCPC).slice(0, 2000) : '';
+
+    const nombreEstudio = String(estudio?.razonSocial || estudio?.nombre || '[ESTUDIO JURÍDICO / ABOGADO PATROCINANTE]').trim();
+    const matricula = String(estudio?.matricula || '[MATRÍCULA CSJ N° ____]').trim();
+    const ciudad = String(estudio?.ciudad || 'Asunción').trim();
+
+    const objetivoTitulo = plazoObjetivo?.titulo ? String(plazoObjetivo.titulo).trim() : '';
+    const objetivoVenc = plazoObjetivo?.fechaVencimiento ? String(plazoObjetivo.fechaVencimiento).trim() : '';
+
+    const promptText =
+      modo === 'contestacion'
+        ? `Redacta un escrito judicial formal y completo de CONTESTACIÓN DE DEMANDA (o Oposición de Excepciones / Contestación según corresponda al tipo de juicio "${tipoJuicio}") conforme al Código Procesal Civil de la República del Paraguay (Ley N° 1.337/88) y normas concordantes.
+
+DATOS DEL EXPEDIENTE:
+- Carátula: "${caratula}"
+- Expediente N°: ${nroExpediente} / Año: ${anio}
+- Juzgado / Tribunal: ${juzgado}
+- Tipo de Juicio: ${tipoJuicio}
+- Rol que representamos: ${rolParte}
+- Estado procesal actual: ${estado}
+- Cliente / Mandante: ${clienteNombre}
+- Abogado / Estudio Jurídico: ${nombreEstudio} (Matrícula CSJ: ${matricula})
+- Ciudad y Fecha de referencia en Paraguay: ${ciudad}, ${fechaHoyParaguay}
+${resumenHechos ? `- Resumen de hechos y análisis de la demanda:\n${resumenHechos}` : ''}
+${fundamentoCPC ? `- Fundamento CPC detectado:\n${fundamentoCPC}` : ''}
+${notas ? `- Notas adicionales del estudio:\n${notas}` : ''}
+
+ESTRUCTURA OBLIGATORIA PARAGUAYA:
+1. Encabezado profesional con "OBJETO: CONTESTAR DEMANDA." (o "OPONER EXCEPCIONES Y CONTESTAR DEMANDA" si aplica).
+2. "SEÑOR/A JUEZ/A:" (dirigido al ${juzgado}).
+3. Comparecencia del Abogado/Parte con domicilio procesal constituido en el radio del Juzgado (${ciudad}).
+4. "I. PERSONERÍA / OBJETO:"
+5. "II. NEGATIVA GENERAL Y PORMENORIZADA DE LOS HECHOS:" (negación categórica y defensa técnica articulada contra los hechos expuestos).
+6. "III. DERECHO:" (fundamentación sólida con citas pertinentes de la Constitución Nacional, Código Civil Ley N° 1.183/85 y Código Procesal Civil Ley N° 1.337/88, Art. 235 y concordantes).
+7. "IV. OFRECIMIENTO DE PRUEBAS:" (documental, instrumental, informativa, confesoria/testifical según corresponda, dejando [completar si falta detalle]).
+8. "V. PETITORIO:" numerado claro (tener por presentado, por contestada la demanda, por ofrecidas las pruebas, y oportunamente rechazar la demanda con costas).
+9. Cierre clásico paraguayo: "PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA."
+10. Bloque de firma limpio sin HTML.`
+        : `Redacta un escrito judicial formal de IMPULSO PROCESAL conforme al Código Procesal Civil de la República del Paraguay (Ley N° 1.337/88).
+
+DATOS DEL EXPEDIENTE:
+- Carátula: "${caratula}"
+- Expediente N°: ${nroExpediente} / Año: ${anio}
+- Juzgado / Tribunal: ${juzgado}
+- Tipo de Juicio: ${tipoJuicio}
+- Rol que representamos: ${rolParte}
+- Estado procesal actual: ${estado}
+- Cliente / Mandante: ${clienteNombre}
+- Abogado / Estudio Jurídico: ${nombreEstudio} (Matrícula CSJ: ${matricula})
+- Ciudad y Fecha de referencia en Paraguay: ${ciudad}, ${fechaHoyParaguay}
+- ACTUACIÓN / IMPULSO ESPECÍFICO A SOLICITAR: "${objetivoTitulo || 'Urge trámite procesal / Solicita prosecución de la causa'}"${objetivoVenc ? ` (Fecha límite de referencia: ${objetivoVenc})` : ''}
+${resumenHechos ? `- Contexto de la causa:\n${resumenHechos}` : ''}
+${notas ? `- Notas adicionales del estudio:\n${notas}` : ''}
+
+ESTRUCTURA OBLIGATORIA PARAGUAYA:
+1. Encabezado claro con "OBJETO: [TÍTULO DEL IMPULSO EN MAYÚSCULAS]." (ej: URGIR TRÁMITE, SOLICITAR APERTURA A PRUEBA, URGIR RESOLUCIÓN, PEDIR AUTOS PARA SENTENCIA, etc., alineado exactamente al impulso especificado).
+2. "SEÑOR/A JUEZ/A:" dirigido al ${juzgado}.
+3. Comparecencia breve en los autos caratulados "${caratula}" (Expte. N° ${nroExpediente}/${anio}).
+4. Exposición fundada del estado procesal y del pedido concreto con cita pertinente del Código Procesal Civil del Paraguay (principio de impulso procesal, celeridad y artículos aplicables según la actuación).
+5. "PETITORIO:" puntual y claro.
+6. Cierre clásico: "PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA."
+7. Bloque de firma limpio sin HTML.`;
+
+    const judicialModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+    let lastError: unknown = null;
+
+    for (const model of judicialModels) {
+      try {
+        const modelConfig: Record<string, unknown> = {
+          systemInstruction:
+            'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables listos para presentar en tribunales paraguayos. Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;) o bloques de código markdown (```). Entrega únicamente el texto del escrito judicial listo para editar e imprimir.',
+          maxOutputTokens: 4096,
+          ...(model === 'gemini-4-hydrogen'
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
+        };
+
+        const response = await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
+          config: modelConfig,
+        });
+
+        if (response?.text && response.text.trim()) {
+          res.json({ text: response.text.trim() });
+          return;
+        }
+      } catch (err: unknown) {
+        lastError = err;
+        console.error(`[redactar-escrito-judicial] Detalle técnico con ${model}:`, err);
+      }
+    }
+
+    const formatted = formatGeminiError(
+      lastError,
+      'No se pudo redactar el escrito judicial con IA en este momento. Intenta nuevamente.'
+    );
+    res.status(formatted.status).json({ error: formatted.message });
+  });
+
   // 5. Proxy seguro para motor propio olga-whatsapp-engine
   app.post('/api/whatsapp/connect', verifyApiAuth, async (req: Request, res: Response) => {
     try {

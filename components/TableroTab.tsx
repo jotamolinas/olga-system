@@ -395,6 +395,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 }) => {
   const { workspaceId: hookWorkspaceId } = useWorkspace(auth?.currentUser, userData);
   const activeWorkspaceId = workspaceId || hookWorkspaceId;
+  const esAbogado = String(userData?.tipoPerfil || '').toLowerCase() === 'abogado';
 
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
@@ -796,7 +797,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-md mx-auto md:mx-0">
             {(() => {
               const rawName = String(
-                config?.escribania?.nombre ||
+                (esAbogado ? (userData?.razonSocial || userData?.nombre) : config?.escribania?.nombre) ||
                 workspaceName ||
                 userData?.razonSocial ||
                 userData?.nombreInstitucion ||
@@ -806,7 +807,13 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                 rawName &&
                 rawName !== 'Mi Escribanía' &&
                 rawName !== 'Escribanía Titular' &&
+                rawName !== 'Estudio Jurídico' &&
                 rawName !== '.';
+              if (esAbogado) {
+                return hasRealName
+                  ? `Estudio Jurídico • Panel Legal de ${rawName}.`
+                  : 'Estudio Jurídico • Panel Legal';
+              }
               return hasRealName
                 ? `Resumen de actividad y volumen notarial de ${rawName}.`
                 : 'Resumen de actividad y volumen notarial';
@@ -1078,7 +1085,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Personas Activas</p>
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">
+              {esAbogado ? 'Clientes / Partes' : 'Personas Activas'}
+            </p>
             <p className="text-3xl font-black text-slate-800"><CountUp end={personasActivas} /></p>
           </div>
           <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
@@ -1111,7 +1120,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Total Valor Notariado</p>
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">
+              {esAbogado ? 'Total Valor Cartera' : 'Total Valor Notariado'}
+            </p>
             <p className="text-3xl font-black text-slate-800">
               Gs. <CountUp end={totalValorNotariado} isCurrency={true} />
             </p>

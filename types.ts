@@ -212,3 +212,80 @@ export function formatDocClean(doc: string | number | null | undefined): string 
 
   return str.replace(/\./g, '').trim();
 }
+
+export type TipoJuicioExpediente =
+  | 'Ordinario'
+  | 'Ejecutivo'
+  | 'Laboral'
+  | 'Niñez y Adolescencia'
+  | 'Penal'
+  | 'Sucesorio'
+  | 'Otro';
+
+export type RolParteExpediente = 'Demandado' | 'Actor / Demandante' | 'Tercero';
+
+export type EstadoExpediente =
+  | 'En trámite'
+  | 'Pendiente de contestación'
+  | 'Período probatorio'
+  | 'Autos para sentencia'
+  | 'Finalizado';
+
+export type TipoPlazoProcesal = 'plazo_legal' | 'impulso';
+
+export interface PlazoProcesal {
+  id: string;
+  titulo: string;
+  fechaVencimiento: string; // YYYY-MM-DD
+  diasPlazo: number;
+  completado: boolean;
+  tipo: TipoPlazoProcesal;
+}
+
+export interface ExpedienteAnalisisIA {
+  caratula?: string;
+  nroExpediente?: string;
+  anio?: string;
+  juzgado?: string;
+  tipoJuicio?: TipoJuicioExpediente;
+  rolParteSugerido?: RolParteExpediente;
+  resumenHechos: string;
+  fundamentoCPC?: string;
+  plazoPrincipal?: {
+    titulo: string;
+    diasPlazo: number;
+    fechaVencimiento: string;
+    tipo: TipoPlazoProcesal;
+  } | null;
+  impulsosSugeridos?: Array<{
+    titulo: string;
+    diasPlazo: number;
+    fechaVencimiento: string;
+    tipo: TipoPlazoProcesal;
+  }>;
+  analizadoAt?: string;
+  archivoNombre?: string;
+}
+
+export interface Expediente {
+  id: string;
+  userId: string;
+  ownedByWorkspace: string;
+  caratula: string;
+  nroExpediente: string;
+  anio: string;
+  juzgado: string;
+  tipoJuicio: TipoJuicioExpediente;
+  rolParte: RolParteExpediente;
+  estado: EstadoExpediente;
+  plazos: PlazoProcesal[];
+  ultimoAnalisisIA?: ExpedienteAnalisisIA | null;
+  notas?: string;
+  clienteNombre?: string;
+  clienteId?: string;
+  createdAt: string;
+  updatedAt: string;
+  creator_id?: string;
+  creator_name?: string;
+}
+

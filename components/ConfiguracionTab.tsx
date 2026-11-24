@@ -244,6 +244,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 }) => {
   const planNormalizado = String(userPlan || userData?.planActual || userData?.plan || '').toLowerCase();
   const isFull = esPlanFull !== undefined ? esPlanFull : planNormalizado.includes('full');
+  const esAbogado = String(userData?.tipoPerfil || '').toLowerCase() === 'abogado';
   // FASE 3: Identificación de Workspace para persistencia en la nube
   const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
   const effectiveWorkspaceId = workspaceId || userData?.tenant_id || userData?.uid || currentUser?.uid;
@@ -998,44 +999,44 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="min-w-0">
               <h5 className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-[#FF3131] shrink-0" />
-                <span>Identificación Notarial e Institucional</span>
+                <span>{esAbogado ? 'Identificación Profesional y Estudio Jurídico' : 'Identificación Notarial e Institucional'}</span>
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    Notario / Escribano Titular *
+                    {esAbogado ? 'Abogado Titular *' : 'Notario / Escribano Titular *'}
                   </label>
                   <input
                     type="text"
                     value={nombreNotario}
                     onChange={(e) => setNombreNotario(e.target.value)}
-                    placeholder="Ej. Esc. Sandra Molinas"
+                    placeholder={esAbogado ? 'Ej. Abg. Juan Pérez' : 'Ej. Esc. Sandra Molinas'}
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    N° de Registro Notarial *
+                    {esAbogado ? 'Matrícula CSJ de Abogado *' : 'N° de Registro Notarial *'}
                   </label>
                   <input
                     type="text"
                     value={registroNotarial}
                     onChange={(e) => setRegistroNotarial(e.target.value)}
-                    placeholder="Ej. Reg. Nº 1.292"
+                    placeholder={esAbogado ? 'Ej. Mat. CSJ Nº 14.520' : 'Ej. Reg. Nº 1.292'}
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
                   />
                 </div>
 
                 <div className="min-w-0 md:col-span-2 lg:col-span-1">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    Firma / Nombre de Escribanía *
+                    {esAbogado ? 'Nombre del Estudio Jurídico *' : 'Firma / Nombre de Escribanía *'}
                   </label>
                   <input
                     type="text"
                     value={nombreInstitucion}
                     onChange={(e) => setNombreInstitucion(e.target.value)}
-                    placeholder="Ej. Escribanía Molinas & Asociados"
+                    placeholder={esAbogado ? 'Ej. Estudio Jurídico Pérez & Asociados' : 'Ej. Escribanía Molinas & Asociados'}
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -1090,13 +1091,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    Correo Electrónico Notarial *
+                    {esAbogado ? 'Correo Electrónico Profesional *' : 'Correo Electrónico Notarial *'}
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Ej. notaria@olgatech.com.py"
+                    placeholder={esAbogado ? 'Ej. estudio@abogados.com.py' : 'Ej. notaria@olgatech.com.py'}
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -1107,12 +1108,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="bg-slate-50 dark:bg-[#0B0F17]/80 p-3.5 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
               <h5 className="text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>RUC de la Escribanía y Timbrado Fiscal SET/DNIT</span>
+                <span>{esAbogado ? 'RUC y Timbrado Fiscal SET/DNIT' : 'RUC de la Escribanía y Timbrado Fiscal SET/DNIT'}</span>
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    RUC de la Escribanía *
+                    {esAbogado ? 'RUC del Estudio / Profesional' : 'RUC de la Escribanía *'}
                   </label>
                   <input
                     type="text"
