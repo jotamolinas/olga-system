@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { auth, db, smartEmailAuth, resetPassword, logout, ensureUserDocumentInFirestore, generateLocalSessionId } from '../services/auth';
+import { auth, db, smartEmailAuth, resetPassword, logout, ensureUserDocumentInFirestore } from '../services/auth';
 import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2, X } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -379,11 +379,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       const res = await confirmationResult.confirm(cleanCode);
       const authUser = res?.user || auth.currentUser;
       if (authUser) {
-        const sessionId = generateLocalSessionId();
         const ensuredUserData = await ensureUserDocumentInFirestore(authUser, {
           provider: 'telefono',
           phoneNumber: authUser.phoneNumber || phoneNumber.replace(/[\s-]/g, '').trim(),
-          sessionId,
         });
         if (
           typeof sessionStorage !== 'undefined' &&
@@ -442,12 +440,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
         }
 
         // Garantizar creación/sincronización completa de users/{uid} en Firestore en una sola escritura
-        const sessionId = generateLocalSessionId();
         const userData = await ensureUserDocumentInFirestore(result.user, {
           provider: 'google',
           email: result.user.email || '',
           displayName: result.user.displayName || '',
-          sessionId,
         });
         const userRole = userData?.role || userData?.rol || 'titular';
 

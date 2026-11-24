@@ -232,8 +232,19 @@ export const ensureUserDocumentInFirestore = async (
     if (!existing.estado_cuenta) payload.estado_cuenta = 'activa';
   }
 
-  if (options.sessionId) {
-    payload.activeSessionId = options.sessionId;
+  let deviceSessionId = '';
+  try {
+    deviceSessionId = localStorage.getItem('appSessionId') || '';
+  } catch {
+    deviceSessionId = '';
+  }
+
+  // Solo inicializar activeSessionId si el documento aún no tiene uno y existe o se provee uno sin sobrescribir la sesión del dispositivo
+  if (!existing.activeSessionId) {
+    const initialSessionId = deviceSessionId || options.sessionId || generateLocalSessionId();
+    if (initialSessionId) {
+      payload.activeSessionId = initialSessionId;
+    }
   }
 
   await setDoc(userRef, payload, { merge: true });
@@ -248,11 +259,9 @@ export const confirmPhoneCode = async (code: string): Promise<{ user: User; user
     const result = await confirmationResult.confirm(code);
     let userData: Record<string, any> | undefined;
     if (result.user) {
-      const sessionId = generateLocalSessionId();
       userData = await ensureUserDocumentInFirestore(result.user, {
         provider: 'telefono',
         phoneNumber: result.user.phoneNumber || '',
-        sessionId,
       });
     }
     return { user: result.user, userData };
@@ -282,6 +291,15 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 export const generateLocalSessionId = (): string => {
+  try {
+    const existingSessionId = localStorage.getItem('appSessionId');
+    if (existingSessionId) {
+      return existingSessionId;
+    }
+  } catch (err) {
+    console.warn('Advertencia leyendo appSessionId en localStorage:', err);
+  }
+
   const localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
     : 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
@@ -293,14 +311,8 @@ export const generateLocalSessionId = (): string => {
   return localSessionId;
 };
 
-export const registerNewSession = async (uid: string): Promise<string> => {
-  const localSessionId = generateLocalSessionId();
-  try {
-    await setDoc(doc(db, 'users', uid), { activeSessionId: localSessionId }, { merge: true });
-  } catch (err) {
-    console.warn('Advertencia registrando activeSessionId en Firestore:', err);
-  }
-  return localSessionId;
+export const registerNewSession = async (_uid: string): Promise<string> => {
+  return generateLocalSessionId();
 };
 
 export const logout = async () => {
@@ -353,7 +365,6 @@ const createAuthError = (code: string, message: string): Error & { code: string 
 };
 
 const ensureUserProfileSafe = async (user: User, cleanEmail: string): Promise<Record<string, any>> => {
-  const sessionId = generateLocalSessionId();
   const fallbackProfile: Record<string, any> = {
     uid: user.uid,
     email: user.email || cleanEmail,
@@ -361,13 +372,11 @@ const ensureUserProfileSafe = async (user: User, cleanEmail: string): Promise<Re
     plan: 'trial',
     estadoSuscripcion: 'trial',
     estado_cuenta: 'activa',
-    activeSessionId: sessionId,
   };
 
   const ensurePromise = ensureUserDocumentInFirestore(user, {
     provider: 'email',
     email: user.email || cleanEmail,
-    sessionId,
   }).catch((err) => {
     console.warn('No se pudo sincronizar inmediatamente users/{uid}; continuará en segundo plano:', err);
     return fallbackProfile;

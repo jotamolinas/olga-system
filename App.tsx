@@ -1048,8 +1048,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       
       setIsCheckingProfile(true);
       setCurrentUser(user);
+      const loginTimestamp = Date.now();
 
-      // Sesión local para este inicio de sesión
+      // Sesión local única para este dispositivo/inicio de sesión
       let localSessionId = localStorage.getItem('appSessionId');
       if (!localSessionId) {
         localSessionId = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -1058,7 +1059,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         localStorage.setItem('appSessionId', localSessionId);
       }
 
-      // El usuario acaba de iniciar sesión: ACEPTAR la sesión actual y sobrescribir el activeSessionId de Firestore
+      // El usuario acaba de iniciar sesión: ACEPTAR la sesión actual y sincronizar el activeSessionId de Firestore
       let isFirstSnapshotAfterAuth = true;
       
       try {
@@ -1276,19 +1277,25 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           }
 
           const firestoreSessionId = data.activeSessionId;
-          const currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
+          let currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
+          if (!localStorage.getItem('appSessionId') && currentLocalSession) {
+            localStorage.setItem('appSessionId', currentLocalSession);
+          }
+          const withinGraceWindow = Date.now() - loginTimestamp < 10000;
 
-          // Si el usuario acaba de hacer login (el estado pasó de no user a user), aceptar la sesión
-          // y sincronizar en Firestore con el del dispositivo local
-          if (isFirstSnapshotAfterAuth) {
+          // Durante los primeros 10 segundos tras el login (o en el primer snapshot),
+          // NUNCA ejecutar signOut/logout por diferencia de activeSessionId; solo sincronizar con Firestore.
+          if (isFirstSnapshotAfterAuth || withinGraceWindow) {
             isFirstSnapshotAfterAuth = false;
             if (firestoreSessionId !== currentLocalSession) {
               setDoc(doc(db, 'users', user.uid), { activeSessionId: currentLocalSession }, { merge: true }).catch(console.error);
             }
           } else {
-            // Lógica de Expulsión: El bloqueo SÓLO debe dispararse si firestoreSessionId existe,
-            // localSessionId existe, y son DIFERENTES.
-            if (firestoreSessionId && currentLocalSession && firestoreSessionId !== currentLocalSession) {
+            // Lógica de Expulsión (solo pasado el periodo de gracia de 10 segundos):
+            // El bloqueo SÓLO debe dispararse si otro dispositivo sobrescribió activeSessionId en Firestore
+            // con un valor diferente al appSessionId de este dispositivo.
+            const latestLocalSession = localStorage.getItem('appSessionId') || currentLocalSession;
+            if (firestoreSessionId && latestLocalSession && firestoreSessionId !== latestLocalSession) {
               console.warn("⚠️ Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
               localStorage.removeItem('appSessionId');
               if (unsubscribeSnapshot) {
