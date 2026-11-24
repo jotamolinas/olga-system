@@ -527,6 +527,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     };
   }, [rawLogoInstitucional]);
 
+  const esAbogadoEsc =
+    String(workspaceData?.tipoPerfil || activeUserData?.tipoPerfil || userProfile?.tipoPerfil || '').toLowerCase() ===
+    'abogado';
+
   const nombreEscHeader =
     workspaceData?.razonSocial ||
     workspaceData?.nombreInstitucion ||
@@ -535,16 +539,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     userProfile?.razonSocial ||
     activeUserData?.nombre ||
     userProfile?.nombre ||
-    'Escribanía Pública';
+    (esAbogadoEsc ? 'Estudio Jurídico' : 'Escribanía Pública');
   const rucEscHeader = workspaceData?.ruc || activeUserData?.ruc || userProfile?.ruc || '';
-  const registroEscHeader =
-    workspaceData?.registroNotarial ||
-    workspaceData?.matricula ||
-    activeUserData?.registroNotarial ||
-    activeUserData?.matricula ||
-    userProfile?.registroNotarial ||
-    userProfile?.matricula ||
-    '';
+  const registroEscHeader = esAbogadoEsc
+    ? (workspaceData?.matricula ||
+        activeUserData?.matricula ||
+        userProfile?.matricula ||
+        workspaceData?.registroNotarial ||
+        activeUserData?.registroNotarial ||
+        userProfile?.registroNotarial ||
+        '')
+    : (workspaceData?.registroNotarial ||
+        workspaceData?.matricula ||
+        activeUserData?.registroNotarial ||
+        activeUserData?.matricula ||
+        userProfile?.registroNotarial ||
+        userProfile?.matricula ||
+        '');
   const telefonoEscHeader =
     workspaceData?.telefono || activeUserData?.telefono || userProfile?.telefono || '';
   const direccionEscHeader =
@@ -557,6 +568,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     telefono: telefonoEscHeader,
     direccion: direccionEscHeader,
     logo: pdfLogoDataUrl,
+    esAbogado: esAbogadoEsc,
   });
 
   const handleSendDocumentByWhatsApp = (
@@ -2256,16 +2268,36 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Carpetas configuradas
-  const defaultCarpetas: Carpeta[] = [
-    { id: '1', nombre: 'Compraventa', orden: 1, predeterminada: true },
-    { id: '2', nombre: 'Pagarés', orden: 2, predeterminada: true },
-    { id: '3', nombre: 'Alquiler', orden: 3, predeterminada: true },
-    { id: '4', nombre: 'Contratos Privados', orden: 4, predeterminada: true },
-    { id: '5', nombre: 'Traspasos', orden: 5, predeterminada: true }
-  ];
+  // Carpetas configuradas según perfil (Abogado vs. Escribano)
+  const defaultCarpetas: Carpeta[] = esAbogadoEsc
+    ? [
+        { id: '1', nombre: 'Expedientes', orden: 1, predeterminada: true },
+        { id: '2', nombre: 'Demandas y Contestaciones', orden: 2, predeterminada: true },
+        { id: '3', nombre: 'Escritos de Impulso', orden: 3, predeterminada: true },
+        { id: '4', nombre: 'Pagarés', orden: 4, predeterminada: true },
+        { id: '5', nombre: 'Contratos Privados', orden: 5, predeterminada: true }
+      ]
+    : [
+        { id: '1', nombre: 'Compraventa', orden: 1, predeterminada: true },
+        { id: '2', nombre: 'Pagarés', orden: 2, predeterminada: true },
+        { id: '3', nombre: 'Alquiler', orden: 3, predeterminada: true },
+        { id: '4', nombre: 'Contratos Privados', orden: 4, predeterminada: true },
+        { id: '5', nombre: 'Traspasos', orden: 5, predeterminada: true }
+      ];
 
-  const userCarpetas: Carpeta[] = userProfile?.carpetas || defaultCarpetas;
+  const userCarpetas: Carpeta[] = React.useMemo(() => {
+    const saved = userProfile?.carpetas || workspaceData?.carpetas;
+    if (Array.isArray(saved) && saved.length > 0) {
+      if (esAbogadoEsc && !saved.some((c: Carpeta) => c.nombre === 'Expedientes')) {
+        return [
+          { id: 'exp-default', nombre: 'Expedientes', orden: 0, predeterminada: true },
+          ...saved,
+        ];
+      }
+      return saved;
+    }
+    return defaultCarpetas;
+  }, [userProfile?.carpetas, workspaceData?.carpetas, esAbogadoEsc]);
   const sortedCarpetas = React.useMemo(() => [...userCarpetas].sort((a, b) => a.orden - b.orden), [userCarpetas]);
 
   const extractedCategories = React.useMemo(() => 
@@ -2306,7 +2338,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           let categoria = data.categoria || 'Sin Categoría';
           if (!data.categoria && data.tipo) {
             const lowerTipo = data.tipo.toLowerCase();
-            if (lowerTipo.includes('compraventa')) categoria = 'Compraventa';
+            if (lowerTipo.includes('contestaci') || lowerTipo.includes('demanda')) categoria = esAbogadoEsc ? 'Demandas y Contestaciones' : 'Expedientes';
+            else if (lowerTipo.includes('impulso')) categoria = esAbogadoEsc ? 'Escritos de Impulso' : 'Expedientes';
+            else if (lowerTipo.includes('expediente') || lowerTipo.includes('judicial')) categoria = 'Expedientes';
+            else if (lowerTipo.includes('compraventa')) categoria = 'Compraventa';
             else if (lowerTipo.includes('pagaré') || lowerTipo.includes('pagare')) categoria = 'Pagarés';
             else if (lowerTipo.includes('alquiler')) categoria = 'Alquiler';
             else if (lowerTipo.includes('contrato privado')) categoria = 'Contratos Privados';
@@ -2868,7 +2903,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const subItems: string[] = [];
       if (registroEscHeader && registroEscHeader !== '---') {
         subItems.push(
-          /reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`
+          esAbogadoEsc
+            ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
+            : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`)
         );
       }
       if (rucEscHeader && rucEscHeader !== '---') {
@@ -4344,7 +4381,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                         <div className="text-[11px] font-sans text-slate-600 mt-1">
                           {[
                             registroEscHeader && registroEscHeader !== '---'
-                              ? (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`)
+                              ? (esAbogadoEsc
+                                  ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
+                                  : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`))
                               : null,
                             rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
                             telefonoEscHeader ? `Tel.: ${telefonoEscHeader}` : null,

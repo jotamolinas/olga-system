@@ -8,11 +8,39 @@ interface ModalGuardarDocumentoProps {
   onConfirm: (categoria: string) => void;
   userCarpetas?: { id: string, nombre: string, orden: number, predeterminada: boolean }[];
   workspaceId?: string;
+  tipoPerfil?: string;
+  defaultCategoria?: string;
 }
 
-export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ onClose, onConfirm, userCarpetas, workspaceId }) => {
-  const [categorias, setCategorias] = useState<string[]>(['Compraventa', 'Pagarés', 'Alquiler', 'Contratos Privados', 'Traspasos']);
-  const [carpetaSeleccionada, setCarpetaSeleccionada] = useState(categorias[0]);
+const CARPETAS_DEFAULT_ESCRIBANO = ['Compraventa', 'Pagarés', 'Alquiler', 'Contratos Privados', 'Traspasos'];
+const CARPETAS_DEFAULT_ABOGADO = ['Expedientes', 'Demandas y Contestaciones', 'Escritos de Impulso', 'Pagarés', 'Contratos Privados'];
+
+const resolvePreferredCategory = (rawCat?: string): string => {
+  const clean = String(rawCat || '').trim();
+  if (!clean) return '';
+  const lower = clean.toLowerCase();
+  if (lower === 'expedientes' || lower === 'escrito procesal' || lower === 'judicial') {
+    return 'Expedientes';
+  }
+  return clean;
+};
+
+export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({
+  onClose,
+  onConfirm,
+  userCarpetas,
+  workspaceId,
+  tipoPerfil,
+  defaultCategoria,
+}) => {
+  const esAbogado = String(tipoPerfil || '').toLowerCase() === 'abogado';
+  const defaultList = esAbogado ? CARPETAS_DEFAULT_ABOGADO : CARPETAS_DEFAULT_ESCRIBANO;
+  const preferredCat = resolvePreferredCategory(defaultCategoria) || (esAbogado ? 'Expedientes' : '');
+
+  const [categorias, setCategorias] = useState<string[]>(() =>
+    preferredCat && !defaultList.includes(preferredCat) ? [preferredCat, ...defaultList] : defaultList
+  );
+  const [carpetaSeleccionada, setCarpetaSeleccionada] = useState<string>(preferredCat || defaultList[0]);
   const [nuevaCarpetaNombre, setNuevaCarpetaNombre] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -28,19 +56,27 @@ export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ on
 
   useEffect(() => {
     const fetchCategorias = async () => {
+      const baseList =
+        userCarpetas && userCarpetas.length > 0
+          ? [...userCarpetas].sort((a, b) => a.orden - b.orden).map((c) => c.nombre)
+          : defaultList;
+
+      const withProfileDefaults = esAbogado
+        ? Array.from(new Set([...CARPETAS_DEFAULT_ABOGADO, ...baseList]))
+        : baseList;
+
       if (!auth.currentUser) {
+        const finalOffline =
+          preferredCat && !withProfileDefaults.includes(preferredCat)
+            ? [preferredCat, ...withProfileDefaults]
+            : withProfileDefaults;
+        setCategorias(finalOffline);
+        const matchOffline = finalOffline.find((c) => c.toLowerCase() === preferredCat.toLowerCase());
+        setCarpetaSeleccionada(matchOffline || finalOffline[0]);
         setLoading(false);
         return;
       }
       try {
-        let sortedNames: string[] = [];
-        
-        if (userCarpetas && userCarpetas.length > 0) {
-          sortedNames = [...userCarpetas].sort((a, b) => a.orden - b.orden).map(c => c.nombre);
-        } else {
-           sortedNames = ['Compraventa', 'Pagarés', 'Alquiler', 'Contratos Privados', 'Traspasos'];
-        }
-
         const targetUserId = workspaceId || auth.currentUser.uid;
         const q = query(
           collection(db, 'documentos_olga'),
@@ -48,24 +84,32 @@ export const ModalGuardarDocumento: React.FC<ModalGuardarDocumentoProps> = ({ on
         );
         const snapshot = await getDocs(q);
         const cats = new Set<string>();
-        snapshot.forEach(doc => {
-          const data = doc.data();
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
           if (data.categoria) {
             cats.add(data.categoria);
           }
         });
-        
-        const merged = Array.from(new Set([...sortedNames, ...Array.from(cats)]));
+
+        const mergedRaw = Array.from(new Set([...withProfileDefaults, ...Array.from(cats)]));
+        const merged =
+          preferredCat && !mergedRaw.some((c) => c.toLowerCase() === preferredCat.toLowerCase())
+            ? [preferredCat, ...mergedRaw]
+            : mergedRaw;
+
         setCategorias(merged);
-        setCarpetaSeleccionada(merged[0]);
+        const matchedPreferred = preferredCat
+          ? merged.find((c) => c.toLowerCase() === preferredCat.toLowerCase())
+          : undefined;
+        setCarpetaSeleccionada(matchedPreferred || merged[0]);
       } catch (err) {
         console.error('Error fetching categories:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchCategorias();
-  }, [userCarpetas]);
+    void fetchCategorias();
+  }, [userCarpetas, workspaceId, esAbogado, preferredCat]);
 
   const handleConfirm = () => {
     if (carpetaSeleccionada === 'nueva') {

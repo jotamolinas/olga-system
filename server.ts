@@ -1180,14 +1180,15 @@ FECHA ACTUAL EN PARAGUAY (REFERENCIA PARA CÓMPUTO DE PLAZOS): ${todayIso}.
 ${rolParteHint ? `ROL DE PARTE INDICADO POR EL USUARIO: ${rolParteHint}.` : ''}
 
 INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal Civil y leyes especiales de Paraguay):
-1. Extrae la carátula completa del expediente (ej: "Juan Pérez c/ Empresa X s/ Cobro de Guaraníes"), número de expediente (si figura), año y juzgado/circunscripción judicial completo.
-2. Clasifica el tipo de juicio en UNO de estos valores exactos: "Ordinario", "Ejecutivo", "Laboral", "Niñez y Adolescencia", "Penal", "Sucesorio", "Otro".
-3. Determina el rol de parte sugerido para el cliente representado ("Demandado", "Actor / Demandante", "Tercero") según la cédula/demanda (si es cédula de traslado de demanda o citación/remate, normalmente es "Demandado"; si es inicio de demanda o providencia a pedido del actor, "Actor / Demandante").
-4. Redacta un resumen técnico claro de los hechos, pretensiones, montos reclamados, documentos acompañados y puntos críticos de defensa o impulso ("resumenHechos"), y cita brevemente los artículos aplicables del Código Procesal Civil / Ley Paraguaya ("fundamentoCPC").
-5. Calcula el plazo procesal principal ("plazoPrincipal"):
+1. Extrae la carátula completa del expediente (ej: "Juan Pérez c/ Empresa X s/ Cobro de Guaraníes"), número de expediente (si figura), año y juzgado/circunscripción judicial completo. Si el documento base trae denominaciones de juzgados extranjeros, adáptalo a la nomenclatura judicial paraguaya equivalente (ej. "Juzgado de Primera Instancia en lo Civil y Comercial" o "Juzgado de Paz").
+2. Revisa estrictamente la ortografía, tildes y redacción en español formal antes de responder.
+3. Clasifica el tipo de juicio en UNO de estos valores exactos: "Ordinario", "Ejecutivo", "Laboral", "Niñez y Adolescencia", "Penal", "Sucesorio", "Otro".
+4. Determina el rol de parte sugerido para el cliente representado ("Demandado", "Actor / Demandante", "Tercero") según la cédula/demanda (si es cédula de traslado de demanda o citación/remate, normalmente es "Demandado"; si es inicio de demanda o providencia a pedido del actor, "Actor / Demandante").
+5. Redacta un resumen técnico claro de los hechos, pretensiones, montos reclamados, documentos acompañados y puntos críticos de defensa o impulso ("resumenHechos"), y cita brevemente los artículos aplicables del Código Procesal Civil / Ley Paraguaya ("fundamentoCPC").
+6. Calcula el plazo procesal principal ("plazoPrincipal"):
    - Ejemplos CPC Paraguay: Traslado de demanda ordinaria = 18 días hábiles (Art. 222 CPC); Oposición de excepciones en juicio ejecutivo = 5 días hábiles (Art. 460 CPC); Contestación laboral = 6 días hábiles; Recurso de reposición = 3 días hábiles; Apelación = 5 días hábiles; Traslado de incidentes = 5 días hábiles.
    - Si en el documento aparece fecha de notificación o cargo, úsala como punto de partida; si no aparece, estima a partir de hoy (${todayIso}) contando días hábiles aproximados (lunes a viernes) para entregar una "fechaVencimiento" en estricto formato YYYY-MM-DD.
-6. Sugiere entre 2 y 4 "impulsosSugeridos" ordenados cronológicamente (ej: "Ofrecimiento y diligenciamiento de pruebas", "Pedido de apertura a prueba / urgimiento", "Alegatos de bien probado", "Pedido de autos para sentencia"), cada uno con "titulo", "diasPlazo" (entero positivo), "fechaVencimiento" (YYYY-MM-DD) y "tipo": "impulso".`;
+7. Sugiere entre 2 y 4 "impulsosSugeridos" ordenados cronológicamente (ej: "Ofrecimiento y diligenciamiento de pruebas", "Pedido de apertura a prueba / urgimiento", "Alegatos de bien probado", "Pedido de autos para sentencia"), cada uno con "titulo", "diasPlazo" (entero positivo), "fechaVencimiento" (YYYY-MM-DD) y "tipo": "impulso".`;
 
     const expedienteModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
     let lastError: unknown = null;
@@ -1301,6 +1302,7 @@ INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal
       modo?: unknown;
       plazoObjetivo?: Record<string, unknown>;
       estudio?: Record<string, unknown>;
+      instruccionesAdicionales?: unknown;
     };
 
     const expediente = body?.expediente && typeof body.expediente === 'object' ? body.expediente : null;
@@ -1312,6 +1314,10 @@ INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal
     const modo = body?.modo === 'impulso' ? 'impulso' : 'contestacion';
     const plazoObjetivo = body?.plazoObjetivo && typeof body.plazoObjetivo === 'object' ? body.plazoObjetivo : null;
     const estudio = body?.estudio && typeof body.estudio === 'object' ? body.estudio : null;
+    const instruccionesAdicionales =
+      typeof body?.instruccionesAdicionales === 'string'
+        ? body.instruccionesAdicionales.trim().slice(0, 1200)
+        : '';
 
     let ai: GoogleGenAI;
     try {
@@ -1382,7 +1388,12 @@ ESTRUCTURA OBLIGATORIA PARAGUAYA:
 7. "IV. OFRECIMIENTO DE PRUEBAS:" (documental, instrumental, informativa, confesoria/testifical según corresponda, dejando [completar si falta detalle]).
 8. "V. PETITORIO:" numerado claro (tener por presentado, por contestada la demanda, por ofrecidas las pruebas, y oportunamente rechazar la demanda con costas).
 9. Cierre clásico paraguayo: "PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA."
-10. Bloque de firma limpio sin HTML.`
+10. Bloque de firma limpio sin HTML.
+
+REGLAS DE CALIDAD LINGÜÍSTICA Y JURISDICCIÓN PARAGUAYA (OBLIGATORIAS):
+- Revisa con rigor absoluto la ortografía estricta en español, acentuación (tildes), puntuación y concordancia gramatical.
+- Adapta cualquier denominación de juzgado o término procesal extranjero que aparezca en el documento base a la jurisdicción paraguaya (por ejemplo: *Juzgado de Primera Instancia en lo Civil y Comercial*, *Juzgado de Primera Instancia en lo Laboral*, *Juzgado de Paz*, *Tribunal de Apelación* o *Corte Suprema de Justicia*, según corresponda).
+${instruccionesAdicionales ? `- Indicaciones específicas del caso: ${instruccionesAdicionales}` : ''}`
         : `Redacta un escrito judicial formal de IMPULSO PROCESAL conforme al Código Procesal Civil de la República del Paraguay (Ley N° 1.337/88).
 
 DATOS DEL EXPEDIENTE:
@@ -1401,12 +1412,17 @@ ${notas ? `- Notas adicionales del estudio:\n${notas}` : ''}
 
 ESTRUCTURA OBLIGATORIA PARAGUAYA:
 1. Encabezado claro con "OBJETO: [TÍTULO DEL IMPULSO EN MAYÚSCULAS]." (ej: URGIR TRÁMITE, SOLICITAR APERTURA A PRUEBA, URGIR RESOLUCIÓN, PEDIR AUTOS PARA SENTENCIA, etc., alineado exactamente al impulso especificado).
-2. "SEÑOR/A JUEZ/A:" dirigido al ${juzgado}.
+2. "SEÑOR/A JUEZ/A:" dirigido al juzgado paraguayo correspondiente (${juzgado}).
 3. Comparecencia breve en los autos caratulados "${caratula}" (Expte. N° ${nroExpediente}/${anio}).
 4. Exposición fundada del estado procesal y del pedido concreto con cita pertinente del Código Procesal Civil del Paraguay (principio de impulso procesal, celeridad y artículos aplicables según la actuación).
 5. "PETITORIO:" puntual y claro.
 6. Cierre clásico: "PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA."
-7. Bloque de firma limpio sin HTML.`;
+7. Bloque de firma limpio sin HTML.
+
+REGLAS DE CALIDAD LINGÜÍSTICA Y JURISDICCIÓN PARAGUAYA (OBLIGATORIAS):
+- Revisa con rigor absoluto la ortografía estricta en español, acentuación (tildes), puntuación y concordancia gramatical.
+- Adapta cualquier denominación de juzgado o término procesal extranjero que aparezca en el documento base a la jurisdicción paraguaya (por ejemplo: *Juzgado de Primera Instancia en lo Civil y Comercial*, *Juzgado de Primera Instancia en lo Laboral* o *Juzgado de Paz*, según corresponda).
+${instruccionesAdicionales ? `- Indicaciones específicas del caso: ${instruccionesAdicionales}` : ''}`;
 
     const judicialModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
     let lastError: unknown = null;
@@ -1415,7 +1431,7 @@ ESTRUCTURA OBLIGATORIA PARAGUAYA:
       try {
         const modelConfig: Record<string, unknown> = {
           systemInstruction:
-            'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables listos para presentar en tribunales paraguayos. Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;) o bloques de código markdown (```). Entrega únicamente el texto del escrito judicial listo para editar e imprimir.',
+            'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables con ortografía estricta en español y adaptados al Poder Judicial del Paraguay (Juzgados de Primera Instancia y Juzgados de Paz). Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;) o bloques de código markdown (```). Entrega únicamente el texto del escrito judicial listo para editar e imprimir.',
           maxOutputTokens: 4096,
           ...(model === 'gemini-4-hydrogen'
             ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
@@ -1441,6 +1457,122 @@ ESTRUCTURA OBLIGATORIA PARAGUAYA:
     const formatted = formatGeminiError(
       lastError,
       'No se pudo redactar el escrito judicial con IA en este momento. Intenta nuevamente.'
+    );
+    res.status(formatted.status).json({ error: formatted.message });
+  });
+
+  // 4e. Autocompletado IA de Presupuestos por Voz o Texto (Abogados / Estudios Jurídicos)
+  app.post('/api/gemini/parse-presupuesto', verifyApiAuth, async (req: Request, res: Response) => {
+    const body = req.body as {
+      texto?: unknown;
+      esAbogado?: unknown;
+    };
+
+    const texto = typeof body?.texto === 'string' ? body.texto.trim().slice(0, 3000) : '';
+    const esAbogado = Boolean(body?.esAbogado);
+
+    if (!texto) {
+      res.status(400).json({ error: 'Escribe o dicta los datos del presupuesto antes de procesarlo con IA.' });
+      return;
+    }
+
+    let ai: GoogleGenAI;
+    try {
+      ai = getGenAI();
+    } catch (err) {
+      const status = err instanceof ApiHttpError ? err.status : 500;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
+
+    const perfilContext = esAbogado
+      ? 'Estudio Jurídico / Abogado en Paraguay (tasas judiciales CSJ, notificaciones, honorarios profesionales, patrocinio procesal, redacción de escritos o contratos).'
+      : 'Escribanía Notarial en Paraguay.';
+
+    const promptText = `Extrae y estructura en formato JSON los datos para completar un presupuesto en Guaraníes (PYG) de un ${perfilContext}
+
+TEXTO O DICTADO DEL USUARIO:
+"""
+${texto}
+"""
+
+REGLAS DE EXTRACCIÓN:
+- Convierte expresiones coloquiales de dinero en Paraguay a números enteros en guaraníes (ejemplo: "350 mil" -> 350000, "2 millones" -> 2000000, "1.5 millones" o "un millón quinientos" -> 1500000, "500 mil gs" -> 500000).
+- Si un campo de cliente (nombre, RUC/CI, teléfono, dirección, email) no aparece en el texto, devuélvelo como cadena vacía "".
+- En "tasas" incluye únicamente tasas judiciales CSJ, gastos de notificación/diligenciamiento, certificados registrales o reembolsos oficiales exentos. Usa categoria entre: "judicial", "hipoteca", "municipal", "especial", "automotor", "otro".
+- En "honorarios" incluye honorarios profesionales, patrocinio/representación procesal, redacción de escritos o contratos, consultas o gestiones. Usa tipoIva "10" por defecto (o "5" / "exenta" solo si se menciona explícitamente) y cantidad 1 si no se especifica.`;
+
+    let lastError: unknown = null;
+    for (const model of COMPATIBLE_MODELS) {
+      try {
+        const modelConfig: Record<string, unknown> = {
+          systemInstruction:
+            'Eres O.L.G.A., asistente jurídica financiera de Paraguay. Devuelves únicamente el objeto JSON estructurado según el esquema requerido.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              clienteNombre: { type: Type.STRING },
+              clienteRucCI: { type: Type.STRING },
+              clienteTelefono: { type: Type.STRING },
+              clienteDireccion: { type: Type.STRING },
+              clienteEmail: { type: Type.STRING },
+              conceptoGeneral: { type: Type.STRING },
+              tasas: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    descripcion: { type: Type.STRING },
+                    categoria: { type: Type.STRING },
+                    monto: { type: Type.NUMBER },
+                  },
+                  required: ['descripcion', 'categoria', 'monto'],
+                },
+              },
+              honorarios: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    descripcion: { type: Type.STRING },
+                    cantidad: { type: Type.NUMBER },
+                    precioUnitario: { type: Type.NUMBER },
+                    tipoIva: { type: Type.STRING },
+                  },
+                  required: ['descripcion', 'cantidad', 'precioUnitario', 'tipoIva'],
+                },
+              },
+            },
+            required: ['clienteNombre', 'clienteRucCI', 'conceptoGeneral', 'tasas', 'honorarios'],
+          },
+          maxOutputTokens: 2048,
+          ...(model === 'gemini-4-hydrogen'
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
+        };
+
+        const response = await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
+          config: modelConfig,
+        });
+
+        const rawText = (response?.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+        if (rawText) {
+          const parsed = JSON.parse(rawText);
+          res.json({ data: parsed });
+          return;
+        }
+      } catch (err: unknown) {
+        lastError = err;
+        console.error(`[parse-presupuesto] Detalle técnico con ${model}:`, err);
+      }
+    }
+
+    const formatted = formatGeminiError(
+      lastError,
+      'No se pudo interpretar el presupuesto con IA en este momento. Intenta nuevamente.'
     );
     res.status(formatted.status).json({ error: formatted.message });
   });

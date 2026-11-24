@@ -7,6 +7,7 @@ export interface EscribaniaPdfMetadata {
   telefono?: string;
   direccion?: string;
   logo?: string;
+  esAbogado?: boolean;
 }
 
 export interface GeneratedDocumentPdf {
@@ -137,9 +138,10 @@ export const generateDocumentPdfBase64 = ({
 
   const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
-  const margin = 20;
-  const maxWidth = pageWidth - margin * 2; // 170mm
-  const bottomLimit = pageHeight - margin; // 277mm
+  const margin = 16;
+  const sideMargin = 20;
+  const maxWidth = pageWidth - sideMargin * 2; // 170mm
+  const bottomLimit = pageHeight - margin; // 281mm
 
   let cursorY = margin;
 
@@ -150,17 +152,20 @@ export const generateDocumentPdfBase64 = ({
     }
   };
 
-  // 1. Encabezado de Escribanía (solo si includeHeader === true)
-  const nombreEsc = escribania?.nombre?.trim();
+  // 1. Encabezado de Escribanía / Estudio Jurídico (solo si includeHeader === true)
+  const nombreEsc = (escribania?.nombre || (escribania?.esAbogado ? 'Estudio Jurídico' : 'Escribanía Pública')).trim();
   const rawLogo = escribania?.logo?.trim();
   const hasSupportedLogo = Boolean(
     rawLogo && /^data:image\/(png|jpe?g);base64,/i.test(rawLogo)
   );
   const subDetails: string[] = [];
   if (escribania?.registro && escribania.registro !== '---') {
-    subDetails.push(
-      /reg/i.test(escribania.registro) ? escribania.registro : `Registro N.º ${escribania.registro}`
-    );
+    const regVal = escribania.registro.trim();
+    if (escribania.esAbogado) {
+      subDetails.push(/matr[ií]cula/i.test(regVal) ? regVal : `Matrícula CSJ N.º ${regVal}`);
+    } else {
+      subDetails.push(/reg/i.test(regVal) ? regVal : `Registro N.º ${regVal}`);
+    }
   }
   if (escribania?.ruc && escribania.ruc !== '---') {
     subDetails.push(`RUC: ${escribania.ruc}`);
@@ -228,11 +233,11 @@ export const generateDocumentPdfBase64 = ({
       });
     }
 
-    cursorY += 2;
+    cursorY += 1.5;
     doc.setDrawColor(180, 186, 196);
     doc.setLineWidth(0.35);
-    doc.line(margin, cursorY, pageWidth - margin, cursorY);
-    cursorY += 8;
+    doc.line(sideMargin, cursorY, pageWidth - sideMargin, cursorY);
+    cursorY += 5.5;
   }
 
   // 2. Título del Documento (evitando duplicarlo si el cuerpo ya inicia con el mismo título)
@@ -254,31 +259,57 @@ export const generateDocumentPdfBase64 = ({
 
   if (cleanTitle && !bodyAlreadyStartsWithTitle) {
     doc.setFont('times', 'bold');
-    doc.setFontSize(13);
+    doc.setFontSize(12.5);
     doc.setTextColor(15, 23, 42);
     const titleLines = doc.splitTextToSize(cleanTitle.toUpperCase(), maxWidth);
     titleLines.forEach((line: string) => {
-      ensureSpace(6.5);
+      ensureSpace(6);
       doc.text(line, pageWidth / 2, cursorY, { align: 'center' });
-      cursorY += 6;
+      cursorY += 5.5;
     });
-    cursorY += 4;
+    cursorY += 3;
   }
 
-  // 3. Cuerpo del Documento con paginación automática
+  // 3. Cuerpo del Documento con paginación automática y protección del bloque de cierre/firma
   doc.setFont('times', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(25, 29, 36);
 
-  const lineHeight = 5.4;
+  const lineHeight = 4.9;
   const paragraphs = cleanBody ? cleanBody.split('\n') : [''];
   let signatureCaptionRemaining = 0;
+  let closingProtected = false;
 
-  paragraphs.forEach((paragraph) => {
+  const estimateClosingBlockHeight = (startIdx: number): number => {
+    let totalH = 0;
+    let remainingSigCaptions = 0;
+    for (let j = startIdx; j < paragraphs.length; j++) {
+      const t = paragraphs[j].trim();
+      if (!t) {
+        remainingSigCaptions = 0;
+        totalH += lineHeight * 0.6;
+      } else if (/^_{6,}$/.test(t)) {
+        totalH += 9 + lineHeight;
+        remainingSigCaptions = 4;
+      } else {
+        const lines = doc.splitTextToSize(t, maxWidth) as string[];
+        totalH += lines.length * lineHeight;
+        if (remainingSigCaptions > 0) {
+          remainingSigCaptions -= 1;
+          totalH += 0.4;
+        } else {
+          totalH += 1.3;
+        }
+      }
+    }
+    return totalH + 4;
+  };
+
+  paragraphs.forEach((paragraph, idx) => {
     const trimmed = paragraph.trim();
     if (!trimmed) {
       signatureCaptionRemaining = 0;
-      cursorY += lineHeight * 0.8;
+      cursorY += lineHeight * 0.6;
       if (cursorY > bottomLimit) {
         doc.addPage();
         cursorY = margin;
@@ -286,10 +317,24 @@ export const generateDocumentPdfBase64 = ({
       return;
     }
 
+    if (
+      !closingProtected &&
+      paragraphs.length - idx <= 12 &&
+      (/(?:PROVEER\s+DE\s+CONFORMIDAD|SER[ÁA]\s+JUSTICIA|ES\s+JUSTICIA)/i.test(trimmed))
+    ) {
+      closingProtected = true;
+      const blockHeight = estimateClosingBlockHeight(idx);
+      if (blockHeight < bottomLimit - margin) {
+        ensureSpace(blockHeight);
+      }
+    }
+
     if (/^_{6,}$/.test(trimmed)) {
-      ensureSpace(34);
-      cursorY += 10;
-      doc.text(trimmed, margin, cursorY);
+      if (!closingProtected) {
+        ensureSpace(26);
+      }
+      cursorY += 8;
+      doc.text(trimmed, sideMargin, cursorY);
       cursorY += lineHeight;
       signatureCaptionRemaining = 4;
       return;
@@ -298,7 +343,7 @@ export const generateDocumentPdfBase64 = ({
     const wrappedLines: string[] = doc.splitTextToSize(trimmed, maxWidth);
     wrappedLines.forEach((line) => {
       ensureSpace(lineHeight);
-      doc.text(line, margin, cursorY);
+      doc.text(line, sideMargin, cursorY);
       cursorY += lineHeight;
     });
 
@@ -306,7 +351,7 @@ export const generateDocumentPdfBase64 = ({
       signatureCaptionRemaining -= 1;
       cursorY += 0.4;
     } else {
-      cursorY += 1.8;
+      cursorY += 1.3;
     }
   });
 
@@ -519,9 +564,12 @@ const renderEscribaniaHeader = (
 
   const subParts: string[] = [];
   if (escribania?.registro && escribania.registro !== '---') {
-    subParts.push(
-      /reg/i.test(escribania.registro) ? escribania.registro : `Registro N.º ${escribania.registro}`
-    );
+    const regVal = escribania.registro.trim();
+    if (escribania.esAbogado) {
+      subParts.push(/matr[ií]cula/i.test(regVal) ? regVal : `Matrícula CSJ N.º ${regVal}`);
+    } else {
+      subParts.push(/reg/i.test(regVal) ? regVal : `Registro N.º ${regVal}`);
+    }
   }
   if (escribania?.ruc && escribania.ruc !== '---') {
     subParts.push(`RUC: ${escribania.ruc}`);

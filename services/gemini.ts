@@ -357,6 +357,7 @@ export const redactarEscritoJudicialConIA = async (params: {
     matricula?: string;
     ciudad?: string;
   };
+  instruccionesAdicionales?: string;
 }): Promise<string> => {
   const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/redactar-escrito-judicial', {
@@ -380,5 +381,58 @@ export const redactarEscritoJudicialConIA = async (params: {
 
   throw new Error('La IA no generó texto para el escrito judicial. Intenta nuevamente.');
 };
+
+export interface ParsedPresupuestoIA {
+  clienteNombre?: string;
+  clienteRucCI?: string;
+  clienteTelefono?: string;
+  clienteDireccion?: string;
+  clienteEmail?: string;
+  conceptoGeneral?: string;
+  tasas?: Array<{
+    descripcion: string;
+    categoria: 'judicial' | 'hipoteca' | 'municipal' | 'especial' | 'automotor' | 'otro';
+    monto: number;
+  }>;
+  honorarios?: Array<{
+    descripcion: string;
+    cantidad: number;
+    precioUnitario: number;
+    tipoIva: '10' | '5' | 'exenta';
+  }>;
+}
+
+export const parsePresupuestoConIA = async (
+  texto: string,
+  esAbogado: boolean = true
+): Promise<ParsedPresupuestoIA> => {
+  const cleanTexto = texto.trim();
+  if (!cleanTexto) {
+    throw new Error('Escribe o dicta los conceptos del presupuesto antes de enviarlo a la IA.');
+  }
+
+  const headers = await getAuthHeaders();
+  const response = await fetch('/api/gemini/parse-presupuesto', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ texto: cleanTexto, esAbogado }),
+  });
+
+  if (!response.ok) {
+    const errMsg = await parseJsonError(
+      response,
+      'No se pudo interpretar el presupuesto con IA en este momento. Intenta nuevamente.'
+    );
+    throw new Error(errMsg);
+  }
+
+  const payload = await response.json();
+  if (payload?.data && typeof payload.data === 'object') {
+    return payload.data as ParsedPresupuestoIA;
+  }
+
+  throw new Error('La IA no devolvió datos válidos para completar el presupuesto.');
+};
+
 
 

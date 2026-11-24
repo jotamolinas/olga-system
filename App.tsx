@@ -13,7 +13,8 @@ import {
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
   guardarEscritoToFirestore,
-  normalizeExpediente, syncExpedienteToFirestore, deleteExpedienteFromFirestore
+  normalizeExpediente, syncExpedienteToFirestore, deleteExpedienteFromFirestore,
+  incrementarUsoIA
 } from './services/firestore';
 import { buscarPersonaDuplicada, depurarDuplicadosLista } from './services/personaDedup';
 import { LoginScreen } from './components/LoginScreen';
@@ -1929,21 +1930,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         }, 10000);
       }
       
-      if (role !== 'admin' && auth.currentUser && auth.currentUser.uid) {
-        try {
-          const isDemo = userData?.plan === 'Demo';
-          const usoIA = userData?.usoIA || 0;
-          const limiteIA = userData?.limiteIA || 20;
-          const fechaVencimiento = userData?.fechaVencimientoDemo ? (userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)) : new Date(0);
-          const isDemoValid = isDemo && (usoIA < limiteIA && new Date() <= fechaVencimiento);
-          const hasValidPlan = userData?.estadoPlataforma === 'Aprobado' || isDemoValid;
-          
-          if (hasValidPlan) {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid), { usoIA: increment(1) });
-          }
-        } catch (e) {
-           console.warn("Could not increment AI queries", e);
-        }
+      if (auth.currentUser && auth.currentUser.uid) {
+        await incrementarUsoIA(auth.currentUser.uid);
       }
     } catch (err: any) {
       console.warn("Aviso al enviar mensaje a la IA:", err?.message || err);
@@ -2706,6 +2694,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 <WhatsAppTab
                   workspaceId={workspaceId}
                   esPlanFull={esPlanFull}
+                  esAbogado={esAbogado}
                   escribania={{
                     nombre: workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre,
                     ruc: customBranding.ruc || userData?.ruc || '',

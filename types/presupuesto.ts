@@ -415,6 +415,113 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   },
 ];
 
+// ============================================================================
+// VALORES INICIALES POR DEFECTO PARA ABOGADOS / ESTUDIOS JURÍDICOS (PARAGUAY)
+// ============================================================================
+
+export const ITEMS_TASAS_ABOGADO_BASE: ItemTasaReembolso[] = [
+  {
+    id: 'tasa-abog-csj',
+    categoria: 'judicial',
+    descripcion: 'Tasas Judiciales CSJ',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+  {
+    id: 'tasa-abog-notif',
+    categoria: 'judicial',
+    descripcion: 'Gastos de Notificación y Diligenciamiento',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+  {
+    id: 'tasa-abog-reg',
+    categoria: 'especial',
+    descripcion: 'Informes / Certificados Registrales y Anotaciones (DGRP)',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+  {
+    id: 'tasa-abog-otro',
+    categoria: 'otro',
+    descripcion: 'Otras Tasas Judiciales o Gastos Oficiales de Causa',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+];
+
+export const ITEMS_SERVICIOS_ABOGADO_BASE: ItemServicioHonorario[] = [
+  {
+    id: 'srv-abog-hon',
+    codigoConcepto: 'HON-PROF',
+    descripcion: 'Honorarios Profesionales',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-abog-patrocinio',
+    codigoConcepto: 'PAT-JUD',
+    descripcion: 'Patrocinio / Representación Procesal',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-abog-escritos',
+    codigoConcepto: 'RED-ESC',
+    descripcion: 'Redacción de Escritos/Contratos',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-abog-consulta',
+    codigoConcepto: 'CONS-JUR',
+    descripcion: 'Consulta Jurídica y Estudio de Antecedentes',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-abog-audiencias',
+    codigoConcepto: 'AUD-PROC',
+    descripcion: 'Asistencia a Audiencias y Diligencias Judiciales',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+];
+
 export const ENCABEZADO_INICIAL: EncabezadoFacturaPresupuesto = {
   tipoComprobante: 'Presupuesto',
   numeroComprobante: 'PRES-0001',

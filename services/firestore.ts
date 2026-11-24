@@ -1,5 +1,5 @@
 import { db, auth } from './auth';
-import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, query, where, serverTimestamp, addDoc, increment } from 'firebase/firestore';
 import { Persona, Pagare, KnowledgeDoc, TipoPersona, TipoDocumento, Expediente, PlazoProcesal, TipoJuicioExpediente, RolParteExpediente, EstadoExpediente } from '../types';
 import { depurarDuplicadosLista } from './personaDedup';
 
@@ -443,4 +443,18 @@ export const fetchExpedientesFromFirestore = async (workspaceId?: string): Promi
   });
   return results;
 };
+
+export const incrementarUsoIA = async (uid?: string): Promise<void> => {
+  const targetUid = String(uid || auth?.currentUser?.uid || '').trim();
+  if (!targetUid) return;
+  try {
+    await updateDoc(doc(db, 'users', targetUid), {
+      usoIA: increment(1),
+      consultasUsadas: increment(1),
+    });
+  } catch (err) {
+    console.warn('[incrementarUsoIA] No se pudo incrementar contador de IA:', err);
+  }
+};
+
 

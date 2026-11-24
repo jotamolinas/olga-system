@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Save, Edit3, CheckCircle, AlertCircle, MessageCircle, Download } from 'lucide-react';
+import { X, Printer, Save, Edit3, CheckCircle, AlertCircle, MessageCircle, Download, Sparkles, Mic, MicOff, Loader2 } from 'lucide-react';
 import { db, auth } from '../services/auth';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
@@ -10,6 +10,8 @@ import { ModalGuardarDocumento } from './ModalGuardarDocumento';
 import { formatDocClean } from './PagarePDFPreview';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
 import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage, downloadPdfFromBase64 } from '../services/pdfExport';
+import { redactarEscritoConIA } from '../services/gemini';
+import { incrementarUsoIA } from '../services/firestore';
 
 interface DocumentoModalProps {
   isOpen: boolean;
@@ -161,6 +163,21 @@ export const wrapSignatureBlocksForPrint = (html: string): string => {
         createdBlocks.forEach((blk) => group.appendChild(blk));
       }
     }
+
+    // Proteger el bloque de cierre judicial ("PROVEER DE CONFORMIDAD..." + fecha + firma) contra saltos de página aislados
+    const updatedChildren = Array.from(parentEl.children);
+    const closingIdx = updatedChildren.findIndex((child) => {
+      const t = (child.textContent || '').trim();
+      return /(?:PROVEER\s+DE\s+CONFORMIDAD|SER[ÁA]\s+JUSTICIA|ES\s+JUSTICIA)/i.test(t);
+    });
+    if (closingIdx !== -1 && updatedChildren.length - closingIdx <= 10) {
+      const closingGroup = document.createElement('div');
+      closingGroup.className = 'closing-signature-block';
+      parentEl.insertBefore(closingGroup, updatedChildren[closingIdx]);
+      for (let k = closingIdx; k < updatedChildren.length; k++) {
+        closingGroup.appendChild(updatedChildren[k]);
+      }
+    }
   };
 
   processParent(container);
@@ -214,6 +231,12 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
       ? canUseWhatsApp
       : userData?.whatsappEnabled === true;
   const [temporalWarning, setTemporalWarning] = useState(false);
+  const [showAiEditBar, setShowAiEditBar] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [isAiEditing, setIsAiEditing] = useState(false);
+  const [isListeningAi, setIsListeningAi] = useState(false);
+  const [aiEditError, setAiEditError] = useState<string | null>(null);
+  const aiRecognitionRef = useRef<any>(null);
   const printAreaRef = useRef<HTMLDivElement>(null);
   const isSavingRef = useRef(false);
 
@@ -279,12 +302,29 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
+    } else if (aiRecognitionRef.current) {
+      try {
+        aiRecognitionRef.current.stop();
+      } catch {}
+      aiRecognitionRef.current = null;
+      setIsListeningAi(false);
     }
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (aiRecognitionRef.current) {
+        try {
+          aiRecognitionRef.current.stop();
+        } catch {}
+        aiRecognitionRef.current = null;
+      }
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -304,13 +344,18 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     userData?.nombre ||
     (esAbogadoDoc ? 'Estudio Jurídico' : 'Escribanía Pública');
   const rucHeader = workspaceData?.ruc || userData?.ruc || '';
-  const registroHeader =
-    workspaceData?.registroNotarial ||
-    workspaceData?.matricula ||
-    userData?.registroNotarial ||
-    userData?.matricula ||
-    config?.escribania?.nro_registro ||
-    '';
+  const registroHeader = esAbogadoDoc
+    ? (workspaceData?.matricula ||
+        userData?.matricula ||
+        workspaceData?.registroNotarial ||
+        userData?.registroNotarial ||
+        '')
+    : (workspaceData?.registroNotarial ||
+        workspaceData?.matricula ||
+        userData?.registroNotarial ||
+        userData?.matricula ||
+        config?.escribania?.nro_registro ||
+        '');
   const telefonoHeader =
     workspaceData?.telefono || userData?.telefono || config?.escribania?.telefono || '';
   const direccionHeader =
@@ -323,6 +368,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     telefono: telefonoHeader,
     direccion: direccionHeader,
     logo: pdfLogoDataUrl,
+    esAbogado: esAbogadoDoc,
   });
 
   const handleDownloadPdf = () => {
@@ -370,7 +416,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;0,900&family=Inter:wght@400;500;700;900&display=swap');
             @page {
               size: A4 portrait;
-              margin: 2.5cm 2.5cm 2.5cm 3cm;
+              margin: 1.8cm 2cm 1.8cm 2.4cm;
             }
             html, body {
               font-family: 'Inter', sans-serif;
@@ -388,7 +434,9 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
               orphans: 3;
               widows: 3;
               text-align: justify;
-              line-height: 1.55;
+              line-height: 1.45;
+              margin-top: 0.45em;
+              margin-bottom: 0.45em;
             }
             .prose h1, .prose h2, .prose h3, .prose h4 {
               break-after: avoid;
@@ -397,24 +445,27 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             .text-center, .text-center p, .text-center h2 {
               text-align: center !important;
             }
-            .signature-block, .signatures-group {
+            .signature-block, .signatures-group, .closing-signature-block {
               break-inside: avoid !important;
               page-break-inside: avoid !important;
             }
+            .closing-signature-block {
+              margin-top: 12px;
+            }
             .signature-block {
-              margin-top: 40px;
+              margin-top: 20px;
             }
             .signature-block hr {
               width: 260px;
               max-width: 100%;
               border: none;
               border-top: 1px solid #000;
-              margin: 24px 0 6px 0;
+              margin: 16px 0 6px 0;
             }
             .signature-block p {
               margin: 0 0 2px 0 !important;
               text-align: left !important;
-              line-height: 1.45 !important;
+              line-height: 1.4 !important;
             }
             @media print {
               html, body {
@@ -493,7 +544,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             .text-center, .text-center p, .text-center h2 {
               text-align: center !important;
             }
-            .signature-block, .signatures-group {
+            .signature-block, .signatures-group, .closing-signature-block {
               break-inside: avoid !important;
               page-break-inside: avoid !important;
             }
@@ -679,6 +730,88 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     }
   };
 
+  const handleToggleVoiceAi = () => {
+    setAiEditError(null);
+    if (isListeningAi && aiRecognitionRef.current) {
+      try {
+        aiRecognitionRef.current.stop();
+      } catch {}
+      setIsListeningAi(false);
+      return;
+    }
+
+    const SpeechRecognitionCtor =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognitionCtor) {
+      setAiEditError('Tu navegador no soporta dictado por voz. Escribe la instrucción para la IA.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'es-PY';
+      recognition.interimResults = false;
+      recognition.continuous = false;
+
+      recognition.onstart = () => setIsListeningAi(true);
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results || [])
+          .map((res: any) => res?.[0]?.transcript || '')
+          .join(' ')
+          .trim();
+        if (transcript) {
+          setAiInstruction((prev) => (prev ? `${prev.trim()} ${transcript}` : transcript));
+        }
+      };
+      recognition.onerror = () => {
+        setIsListeningAi(false);
+        setAiEditError('No se pudo capturar el dictado de voz. Verifica el permiso del micrófono.');
+      };
+      recognition.onend = () => {
+        setIsListeningAi(false);
+        aiRecognitionRef.current = null;
+      };
+
+      aiRecognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setIsListeningAi(false);
+      setAiEditError('No se pudo iniciar el micrófono. Escribe tu instrucción manualmente.');
+    }
+  };
+
+  const handleApplyAiEdit = async () => {
+    const cleanInstruction = aiInstruction.trim();
+    if (!cleanInstruction || isAiEditing) return;
+
+    setIsAiEditing(true);
+    setAiEditError(null);
+    try {
+      const updated = await redactarEscritoConIA(
+        `Aplica exclusivamente la siguiente instrucción sobre el documento actual, devolviendo el documento completo actualizado y formal en español:\n\n${cleanInstruction}`,
+        text
+      );
+      if (updated && updated.trim()) {
+        setText(limpiarTextoParaEscrito(updated));
+        setAiInstruction('');
+        setShowAiEditBar(false);
+        void incrementarUsoIA(currentUser?.uid || userData?.uid);
+      }
+    } catch (err: any) {
+      setAiEditError(err?.message || 'No se pudo editar el documento con IA.');
+    } finally {
+      setIsAiEditing(false);
+    }
+  };
+
+  const handleToggleAiBar = () => {
+    setShowAiEditBar((prev) => !prev);
+    setAiEditError(null);
+  };
+
   const razonSocial = userData?.razonSocial || config?.escribania?.nombre || 'Membrete Oficial';
   const ruc = userData?.ruc || '---';
   const matricula = userData?.matricula || config?.escribania?.nro_registro || '---';
@@ -744,6 +877,18 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
               </span>
             )}
             <button
+              type="button"
+              onClick={handleToggleAiBar}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition-colors cursor-pointer ${
+                showAiEditBar
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+              }`}
+              title="Modificar o ajustar el escrito mediante instrucciones de texto o voz con IA"
+            >
+              <Sparkles className="w-4 h-4" /> Editar con IA
+            </button>
+            <button
               onClick={() => setIsEditing(!isEditing)}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition-colors ${
                 isEditing 
@@ -802,22 +947,75 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           </div>
         </div>
 
+        {/* Barra de Edición Asistida con IA (Voz o Texto) */}
+        {showAiEditBar && (
+          <div className="px-6 py-3.5 bg-indigo-50/90 border-b border-indigo-200 space-y-2 print:hidden">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <input
+                type="text"
+                value={aiInstruction}
+                disabled={isAiEditing}
+                onChange={(e) => setAiInstruction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleApplyAiEdit();
+                  }
+                }}
+                placeholder="Indica qué modificar (ej: Agrega cláusula de plazo de 10 días y corrige el nombre del demandado...)"
+                className="flex-1 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/40"
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleToggleVoiceAi}
+                  disabled={isAiEditing}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                    isListeningAi
+                      ? 'bg-red-600 text-white border-red-600 animate-pulse'
+                      : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                  }`}
+                  title="Dictar instrucción por micrófono (es-PY)"
+                >
+                  {isListeningAi ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                  <span>{isListeningAi ? 'Detener' : 'Dictar'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleApplyAiEdit()}
+                  disabled={isAiEditing || !aiInstruction.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isAiEditing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span>{isAiEditing ? 'Editando...' : 'Aplicar con IA'}</span>
+                </button>
+              </div>
+            </div>
+            {aiEditError && (
+              <p className="text-[11px] font-semibold text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{aiEditError}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Content Area */}
-        <div className="flex-grow overflow-y-auto p-4 md:p-8 bg-slate-100 flex justify-center print:overflow-visible print:p-0 print:bg-white">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 bg-slate-100 print:overflow-visible print:p-0 print:bg-white">
           <div 
             ref={printAreaRef} 
-            className="print-content-wrapper w-full max-w-[215.9mm] bg-white shadow-xl border border-slate-200"
+            className="print-content-wrapper mx-auto w-full max-w-[215.9mm] h-auto min-h-[70vh] bg-white shadow-xl border border-slate-200 overflow-visible print:h-auto print:min-h-0 print:overflow-visible"
             style={{
-              paddingTop: isHojaBlanca ? '2.5cm' : '4.5cm',
-              paddingLeft: isHojaBlanca ? '3cm' : '1.5cm',
-              paddingRight: isHojaBlanca ? '2.5cm' : '1.5cm',
-              paddingBottom: isHojaBlanca ? '2.5cm' : '1.5cm',
+              paddingTop: isHojaBlanca ? '2cm' : '4.5cm',
+              paddingLeft: isHojaBlanca ? '2.5cm' : '1.5cm',
+              paddingRight: isHojaBlanca ? '2cm' : '1.5cm',
+              paddingBottom: isHojaBlanca ? '2cm' : '1.5cm',
               boxSizing: 'border-box'
             }}
           >
             {/* Encabezado Institucional (visible únicamente cuando includeHeader === true y Hoja en Blanco) */}
             {includeHeader && isHojaBlanca && (
-              <div className="mb-8 border-b-2 border-slate-800 pb-4 text-center print:border-black">
+              <div className="mb-6 border-b-2 border-slate-800 pb-3.5 text-center print:border-black">
                 {rawLogoInstitucional && (
                   <img
                     src={rawLogoInstitucional}
@@ -833,7 +1031,7 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
                     {[
                       registroHeader && registroHeader !== '---'
                         ? (esAbogadoDoc
-                            ? (/mat/i.test(registroHeader) ? registroHeader : `Matrícula CSJ N.º ${registroHeader}`)
+                            ? (/matr[ií]cula/i.test(registroHeader) ? registroHeader : `Matrícula CSJ N.º ${registroHeader}`)
                             : (/reg/i.test(registroHeader) ? registroHeader : `Registro N.º ${registroHeader}`))
                         : null,
                       rucHeader && rucHeader !== '---' ? `RUC: ${formatDocClean(rucHeader)}` : null,
@@ -874,6 +1072,8 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
           onConfirm={confirmSave}
           userCarpetas={userData?.carpetas}
           workspaceId={workspaceId}
+          tipoPerfil={workspaceData?.tipoPerfil || userData?.tipoPerfil}
+          defaultCategoria={categoria}
         />
       )}
 

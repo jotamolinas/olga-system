@@ -48,6 +48,7 @@ import type { Persona, TipoDocumento, TipoPersona } from '../types';
 export interface WhatsAppTabProps {
   workspaceId: string;
   esPlanFull?: boolean;
+  esAbogado?: boolean;
   escribania?: EscribaniaPdfMetadata;
   onOpenEscritos?: () => void;
 }
@@ -147,6 +148,32 @@ const DEFAULT_WORK_KEYWORDS: string[] = [
   'terreno',
   'sociedad',
   'ruc',
+];
+
+const DEFAULT_ABOGADO_KEYWORDS: string[] = [
+  'abogado',
+  'consulta',
+  'demanda',
+  'juicio',
+  'expediente',
+  'juzgado',
+  'audiencia',
+  'notificacion',
+  'cedula',
+  'plazo',
+  'sucesion',
+  'divorcio',
+  'alimentos',
+  'desalojo',
+  'embargo',
+  'laboral',
+  'despido',
+  'penal',
+  'denuncia',
+  'pagare',
+  'contrato',
+  'presupuesto',
+  'honorarios',
 ];
 
 const normalizeFilterText = (value: string): string =>
@@ -399,6 +426,7 @@ const getAuthHeaders = async (includeJsonContentType = false): Promise<Record<st
 export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
   workspaceId,
   esPlanFull = false,
+  esAbogado = false,
   escribania,
   onOpenEscritos,
 }) => {
@@ -474,7 +502,14 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
   const [showFallbackMessages, setShowFallbackMessages] = useState<boolean>(false);
   const [workFilterEnabled, setWorkFilterEnabled] = useState<boolean>(true);
   const [allowDocuments, setAllowDocuments] = useState<boolean>(true);
-  const [workKeywords, setWorkKeywords] = useState<string[]>(DEFAULT_WORK_KEYWORDS);
+  const suggestedKeywords = useMemo(
+    () => (esAbogado ? DEFAULT_ABOGADO_KEYWORDS : DEFAULT_WORK_KEYWORDS),
+    [esAbogado]
+  );
+  const [workKeywords, setWorkKeywords] = useState<string[]>(() =>
+    esAbogado ? [...DEFAULT_ABOGADO_KEYWORDS] : [...DEFAULT_WORK_KEYWORDS]
+  );
+  const hasLoadedSavedKeywordsRef = useRef<boolean>(false);
   const [newKeywordInput, setNewKeywordInput] = useState<string>('');
   const [liveTestMessage, setLiveTestMessage] = useState<string>('');
   const [showConfigMessageBox, setShowConfigMessageBox] = useState<boolean>(false);
@@ -817,12 +852,23 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!hasLoadedSavedKeywordsRef.current) {
+      setWorkKeywords(esAbogado ? [...DEFAULT_ABOGADO_KEYWORDS] : [...DEFAULT_WORK_KEYWORDS]);
+    }
+  }, [esAbogado]);
+
   // Carga de configuración avanzada de Respuesta Automática (Firestore + servidor WhatsApp)
   useEffect(() => {
     if (!workspaceId) return;
     let active = true;
+    hasLoadedSavedKeywordsRef.current = false;
 
-    const applyConfigFields = (cfg: Record<string, any>) => {
+    const isExactNotaryDefault = (list: string[]) =>
+      list.length === DEFAULT_WORK_KEYWORDS.length &&
+      list.every((kw, idx) => normalizeFilterText(kw) === normalizeFilterText(DEFAULT_WORK_KEYWORDS[idx]));
+
+    const applyConfigFields = (cfg: Record<string, any>, fromFirestore: boolean) => {
       if (typeof cfg.autoReplyEnabled === 'boolean') {
         setAutoReplyEnabled(cfg.autoReplyEnabled);
       }
@@ -863,11 +909,13 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
         setAllowDocuments(cfg.allowDocuments);
       }
       if (Array.isArray(cfg.workKeywords)) {
-        setWorkKeywords(
-          cfg.workKeywords
-            .filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0)
-            .map((k: string) => k.trim())
-        );
+        const cleaned = cfg.workKeywords
+          .filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0)
+          .map((k: string) => k.trim());
+        if (!(esAbogado && !fromFirestore && !hasLoadedSavedKeywordsRef.current && isExactNotaryDefault(cleaned))) {
+          hasLoadedSavedKeywordsRef.current = true;
+          setWorkKeywords(cleaned);
+        }
       }
       if (Array.isArray(cfg.excludedJids)) {
         setExcludedJids(
@@ -881,7 +929,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
         if (auth.currentUser) {
           const fsSnap = await getDoc(doc(db, 'users', workspaceId, 'whatsapp_config', 'settings')).catch(() => null);
           if (active && fsSnap?.exists()) {
-            applyConfigFields(fsSnap.data() as Record<string, any>);
+            applyConfigFields(fsSnap.data() as Record<string, any>, true);
           }
         }
 
@@ -893,7 +941,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
         const data = await res.json().catch(() => ({}));
         if (!active || !res.ok) return;
 
-        applyConfigFields(data);
+        applyConfigFields(data, false);
       } catch {
         // Mantener valores por defecto si aún no hay configuración guardada
       }
@@ -903,7 +951,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
     return () => {
       active = false;
     };
-  }, [workspaceId]);
+  }, [workspaceId, esAbogado]);
 
   const saveWaAbsenceConfig = async (
     overrides: Partial<{
@@ -1004,7 +1052,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
   };
 
   const handleRestoreSuggestedKeywords = () => {
-    setWorkKeywords([...DEFAULT_WORK_KEYWORDS]);
+    setWorkKeywords([...suggestedKeywords]);
   };
 
   const liveTestMatchedKeyword = useMemo(() => {
@@ -2496,7 +2544,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
                           handleAddWorkKeyword();
                         }
                       }}
-                      placeholder="Ej: sucesión, hipoteca..."
+                      placeholder={esAbogado ? 'Ej: apelación, amparo...' : 'Ej: sucesión, hipoteca...'}
                       className="w-full flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                     />
                     <button
@@ -2523,7 +2571,11 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
                     type="text"
                     value={liveTestMessage}
                     onChange={(e) => setLiveTestMessage(e.target.value)}
-                    placeholder="Ej: Hola, cuánto sale una certificación de firma o vamos al asado?"
+                    placeholder={
+                      esAbogado
+                        ? 'Ej: Hola doctor, recibí una cédula de notificación de demanda o vamos al asado?'
+                        : 'Ej: Hola, cuánto sale una certificación de firma o vamos al asado?'
+                    }
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   />
                   {liveTestMessage.trim().length > 0 && (

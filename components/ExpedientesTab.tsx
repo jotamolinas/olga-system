@@ -41,6 +41,7 @@ import {
   redactarEscritoJudicialConIA,
 } from '../services/gemini';
 import { auth } from '../services/auth';
+import { incrementarUsoIA } from '../services/firestore';
 
 interface ExpedientesTabProps {
   expedientes: Expediente[];
@@ -376,6 +377,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         fileName: file.name,
         result,
       });
+      void incrementarUsoIA(currentUser?.uid || userData?.uid);
     } catch (err: any) {
       const errMsg = err?.message || 'No se pudo analizar el documento PDF.';
       if (target === 'modal') {
@@ -713,12 +715,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           matricula: userData?.matricula || userData?.registroNotarial || '',
           ciudad: userData?.ciudad || userData?.localidad || 'Asunción',
         },
+        instruccionesAdicionales:
+          'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Si el documento base o los datos del expediente contienen denominaciones de juzgados o términos procesales extranjeros, adáptalos obligatoriamente a la jurisdicción paraguaya (por ejemplo: Juzgado de Primera Instancia en lo Civil y Comercial, Juzgado de Primera Instancia en lo Laboral o Juzgado de Paz, según corresponda).',
       });
       const tituloModal =
         modo === 'contestacion'
           ? `Contestación de Demanda - ${exp.caratula.slice(0, 48)}`
           : `Impulso: ${(plazoObjetivo?.titulo || exp.caratula).slice(0, 48)}`;
-      onOpenDocument(draftText, undefined, tituloModal, 'Judicial', 'blanca', true);
+      void incrementarUsoIA(currentUser?.uid || userData?.uid);
+      onOpenDocument(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
     } catch (err: any) {
       setErrorBanner(err?.message || 'No se pudo generar el escrito judicial con IA.');
     } finally {

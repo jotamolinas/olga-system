@@ -31,6 +31,8 @@ import {
   ChevronDown,
   FolderOpen,
   MessageCircle,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import {
   EncabezadoFacturaPresupuesto,
@@ -44,6 +46,8 @@ import {
   ENCABEZADO_INICIAL,
   ITEMS_TASAS_REEMBOLSO_BASE,
   ITEMS_SERVICIOS_HONORARIOS_BASE,
+  ITEMS_TASAS_ABOGADO_BASE,
+  ITEMS_SERVICIOS_ABOGADO_BASE,
   calcularLiquidacionPresupuesto,
   cargarMembreteUsuario,
   guardarMembreteUsuario,
@@ -52,7 +56,8 @@ import {
 import { Persona, TipoPersona } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
 import { sonMismaPersona, extraerDocBase } from '../services/personaDedup';
-import { syncPersonaToFirestore, fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
+import { syncPersonaToFirestore, fetchPersonasFromFirestore, normalizePersona, incrementarUsoIA } from '../services/firestore';
+import { parsePresupuestoConIA } from '../services/gemini';
 import { collection, addDoc, serverTimestamp, getDocs, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/auth';
@@ -119,11 +124,21 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 }) => {
   const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
   const esFull = esPlanFull !== undefined ? esPlanFull : planUsuario.includes('full');
+  const esAbogado = String(userProfile?.tipoPerfil || '').toLowerCase().trim() === 'abogado';
+  const storageKeyTasas = esAbogado ? 'olga_presupuesto_tasas_abogado' : 'olga_presupuesto_tasas';
+  const storageKeyServicios = esAbogado ? 'olga_presupuesto_servicios_abogado' : 'olga_presupuesto_servicios';
+  const defaultTasasBase = esAbogado ? ITEMS_TASAS_ABOGADO_BASE : ITEMS_TASAS_REEMBOLSO_BASE;
+  const defaultServiciosBase = esAbogado ? ITEMS_SERVICIOS_ABOGADO_BASE : ITEMS_SERVICIOS_HONORARIOS_BASE;
   const isWhatsAppEnabled =
     typeof canUseWhatsApp === 'boolean'
       ? canUseWhatsApp
       : userProfile?.whatsappEnabled === true;
   const [modalWhatsAppAbierto, setModalWhatsAppAbierto] = useState(false);
+  const [aiPresupuestoTexto, setAiPresupuestoTexto] = useState('');
+  const [cargandoAiPresupuesto, setCargandoAiPresupuesto] = useState(false);
+  const [escuchandoVozPresupuesto, setEscuchandoVozPresupuesto] = useState(false);
+  const [aiPresupuestoError, setAiPresupuestoError] = useState<string | null>(null);
+  const aiPresupuestoRecognitionRef = useRef<any>(null);
 
   const [authUid, setAuthUid] = useState<string>(() => auth?.currentUser?.uid || '');
   useEffect(() => {
@@ -197,23 +212,23 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   // Estado de Tasas y Reembolsos
   const [tasas, setTasas] = useState<ItemTasaReembolso[]>(() => {
     try {
-      const guardado = localStorage.getItem('olga_presupuesto_tasas');
+      const guardado = localStorage.getItem(storageKeyTasas);
       if (guardado) return JSON.parse(guardado);
     } catch (e) {
       console.warn('Error leyendo tasas guardadas:', e);
     }
-    return ITEMS_TASAS_REEMBOLSO_BASE;
+    return defaultTasasBase;
   });
 
   // Estado de Servicios y Honorarios
   const [servicios, setServicios] = useState<ItemServicioHonorario[]>(() => {
     try {
-      const guardado = localStorage.getItem('olga_presupuesto_servicios');
+      const guardado = localStorage.getItem(storageKeyServicios);
       if (guardado) return JSON.parse(guardado);
     } catch (e) {
       console.warn('Error leyendo servicios guardados:', e);
     }
-    return ITEMS_SERVICIOS_HONORARIOS_BASE;
+    return defaultServiciosBase;
   });
 
   // Observaciones y condiciones de pago
@@ -222,8 +237,33 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       const guardado = localStorage.getItem('olga_presupuesto_observaciones');
       if (guardado) return guardado;
     } catch {}
-    return 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.';
+    return esAbogado
+      ? 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los montos correspondientes a Tasas Judiciales CSJ y diligenciamientos quedan sujetos a aranceles oficiales vigentes.'
+      : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.';
   });
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    try {
+      if (!localStorage.getItem('olga_presupuesto_tasas_abogado')) {
+        setTasas((prev) => (prev === ITEMS_TASAS_REEMBOLSO_BASE ? ITEMS_TASAS_ABOGADO_BASE : prev));
+      }
+      if (!localStorage.getItem('olga_presupuesto_servicios_abogado')) {
+        setServicios((prev) => (prev === ITEMS_SERVICIOS_HONORARIOS_BASE ? ITEMS_SERVICIOS_ABOGADO_BASE : prev));
+      }
+    } catch {}
+  }, [esAbogado]);
+
+  useEffect(() => {
+    return () => {
+      if (aiPresupuestoRecognitionRef.current) {
+        try {
+          aiPresupuestoRecognitionRef.current.stop();
+        } catch {}
+        aiPresupuestoRecognitionRef.current = null;
+      }
+    };
+  }, []);
 
   const [guardadoExito, setGuardadoExito] = useState(false);
   const [guardandoFirestore, setGuardandoFirestore] = useState(false);
@@ -809,8 +849,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     try {
       try {
         localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezado));
-        localStorage.setItem('olga_presupuesto_tasas', JSON.stringify(tasas));
-        localStorage.setItem('olga_presupuesto_servicios', JSON.stringify(servicios));
+        localStorage.setItem(storageKeyTasas, JSON.stringify(tasas));
+        localStorage.setItem(storageKeyServicios, JSON.stringify(servicios));
         localStorage.setItem('olga_presupuesto_observaciones', observaciones ?? '');
         autoguardarClienteSilencioso();
       } catch (localErr) {
@@ -959,11 +999,200 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         timbrado: membrete.timbradoNumero || ENCABEZADO_INICIAL.timbrado,
         fechaVencimientoValidez: membrete.timbradoVigenciaFin || ENCABEZADO_INICIAL.fechaVencimientoValidez,
       });
-      setTasas(ITEMS_TASAS_REEMBOLSO_BASE);
-      setServicios(ITEMS_SERVICIOS_HONORARIOS_BASE);
+      setTasas(defaultTasasBase);
+      setServicios(defaultServiciosBase);
       setObservaciones(
-        'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
+        esAbogado
+          ? 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los montos correspondientes a Tasas Judiciales CSJ y diligenciamientos quedan sujetos a aranceles oficiales vigentes.'
+          : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
       );
+    }
+  };
+
+  const handleToggleVozPresupuesto = () => {
+    setAiPresupuestoError(null);
+    if (escuchandoVozPresupuesto && aiPresupuestoRecognitionRef.current) {
+      try {
+        aiPresupuestoRecognitionRef.current.stop();
+      } catch {}
+      setEscuchandoVozPresupuesto(false);
+      return;
+    }
+
+    const SpeechRecognitionCtor =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognitionCtor) {
+      setAiPresupuestoError('Tu navegador no soporta dictado por voz. Escribe los datos en el campo de texto.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'es-PY';
+      recognition.interimResults = false;
+      recognition.continuous = false;
+
+      recognition.onstart = () => setEscuchandoVozPresupuesto(true);
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results || [])
+          .map((res: any) => res?.[0]?.transcript || '')
+          .join(' ')
+          .trim();
+        if (transcript) {
+          setAiPresupuestoTexto((prev) => (prev ? `${prev.trim()} ${transcript}` : transcript));
+        }
+      };
+      recognition.onerror = () => {
+        setEscuchandoVozPresupuesto(false);
+        setAiPresupuestoError('No se pudo capturar el audio. Verifica el permiso del micrófono.');
+      };
+      recognition.onend = () => {
+        setEscuchandoVozPresupuesto(false);
+        aiPresupuestoRecognitionRef.current = null;
+      };
+
+      aiPresupuestoRecognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setEscuchandoVozPresupuesto(false);
+      setAiPresupuestoError('No se pudo iniciar el micrófono. Escribe los datos manualmente.');
+    }
+  };
+
+  const handleCompletarPresupuestoConIA = async () => {
+    const prompt = aiPresupuestoTexto.trim();
+    if (!prompt || cargandoAiPresupuesto) return;
+
+    setCargandoAiPresupuesto(true);
+    setAiPresupuestoError(null);
+    try {
+      const parsed = await parsePresupuestoConIA(prompt, esAbogado);
+
+      setEncabezado((prev) => ({
+        ...prev,
+        clienteNombre: parsed.clienteNombre?.trim() || prev.clienteNombre,
+        clienteRucCI: parsed.clienteRucCI?.trim() || prev.clienteRucCI,
+        clienteTelefono: parsed.clienteTelefono?.trim() || prev.clienteTelefono,
+        clienteDireccion: parsed.clienteDireccion?.trim() || prev.clienteDireccion,
+        clienteEmail: parsed.clienteEmail?.trim() || prev.clienteEmail,
+        conceptoGeneral: parsed.conceptoGeneral?.trim() || prev.conceptoGeneral,
+      }));
+
+      if (Array.isArray(parsed.tasas) && parsed.tasas.length > 0) {
+        const VALID_CATS: CategoriaTasaReembolso[] = ['judicial', 'hipoteca', 'municipal', 'especial', 'automotor', 'otro'];
+        setTasas((prev) => {
+          const next = [...prev];
+          parsed.tasas!.forEach((aiTasa, idx) => {
+            const desc = String(aiTasa?.descripcion || '').trim();
+            const monto = Math.max(0, Math.round(Number(aiTasa?.monto) || 0));
+            if (!desc && monto <= 0) return;
+            const normDesc = desc.toLowerCase();
+            const catRaw = String(aiTasa?.categoria || 'judicial').toLowerCase() as CategoriaTasaReembolso;
+            const categoria: CategoriaTasaReembolso = VALID_CATS.includes(catRaw) ? catRaw : 'judicial';
+
+            const matchIdx = next.findIndex((existing) => {
+              const eDesc = existing.descripcion.toLowerCase();
+              if (normDesc.includes('csj') || normDesc.includes('tasa judicial')) return existing.id === 'tasa-abog-csj';
+              if (normDesc.includes('notif') || normDesc.includes('diligenc')) return existing.id === 'tasa-abog-notif';
+              if (normDesc.includes('registr') || normDesc.includes('dgrp')) return existing.id === 'tasa-abog-reg';
+              return eDesc.includes(normDesc) || normDesc.includes(eDesc);
+            });
+
+            if (matchIdx >= 0) {
+              next[matchIdx] = {
+                ...next[matchIdx],
+                descripcion: desc || next[matchIdx].descripcion,
+                categoria,
+                monto,
+                activo: true,
+              };
+            } else {
+              next.push({
+                id: `tasa-ia-${Date.now()}-${idx}`,
+                categoria,
+                descripcion: desc || 'Tasa judicial / gasto oficial',
+                monto,
+                tipoIva: 'exenta',
+                activo: true,
+                numeroComprobantePago: '',
+              });
+            }
+          });
+          return next;
+        });
+      }
+
+      if (Array.isArray(parsed.honorarios) && parsed.honorarios.length > 0) {
+        setServicios((prev) => {
+          const next = [...prev];
+          parsed.honorarios!.forEach((aiHon, idx) => {
+            const desc = String(aiHon?.descripcion || '').trim();
+            const cantidad = Math.max(1, Number(aiHon?.cantidad) || 1);
+            const precioUnitario = Math.max(0, Math.round(Number(aiHon?.precioUnitario) || 0));
+            const rawIva = String(aiHon?.tipoIva || '10').toLowerCase();
+            const tipoIva: TipoIvaNotarial = rawIva === '5' ? '5' : rawIva === 'exenta' ? 'exenta' : '10';
+            if (!desc && precioUnitario <= 0) return;
+
+            const total = cantidad * precioUnitario;
+            const normDesc = desc.toLowerCase();
+            const matchIdx = next.findIndex((existing) => {
+              const eDesc = existing.descripcion.toLowerCase();
+              if (normDesc.includes('patroc') || normDesc.includes('represent')) return existing.id === 'srv-abog-patrocinio';
+              if (normDesc.includes('escrit') || normDesc.includes('contrat') || normDesc.includes('demand')) return existing.id === 'srv-abog-escritos';
+              if (normDesc.includes('consult') || normDesc.includes('dictam')) return existing.id === 'srv-abog-consulta';
+              if (normDesc.includes('audienc')) return existing.id === 'srv-abog-audiencias';
+              if (normDesc.includes('honorar')) return existing.id === 'srv-abog-hon';
+              return eDesc.includes(normDesc) || normDesc.includes(eDesc);
+            });
+
+            const itemBase: Partial<ItemServicioHonorario> = {
+              descripcion: desc || 'Honorarios Profesionales',
+              cantidad,
+              precioUnitario,
+              tipoIva,
+              total,
+              montoExento: tipoIva === 'exenta' ? total : 0,
+              montoIva5: tipoIva === '5' ? total : 0,
+              montoIva10: tipoIva === '10' ? total : 0,
+              activo: true,
+            };
+
+            if (matchIdx >= 0) {
+              next[matchIdx] = {
+                ...next[matchIdx],
+                ...itemBase,
+              };
+            } else {
+              next.push({
+                id: `srv-ia-${Date.now()}-${idx}`,
+                codigoConcepto: 'HON-IA',
+                descripcion: itemBase.descripcion!,
+                cantidad,
+                precioUnitario,
+                tipoIva,
+                montoExento: itemBase.montoExento!,
+                montoIva5: itemBase.montoIva5!,
+                montoIva10: itemBase.montoIva10!,
+                total,
+                activo: true,
+                esPersonalizado: true,
+              });
+            }
+          });
+          return next;
+        });
+      }
+
+      void incrementarUsoIA(authUid || userProfile?.uid);
+      setSaveToastMessage('¡Presupuesto completado con IA! Revisa los importes antes de guardar o imprimir.');
+      setTimeout(() => setSaveToastMessage(null), 4000);
+    } catch (err: any) {
+      setAiPresupuestoError(err?.message || 'No se pudo completar el presupuesto con IA.');
+    } finally {
+      setCargandoAiPresupuesto(false);
     }
   };
 
@@ -1002,13 +1231,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     const clienteRuc = encabezado.clienteRucCI || 'Sin Especificar';
     const clienteTel = encabezado.clienteTelefono || '-';
     const clienteDir = encabezado.clienteDireccion || '-';
-    const concepto = encabezado.conceptoGeneral || 'Servicios y Gestiones Notariales';
+    const concepto = encabezado.conceptoGeneral || (esAbogado ? 'Servicios Jurídicos y Patrocinio Procesal' : 'Servicios y Gestiones Notariales');
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Presupuesto Notarial ${numPresupuesto} - ${clienteNombre}</title>
+  <title>${esAbogado ? 'Presupuesto Jurídico' : 'Presupuesto Notarial'} ${numPresupuesto} - ${clienteNombre}</title>
   <style>
     @page {
       size: ${pageSizeCss} portrait;
@@ -1233,7 +1462,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         <span>${clienteTel}</span>
       </div>
       <div class="full-row" style="border-top: 1px dashed #e2e8f0; padding-top: 4px;">
-        <strong>Acto / Concepto Notarial:</strong>
+        <strong>${esAbogado ? 'Causa / Concepto Jurídico:' : 'Acto / Concepto Notarial:'}</strong>
         <span style="font-weight: 600; color: #0f172a; margin-left: 4px;">${concepto}</span>
       </div>
     </div>
@@ -1270,7 +1499,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     </table>
 
     <div class="seccion-title">
-      <span>II. Servicios Notariales, Honorarios Profesionales y Gestiones</span>
+      <span>II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios Profesionales y Gestiones'}</span>
       <span>Subtotal: Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
     </div>
     <table>
@@ -1342,8 +1571,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         <div class="cargo-firma">C.I. / R.U.C.: ${clienteRuc}</div>
       </div>
       <div>
-        <div class="linea-firma">${membrete.nombreNotario || 'Notario Público Titular'}</div>
-        <div class="cargo-firma">${membrete.registroNotarial || 'Escribanía Notarial'} • Sello Oficial</div>
+        <div class="linea-firma">${membrete.nombreNotario || (esAbogado ? 'Abogado / Estudio Jurídico' : 'Notario Público Titular')}</div>
+        <div class="cargo-firma">${membrete.registroNotarial || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')} • Sello Oficial</div>
       </div>
     </div>
   </div>
@@ -1412,14 +1641,16 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-white font-serif font-bold text-2xl tracking-tight">
-                Presupuestos y Facturación Notarial
+                {esAbogado ? 'Presupuestos y Honorarios Jurídicos' : 'Presupuestos y Facturación Notarial'}
               </h1>
               <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
                 O.L.G.A.
               </span>
             </div>
             <p className="text-slate-400 text-sm mt-1 font-medium">
-              Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.
+              {esAbogado
+                ? 'Gestión modular de tasas judiciales CSJ, diligenciamientos y honorarios profesionales de estudio jurídico.'
+                : 'Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.'}
             </p>
           </div>
         </div>
@@ -1666,6 +1897,84 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             )}
           </div>
         </div>
+
+        {/* ================================================================= */}
+        {/* BARRA IA POR VOZ O TEXTO (EXCLUSIVO PERFIL ABOGADO)               */}
+        {/* ================================================================= */}
+        {esAbogado && (
+          <div className={`rounded-2xl p-4 md:p-5 border shadow-lg space-y-3 print:hidden ${
+            modoFondoBlanco
+              ? 'bg-gradient-to-r from-indigo-50 via-white to-amber-50/60 border-indigo-200 text-slate-900'
+              : 'bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-900 border-indigo-500/30 text-slate-100'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span className="text-xs md:text-sm font-bold tracking-tight">
+                  ✨ Completar Presupuesto por Voz o Texto (IA)
+                </span>
+              </div>
+              <span className={`text-[11px] font-medium ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                Dicta o escribe cliente, juicio, tasas judiciales y honorarios en Guaraníes
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <input
+                type="text"
+                value={aiPresupuestoTexto}
+                disabled={cargandoAiPresupuesto}
+                onChange={(e) => setAiPresupuestoTexto(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleCompletarPresupuestoConIA();
+                  }
+                }}
+                placeholder="Ej: Para Carlos Gómez CI 3.456.789, juicio de cobro de guaraníes, tasa judicial 350 mil y honorarios 2 millones..."
+                className={`flex-1 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40 border ${
+                  modoFondoBlanco
+                    ? 'bg-white border-indigo-200 text-slate-900 placeholder:text-slate-400'
+                    : 'bg-slate-950/80 border-indigo-500/30 text-white placeholder:text-slate-500'
+                }`}
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleToggleVozPresupuesto}
+                  disabled={cargandoAiPresupuesto}
+                  className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    escuchandoVozPresupuesto
+                      ? 'bg-red-600 text-white border-red-600 animate-pulse shadow-md'
+                      : modoFondoBlanco
+                        ? 'bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200'
+                        : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-500/30'
+                  }`}
+                  title="Dictar presupuesto por micrófono (es-PY)"
+                >
+                  {escuchandoVozPresupuesto ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  <span>{escuchandoVozPresupuesto ? 'Escuchando...' : 'Dictar'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCompletarPresupuestoConIA()}
+                  disabled={cargandoAiPresupuesto || !aiPresupuestoTexto.trim()}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {cargandoAiPresupuesto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  <span>{cargandoAiPresupuesto ? 'Procesando...' : 'Completar con IA'}</span>
+                </button>
+              </div>
+            </div>
+
+            {aiPresupuestoError && (
+              <div className="text-xs font-semibold text-red-500 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{aiPresupuestoError}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ================================================================= */}
         {/* ================================================================= */}
@@ -2217,10 +2526,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <div>
               <h2 className={`text-sm md:text-base font-bold uppercase tracking-wider flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
                 <FileText className="w-5 h-5 text-amber-500 print:hidden" />
-                <span>2. Ventas y Servicios Notariales (Honorarios y Gestiones)</span>
+                <span>{esAbogado ? '2. SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : '2. Ventas y Servicios Notariales (Honorarios y Gestiones)'}</span>
               </h2>
               <p className={`text-xs mt-0.5 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
-                Honorarios arancelarios y servicios propios gravados por IVA (10% / 5% / Exenta).
+                {esAbogado
+                  ? 'Honorarios profesionales, patrocinio procesal y gestiones gravadas por IVA (10% / 5% / Exenta).'
+                  : 'Honorarios arancelarios y servicios propios gravados por IVA (10% / 5% / Exenta).'}
               </p>
             </div>
 
@@ -2394,7 +2705,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
               <div className={`flex items-center justify-between border-b pb-2 mb-3 ${modoFondoBlanco ? 'border-amber-500/20' : 'border-slate-800'} print:border-slate-300`}>
                 <span className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5 print:text-black">
                   <Calculator className="w-4 h-4 print:hidden" />
-                  Liquidación Notarial
+                  {esAbogado ? 'LIQUIDACIÓN DE HONORARIOS Y GASTOS' : 'Liquidación Notarial'}
                 </span>
                 <span className={`text-[10px] font-mono ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-black font-bold`}>{encabezado.condicionVenta}</span>
               </div>
@@ -2797,10 +3108,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start gap-4">
                   <div>
                     <h2 className="text-xl font-serif font-black uppercase tracking-wide text-slate-900">
-                      {membrete.nombreNotario || 'Escribanía Notarial'}
+                      {membrete.nombreNotario || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')}
                     </h2>
                     <p className="text-xs text-slate-600 font-bold mt-0.5">
-                      {membrete.registroNotarial || 'Registro Notarial'} • {membrete.nombreEscribania || 'Escribanía Pública'}
+                      {membrete.registroNotarial || (esAbogado ? 'Matrícula Profesional' : 'Registro Notarial')} • {membrete.nombreEscribania || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Pública')}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       {membrete.direccion || 'Asunción, República del Paraguay'}
@@ -2844,8 +3155,12 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     <span className="text-slate-700">{encabezado.clienteTelefono || '-'}</span>
                   </div>
                   <div className="sm:col-span-2 pt-1.5 border-t border-slate-200">
-                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">Acto o Trámite Notarial</span>
-                    <span className="text-slate-900 font-semibold">{encabezado.conceptoGeneral || 'Servicios y Gestiones Notariales'}</span>
+                    <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">
+                      {esAbogado ? 'Causa o Concepto Jurídico' : 'Acto o Trámite Notarial'}
+                    </span>
+                    <span className="text-slate-900 font-semibold">
+                      {encabezado.conceptoGeneral || (esAbogado ? 'Servicios Jurídicos y Patrocinio Procesal' : 'Servicios y Gestiones Notariales')}
+                    </span>
                   </div>
                 </div>
 
@@ -2884,7 +3199,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 {/* TABLA 2: SERVICIOS Y HONORARIOS */}
                 <div className="mb-3">
                   <div style={{ backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }} className="px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-900 tracking-wide mb-1 border">
-                    <span>II. Servicios Notariales, Honorarios y Gestiones</span>
+                    <span>II. {esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios y Gestiones'}</span>
                     <span className="font-mono text-amber-800">Subtotal: Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
                   </div>
                   <table className="w-full text-xs border-collapse">
@@ -2964,9 +3279,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 </div>
                 <div>
                   <div className="border-t border-slate-800 pt-1.5 text-xs font-bold text-slate-800">
-                    {membrete.nombreNotario || 'Notario Público Titular'}
+                    {membrete.nombreNotario || (esAbogado ? 'Abogado / Estudio Jurídico' : 'Notario Público Titular')}
                   </div>
-                  <span className="text-[10px] text-slate-500 block">{membrete.registroNotarial || 'Escribanía Notarial'} • Sello</span>
+                  <span className="text-[10px] text-slate-500 block">{membrete.registroNotarial || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')} • Sello</span>
                 </div>
               </div>
             </div>
@@ -3153,13 +3468,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         const defaultMsg = [
           `Estimado/a ${clienteWa},`,
           '',
-          `Compartimos adjunto en PDF su ${tipoComp} Notarial${numComp ? ` Nº ${numComp}` : ''}:`,
+          `Compartimos adjunto en PDF su ${tipoComp} ${esAbogado ? 'Jurídico' : 'Notarial'}${numComp ? ` Nº ${numComp}` : ''}:`,
           '',
           `• Cliente: ${clienteWa}`,
           `• Concepto: ${conceptoWa}`,
           `• Total: ${totalGsWa}`,
           `• Validez: ${validezWa}`,
-          `• Escribanía: ${escribaniaWa}`,
+          `• ${esAbogado ? 'Estudio Jurídico' : 'Escribanía'}: ${escribaniaWa}`,
           '',
           'Quedamos atentos para confirmar e iniciar la gestión.',
         ].join('\n');
