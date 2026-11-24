@@ -40,11 +40,13 @@ import {
   ExpedientePdfAnalysisPayload,
   redactarEscritoJudicialConIA,
 } from '../services/gemini';
+import { auth } from '../services/auth';
 
 interface ExpedientesTabProps {
   expedientes: Expediente[];
   personas?: Persona[];
   userData?: any;
+  currentUser?: any;
   workspaceId?: string;
   esPlanFull?: boolean;
   isSoftBlocked?: boolean;
@@ -164,6 +166,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   expedientes,
   personas = [],
   userData,
+  currentUser,
   workspaceId = '',
   esPlanFull = false,
   isSoftBlocked = false,
@@ -193,6 +196,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [draftPlazos, setDraftPlazos] = useState<PlazoProcesal[]>([]);
   const [draftAnalisisIA, setDraftAnalisisIA] = useState<ExpedienteAnalisisIA | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   // Análisis PDF con IA (dentro del modal o directo sobre un expediente abierto)
   const [analyzingTargetId, setAnalyzingTargetId] = useState<string | null>(null); // 'modal' | expediente.id
@@ -312,8 +316,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   }, [expedientes, searchQuery, filterEstado, filterTipo]);
 
-  const openCreateModal = () => {
-    setErrorBanner(null);
+  const resetFormFields = () => {
     setEditingExpediente(null);
     setCaratula('');
     setNroExpediente('');
@@ -328,19 +331,26 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setDraftPlazos([]);
     setDraftAnalisisIA(null);
     setPendingAnalysisPreview(null);
+    setModalError(null);
+  };
+
+  const openCreateModal = () => {
+    setErrorBanner(null);
+    resetFormFields();
     setModalOpen(true);
   };
 
   const openEditModal = (exp: Expediente) => {
     setErrorBanner(null);
+    setModalError(null);
     setEditingExpediente(exp);
-    setCaratula(exp.caratula);
-    setNroExpediente(exp.nroExpediente);
+    setCaratula(exp.caratula || '');
+    setNroExpediente(exp.nroExpediente || '');
     setAnio(exp.anio || String(new Date().getFullYear()));
-    setJuzgado(exp.juzgado);
-    setTipoJuicio(exp.tipoJuicio);
-    setRolParte(exp.rolParte);
-    setEstado(exp.estado);
+    setJuzgado(exp.juzgado || '');
+    setTipoJuicio(exp.tipoJuicio || 'Ordinario');
+    setRolParte(exp.rolParte || 'Demandado');
+    setEstado(exp.estado || 'En trámite');
     setClienteNombre(exp.clienteNombre || '');
     setClienteId(exp.clienteId || '');
     setNotas(exp.notas || '');
@@ -352,6 +362,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   const handleAnalyzePdfFile = async (file: File, target: 'modal' | Expediente) => {
     setErrorBanner(null);
+    if (target === 'modal') setModalError(null);
     const targetId = target === 'modal' ? 'modal' : target.id;
     setAnalyzingTargetId(targetId);
     try {
@@ -366,7 +377,12 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         result,
       });
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo analizar el documento PDF.');
+      const errMsg = err?.message || 'No se pudo analizar el documento PDF.';
+      if (target === 'modal') {
+        setModalError(errMsg);
+      } else {
+        setErrorBanner(errMsg);
+      }
     } finally {
       setAnalyzingTargetId(null);
     }
@@ -473,47 +489,139 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     }
   };
 
+  const sanitizePlazosList = (list: PlazoProcesal[]): PlazoProcesal[] =>
+    (Array.isArray(list) ? list : [])
+      .filter((p) => p && typeof p === 'object')
+      .map((p, idx) => ({
+        id: String(p.id || `plazo-${Date.now()}-${idx}`),
+        titulo: String(p.titulo || 'Plazo procesal').trim(),
+        fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+        diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+        completado: Boolean(p.completado),
+        tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+      }));
+
+  const sanitizeAnalisisIA = (analisis: ExpedienteAnalisisIA | null): ExpedienteAnalisisIA | null => {
+    if (!analisis || typeof analisis !== 'object') return null;
+    return {
+      caratula: String(analisis.caratula || ''),
+      nroExpediente: String(analisis.nroExpediente || ''),
+      anio: String(analisis.anio || ''),
+      juzgado: String(analisis.juzgado || ''),
+      tipoJuicio: analisis.tipoJuicio || 'Otro',
+      rolParteSugerido: analisis.rolParteSugerido || 'Actor / Demandante',
+      resumenHechos: String(analisis.resumenHechos || ''),
+      fundamentoCPC: String(analisis.fundamentoCPC || ''),
+      plazoPrincipal: analisis.plazoPrincipal
+        ? {
+            titulo: String(analisis.plazoPrincipal.titulo || ''),
+            diasPlazo: Number.isFinite(Number(analisis.plazoPrincipal.diasPlazo))
+              ? Number(analisis.plazoPrincipal.diasPlazo)
+              : 0,
+            fechaVencimiento: String(analisis.plazoPrincipal.fechaVencimiento || ''),
+            tipo: analisis.plazoPrincipal.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+          }
+        : null,
+      impulsosSugeridos: Array.isArray(analisis.impulsosSugeridos)
+        ? analisis.impulsosSugeridos
+            .filter((imp) => imp && typeof imp === 'object')
+            .map((imp) => ({
+              titulo: String(imp.titulo || ''),
+              diasPlazo: Number.isFinite(Number(imp.diasPlazo)) ? Number(imp.diasPlazo) : 0,
+              fechaVencimiento: String(imp.fechaVencimiento || ''),
+              tipo: imp.tipo === 'plazo_legal' ? 'plazo_legal' : 'impulso',
+            }))
+        : [],
+      analizadoAt: String(analisis.analizadoAt || new Date().toISOString()),
+      archivoNombre: String(analisis.archivoNombre || ''),
+    };
+  };
+
   const handleSubmitExpediente = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+
     if (isSoftBlocked) {
-      setErrorBanner('Tu cuenta está en modo solo lectura. Renueva tu plan para crear o editar expedientes.');
+      const msg = 'Tu cuenta está en modo solo lectura. Renueva tu plan para crear o editar expedientes.';
+      setModalError(msg);
+      setErrorBanner(msg);
       return;
     }
     if (!caratula.trim()) {
-      setErrorBanner('Ingresa la carátula del expediente.');
+      const msg = 'Ingresa la carátula del expediente.';
+      setModalError(msg);
+      return;
+    }
+
+    const effectiveUid = String(
+      workspaceId || currentUser?.uid || userData?.uid || auth?.currentUser?.uid || ''
+    ).trim();
+    if (!effectiveUid) {
+      setModalError('No se detectó una sesión activa para guardar el expediente. Recarga o inicia sesión nuevamente.');
       return;
     }
 
     setIsSaving(true);
+    setModalError(null);
     setErrorBanner(null);
+
+    let timeoutId: number | null = null;
     try {
       const nowIso = new Date().toISOString();
+      const wasEditing = Boolean(editingExpediente);
       const expToSave: Expediente = {
         id: editingExpediente?.id || `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        userId: editingExpediente?.userId || workspaceId,
-        ownedByWorkspace: editingExpediente?.ownedByWorkspace || workspaceId,
+        userId: String(editingExpediente?.userId || effectiveUid),
+        ownedByWorkspace: String(editingExpediente?.ownedByWorkspace || effectiveUid),
         caratula: caratula.trim(),
-        nroExpediente: nroExpediente.trim(),
-        anio: anio.trim() || String(new Date().getFullYear()),
-        juzgado: juzgado.trim(),
-        tipoJuicio,
-        rolParte,
-        estado,
-        plazos: draftPlazos,
-        ultimoAnalisisIA: draftAnalisisIA,
-        notas: notas.trim(),
-        clienteNombre: clienteNombre.trim(),
-        clienteId: clienteId.trim(),
+        nroExpediente: (nroExpediente || '').trim(),
+        anio: (anio || '').trim() || String(new Date().getFullYear()),
+        juzgado: (juzgado || '').trim(),
+        tipoJuicio: tipoJuicio || 'Ordinario',
+        rolParte: rolParte || 'Demandado',
+        estado: estado || 'En trámite',
+        plazos: sanitizePlazosList(draftPlazos),
+        ultimoAnalisisIA: sanitizeAnalisisIA(draftAnalisisIA),
+        notas: (notas || '').trim(),
+        clienteNombre: (clienteNombre || '').trim(),
+        clienteId: (clienteId || '').trim(),
         createdAt: editingExpediente?.createdAt || nowIso,
         updatedAt: nowIso,
+        creator_id: String(editingExpediente?.creator_id || auth?.currentUser?.uid || effectiveUid),
+        creator_name: String(
+          editingExpediente?.creator_name ||
+            auth?.currentUser?.displayName ||
+            userData?.nombre ||
+            auth?.currentUser?.email?.split('@')[0] ||
+            'Usuario'
+        ),
       };
-      await onSaveExpediente(expToSave);
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error('Tiempo de espera agotado al conectar con Firestore (8s). Verifica tu conexión e intenta nuevamente.'));
+        }, 8000);
+      });
+
+      await Promise.race([onSaveExpediente(expToSave), timeoutPromise]);
+
       setModalOpen(false);
+      resetFormFields();
       setSelectedExpId(expToSave.id);
-      showToastSuccess(editingExpediente ? 'Expediente actualizado correctamente.' : 'Expediente registrado correctamente.');
+      showToastSuccess(wasEditing ? 'Expediente actualizado correctamente.' : 'Expediente registrado correctamente.');
     } catch (err: any) {
-      setErrorBanner(err?.message || 'Ocurrió un error al guardar el expediente.');
+      console.error('Error guardando expediente en Firestore:', err);
+      const code = String(err?.code || '').toLowerCase();
+      const rawMessage = String(err?.message || '');
+      const friendlyMsg =
+        code.includes('permission') || rawMessage.toLowerCase().includes('permission')
+          ? 'Permiso denegado por Firestore al guardar el expediente. Verifica tu sesión y permisos.'
+          : rawMessage || 'Ocurrió un error al guardar el expediente.';
+      setModalError(friendlyMsg);
     } finally {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
       setIsSaving(false);
     }
   };
@@ -1783,10 +1891,29 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                 </div>
               )}
 
+              {modalError && (
+                <div className="rounded-xl border border-red-300 dark:border-red-700/70 bg-red-50 dark:bg-red-950/60 px-3.5 py-2.5 flex items-start justify-between gap-2.5 text-red-700 dark:text-red-200 text-xs font-semibold">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <span>{modalError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalError(null)}
+                    className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/50 cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => {
+                    setModalError(null);
+                    setModalOpen(false);
+                  }}
                   className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wider cursor-pointer"
                 >
                   Cancelar

@@ -2507,11 +2507,13 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 expedientes={expedientes}
                 personas={personas}
                 userData={userProfile || userData}
-                workspaceId={currentWorkspaceId || workspaceId}
+                currentUser={currentUser}
+                workspaceId={currentWorkspaceId || workspaceId || currentUser?.uid || auth?.currentUser?.uid || ''}
                 esPlanFull={esPlanFull}
                 isSoftBlocked={isSoftBlocked}
                 onSaveExpediente={async (exp) => {
-                  const targetWs = currentWorkspaceId || workspaceId;
+                  const targetWs =
+                    currentWorkspaceId || workspaceId || currentUser?.uid || auth?.currentUser?.uid || '';
                   if (!targetWs) {
                     throw new Error('Workspace no identificado.');
                   }
@@ -3025,7 +3027,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         {/* Dynamic bottom bar info */}
         {role !== 'admin' && activeTab !== 'monitor' && (
         <footer className={`${isDarkLayout ? 'bg-[#16171E] border-white/10 text-slate-400' : 'bg-white/90 border-slate-200/80 text-slate-500'} border-t p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
-          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — PROTOCOLO NOTARIAL
+          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — {esAbogado ? 'GESTIÓN JURÍDICA Y PROCESAL' : 'PROTOCOLO NOTARIAL'}
         </footer>
       )}
       </main>

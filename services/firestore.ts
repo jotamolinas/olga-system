@@ -7,7 +7,15 @@ const sanitizePlainObject = (input: Record<string, any>): Record<string, any> =>
   const out: Record<string, any> = {};
   for (const [key, val] of Object.entries(input)) {
     if (val === undefined) continue;
-    if (val !== null && typeof val === 'object' && !Array.isArray(val) && Object.getPrototypeOf(val) === Object.prototype) {
+    if (Array.isArray(val)) {
+      out[key] = val
+        .filter((item) => item !== undefined)
+        .map((item) =>
+          item !== null && typeof item === 'object' && Object.getPrototypeOf(item) === Object.prototype
+            ? sanitizePlainObject(item)
+            : item
+        );
+    } else if (val !== null && typeof val === 'object' && Object.getPrototypeOf(val) === Object.prototype) {
       out[key] = sanitizePlainObject(val);
     } else {
       out[key] = val;
@@ -360,14 +368,17 @@ export const normalizeExpediente = (raw: any, docId: string): Expediente => {
     rolParte,
     estado,
     plazos,
-    ultimoAnalisisIA: src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object' ? src.ultimoAnalisisIA : null,
+    ultimoAnalisisIA:
+      src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object'
+        ? (sanitizePlainObject(src.ultimoAnalisisIA) as Expediente['ultimoAnalisisIA'])
+        : null,
     notas: src.notas ? String(src.notas) : '',
     clienteNombre: src.clienteNombre ? String(src.clienteNombre) : '',
     clienteId: src.clienteId ? String(src.clienteId) : '',
     createdAt: String(src.createdAt || new Date().toISOString()),
     updatedAt: String(src.updatedAt || new Date().toISOString()),
-    creator_id: src.creator_id ? String(src.creator_id) : undefined,
-    creator_name: src.creator_name ? String(src.creator_name) : undefined,
+    creator_id: src.creator_id ? String(src.creator_id) : '',
+    creator_name: src.creator_name ? String(src.creator_name) : '',
   };
 };
 
