@@ -8,7 +8,7 @@ import { AdminLoginRoute } from './components/AdminLoginRoute';
 import { Persona, GlobalConfig, Pagare } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
 import { User, signOut, onAuthStateChanged } from 'firebase/auth';
-import { initAuth, logout, getAccessToken } from './services/auth';
+import { initAuth, logout, getAccessToken, ensureUserDocumentInFirestore } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
   fetchPagaresFromFirestore, syncPagareToFirestore, updatePagareInFirestore, anularPagareFromFirestore,
@@ -1061,32 +1061,51 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             const userRef = doc(db, 'users', user.uid);
             const userSnap = await getDoc(userRef);
             if (!userSnap.exists()) {
-              // SOLO si el usuario es NUEVO, inyecta la metadata inicial:
-              const fallbackProfile = { 
-                uid: user.uid,
-                email: user.email || '', 
-                telefono: user.phoneNumber || '',
+              // SOLO si el usuario es NUEVO, crear y garantizar el documento en Firestore con 5 días de prueba:
+              const createdProfile = await ensureUserDocumentInFirestore(user, {
+                provider: user.phoneNumber ? 'telefono' : 'email',
+                email: user.email || '',
                 phoneNumber: user.phoneNumber || '',
-                identificador: user.email || user.phoneNumber || '',
-                proveedorAcceso: user.phoneNumber ? 'telefono' : 'email',
-                fecha_creacion: serverTimestamp(),
-                consultasUsadas: 0,
-                escritosUsados: 0,
-                usoIA: 0
-              };
-              // await setDoc(userRef, fallbackProfile, { merge: true }).catch(console.error);
-              setUserProfile(fallbackProfile);
+                displayName: user.displayName || '',
+                sessionId: localSessionId,
+              });
+              if (user) {
+                (user as any).role = createdProfile?.role || createdProfile?.rol || 'titular';
+                (user as any).rol = (user as any).role;
+                (user as any).nombre =
+                  createdProfile?.nombre ||
+                  user.displayName ||
+                  user.email?.split('@')[0] ||
+                  user.phoneNumber ||
+                  'Mi Escribanía';
+              }
+              setUserProfile(createdProfile);
               setIsCheckingProfile(false);
               return;
             } else {
               // Si el usuario ya existe en Firestore pero aún no estaba en caché:
-              const existingData = userSnap.data();
+              const existingData = userSnap.data() || {};
+              const repairedData = await ensureUserDocumentInFirestore(user, {
+                provider: user.phoneNumber ? 'telefono' : 'email',
+                email: user.email || '',
+                phoneNumber: user.phoneNumber || '',
+                displayName: user.displayName || '',
+              });
+              const mergedData = { ...existingData, ...repairedData };
               if (user) {
-                (user as any).role = existingData?.role || existingData?.rol || 'usuario';
+                (user as any).role = mergedData?.role || mergedData?.rol || 'usuario';
                 (user as any).rol = (user as any).role;
-                (user as any).nombre = existingData?.nombre || existingData?.razonSocial || existingData?.nombreInstitucion || existingData?.nombreCompleto || user.displayName || user.email?.split('@')[0] || 'Usuario';
+                (user as any).nombre =
+                  mergedData?.nombre ||
+                  mergedData?.razonSocial ||
+                  mergedData?.nombreInstitucion ||
+                  mergedData?.nombreCompleto ||
+                  user.displayName ||
+                  user.email?.split('@')[0] ||
+                  user.phoneNumber ||
+                  'Usuario';
               }
-              setUserProfile(existingData);
+              setUserProfile(mergedData);
               setIsCheckingProfile(false);
               return;
             }
@@ -1120,21 +1139,66 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             }
           }
 
-          // Autorreparación de cuentas existentes incompletas
+          // Autorreparación de cuentas existentes o recién autenticadas incompletas
           const updates: any = {};
+          const fiveDaysDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+          const fiveDaysTs = Timestamp.fromDate(fiveDaysDate);
+          const fiveDaysIso = fiveDaysDate.toISOString();
+
+          if (!data.uid) {
+            updates.uid = user.uid;
+          }
+          if (user.email && !data.email) {
+            updates.email = user.email.toLowerCase();
+          }
           if (user.phoneNumber && !data.telefono) {
             updates.telefono = user.phoneNumber;
             updates.phoneNumber = user.phoneNumber;
           }
-          if (!data.fecha_creacion) {
-            updates.fecha_creacion = user.metadata?.creationTime ? Timestamp.fromDate(new Date(user.metadata.creationTime)) : serverTimestamp();
+          if (!data.nombre) {
+            updates.nombre =
+              user.displayName ||
+              (user.email ? user.email.split('@')[0] : '') ||
+              user.phoneNumber ||
+              'Mi Escribanía';
           }
-          if (!data.fecha_expiracion && !data.fecha_vencimiento_plan) {
-            updates.fecha_expiracion = Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000));
-            // Se eliminan las asignaciones forzosas de planActual para no degradar cuentas
+          if (!data.escribania) {
+            updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
+          }
+          if (!data.fecha_creacion) {
+            updates.fecha_creacion = user.metadata?.creationTime
+              ? Timestamp.fromDate(new Date(user.metadata.creationTime))
+              : serverTimestamp();
+          }
+          if (!data.creadoEn) {
+            updates.creadoEn = serverTimestamp();
+          }
+          if (!data.fechaRegistro) {
+            updates.fechaRegistro = user.metadata?.creationTime
+              ? new Date(user.metadata.creationTime).toISOString()
+              : new Date().toISOString();
+          }
+          const existingExpAny =
+            data.fecha_expiracion ||
+            data.trialEndsAt ||
+            data.fechaVencimiento ||
+            data.vencimientoPlan ||
+            data.fecha_vencimiento_plan;
+          if (!existingExpAny) {
+            updates.fecha_expiracion = fiveDaysTs;
+            updates.trialEndsAt = fiveDaysTs;
+            updates.fechaVencimiento = fiveDaysIso;
+            updates.vencimientoPlan = fiveDaysIso;
+            if (!data.planActual) updates.planActual = data.plan || 'trial';
+            if (!data.plan) updates.plan = data.planActual || 'trial';
+            if (!data.estadoSuscripcion) updates.estadoSuscripcion = 'trial';
+            if (!data.estado_cuenta) updates.estado_cuenta = 'activa';
+          } else {
+            if (!data.fecha_expiracion) updates.fecha_expiracion = existingExpAny;
+            if (!data.trialEndsAt) updates.trialEndsAt = existingExpAny;
           }
           if (Object.keys(updates).length > 0) {
-            updateDoc(doc(db, 'users', user.uid), updates).catch(console.error);
+            setDoc(doc(db, 'users', user.uid), updates, { merge: true }).catch(console.error);
             Object.assign(data, updates);
           }
 
@@ -1163,9 +1227,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           const isApprovedAccount = String(data.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(data.estadoPago || '').toUpperCase() === 'APROBADO';
           const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData || isApprovedAccount;
 
-          if (!isPrivilegedUser && planStr === 'trial') {
+          if (!isPrivilegedUser && (planStr === 'trial' || planStr === '' || planStr === 'prueba')) {
             let expDate: Date | null = null;
-            const rawExp = data.fecha_expiracion;
+            const rawExp =
+              data.fecha_expiracion ||
+              data.trialEndsAt ||
+              data.fechaVencimiento ||
+              data.vencimientoPlan;
             if (rawExp) {
               if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
               else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
@@ -1175,7 +1243,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
             // Fallback de Seguridad: Si un usuario antiguo en trial no tiene fecha_expiracion, calcular fecha_creacion + 5 días
             if (!expDate || isNaN(expDate.getTime())) {
-              const rawCreation = data.fecha_creacion || data.fechaCreacion || data.created_at || data.createdAt;
+              const rawCreation =
+                data.fecha_creacion ||
+                data.fechaCreacion ||
+                data.creadoEn ||
+                data.fechaRegistro ||
+                data.created_at ||
+                data.createdAt;
               if (rawCreation) {
                 let creationDate: Date | null = null;
                 if (typeof rawCreation.toDate === 'function') creationDate = rawCreation.toDate();
@@ -2043,13 +2117,29 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               <h1 className={`text-sm md:text-lg font-serif font-black ${isDarkLayout ? "text-white" : "text-slate-900"} tracking-tight leading-none truncate`}>
                 {isOperador 
                   ? (workspaceName || "Escribanía Titular")
-                  : (customBranding.nombreInstitucion || userData?.razonSocial || workspaceName || config.escribania.nombre)
+                  : (
+                      customBranding.nombreInstitucion?.trim() ||
+                      userData?.razonSocial?.trim() ||
+                      workspaceName?.trim() ||
+                      config.escribania.nombre?.trim() ||
+                      userData?.nombre?.trim() ||
+                      currentUser?.displayName?.trim() ||
+                      currentUser?.phoneNumber?.trim() ||
+                      'Mi Escribanía'
+                    )
                 }
               </h1>
               <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
                 {isOperador 
                   ? `Operador Notarial • ${workspaceName || 'Escribanía Titular'}`
-                  : `${customBranding.registroNotarial || userData?.tipoPerfil || 'Escribanía'} Titular ${userData?.matricula || config.escribania.nro_registro}`
+                  : (() => {
+                      const regText = String(customBranding.registroNotarial || '').trim();
+                      const matText = String(userData?.matricula || config.escribania.nro_registro || '').trim();
+                      const tipoLabel = String(userData?.tipoPerfil || 'Escribanía').trim();
+                      if (regText) return `${regText}${matText ? ` • ${matText}` : ''}`;
+                      if (matText) return `${tipoLabel} Titular • Reg. ${matText}`;
+                      return `${tipoLabel} • Panel Notarial`;
+                    })()
                 }
               </p>
             </div>

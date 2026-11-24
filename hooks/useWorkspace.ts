@@ -13,7 +13,15 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
 
   const workspaceId = (isOperador && tenantId) ? tenantId : (currentUser?.uid || userProfile?.uid);
 
-  const userDisplayName = currentUser?.razonSocial || userProfile?.razonSocial || currentUser?.nombreInstitucion || userProfile?.nombreInstitucion || currentUser?.nombre;
+  const userDisplayName = String(
+    currentUser?.razonSocial ||
+    userProfile?.razonSocial ||
+    currentUser?.nombreInstitucion ||
+    userProfile?.nombreInstitucion ||
+    userProfile?.escribania ||
+    currentUser?.nombre ||
+    ''
+  ).trim();
 
   useEffect(() => {
     let isMounted = true; 
@@ -27,7 +35,14 @@ export const useWorkspace = (currentUser: any, userProfile?: any) => {
         if (docSnap.exists() && isMounted) {
           const data = docSnap.data();
           setWorkspaceData(data);
-          setWorkspaceName(data.razonSocial || data.nombreInstitucion || data.nombre || "Escribanía Titular");
+          const resolvedName = String(
+            data.razonSocial ||
+            data.nombreInstitucion ||
+            data.escribania ||
+            data.nombre ||
+            ''
+          ).trim();
+          setWorkspaceName(resolvedName || "Mi Escribanía");
         }
       } catch (error) {
         console.error("Error UI:", error);

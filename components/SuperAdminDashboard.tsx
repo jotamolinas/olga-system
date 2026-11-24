@@ -701,6 +701,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
     const candidates = [
       u.createdAt,
       u.created_at,
+      u.creadoEn,
       u.fechaCreacion,
       u.fecha_creacion,
       u.fechaRegistro,
@@ -811,10 +812,25 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
             let estadoSuscripcion: 'activo' | 'prueba' | 'pendiente' | 'vencido' = 'prueba';
             let diasRestantes = 5;
 
+            const explicitTrialExpMs =
+              safeToMillis(data.fecha_expiracion) ||
+              safeToMillis(data.trialEndsAt) ||
+              safeToMillis(data.fechaVencimiento) ||
+              safeToMillis(data.vencimientoPlan);
+
             if (isPending) {
               estadoSuscripcion = 'pendiente';
             } else if (isPaidPlan) {
               estadoSuscripcion = 'activo';
+            } else if (explicitTrialExpMs > 0) {
+              const diffMs = explicitTrialExpMs - Date.now();
+              if (diffMs <= 0) {
+                estadoSuscripcion = 'vencido';
+                diasRestantes = 0;
+              } else {
+                estadoSuscripcion = 'prueba';
+                diasRestantes = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+              }
             } else {
               if (timestamp > 0) {
                 const diffMs = Date.now() - timestamp;

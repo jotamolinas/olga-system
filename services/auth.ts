@@ -65,12 +65,195 @@ export const signInWithPhone = async (phoneNumber: string, appVerifier: any) => 
   }
 };
 
+const TRIAL_DURATION_MS = 5 * 24 * 60 * 60 * 1000;
+
+export interface EnsureUserDocOptions {
+  provider?: 'email' | 'google' | 'telefono' | 'anonymous';
+  email?: string;
+  phoneNumber?: string;
+  displayName?: string;
+  sessionId?: string;
+}
+
+const hasValidDateValue = (raw: any): boolean => {
+  if (!raw) return false;
+  try {
+    if (typeof raw?.toDate === 'function') {
+      return !isNaN(raw.toDate().getTime());
+    }
+    if (typeof raw?.toMillis === 'function') {
+      return !isNaN(new Date(raw.toMillis()).getTime());
+    }
+    if (typeof raw?.seconds === 'number') {
+      return Number.isFinite(raw.seconds);
+    }
+    const d = new Date(raw);
+    return !isNaN(d.getTime());
+  } catch {
+    return false;
+  }
+};
+
+export const ensureUserDocumentInFirestore = async (
+  user: User,
+  options: EnsureUserDocOptions = {}
+): Promise<Record<string, any>> => {
+  const userRef = doc(db, 'users', user.uid);
+  let existing: Record<string, any> = {};
+
+  try {
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      existing = snap.data() || {};
+    }
+  } catch (err) {
+    console.warn('No se pudo leer users/{uid} previo, intentando merge seguro:', err);
+  }
+
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const trialEndDate = new Date(nowMs + TRIAL_DURATION_MS);
+  const trialEndTs = Timestamp.fromDate(trialEndDate);
+  const trialEndIso = trialEndDate.toISOString();
+
+  const cleanEmail = String(existing.email || user.email || options.email || '').trim().toLowerCase();
+  const cleanPhone = String(
+    existing.telefono ||
+    existing.phoneNumber ||
+    user.phoneNumber ||
+    options.phoneNumber ||
+    ''
+  ).trim();
+  const cleanNombre = String(
+    existing.nombre ||
+    user.displayName ||
+    options.displayName ||
+    (cleanEmail ? cleanEmail.split('@')[0] : '') ||
+    cleanPhone ||
+    'Mi Escribanía'
+  ).trim();
+  const cleanEscribania = String(
+    existing.escribania ||
+    existing.razonSocial ||
+    existing.nombreInstitucion ||
+    'Mi Escribanía'
+  ).trim();
+
+  const inferredProvider =
+    options.provider ||
+    (cleanPhone && !cleanEmail ? 'telefono' : cleanEmail ? 'email' : 'email');
+
+  const payload: Record<string, any> = {
+    uid: user.uid,
+    identificador: existing.identificador || cleanEmail || cleanPhone || user.uid,
+    proveedorAcceso: existing.proveedorAcceso || inferredProvider,
+    role: existing.role || existing.rol || 'titular',
+    rol: existing.rol || existing.role || 'titular',
+    consultasUsadas: typeof existing.consultasUsadas === 'number' ? existing.consultasUsadas : 0,
+    escritosUsados: typeof existing.escritosUsados === 'number' ? existing.escritosUsados : 0,
+    usoIA: typeof existing.usoIA === 'number' ? existing.usoIA : 0,
+  };
+
+  if (cleanEmail) {
+    payload.email = cleanEmail;
+  } else if (existing.email === undefined) {
+    payload.email = '';
+  }
+
+  if (cleanPhone) {
+    payload.telefono = cleanPhone;
+    payload.phoneNumber = cleanPhone;
+  } else {
+    if (existing.telefono === undefined) payload.telefono = '';
+    if (existing.phoneNumber === undefined) payload.phoneNumber = '';
+  }
+
+  if (!existing.nombre) {
+    payload.nombre = cleanNombre;
+  }
+  if (!existing.escribania) {
+    payload.escribania = cleanEscribania;
+  }
+
+  if (!existing.fecha_creacion) {
+    payload.fecha_creacion = user.metadata?.creationTime
+      ? Timestamp.fromDate(new Date(user.metadata.creationTime))
+      : serverTimestamp();
+  }
+  if (!existing.creadoEn) {
+    payload.creadoEn = serverTimestamp();
+  }
+  if (!existing.fechaRegistro) {
+    payload.fechaRegistro = user.metadata?.creationTime
+      ? new Date(user.metadata.creationTime).toISOString()
+      : nowIso;
+  }
+
+  const existingExpiration =
+    existing.fecha_expiracion ||
+    existing.trialEndsAt ||
+    existing.fechaVencimiento ||
+    existing.vencimientoPlan ||
+    existing.fecha_vencimiento_plan;
+
+  const hasAnyExpiration = hasValidDateValue(existingExpiration);
+
+  if (!hasAnyExpiration) {
+    payload.fecha_expiracion = trialEndTs;
+    payload.trialEndsAt = trialEndTs;
+    payload.fechaVencimiento = trialEndIso;
+    payload.vencimientoPlan = trialEndIso;
+    if (!existing.planActual) payload.planActual = 'trial';
+    if (!existing.plan) payload.plan = 'trial';
+    if (!existing.estadoSuscripcion) payload.estadoSuscripcion = 'trial';
+    if (!existing.estado_cuenta) payload.estado_cuenta = 'activa';
+  } else {
+    if (!existing.fecha_expiracion && existingExpiration) {
+      payload.fecha_expiracion = existingExpiration;
+    }
+    if (!existing.trialEndsAt && existingExpiration) {
+      payload.trialEndsAt = existingExpiration;
+    }
+    if (!existing.fechaVencimiento && existingExpiration) {
+      payload.fechaVencimiento = existingExpiration;
+    }
+    if (!existing.vencimientoPlan && existingExpiration) {
+      payload.vencimientoPlan = existingExpiration;
+    }
+    if (!existing.planActual) payload.planActual = existing.plan || 'trial';
+    if (!existing.estadoSuscripcion) {
+      const planLow = String(existing.planActual || existing.plan || 'trial').toLowerCase();
+      const pagoUp = String(existing.estadoPago || existing.estadoPlataforma || '').toUpperCase();
+      payload.estadoSuscripcion =
+        pagoUp === 'APROBADO' || (planLow !== 'trial' && planLow !== 'sin plan' && planLow !== 'ninguno' && planLow !== '')
+          ? 'activo'
+          : 'trial';
+    }
+    if (!existing.estado_cuenta) payload.estado_cuenta = 'activa';
+  }
+
+  if (options.sessionId) {
+    payload.activeSessionId = options.sessionId;
+  }
+
+  await setDoc(userRef, payload, { merge: true });
+  return { ...existing, ...payload };
+};
+
 export const confirmPhoneCode = async (code: string): Promise<{ user: User } | null> => {
   try {
     const confirmationResult = (window as any).confirmationResult;
     if (!confirmationResult) throw new Error('No hay código pendiente de confirmación');
     
     const result = await confirmationResult.confirm(code);
+    if (result.user) {
+      const sessionId = await registerNewSession(result.user.uid);
+      await ensureUserDocumentInFirestore(result.user, {
+        provider: 'telefono',
+        phoneNumber: result.user.phoneNumber || '',
+        sessionId,
+      });
+    }
     return { user: result.user };
   } catch (error) {
     console.error('Error confirmando código SMS:', error);
@@ -162,7 +345,12 @@ export const emailSignIn = async (email: string, password: string): Promise<{ us
     }
 
     if (result.user) {
-      await registerNewSession(result.user.uid);
+      const sessionId = await registerNewSession(result.user.uid);
+      await ensureUserDocumentInFirestore(result.user, {
+        provider: 'email',
+        email: result.user.email || cleanEmail,
+        sessionId,
+      });
     }
     return { user: result.user };
   } catch (error) {
@@ -180,31 +368,11 @@ export const emailSignUp = async (email: string, password: string): Promise<{ us
     const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     if (result.user) {
       const sessionId = await registerNewSession(result.user.uid);
-      const userRef = doc(db, 'users', result.user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        // SOLO si el usuario es NUEVO, inyecta la metadata inicial:
-        await setDoc(userRef, {
-          uid: result.user.uid,
-          email: result.user.email || cleanEmail,
-          fecha_creacion: serverTimestamp(),
-          fecha_expiracion: Timestamp.fromDate(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)),
-          planActual: 'trial',
-          role: 'titular',
-          rol: 'titular',
-          estado_cuenta: 'activa',
-          consultasUsadas: 0,
-          escritosUsados: 0,
-          usoIA: 0,
-          activeSessionId: sessionId
-        });
-      } else {
-        // Si el usuario ya existe, SOLO actualiza datos de sesión, NO toques roles ni planes.
-        await setDoc(userRef, {
-          activeSessionId: sessionId
-        }, { merge: true });
-      }
+      await ensureUserDocumentInFirestore(result.user, {
+        provider: 'email',
+        email: result.user.email || cleanEmail,
+        sessionId,
+      });
     }
     return { user: result.user };
   } catch (error) {

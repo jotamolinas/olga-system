@@ -794,7 +794,23 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             Tablero Principal
           </h2>
           <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-md mx-auto md:mx-0">
-            Resumen de actividad y volumen notariado de {config.escribania.nombre}.
+            {(() => {
+              const rawName = String(
+                config?.escribania?.nombre ||
+                workspaceName ||
+                userData?.razonSocial ||
+                userData?.nombreInstitucion ||
+                ''
+              ).trim();
+              const hasRealName =
+                rawName &&
+                rawName !== 'Mi Escribanía' &&
+                rawName !== 'Escribanía Titular' &&
+                rawName !== '.';
+              return hasRealName
+                ? `Resumen de actividad y volumen notarial de ${rawName}.`
+                : 'Resumen de actividad y volumen notarial';
+            })()}
           </p>
         </div>
       </div>

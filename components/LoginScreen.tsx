@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { auth, db, emailSignIn, emailSignUp, resetPassword, logout } from '../services/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db, emailSignIn, emailSignUp, resetPassword, logout, ensureUserDocumentInFirestore, registerNewSession } from '../services/auth';
 import { Sparkles, ArrowRight, ShieldCheck, Mail, Key, AlertTriangle, Phone, RotateCcw, CheckCircle2, X } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -73,8 +73,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     const now = new Date();
     let expDate: Date | null = null;
 
-    // 1. Obtener fecha_expiracion si existe
-    const rawExp = userData?.fecha_expiracion;
+    // 1. Obtener fecha de expiración desde cualquiera de los campos válidos
+    const rawExp =
+      userData?.fecha_expiracion ||
+      userData?.trialEndsAt ||
+      userData?.fechaVencimiento ||
+      userData?.vencimientoPlan;
     if (rawExp) {
       if (typeof rawExp.toDate === 'function') {
         expDate = rawExp.toDate();
@@ -88,9 +92,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     }
 
     // 2. Fallback de Seguridad:
-    // Si un usuario antiguo en trial no tiene el campo fecha_expiracion, calcúlalo dinámicamente basándote en su fecha_creacion + 5 días para evaluarlo en el momento.
+    // Si un usuario antiguo en trial no tiene fecha de expiración, calcúlalo dinámicamente basándote en su fecha de creación + 5 días.
     if (!expDate || isNaN(expDate.getTime())) {
-      const rawCreation = userData?.fecha_creacion || userData?.fechaCreacion || userData?.created_at || userData?.createdAt;
+      const rawCreation =
+        userData?.fecha_creacion ||
+        userData?.fechaCreacion ||
+        userData?.creadoEn ||
+        userData?.fechaRegistro ||
+        userData?.created_at ||
+        userData?.createdAt;
       if (rawCreation) {
         let creationDate: Date | null = null;
         if (typeof rawCreation.toDate === 'function') {
@@ -109,7 +119,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
     }
 
     const yaExpiradoPorFecha = expDate ? now.getTime() > expDate.getTime() : false;
-    const yaExpiradoPorEstado = userData?.estado_cuenta === 'expirada';
+    const yaExpiradoPorEstado = !expDate && userData?.estado_cuenta === 'expirada';
 
     if (yaExpiradoPorFecha || yaExpiradoPorEstado) {
       console.warn(`[Trial Auth] Usuario ${userId} con período trial de 5 días expirado.`);
@@ -167,13 +177,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       }
 
       if (authUser) {
-        const userRef = doc(db, 'users', authUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
-          if (isExpired) {
-            return; // DETÉN la redirección
-          }
+        const ensuredUserData = await ensureUserDocumentInFirestore(authUser, {
+          provider: 'email',
+          email: authUser.email || cleanEmail,
+        });
+        const isExpired = await validateTrialExpiration(ensuredUserData, authUser.uid);
+        if (isExpired) {
+          return; // DETÉN la redirección
         }
       }
 
@@ -316,13 +326,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
       const res = await confirmationResult.confirm(cleanCode);
       const authUser = res?.user || auth.currentUser;
       if (authUser) {
-        const userRef = doc(db, 'users', authUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const isExpired = await validateTrialExpiration(userSnap.data(), authUser.uid);
-          if (isExpired) {
-            return; // DETÉN la redirección
-          }
+        const sessionId = await registerNewSession(authUser.uid);
+        const ensuredUserData = await ensureUserDocumentInFirestore(authUser, {
+          provider: 'telefono',
+          phoneNumber: authUser.phoneNumber || phoneNumber.replace(/[\s-]/g, '').trim(),
+          sessionId,
+        });
+        const isExpired = await validateTrialExpiration(ensuredUserData, authUser.uid);
+        if (isExpired) {
+          return; // DETÉN la redirección
         }
       }
       onLogin();
@@ -367,35 +379,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, sessionRevoke
           sessionStorage.setItem('olga_auth_flow', 'google');
         }
 
-        // Consultar o registrar usuario en Firestore para identificar rol
-        const userRef = doc(db, 'users', result.user.uid);
-        const userSnap = await getDoc(userRef);
-
-        let userRole = 'titular';
-        let userData: any = null;
-        if (!userSnap.exists()) {
-          const now = new Date();
-          const fechaExpiracion = Timestamp.fromDate(new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000));
-          const newUserDoc = {
-            uid: result.user.uid,
-            email: result.user.email || '',
-            nombre: result.user.displayName || '',
-            fecha_creacion: serverTimestamp(),
-            fecha_expiracion: fechaExpiracion,
-            planActual: 'trial',
-            role: 'titular',
-            rol: 'titular',
-            estado_cuenta: 'activa',
-            consultasUsadas: 0,
-            escritosUsados: 0,
-            usoIA: 0
-          };
-          await setDoc(userRef, newUserDoc);
-          userData = newUserDoc;
-        } else {
-          userData = userSnap.data();
-          userRole = userData?.role || userData?.rol || 'titular';
-        }
+        // Garantizar creación/sincronización completa de users/{uid} en Firestore
+        const sessionId = await registerNewSession(result.user.uid);
+        const userData = await ensureUserDocumentInFirestore(result.user, {
+          provider: 'google',
+          email: result.user.email || '',
+          displayName: result.user.displayName || '',
+          sessionId,
+        });
+        const userRole = userData?.role || userData?.rol || 'titular';
 
         const user = result.user;
 

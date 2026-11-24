@@ -52,19 +52,51 @@ export const useTrialStatus = (user?: User | null, externalProfile?: any) => {
 
       setTienePlanPago(esPlanDePago);
 
-      // Si es plan de pago, rige fecha_vencimiento_plan (con respaldo en fecha_expiracion si no existe).
-      // Si es trial, rige estrictamente fecha_expiracion.
-      const limiteDate = esPlanDePago
-        ? (parseAnyDate(fetchedUserData?.fecha_vencimiento_plan) || parseAnyDate(fetchedUserData?.fecha_expiracion))
-        : parseAnyDate(fetchedUserData?.fecha_expiracion);
+      // Si es plan de pago, rige fecha_vencimiento_plan (con respaldo en aliases).
+      // Si es trial, evaluamos fecha_expiracion / trialEndsAt / fechaVencimiento / vencimientoPlan
+      // y como respaldo seguro fecha_creacion / creadoEn / fechaRegistro + 5 días.
+      let limiteDate = esPlanDePago
+        ? (
+            parseAnyDate(fetchedUserData?.fecha_vencimiento_plan) ||
+            parseAnyDate(fetchedUserData?.vencimientoPlan) ||
+            parseAnyDate(fetchedUserData?.fechaVencimiento) ||
+            parseAnyDate(fetchedUserData?.fecha_expiracion) ||
+            parseAnyDate(fetchedUserData?.trialEndsAt)
+          )
+        : (
+            parseAnyDate(fetchedUserData?.fecha_expiracion) ||
+            parseAnyDate(fetchedUserData?.trialEndsAt) ||
+            parseAnyDate(fetchedUserData?.fechaVencimiento) ||
+            parseAnyDate(fetchedUserData?.vencimientoPlan) ||
+            parseAnyDate(fetchedUserData?.fecha_vencimiento_plan)
+          );
+
+      if (!limiteDate && !esPlanDePago) {
+        const creationDate =
+          parseAnyDate(fetchedUserData?.fecha_creacion) ||
+          parseAnyDate(fetchedUserData?.fechaCreacion) ||
+          parseAnyDate(fetchedUserData?.creadoEn) ||
+          parseAnyDate(fetchedUserData?.fechaRegistro) ||
+          parseAnyDate(fetchedUserData?.createdAt) ||
+          parseAnyDate(fetchedUserData?.created_at);
+
+        if (creationDate) {
+          limiteDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+        } else if (fetchedUserData && typeof fetchedUserData === 'object') {
+          // Si el perfil recién fue creado con serverTimestamp() aún pendiente de resolver,
+          // no bloquear al usuario en el primer minuto.
+          limiteDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+        }
+      }
 
       const ahora = new Date();
-      // Si no hay fecha válida o la fecha actual ya superó el límite, se bloquea
-      const haExpirado = limiteDate ? ahora.getTime() > limiteDate.getTime() : true;
+      const haExpirado = limiteDate
+        ? ahora.getTime() > limiteDate.getTime()
+        : String(fetchedUserData?.estado_cuenta || '').toLowerCase() === 'expirada';
 
       const diasRestantesVal = haExpirado || !limiteDate
         ? 0
-        : Math.max(0, Math.ceil((limiteDate.getTime() - ahora.getTime()) / (1000 * 3600 * 24)));
+        : Math.max(1, Math.ceil((limiteDate.getTime() - ahora.getTime()) / (1000 * 3600 * 24)));
 
       setIsSoftBlocked(haExpirado);
       setIsTrialExpired(haExpirado);
