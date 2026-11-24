@@ -40,6 +40,7 @@ import {
 import {
   analyzeExpedientePdf,
   ExpedientePdfAnalysisPayload,
+  limpiarLatexJuridico,
   redactarEscritoJudicialConIA,
 } from '../services/gemini';
 import { auth, db } from '../services/auth';
@@ -1128,6 +1129,78 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setModalOpen(true);
   };
 
+  const isNonDeadlinePlaceholderTitle = (rawTitulo: unknown): boolean => {
+    const clean = String(rawTitulo || '').trim();
+    if (!clean) return true;
+    return /no\s+existe|no\s+aplica|no\s+corresponde|no\s+hay\s+plazo|no\s+posee\s+plazo|no\s+tiene\s+plazo|sin\s+plazo|ning[uú]n\s+plazo|\bninguno\b|\bn\/a\b|no\s+aplicable|no\s+se\s+(?:observa|detecta|registra|advierte|establece|fija|determina|identifica)\s+(?:ning[uú]n\s+)?plazo|documento\s+sin\s+plazo|no\s+es\s+un\s+acto\s+procesal|carece\s+de\s+plazo|sin\s+vencimiento/i.test(
+      clean
+    );
+  };
+
+  const isInvalidPlazoForAbogado = (
+    item: { titulo?: unknown; diasPlazo?: unknown; fechaVencimiento?: unknown } | null | undefined,
+    todayIso: string
+  ): boolean => {
+    if (!item || typeof item !== 'object') return true;
+    if (isNonDeadlinePlaceholderTitle(item.titulo)) return true;
+    const dias = Number(item.diasPlazo);
+    const fecha = typeof item.fechaVencimiento === 'string' ? item.fechaVencimiento.trim().slice(0, 10) : '';
+    const hasValidDate = /^\d{4}-\d{2}-\d{2}$/.test(fecha);
+    if ((!Number.isFinite(dias) || dias <= 0) && (!hasValidDate || fecha === todayIso)) {
+      return true;
+    }
+    return false;
+  };
+
+  const sanitizeAnalysisPayloadForAbogado = (
+    raw: ExpedientePdfAnalysisPayload
+  ): ExpedientePdfAnalysisPayload => {
+    const todayIso = getTodayIsoAsuncion();
+    const cleanPlazo =
+      raw.plazoPrincipal && !isInvalidPlazoForAbogado(raw.plazoPrincipal, todayIso)
+        ? {
+            ...raw.plazoPrincipal,
+            titulo: limpiarLatexJuridico(String(raw.plazoPrincipal.titulo || '')).trim(),
+            diasPlazo: Math.max(1, Number(raw.plazoPrincipal.diasPlazo) || 1),
+            fechaVencimiento:
+              raw.plazoPrincipal.fechaVencimiento && /^\d{4}-\d{2}-\d{2}$/.test(raw.plazoPrincipal.fechaVencimiento)
+                ? raw.plazoPrincipal.fechaVencimiento.slice(0, 10)
+                : addCalendarDaysIso(Math.max(1, Number(raw.plazoPrincipal.diasPlazo) || 1)),
+            tipo: (raw.plazoPrincipal.tipo === 'impulso' ? 'impulso' : 'plazo_legal') as 'plazo_legal' | 'impulso',
+          }
+        : null;
+
+    const cleanImpulsos = Array.isArray(raw.impulsosSugeridos)
+      ? raw.impulsosSugeridos
+          .filter((imp) => !isInvalidPlazoForAbogado(imp, todayIso))
+          .map((imp, idx) => {
+            const dias = Math.max(1, Number(imp.diasPlazo) || (idx + 1) * 10);
+            return {
+              ...imp,
+              titulo: limpiarLatexJuridico(String(imp.titulo || '')).trim(),
+              diasPlazo: dias,
+              fechaVencimiento:
+                imp.fechaVencimiento && /^\d{4}-\d{2}-\d{2}$/.test(imp.fechaVencimiento)
+                  ? imp.fechaVencimiento.slice(0, 10)
+                  : addCalendarDaysIso(dias),
+              tipo: (imp.tipo === 'plazo_legal' ? 'plazo_legal' : 'impulso') as 'plazo_legal' | 'impulso',
+            };
+          })
+      : [];
+
+    return {
+      ...raw,
+      caratula: limpiarLatexJuridico(String(raw.caratula || '')).trim(),
+      nroExpediente: limpiarLatexJuridico(String(raw.nroExpediente || '')).trim(),
+      anio: String(raw.anio || '').trim(),
+      juzgado: limpiarLatexJuridico(String(raw.juzgado || '')).trim(),
+      resumenHechos: limpiarLatexJuridico(String(raw.resumenHechos || '')).trim(),
+      fundamentoCPC: raw.fundamentoCPC ? limpiarLatexJuridico(String(raw.fundamentoCPC)).trim() : '',
+      plazoPrincipal: cleanPlazo,
+      impulsosSugeridos: cleanImpulsos,
+    };
+  };
+
   const handleAnalyzePdfFile = async (file: File, target: 'modal' | Expediente) => {
     setErrorBanner(null);
     if (target === 'modal') setModalError(null);
@@ -1135,10 +1208,12 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setAnalyzingTargetId(targetId);
     try {
       const { base64, mimeType } = await readFileAsBase64(file);
-      const result = await analyzeExpedientePdf(base64, mimeType, {
+      const rawResult = await analyzeExpedientePdf(base64, mimeType, {
         fileName: file.name,
         rolParteHint: target === 'modal' ? rolParte : target.rolParte,
+        esAbogado,
       });
+      const result = esAbogado ? sanitizeAnalysisPayloadForAbogado(rawResult) : rawResult;
       setPendingAnalysisPreview({
         target: targetId,
         fileName: file.name,
@@ -1160,6 +1235,55 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const buildPlazosFromAnalysis = (result: ExpedientePdfAnalysisPayload): PlazoProcesal[] => {
     const generated: PlazoProcesal[] = [];
     const ts = Date.now();
+    const todayIso = getTodayIsoAsuncion();
+
+    if (esAbogado) {
+      if (result.plazoPrincipal && !isInvalidPlazoForAbogado(result.plazoPrincipal, todayIso)) {
+        const rawDays = Number(result.plazoPrincipal.diasPlazo);
+        const hasValidDate = Boolean(
+          result.plazoPrincipal.fechaVencimiento &&
+            /^\d{4}-\d{2}-\d{2}$/.test(result.plazoPrincipal.fechaVencimiento)
+        );
+        if ((Number.isFinite(rawDays) && rawDays > 0) || (hasValidDate && result.plazoPrincipal.fechaVencimiento.slice(0, 10) !== todayIso)) {
+          const days = Math.max(1, Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 1);
+          generated.push({
+            id: `plazo-${ts}-main`,
+            titulo: limpiarLatexJuridico(result.plazoPrincipal.titulo).trim(),
+            diasPlazo: days,
+            fechaVencimiento: hasValidDate
+              ? result.plazoPrincipal.fechaVencimiento.slice(0, 10)
+              : addCalendarDaysIso(days),
+            completado: false,
+            completadoEn: null,
+            tipo: 'plazo_legal',
+          });
+        }
+      }
+      if (Array.isArray(result.impulsosSugeridos)) {
+        result.impulsosSugeridos.forEach((imp, idx) => {
+          if (isInvalidPlazoForAbogado(imp, todayIso)) return;
+          const rawDays = Number(imp.diasPlazo);
+          const hasValidDate = Boolean(imp.fechaVencimiento && /^\d{4}-\d{2}-\d{2}$/.test(imp.fechaVencimiento));
+          if ((!Number.isFinite(rawDays) || rawDays <= 0) && (!hasValidDate || imp.fechaVencimiento.slice(0, 10) === todayIso)) {
+            return;
+          }
+          const days = Math.max(1, Number.isFinite(rawDays) && rawDays > 0 ? rawDays : (idx + 1) * 10);
+          generated.push({
+            id: `impulso-${ts}-${idx}`,
+            titulo: limpiarLatexJuridico(imp.titulo).trim(),
+            diasPlazo: days,
+            fechaVencimiento: hasValidDate
+              ? imp.fechaVencimiento.slice(0, 10)
+              : addCalendarDaysIso(days),
+            completado: false,
+            completadoEn: null,
+            tipo: 'impulso',
+          });
+        });
+      }
+      return generated;
+    }
+
     if (result.plazoPrincipal?.titulo) {
       const days = Math.max(1, Number(result.plazoPrincipal.diasPlazo) || 5);
       generated.push({
@@ -1290,7 +1414,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       await onSaveExpediente(updatedExp);
       setPendingAnalysisPreview(null);
       setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
-      showToastSuccess(`Se cargaron ${suggestedPlazos.length} plazos/impulsos desde "${fileName}".`);
+      showToastSuccess(
+        esAbogado && suggestedPlazos.length === 0
+          ? `Resumen jurídico cargado al expediente desde "${fileName}" (sin plazos automáticos).`
+          : `Se cargaron ${suggestedPlazos.length} plazos/impulsos desde "${fileName}".`
+      );
     } catch (err: any) {
       const code = String(err?.code || '').toLowerCase();
       const rawMsg = String(err?.message || '').toLowerCase();
@@ -1300,7 +1428,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       ) {
         setPendingAnalysisPreview(null);
         setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
-        showToastSuccess(`Datos y ${suggestedPlazos.length} plazos/impulsos cargados localmente desde "${fileName}".`);
+        showToastSuccess(
+          suggestedPlazos.length === 0
+            ? `Resumen jurídico cargado localmente desde "${fileName}" (sin plazos automáticos).`
+            : `Datos y ${suggestedPlazos.length} plazos/impulsos cargados localmente desde "${fileName}".`
+        );
       } else {
         setErrorBanner(err?.message || 'No se pudo guardar el análisis en el expediente.');
       }
@@ -2000,7 +2132,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setDraftingKey(key);
     setErrorBanner(null);
     try {
-      const draftText = await redactarEscritoJudicialConIA({
+      const rawDraftText = await redactarEscritoJudicialConIA({
         expediente: exp,
         modo,
         plazoObjetivo: plazoObjetivo
@@ -2014,10 +2146,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         },
         instruccionesAdicionales:
           'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Si el documento base o los datos del expediente contienen denominaciones de juzgados o términos procesales extranjeros, adáptalos obligatoriamente a la jurisdicción paraguaya (por ejemplo: Juzgado de Primera Instancia en lo Civil y Comercial, Juzgado de Primera Instancia en lo Laboral o Juzgado de Paz, según corresponda).',
+        esAbogado,
       });
-      const tituloModal =
-        modo === 'contestacion'
-          ? `${esAbogado ? 'Contestación / Respuesta' : 'Contestación de Demanda'} - ${exp.caratula.slice(0, 48)}`
+      const draftText = esAbogado ? limpiarLatexJuridico(rawDraftText) : rawDraftText;
+      const cleanCaratula = limpiarLatexJuridico(exp.caratula || '').trim();
+      const cleanObjetivo = limpiarLatexJuridico(plazoObjetivo?.titulo || exp.caratula || '').trim();
+      const tituloModal = esAbogado
+        ? modo === 'contestacion'
+          ? `Contestación / Respuesta - ${cleanCaratula}`
+          : `Impulso: ${cleanObjetivo}`
+        : modo === 'contestacion'
+          ? `Contestación de Demanda - ${exp.caratula.slice(0, 48)}`
           : `Impulso: ${(plazoObjetivo?.titulo || exp.caratula).slice(0, 48)}`;
       void incrementarUsoIA(currentUser?.uid || userData?.uid);
       onOpenDocument(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);

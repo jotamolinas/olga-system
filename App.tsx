@@ -34,6 +34,7 @@ import { ConfigTab } from './components/ConfigTab';
 import { PagarePDFPreview } from './components/PagarePDFPreview';
 import { CheckoutModal } from './components/CheckoutModal';
 import { DocumentoModal, limpiarTextoParaEscrito, wrapSignatureBlocksForPrint } from './components/DocumentoModal';
+import { limpiarLatexJuridico } from './services/gemini';
 import { EscritosTab } from './components/EscritosTab';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { SuperAdminOnboarding } from './components/SuperAdminOnboarding';
@@ -974,7 +975,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       resultado = cleanedParagraphs.join('\n\n').trim();
     }
 
-    return limpiarTextoParaEscrito(resultado);
+    return limpiarTextoParaEscrito(resultado, esAbogado);
   };
 
   const handleOpenDocumentModal = (
@@ -985,9 +986,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     tipoHoja: 'blanca' | 'protocolo' = 'blanca',
     includeHeader: boolean = true
   ) => {
-    setDocumentoInitialText(limpiarTextoParaEscrito(text));
+    setDocumentoInitialText(limpiarTextoParaEscrito(text, esAbogado));
     setDocumentoModalDocId(docId);
-    setDocumentoModalTipo(tipo);
+    setDocumentoModalTipo(esAbogado && tipo ? limpiarLatexJuridico(tipo) : tipo);
     setDocumentoModalCategoria(categoria);
     setDocumentoModalTipoHoja(tipoHoja || 'blanca');
     setDocumentoModalIncludeHeader(includeHeader);

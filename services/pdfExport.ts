@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { limpiarLatexJuridico } from './gemini';
 
 export interface EscribaniaPdfMetadata {
   nombre?: string;
@@ -41,7 +42,7 @@ const decodeHtmlEntities = (input: string): string => {
     .replace(/&Ntilde;/g, 'Ñ');
 };
 
-export const cleanDocumentContentForPdf = (rawText: string): string => {
+export const cleanDocumentContentForPdf = (rawText: string, esAbogado = false): string => {
   if (!rawText) return '';
 
   const withBreaks = rawText
@@ -52,7 +53,7 @@ export const cleanDocumentContentForPdf = (rawText: string): string => {
 
   const withoutTags = decodeHtmlEntities(withBreaks).replace(/<[^>]+>/g, '');
 
-  return withoutTags
+  const cleaned = withoutTags
     .replace(/```[\w-]*\n?/g, '')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
@@ -63,6 +64,8 @@ export const cleanDocumentContentForPdf = (rawText: string): string => {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim();
+
+  return esAbogado ? limpiarLatexJuridico(cleaned) : cleaned;
 };
 
 export const sanitizePdfFileName = (rawTitle?: string): string => {
@@ -244,10 +247,12 @@ export const generateDocumentPdfBase64 = ({
   }
 
   // 2. Título del Documento (evitando duplicarlo si el cuerpo ya inicia con el mismo título)
-  const cleanTitle = (title || 'Documento Notarial')
+  const isAbogadoPdf = Boolean(escribania?.esAbogado);
+  const rawTitleClean = (title || 'Documento Notarial')
     .replace(/\s*\(Guardado Local\)\s*/gi, '')
     .trim();
-  const cleanBody = cleanDocumentContentForPdf(content);
+  const cleanTitle = isAbogadoPdf ? limpiarLatexJuridico(rawTitleClean) : rawTitleClean;
+  const cleanBody = cleanDocumentContentForPdf(content, isAbogadoPdf);
 
   const firstNonEmptyLine = (cleanBody.split('\n').find((l) => l.trim().length > 0) || '').trim();
   const normalizedTitle = normalizeTitleForComparison(cleanTitle);

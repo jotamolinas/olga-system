@@ -10,7 +10,7 @@ import { ModalGuardarDocumento } from './ModalGuardarDocumento';
 import { formatDocClean } from './PagarePDFPreview';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
 import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage, downloadPdfFromBase64 } from '../services/pdfExport';
-import { redactarEscritoConIA } from '../services/gemini';
+import { redactarEscritoConIA, limpiarLatexJuridico } from '../services/gemini';
 import { incrementarUsoIA } from '../services/firestore';
 
 interface DocumentoModalProps {
@@ -29,10 +29,10 @@ interface DocumentoModalProps {
   canUseWhatsApp?: boolean;
 }
 
-export const limpiarTextoParaEscrito = (texto: string): string => {
+export const limpiarTextoParaEscrito = (texto: string, esAbogado = false): string => {
   if (!texto) return '';
 
-  return texto
+  const base = texto
     // 1. Reemplazar <br> y cierres de bloque HTML por saltos de línea antes de limpiar etiquetas
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
@@ -51,6 +51,8 @@ export const limpiarTextoParaEscrito = (texto: string): string => {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  return esAbogado ? limpiarLatexJuridico(base) : base;
 };
 
 export const wrapSignatureBlocksForPrint = (html: string): string => {
@@ -199,7 +201,9 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
   olgaDocsCount,
   canUseWhatsApp
 }) => {
-  const [text, setText] = useState(() => limpiarTextoParaEscrito(initialText));
+  const esAbogadoInit =
+    String(userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+  const [text, setText] = useState(() => limpiarTextoParaEscrito(initialText, esAbogadoInit));
   const [currentDocId, setCurrentDocId] = useState<string | undefined>(documentId);
   const [paperMode, setPaperMode] = useState<'blanca' | 'protocolo'>(() =>
     tipoHoja === 'protocolo' ? 'protocolo' : 'blanca'
@@ -211,6 +215,8 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
   const { diasRestantes, pruebaActiva, isTrialExpired, isSoftBlocked } = useTrialStatus(currentUser);
   const { workspaceId, workspaceData } = useWorkspace(currentUser || auth.currentUser, userData);
+  const esAbogadoDocFlag =
+    String(workspaceData?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -248,11 +254,11 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     undefined;
 
   useEffect(() => {
-    setText(limpiarTextoParaEscrito(initialText));
+    setText(limpiarTextoParaEscrito(initialText, esAbogadoDocFlag));
     setCurrentDocId(documentId);
     setPaperMode(tipoHoja === 'protocolo' ? 'protocolo' : 'blanca');
     setIncludeHeader(initialIncludeHeader ?? true);
-  }, [isOpen, initialText, documentId, tipoHoja, initialIncludeHeader]);
+  }, [isOpen, initialText, documentId, tipoHoja, initialIncludeHeader, esAbogadoDocFlag]);
 
   useEffect(() => {
     let cancelled = false;
@@ -833,10 +839,12 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
     try {
       const updated = await redactarEscritoConIA(
         `Aplica exclusivamente la siguiente instrucción sobre el documento actual, devolviendo el documento completo actualizado y formal en español:\n\n${cleanInstruction}`,
-        text
+        text,
+        undefined,
+        { esAbogado: esAbogadoDoc }
       );
       if (updated && updated.trim()) {
-        setText(limpiarTextoParaEscrito(updated));
+        setText(limpiarTextoParaEscrito(updated, esAbogadoDoc));
         setAiInstruction('');
         setShowAiEditBar(false);
         void incrementarUsoIA(currentUser?.uid || userData?.uid);
@@ -865,8 +873,10 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
         
         {/* Header - Not visible in print */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-6 border-b border-slate-100 print:hidden">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-xl font-bold text-slate-800">Escrito Oficial</h2>
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            <h2 className="text-xl font-bold text-slate-800 break-words">
+              {esAbogadoDoc && tipo ? limpiarLatexJuridico(tipo) : 'Escrito Oficial'}
+            </h2>
             <select
               value={paperMode}
               onChange={(e) => setPaperMode(e.target.value as 'blanca' | 'protocolo')}

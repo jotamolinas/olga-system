@@ -5,7 +5,7 @@ import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, Expediente, PlazoProcesal, formatCurrencyValue } from '../types';
 import { fetchPersonasFromFirestore, normalizePersona, incrementarUsoIA } from '../services/firestore';
-import { redactarEscritoJudicialConIA } from '../services/gemini';
+import { limpiarLatexJuridico, redactarEscritoJudicialConIA } from '../services/gemini';
 import {
   calcDaysUntil,
   buildExpedienteDismissKeys,
@@ -998,7 +998,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       const estudioLabel =
         String(userData?.razonSocial || userData?.nombreInstitucion || userData?.nombre || workspaceName || '').trim() ||
         'Estudio Jurídico';
-      const draftText = await redactarEscritoJudicialConIA({
+      const rawDraftText = await redactarEscritoJudicialConIA({
         expediente: exp,
         modo: 'impulso',
         plazoObjetivo: {
@@ -1013,8 +1013,12 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         },
         instruccionesAdicionales:
           'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Adapta cualquier denominación de juzgado o término procesal a la jurisdicción paraguaya vigente.',
+        esAbogado,
       });
-      const tituloModal = `Impulso: ${(plazo.titulo || exp.caratula).slice(0, 48)}`;
+      const draftText = esAbogado ? limpiarLatexJuridico(rawDraftText) : rawDraftText;
+      const tituloModal = esAbogado
+        ? `Impulso: ${limpiarLatexJuridico(plazo.titulo || exp.caratula || '').trim()}`
+        : `Impulso: ${(plazo.titulo || exp.caratula).slice(0, 48)}`;
       void incrementarUsoIA(currentUser?.uid || auth?.currentUser?.uid || userData?.uid);
       setLegalKpiModalCategory(null);
       onOpenDocument?.(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
@@ -1525,7 +1529,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                           <FileText className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
+                          <h4 className={`font-bold text-sm text-slate-800 dark:text-slate-100 ${esAbogado ? 'line-clamp-2 break-words leading-snug' : 'truncate'}`}>
                             {escrito.tipo || 'Escrito Jurídico'}
                           </h4>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">

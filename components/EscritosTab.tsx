@@ -11,7 +11,7 @@ import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
   HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload, MessageCircle, Download
 } from 'lucide-react';
-import { redactarEscritoConIA } from '../services/gemini';
+import { limpiarLatexJuridico, redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
 import { EditorNotarialOficial } from './EditorNotarialOficial';
@@ -3320,11 +3320,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setIsGeneratingAI(true);
     setAiError(null);
     try {
-      const resultado = await redactarEscritoConIA(
+      const rawResultado = await redactarEscritoConIA(
         aiPrompt.trim(),
         editorText.trim(),
-        aiAttachments.map(att => ({ data: att.data, mimeType: att.mimeType, name: att.name }))
+        aiAttachments.map(att => ({ data: att.data, mimeType: att.mimeType, name: att.name })),
+        { esAbogado: esAbogadoEsc }
       );
+      const resultado = esAbogadoEsc ? limpiarLatexJuridico(rawResultado) : rawResultado;
 
       if (!resultado || !resultado.trim()) {
         setAiError('La IA no devolvió contenido para esta solicitud. Por favor, reformula tu instrucción.');
@@ -4639,7 +4641,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                           <FileText className="w-5 h-5 text-[#FF3131]" />
                         </div>
                         <div className="flex-1 overflow-hidden min-w-0">
-                          <h4 className="font-bold text-slate-900 text-sm truncate" title={escrito.tipo || 'Escrito'}>
+                          <h4
+                            className={`font-bold text-slate-900 text-sm ${esAbogadoEsc ? 'line-clamp-2 break-words leading-snug' : 'truncate'}`}
+                            title={escrito.tipo || 'Escrito'}
+                          >
                             {escrito.tipo || 'Escrito'}
                           </h4>
                           <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">

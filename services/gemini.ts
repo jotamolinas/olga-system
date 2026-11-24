@@ -218,17 +218,92 @@ export const analyzePagareImage = async (fileBase64: string, mimeType: string) =
   return payload?.data ?? null;
 };
 
+export const limpiarLatexJuridico = (texto: string): string => {
+  if (!texto) return '';
+  let out = texto;
+
+  // 1. Limpiar variantes de $N^{\circ}$ / $N^\circ$ / $N^{o}$ / $\text{N}^{\circ}$ -> N.º
+  out = out.replace(
+    /\$\s*(?:\\(?:text|mathrm|mathbf|textbf)\s*\{\s*)?[nN](?:\s*\.|\s*\\[,;!])?\s*(?:\}\s*)?\^\s*\{?\s*(?:\\circ|\\text\s*\{\s*[oº°]\s*\}|\\underline\s*\{\s*[oº°]\s*\}|[oOº°])\s*\}?\.?\s*\$/g,
+    'N.º'
+  );
+  out = out.replace(/\$\s*[nN]\s*\.?\s*[º°]\s*\$/g, 'N.º');
+
+  // 2. Ordinales en LaTeX tipo $1^{\circ}$, $2^{\text{a}}$
+  out = out.replace(
+    /\$\s*(\d+)\s*(?:\.?\s*)\^\s*\{?\s*(?:\\circ|\\text\s*\{\s*[oº°]\s*\}|\\underline\s*\{\s*[oº°]\s*\}|[oº°])\s*\}?\s*\$/g,
+    '$1.º'
+  );
+  out = out.replace(
+    /\$\s*(\d+)\s*(?:\.?\s*)\^\s*\{?\s*(?:\\text\s*\{\s*[aª]\s*\}|\\underline\s*\{\s*[aª]\s*\}|[aª])\s*\}?\s*\$/g,
+    '$1.ª'
+  );
+
+  // 3. Fragmentos LaTeX inline $...$ con sintaxis LaTeX (\, ^, {, }) sin afectar montos en dólares (US$ 1.000)
+  out = out.replace(/\$(?!\s*\d[\d.,]*(?:\s|$))([^$\n]{1,80})\$/g, (full, inner: string) => {
+    if (!/[\\^{}]/.test(inner)) {
+      return full;
+    }
+    return inner
+      .replace(/\\(?:textbf|mathbf|mathrm|text|textit|emph|underline)\s*\{([^{}]*)\}/g, '$1')
+      .replace(/\\[,;! ]/g, ' ')
+      .replace(/\^\s*\{?\s*\\circ\s*\}?/g, 'º')
+      .replace(/\\circ/g, '°')
+      .replace(/\\&/g, '&')
+      .replace(/\\%/g, '%')
+      .replace(/[{}]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  });
+
+  // 4. Restos de LaTeX sin delimitadores $
+  out = out
+    .replace(/\b[nN]\s*\.?\s*\^\s*\{?\s*(?:\\circ|[oº°])\s*\}?/g, 'N.º')
+    .replace(/\^\s*\{\s*(?:\\circ|°|º)\s*\}/g, 'º')
+    .replace(/\^\\circ\b/g, 'º')
+    .replace(/\\(?:textbf|mathbf|mathrm|text|textit|emph|underline)\s*\{([^{}]*)\}/g, '$1')
+    .replace(/\\circ/g, '°')
+    .replace(/\\&/g, '&')
+    .replace(/\\%/g, '%');
+
+  return out;
+};
+
+const fetchWith503Retry = async (
+  url: string,
+  init: RequestInit,
+  maxRetries = 1
+): Promise<globalThis.Response> => {
+  let lastResponse: globalThis.Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, init);
+    lastResponse = response;
+    if (response.status !== 503 && response.status !== 429) {
+      return response;
+    }
+    if (attempt < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 1400 * (attempt + 1)));
+    }
+  }
+  return lastResponse as globalThis.Response;
+};
+
 export const redactarEscritoConIA = async (
   prompt: string,
   contextoActual?: string,
-  attachments?: { data: string; mimeType: string; name?: string }[]
+  attachments?: { data: string; mimeType: string; name?: string }[],
+  options?: { esAbogado?: boolean }
 ): Promise<string> => {
+  const esAbogado = Boolean(options?.esAbogado);
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/gemini/redactar-escrito', {
+  const reqInit: RequestInit = {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt, contextoActual, attachments }),
-  });
+    body: JSON.stringify({ prompt, contextoActual, attachments, esAbogado }),
+  };
+  const response = esAbogado
+    ? await fetchWith503Retry('/api/gemini/redactar-escrito', reqInit, 1)
+    : await fetch('/api/gemini/redactar-escrito', reqInit);
 
   if (!response.ok) {
     const errMsg = await parseJsonError(
@@ -240,7 +315,7 @@ export const redactarEscritoConIA = async (
 
   const payload = await response.json();
   if (typeof payload?.text === 'string' && payload.text) {
-    return payload.text;
+    return esAbogado ? limpiarLatexJuridico(payload.text) : payload.text;
   }
 
   throw new Error('No se pudo generar la redacción en este momento. Por favor, intenta nuevamente.');
@@ -317,10 +392,11 @@ export interface ExpedientePdfAnalysisPayload {
 export const analyzeExpedientePdf = async (
   fileBase64: string,
   mimeType: string,
-  options?: { fileName?: string; rolParteHint?: string }
+  options?: { fileName?: string; rolParteHint?: string; esAbogado?: boolean }
 ): Promise<ExpedientePdfAnalysisPayload> => {
+  const esAbogado = Boolean(options?.esAbogado);
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/gemini/analyze-expediente-pdf', {
+  const reqInit: RequestInit = {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -328,8 +404,12 @@ export const analyzeExpedientePdf = async (
       mimeType,
       fileName: options?.fileName,
       rolParteHint: options?.rolParteHint,
+      esAbogado,
     }),
-  });
+  };
+  const response = esAbogado
+    ? await fetchWith503Retry('/api/gemini/analyze-expediente-pdf', reqInit, 1)
+    : await fetch('/api/gemini/analyze-expediente-pdf', reqInit);
 
   if (!response.ok) {
     const errMsg = await parseJsonError(
@@ -358,13 +438,18 @@ export const redactarEscritoJudicialConIA = async (params: {
     ciudad?: string;
   };
   instruccionesAdicionales?: string;
+  esAbogado?: boolean;
 }): Promise<string> => {
+  const esAbogado = Boolean(params?.esAbogado);
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/gemini/redactar-escrito-judicial', {
+  const reqInit: RequestInit = {
     method: 'POST',
     headers,
     body: JSON.stringify(params),
-  });
+  };
+  const response = esAbogado
+    ? await fetchWith503Retry('/api/gemini/redactar-escrito-judicial', reqInit, 1)
+    : await fetch('/api/gemini/redactar-escrito-judicial', reqInit);
 
   if (!response.ok) {
     const errMsg = await parseJsonError(
@@ -376,7 +461,8 @@ export const redactarEscritoJudicialConIA = async (params: {
 
   const payload = await response.json();
   if (typeof payload?.text === 'string' && payload.text.trim()) {
-    return payload.text.trim();
+    const cleanText = payload.text.trim();
+    return esAbogado ? limpiarLatexJuridico(cleanText) : cleanText;
   }
 
   throw new Error('La IA no generó texto para el escrito judicial. Intenta nuevamente.');
@@ -433,6 +519,7 @@ export const parsePresupuestoConIA = async (
 
   throw new Error('La IA no devolvió datos válidos para completar el presupuesto.');
 };
+
 
 
 
