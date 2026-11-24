@@ -10,6 +10,7 @@ import {
   calcDaysUntil,
   buildExpedienteDismissKeys,
   loadDiscardedExpKeys,
+  loadLocalExpedienteOverrides,
   loadLocalPlazoChecksForExpediente,
   saveLocalPlazoCheckForExpediente,
 } from './ExpedientesTab';
@@ -831,35 +832,53 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   } | null>(null);
 
   const ownExpedientes = useMemo(() => {
-    if (!esAbogado || !Array.isArray(expedientes) || expedientes.length === 0) return [];
-    const discardedSet = activeUid ? new Set(loadDiscardedExpKeys(activeUid)) : new Set<string>();
-    return expedientes
-      .filter((exp) => {
-        if (!exp || exp.anulado === true || exp.eliminado === true) return false;
-        if (allowedLegalOwners.size === 0) return false;
+    if (!esAbogado) return [];
+    const storageUidKey = activeUid || String(activeWorkspaceId || '').trim() || 'anon';
+    const discardedSet = new Set(loadDiscardedExpKeys(storageUidKey));
+    const localOverrides = loadLocalExpedienteOverrides(storageUidKey);
+    const mergedMap = new Map<string, Expediente>();
+
+    const ingest = (exp: Expediente, fromLocal: boolean) => {
+      if (!exp || !exp.id || exp.anulado === true || exp.eliminado === true) return;
+      if (!fromLocal) {
+        if (allowedLegalOwners.size === 0) return;
         const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
           .map((v) => String(v || '').trim())
           .filter(Boolean);
-        if (owners.length === 0 || !owners.some((id) => allowedLegalOwners.has(id))) return false;
-        if (discardedSet.size > 0) {
-          const keys = buildExpedienteDismissKeys(exp);
-          if (keys.some((k) => discardedSet.has(k))) return false;
-        }
-        return true;
-      })
-      .map((exp) => {
-        if (!activeUid || !Array.isArray(exp.plazos) || exp.plazos.length === 0) return exp;
-        const localChecks = loadLocalPlazoChecksForExpediente(activeUid, exp.id);
-        if (Object.keys(localChecks).length === 0) return exp;
-        return {
-          ...exp,
-          plazos: exp.plazos.map((p) => {
-            const ov = localChecks[p.id];
-            return ov ? { ...p, completado: ov.completado, completadoEn: ov.completadoEn } : p;
-          }),
-        };
-      });
-  }, [esAbogado, expedientes, allowedLegalOwners, activeUid, legalChecksTick]);
+        if (owners.length === 0 || !owners.some((id) => allowedLegalOwners.has(id))) return;
+      }
+      if (discardedSet.size > 0) {
+        const keys = buildExpedienteDismissKeys(exp);
+        if (keys.some((k) => discardedSet.has(k))) return;
+      }
+      const existing = mergedMap.get(exp.id);
+      if (!existing) {
+        mergedMap.set(exp.id, exp);
+        return;
+      }
+      const existingMs = Date.parse(String(existing.updatedAt || existing.createdAt || '')) || 0;
+      const nextMs = Date.parse(String(exp.updatedAt || exp.createdAt || '')) || 0;
+      if (nextMs >= existingMs) {
+        mergedMap.set(exp.id, exp);
+      }
+    };
+
+    (Array.isArray(expedientes) ? expedientes : []).forEach((exp) => ingest(exp, false));
+    Object.values(localOverrides).forEach((exp) => ingest(exp, true));
+
+    return Array.from(mergedMap.values()).map((exp) => {
+      if (!Array.isArray(exp.plazos) || exp.plazos.length === 0) return exp;
+      const localChecks = loadLocalPlazoChecksForExpediente(storageUidKey, exp.id);
+      if (Object.keys(localChecks).length === 0) return exp;
+      return {
+        ...exp,
+        plazos: exp.plazos.map((p) => {
+          const ov = localChecks[p.id];
+          return ov ? { ...p, completado: ov.completado, completadoEn: ov.completadoEn } : p;
+        }),
+      };
+    });
+  }, [esAbogado, expedientes, allowedLegalOwners, activeUid, activeWorkspaceId, legalChecksTick]);
 
   const activeLegalExpedientes = useMemo(
     () =>

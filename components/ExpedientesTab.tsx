@@ -387,6 +387,88 @@ export const saveLocalPlazoCheckForExpediente = (
   } catch {}
 };
 
+const EXPEDIENTES_LOCALES_KEY_PREFIX = 'olga_expedientes_locales_';
+
+const getExpedienteUpdatedMs = (exp?: Partial<Expediente> | null): number => {
+  if (!exp) return 0;
+  const raw = exp.updatedAt || exp.createdAt || '';
+  const parsed = raw ? Date.parse(String(raw)) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const pickNewerExpediente = (existing: Expediente | undefined, candidate: Expediente): Expediente => {
+  if (!existing) return candidate;
+  return getExpedienteUpdatedMs(candidate) >= getExpedienteUpdatedMs(existing) ? candidate : existing;
+};
+
+const readRawLocalExpedientesBucket = (storageUid: string): Record<string, Expediente> => {
+  try {
+    const raw = localStorage.getItem(`${EXPEDIENTES_LOCALES_KEY_PREFIX}${normalizeCheckStorageUid(storageUid)}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: Record<string, Expediente> = {};
+    Object.entries(parsed).forEach(([id, val]: [string, any]) => {
+      if (val && typeof val === 'object' && id.trim()) {
+        const mapped = mapFirestoreDocToExpediente(val, id);
+        if (mapped.anulado !== true && mapped.eliminado !== true) {
+          result[mapped.id] = mapped;
+        }
+      }
+    });
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+export const loadLocalExpedienteOverrides = (uid: string): Record<string, Expediente> => {
+  const normUid = normalizeCheckStorageUid(uid);
+  const anonBucket = readRawLocalExpedientesBucket('anon');
+  if (normUid === 'anon') return anonBucket;
+  const userBucket = readRawLocalExpedientesBucket(normUid);
+  const merged: Record<string, Expediente> = { ...anonBucket };
+  Object.entries(userBucket).forEach(([id, exp]) => {
+    merged[id] = pickNewerExpediente(merged[id], exp);
+  });
+  return merged;
+};
+
+const saveLocalExpedienteOverride = (uid: string, exp: Expediente, oldId?: string): void => {
+  if (!exp || !exp.id) return;
+  const normUid = normalizeCheckStorageUid(uid);
+  try {
+    const existing = readRawLocalExpedientesBucket(normUid);
+    if (oldId && oldId !== exp.id) {
+      delete existing[oldId];
+    }
+    existing[exp.id] = exp;
+    localStorage.setItem(`${EXPEDIENTES_LOCALES_KEY_PREFIX}${normUid}`, JSON.stringify(existing));
+  } catch {}
+};
+
+const removeLocalExpedienteOverride = (uid: string, idsToRemove: string[]): void => {
+  const cleanIds = idsToRemove.map((id) => String(id || '').trim()).filter(Boolean);
+  if (cleanIds.length === 0) return;
+  const normUid = normalizeCheckStorageUid(uid);
+  const buckets = normUid === 'anon' ? ['anon'] : ['anon', normUid];
+  buckets.forEach((bucketUid) => {
+    try {
+      const existing = readRawLocalExpedientesBucket(bucketUid);
+      let changed = false;
+      cleanIds.forEach((id) => {
+        if (existing[id]) {
+          delete existing[id];
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem(`${EXPEDIENTES_LOCALES_KEY_PREFIX}${bucketUid}`, JSON.stringify(existing));
+      }
+    } catch {}
+  });
+};
+
 const isGhostOrMockExpId = (rawId: string): boolean => {
   const clean = String(rawId || '').trim().toLowerCase();
   if (!clean) return true;
@@ -551,6 +633,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [discardedExpKeys, setDiscardedExpKeys] = useState<string[]>(() =>
     loadDiscardedExpKeys(storageUid)
   );
+  const [localExpedienteOverrides, setLocalExpedienteOverrides] = useState<Record<string, Expediente>>(() =>
+    loadLocalExpedienteOverrides(storageUid)
+  );
   const [localChecksVersion, setLocalChecksVersion] = useState(0);
   const [pendingMarkDonePrompt, setPendingMarkDonePrompt] = useState<{
     expediente: Expediente;
@@ -559,6 +644,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   useEffect(() => {
     setDiscardedExpKeys(loadDiscardedExpKeys(storageUid));
+    setLocalExpedienteOverrides(loadLocalExpedienteOverrides(storageUid));
     setLocalChecksVersion((v) => v + 1);
   }, [storageUid]);
 
@@ -583,6 +669,37 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       }
       return next;
     });
+  };
+
+  const persistLocalExpedienteOverride = (exp: Expediente, oldId?: string) => {
+    if (!esAbogado || !exp?.id) return;
+    setLocalExpedienteOverrides((prev) => {
+      const next = { ...prev };
+      if (oldId && oldId !== exp.id) {
+        delete next[oldId];
+      }
+      next[exp.id] = exp;
+      return next;
+    });
+    saveLocalExpedienteOverride(storageUid, exp, oldId);
+  };
+
+  const purgeLocalExpedienteOverride = (ids: string[]) => {
+    if (!esAbogado || ids.length === 0) return;
+    const cleanIds = ids.map((id) => String(id || '').trim()).filter(Boolean);
+    if (cleanIds.length === 0) return;
+    setLocalExpedienteOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      cleanIds.forEach((id) => {
+        if (next[id]) {
+          delete next[id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    removeLocalExpedienteOverride(storageUid, cleanIds);
   };
 
   const allowedOwnerIds = useMemo(() => {
@@ -739,18 +856,40 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   }, [uid, wsId, isExplicitSuperAdmin, allowedOwnerIds]);
 
   const effectiveExpedientes = useMemo(() => {
-    const source = hasLiveSnapshot ? liveExpedientes : (Array.isArray(expedientes) ? expedientes : []);
     const dedup = new Map<string, Expediente>();
-    source.forEach((item) => {
+
+    const ingestExpediente = (item: any, fromLocalOverride = false) => {
       if (!item || !item.id) return;
       if (item.anulado === true || item.eliminado === true) return;
       const mapped = mapFirestoreDocToExpediente(item, item.id);
-      if (!belongsToCurrentAccount(mapped)) return;
+      if (!fromLocalOverride && !belongsToCurrentAccount(mapped)) return;
       const mappedDocId = docIdByExpIdRef.current.get(mapped.id);
       if (esAbogado && discardedExpKeySet.size > 0) {
         const itemKeys = buildExpedienteDismissKeys(mapped, mappedDocId);
         if (itemKeys.some((k) => discardedExpKeySet.has(k))) return;
       }
+      const existing = dedup.get(mapped.id);
+      const chosen = fromLocalOverride
+        ? (existing && getExpedienteUpdatedMs(existing) > getExpedienteUpdatedMs(mapped)
+            ? existing
+            : mapped)
+        : pickNewerExpediente(existing, mapped);
+      dedup.set(mapped.id, chosen);
+    };
+
+    if (esAbogado) {
+      // Combinar siempre prop expedientes + liveExpedientes + ediciones locales (sin depender de hasLiveSnapshot)
+      (Array.isArray(expedientes) ? expedientes : []).forEach((item) => ingestExpediente(item, false));
+      liveExpedientes.forEach((item) => ingestExpediente(item, false));
+      Object.values(localExpedienteOverrides).forEach((item) => ingestExpediente(item, true));
+    } else {
+      const source = hasLiveSnapshot ? liveExpedientes : (Array.isArray(expedientes) ? expedientes : []);
+      source.forEach((item) => ingestExpediente(item, false));
+    }
+
+    const finalResults: Expediente[] = [];
+    dedup.forEach((mapped) => {
+      const mappedDocId = docIdByExpIdRef.current.get(mapped.id);
       const localChecksByPlazo = esAbogado
         ? (() => {
             const merged: Record<string, LocalPlazoCheckOverride> = {
@@ -786,10 +925,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             }
           : p;
       });
-      dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
+      finalResults.push({ ...mapped, plazos: patchedPlazos });
     });
-    return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet, storageUid, localChecksVersion]);
+
+    return finalResults;
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, localExpedienteOverrides, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet, storageUid, localChecksVersion]);
 
   useEffect(() => {
     if (!initialSelectedExpedienteId) return;
@@ -956,21 +1096,22 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   };
 
   const openEditModal = (exp: Expediente) => {
+    const freshExp = effectiveExpedientes.find((item) => item.id === exp.id) || exp;
     setErrorBanner(null);
     setModalError(null);
-    setEditingExpediente(exp);
-    setCaratula(exp.caratula || '');
-    setNroExpediente(exp.nroExpediente || '');
-    setAnio(exp.anio || String(new Date().getFullYear()));
-    setJuzgado(exp.juzgado || '');
-    setTipoJuicio(exp.tipoJuicio || 'Ordinario');
-    setRolParte(exp.rolParte || 'Demandado');
-    setEstado(exp.estado || 'En trámite');
-    setClienteNombre(exp.clienteNombre || '');
-    setClienteId(exp.clienteId || '');
-    setNotas(exp.notas || '');
-    setDraftPlazos(exp.plazos ? [...exp.plazos] : []);
-    setDraftAnalisisIA(exp.ultimoAnalisisIA || null);
+    setEditingExpediente(freshExp);
+    setCaratula(freshExp.caratula || '');
+    setNroExpediente(freshExp.nroExpediente || '');
+    setAnio(freshExp.anio || String(new Date().getFullYear()));
+    setJuzgado(freshExp.juzgado || '');
+    setTipoJuicio(freshExp.tipoJuicio || 'Ordinario');
+    setRolParte(freshExp.rolParte || 'Demandado');
+    setEstado(freshExp.estado || 'En trámite');
+    setClienteNombre(freshExp.clienteNombre || '');
+    setClienteId(freshExp.clienteId || '');
+    setNotas(freshExp.notas || '');
+    setDraftPlazos(freshExp.plazos ? [...freshExp.plazos] : []);
+    setDraftAnalisisIA(freshExp.ultimoAnalisisIA || null);
     setPendingAnalysisPreview(null);
     setModalOpen(true);
   };
@@ -1180,9 +1321,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     }
 
     const effectiveUid = String(
-      workspaceId || currentUser?.uid || userData?.uid || auth?.currentUser?.uid || ''
+      workspaceId || currentUser?.uid || userData?.uid || auth?.currentUser?.uid || (esAbogado ? storageUid : '')
     ).trim();
-    if (!effectiveUid) {
+    if (!effectiveUid && !esAbogado) {
       setModalError('No se detectó una sesión activa para guardar el expediente. Recarga o inicia sesión nuevamente.');
       return;
     }
@@ -1191,41 +1332,67 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setModalError(null);
     setErrorBanner(null);
 
+    const nowIso = new Date().toISOString();
+    const wasEditing = Boolean(editingExpediente);
+    const previousEditingId = editingExpediente?.id;
+    const resolvedDocId = wasEditing && editingExpediente
+      ? (docIdByExpIdRef.current.get(editingExpediente.id) || editingExpediente.id)
+      : `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const expToSave: Expediente = {
+      id: resolvedDocId,
+      userId: String(editingExpediente?.userId || effectiveUid || storageUid),
+      ownedByWorkspace: String(editingExpediente?.ownedByWorkspace || effectiveUid || storageUid),
+      caratula: caratula.trim(),
+      nroExpediente: (nroExpediente || '').trim(),
+      anio: (anio || '').trim() || String(new Date().getFullYear()),
+      juzgado: (juzgado || '').trim(),
+      tipoJuicio: tipoJuicio || 'Ordinario',
+      rolParte: rolParte || 'Demandado',
+      estado: estado || 'En trámite',
+      plazos: sanitizePlazosList(draftPlazos),
+      ultimoAnalisisIA: sanitizeAnalisisIA(draftAnalisisIA),
+      notas: (notas || '').trim(),
+      clienteNombre: (clienteNombre || '').trim(),
+      clienteId: (clienteId || '').trim(),
+      createdAt: editingExpediente?.createdAt || nowIso,
+      updatedAt: nowIso,
+      creator_id: String(editingExpediente?.creator_id || auth?.currentUser?.uid || effectiveUid || storageUid),
+      creator_name: String(
+        editingExpediente?.creator_name ||
+          auth?.currentUser?.displayName ||
+          userData?.nombre ||
+          auth?.currentUser?.email?.split('@')[0] ||
+          'Usuario'
+      ),
+    };
+
+    const applyLocalSaveState = () => {
+      docIdByExpIdRef.current.set(expToSave.id, resolvedDocId);
+      if (!esAbogado) return;
+      removeDiscardedExpKeys(buildExpedienteDismissKeys(expToSave, resolvedDocId));
+      persistLocalExpedienteOverride(expToSave, previousEditingId);
+      setLiveExpedientes((prev) => {
+        const exists = prev.some(
+          (item) => item.id === expToSave.id || (previousEditingId && item.id === previousEditingId)
+        );
+        if (exists) {
+          return prev.map((item) =>
+            item.id === expToSave.id || (previousEditingId && item.id === previousEditingId)
+              ? expToSave
+              : item
+          );
+        }
+        return [expToSave, ...prev];
+      });
+    };
+
+    // Para abogados: aplicar cambio en estado local + localStorage de inmediato
+    if (esAbogado) {
+      applyLocalSaveState();
+    }
+
     let timeoutId: number | null = null;
     try {
-      const nowIso = new Date().toISOString();
-      const wasEditing = Boolean(editingExpediente);
-      const resolvedDocId = wasEditing && editingExpediente
-        ? (docIdByExpIdRef.current.get(editingExpediente.id) || editingExpediente.id)
-        : `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const expToSave: Expediente = {
-        id: resolvedDocId,
-        userId: String(editingExpediente?.userId || effectiveUid),
-        ownedByWorkspace: String(editingExpediente?.ownedByWorkspace || effectiveUid),
-        caratula: caratula.trim(),
-        nroExpediente: (nroExpediente || '').trim(),
-        anio: (anio || '').trim() || String(new Date().getFullYear()),
-        juzgado: (juzgado || '').trim(),
-        tipoJuicio: tipoJuicio || 'Ordinario',
-        rolParte: rolParte || 'Demandado',
-        estado: estado || 'En trámite',
-        plazos: sanitizePlazosList(draftPlazos),
-        ultimoAnalisisIA: sanitizeAnalisisIA(draftAnalisisIA),
-        notas: (notas || '').trim(),
-        clienteNombre: (clienteNombre || '').trim(),
-        clienteId: (clienteId || '').trim(),
-        createdAt: editingExpediente?.createdAt || nowIso,
-        updatedAt: nowIso,
-        creator_id: String(editingExpediente?.creator_id || auth?.currentUser?.uid || effectiveUid),
-        creator_name: String(
-          editingExpediente?.creator_name ||
-            auth?.currentUser?.displayName ||
-            userData?.nombre ||
-            auth?.currentUser?.email?.split('@')[0] ||
-            'Usuario'
-        ),
-      };
-
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = window.setTimeout(() => {
           reject(new Error('Tiempo de espera agotado al conectar con Firestore (8s). Verifica tu conexión e intenta nuevamente.'));
@@ -1255,19 +1422,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
       await Promise.race([persistEditOrCreate(), timeoutPromise]);
 
-      docIdByExpIdRef.current.set(expToSave.id, resolvedDocId);
-      if (esAbogado) {
-        removeDiscardedExpKeys(buildExpedienteDismissKeys(expToSave, resolvedDocId));
-        setLiveExpedientes((prev) => {
-          const prevId = editingExpediente?.id;
-          const exists = prev.some((item) => item.id === expToSave.id || (prevId && item.id === prevId));
-          if (exists) {
-            return prev.map((item) =>
-              item.id === expToSave.id || (prevId && item.id === prevId) ? expToSave : item
-            );
-          }
-          return [expToSave, ...prev];
-        });
+      if (!esAbogado) {
+        docIdByExpIdRef.current.set(expToSave.id, resolvedDocId);
       }
 
       setModalOpen(false);
@@ -1278,12 +1434,32 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       console.error('Error guardando expediente en Firestore:', err);
       const code = String(err?.code || '').toLowerCase();
       const rawMessage = String(err?.message || '');
-      const friendlyMsg =
-        code.includes('permission') || rawMessage.toLowerCase().includes('permission')
-          ? 'Permiso denegado por Firestore al guardar el expediente. Verifica tu sesión y permisos.'
-          : rawMessage || 'Ocurrió un error al guardar el expediente.';
-      setModalError(friendlyMsg);
-      setErrorBanner(friendlyMsg);
+      const isPermissionOrPreviewError =
+        code.includes('permission') ||
+        rawMessage.toLowerCase().includes('permission') ||
+        rawMessage.toLowerCase().includes('insufficient') ||
+        rawMessage.toLowerCase().includes('sesión') ||
+        rawMessage.toLowerCase().includes('workspace');
+
+      if (esAbogado && isPermissionOrPreviewError) {
+        // Mantener la edición aplicada localmente sin bloquear al abogado en vista previa
+        applyLocalSaveState();
+        setModalOpen(false);
+        resetFormFields();
+        setSelectedExpId(expToSave.id);
+        showToastSuccess(
+          wasEditing
+            ? 'Expediente actualizado en tu vista local (pendiente de permisos en Firestore).'
+            : 'Expediente registrado en tu vista local (pendiente de permisos en Firestore).'
+        );
+      } else {
+        const friendlyMsg =
+          code.includes('permission') || rawMessage.toLowerCase().includes('permission')
+            ? 'Permiso denegado por Firestore al guardar el expediente. Verifica tu sesión y permisos.'
+            : rawMessage || 'Ocurrió un error al guardar el expediente.';
+        setModalError(friendlyMsg);
+        setErrorBanner(friendlyMsg);
+      }
     } finally {
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
@@ -1612,6 +1788,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         prev.filter((item) => item.id !== targetId && item.id !== mappedDocId)
       );
       if (dismissLocally && esAbogado) {
+        purgeLocalExpedienteOverride([targetId, mappedDocId]);
         const dismissKeys = buildExpedienteDismissKeys(targetExp || { id: targetId }, mappedDocId);
         persistDiscardedExpKeys(dismissKeys);
       }
