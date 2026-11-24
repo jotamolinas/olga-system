@@ -2993,7 +2993,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                    Secretaría O.L.G.A. · WhatsApp propio
+                    Secretaría O.L.G.A. • WhatsApp propio
                   </span>
                   {abogadoWaNumber ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">

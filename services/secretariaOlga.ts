@@ -993,14 +993,16 @@ export const buildSecretariaOlgaParteGeneral = ({
     const nroTxt = expediente.nroExpediente
       ? `Expte. ${expediente.nroExpediente}${expediente.anio ? `/${expediente.anio}` : ''}`
       : 'S/N';
+    const rawTitulo = String(plazoPrincipal.titulo || 'Revisar actuación pendiente').trim();
+    const cleanTitulo = rawTitulo.length > 95 ? `${rawTitulo.slice(0, 92)}...` : rawTitulo;
     const extraTxt =
       extraPendientes > 0
-        ? ` (+${extraPendientes} actuación${extraPendientes === 1 ? '' : 'es'} más)`
+        ? ` (+${extraPendientes} más)`
         : '';
     const link = buildCausaDirectUrl(expediente.id);
     return [
       `• *${urgLabel}* (${fechaTxt}) — *${expediente.caratula || 'Expediente sin carátula'}* (${nroTxt})`,
-      `  Atender: ${plazoPrincipal.titulo}${extraTxt}`,
+      `  Atender: ${cleanTitulo}${extraTxt}`,
       `  ${link}`,
     ];
   };
@@ -1009,14 +1011,15 @@ export const buildSecretariaOlgaParteGeneral = ({
     `📋 *PARTE GENERAL — SECRETARÍA O.L.G.A.*`,
     `*Fecha:* ${hoyAsuncionStr} · ${franjaLabel}${abogadoNombre ? ` · *${abogadoNombre}*` : ''}`,
     `*Resumen:* ${totalHoy} vencen hoy${totalVencidos > 0 ? ` (${totalVencidos} vencido${totalVencidos === 1 ? '' : 's'})` : ''} | ${totalCriticos} críticos (≤3d) | ${totalProximos} próximos (4–7d) · *${entries.length} causa${entries.length === 1 ? '' : 's'} con pendientes*`,
-    `🔎 *Judisoft:* Entrá a *Judisoft* para revisar si hay nuevas cédulas o providencias y cargalas en O.L.G.A.`,
+    `🔎 *Judisoft:* Revisá *Judisoft* por si entraron nuevas cédulas o providencias y cargalas en *O.L.G.A.*`,
+    `📲 Ingresá al sistema desde cada enlace para ver el *plan de acción completo*.`,
   ];
 
   if (entries.length === 0) {
     lines.push(
       ``,
       `✅ No hay plazos ni impulsos pendientes en tus causas activas (${activeCauses.length} causa${activeCauses.length === 1 ? '' : 's'} en seguimiento).`,
-      `🔗 Panel de expedientes: https://olgatech.com.py/consola?tab=expedientes`
+      `🔗 Entrar a O.L.G.A.: https://olgatech.com.py/consola?tab=expedientes`
     );
     return lines.join('\n');
   }
