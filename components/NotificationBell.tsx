@@ -256,11 +256,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
       {/* Popover Desplegable Global */}
       {dropdownAbierto && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden animate-scale-in text-slate-900">
-          <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-[#FF3131]" />
-              <span className="text-xs font-bold uppercase tracking-wider">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-24px)] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden animate-scale-in text-slate-900">
+          <div className="p-4 bg-slate-900 text-white flex items-center justify-between gap-2 border-b border-slate-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <Bell className="w-4 h-4 text-[#FF3131] shrink-0" />
+              <span className="text-xs font-bold uppercase tracking-wider truncate">
                 Centro de Alertas ({totalAlertas})
               </span>
             </div>
@@ -268,7 +268,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               <button
                 type="button"
                 onClick={marcarTodasComoLeidas}
-                className="text-[10px] text-slate-300 hover:text-white flex items-center gap-1 font-semibold transition-colors"
+                className="text-[10px] text-slate-300 hover:text-white flex items-center gap-1 font-semibold transition-colors shrink-0 cursor-pointer"
               >
                 <CheckCheck className="w-3.5 h-3.5 text-[#FF3131]" />
                 <span>Marcar leídas</span>

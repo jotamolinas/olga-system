@@ -237,6 +237,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [filterTipo, setFilterTipo] = useState<string>('TODOS');
   const [selectedExpId, setSelectedExpId] = useState<string | null>(null);
   const [showUpcomingAll, setShowUpcomingAll] = useState(false);
+  const [kpiModalCategory, setKpiModalCategory] = useState<'activas' | 'criticos' | 'proximos' | 'cumplidas' | null>(null);
+  const expedienteCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const expedientesListSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Modal crear/editar expediente
   const [modalOpen, setModalOpen] = useState(false);
@@ -498,30 +501,74 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     return items;
   }, [effectiveExpedientes]);
 
-  const urgentCount = useMemo(
-    () => upcomingDeadlines.filter((i) => i.diasRestantes !== null && i.diasRestantes <= 3).length,
+  const criticalDeadlines = useMemo(
+    () => upcomingDeadlines.filter((i) => i.diasRestantes !== null && i.diasRestantes <= 3),
     [upcomingDeadlines]
   );
-  const warningCount = useMemo(
+  const warningDeadlines = useMemo(
     () =>
       upcomingDeadlines.filter(
         (i) => i.diasRestantes !== null && i.diasRestantes > 3 && i.diasRestantes <= 7
-      ).length,
+      ),
     [upcomingDeadlines]
   );
-  const activeCasesCount = useMemo(
-    () => effectiveExpedientes.filter((e) => (e.estado || 'En trámite') !== 'Finalizado').length,
-    [effectiveExpedientes]
-  );
-  const completedStepsCount = useMemo(
+  const activeExpedientes = useMemo(
     () =>
-      effectiveExpedientes.reduce(
-        (acc, exp) =>
-          acc + (Array.isArray(exp.plazos) ? exp.plazos : []).filter((p) => p.completado === true).length,
-        0
-      ),
+      effectiveExpedientes
+        .filter((e) => (e.estado || 'En trámite') !== 'Finalizado')
+        .sort((a, b) =>
+          String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''))
+        ),
     [effectiveExpedientes]
   );
+  const completedDeadlines = useMemo(() => {
+    const list: Array<{ expediente: Expediente; plazo: PlazoProcesal }> = [];
+    effectiveExpedientes.forEach((exp) => {
+      (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
+        if (plazo.completado === true) {
+          list.push({ expediente: exp, plazo });
+        }
+      });
+    });
+    list.sort((a, b) =>
+      String(b.plazo.completadoEn || b.plazo.fechaVencimiento || '').localeCompare(
+        String(a.plazo.completadoEn || a.plazo.fechaVencimiento || '')
+      )
+    );
+    return list;
+  }, [effectiveExpedientes]);
+
+  const urgentCount = criticalDeadlines.length;
+  const warningCount = warningDeadlines.length;
+  const activeCasesCount = activeExpedientes.length;
+  const completedStepsCount = completedDeadlines.length;
+
+  const handleSelectExpedienteFromKpiModal = (expId: string) => {
+    setKpiModalCategory(null);
+    const isVisibleInCurrentFilter = filteredExpedientes.some((item) => item.id === expId);
+    if (!isVisibleInCurrentFilter) {
+      setSearchQuery('');
+      setFilterEstado('TODOS');
+      setFilterTipo('TODOS');
+    }
+    setSelectedExpId(expId);
+    window.setTimeout(() => {
+      const targetEl = expedienteCardRefs.current[expId];
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 90);
+  };
+
+  const handleVerTodosDesdeKpiModal = () => {
+    setKpiModalCategory(null);
+    setSearchQuery('');
+    setFilterEstado('TODOS');
+    setFilterTipo('TODOS');
+    window.setTimeout(() => {
+      expedientesListSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
 
   const filteredExpedientes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1304,7 +1351,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
       {/* KPIs de Expedientes */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className={`rounded-2xl p-4 md:p-5 border transition-all ${cardSurfaceCls}`}>
+        <button
+          type="button"
+          onClick={() => setKpiModalCategory('activas')}
+          className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-blue-400/70 dark:hover:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${cardSurfaceCls}`}
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Causas Activas
@@ -1314,12 +1365,19 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black text-slate-900 dark:text-white">{activeCasesCount}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            {effectiveExpedientes.length} totales registradas
-          </p>
-        </div>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {effectiveExpedientes.length} totales registradas
+            </p>
+            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 shrink-0">Ver →</span>
+          </div>
+        </button>
 
-        <div className={`rounded-2xl p-4 md:p-5 border transition-all ${cardSurfaceCls}`}>
+        <button
+          type="button"
+          onClick={() => setKpiModalCategory('criticos')}
+          className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-red-400/70 dark:hover:border-red-500/60 focus:outline-none focus:ring-2 focus:ring-red-500/40 ${cardSurfaceCls}`}
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Críticos (≤ 3 días)
@@ -1331,12 +1389,19 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           <p className={`text-2xl font-black ${urgentCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
             {urgentCount}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Vencidos o urgentes
-          </p>
-        </div>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Vencidos o urgentes
+            </p>
+            <span className="text-[10px] font-bold text-red-600 dark:text-red-400 shrink-0">Ver →</span>
+          </div>
+        </button>
 
-        <div className={`rounded-2xl p-4 md:p-5 border transition-all ${cardSurfaceCls}`}>
+        <button
+          type="button"
+          onClick={() => setKpiModalCategory('proximos')}
+          className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-amber-400/70 dark:hover:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/40 ${cardSurfaceCls}`}
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Próximos (4–7 días)
@@ -1348,12 +1413,19 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           <p className={`text-2xl font-black ${warningCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
             {warningCount}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Seguimiento cercano
-          </p>
-        </div>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Seguimiento cercano
+            </p>
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 shrink-0">Ver →</span>
+          </div>
+        </button>
 
-        <div className={`rounded-2xl p-4 md:p-5 border transition-all ${cardSurfaceCls}`}>
+        <button
+          type="button"
+          onClick={() => setKpiModalCategory('cumplidas')}
+          className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-emerald-400/70 dark:hover:border-emerald-500/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${cardSurfaceCls}`}
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Actuaciones Cumplidas
@@ -1363,10 +1435,13 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black text-slate-900 dark:text-white">{completedStepsCount}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Plazos e impulsos cerrados
-          </p>
-        </div>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Plazos e impulsos cerrados
+            </p>
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">Ver →</span>
+          </div>
+        </button>
       </div>
 
       {/* Bloque superior: Plazos Próximos a Vencer */}
@@ -1516,6 +1591,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       </div>
 
       {/* Lista de Expedientes */}
+      <div ref={expedientesListSectionRef} className="scroll-mt-24">
       {filteredExpedientes.length === 0 ? (
         <div className={`rounded-[2rem] border p-8 md:p-14 text-center flex flex-col items-center justify-center gap-4 shadow-sm ${cardSurfaceCls}`}>
           <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300">
@@ -1574,7 +1650,10 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             return (
               <div
                 key={exp.id}
-                className={`rounded-3xl border transition-all shadow-sm overflow-hidden ${cardSurfaceCls} ${
+                ref={(el) => {
+                  expedienteCardRefs.current[exp.id] = el;
+                }}
+                className={`scroll-mt-24 rounded-3xl border transition-all shadow-sm overflow-hidden ${cardSurfaceCls} ${
                   isOpen ? 'ring-2 ring-blue-500/40' : ''
                 }`}
               >
@@ -2284,6 +2363,306 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      </div>
+
+      {/* Modal Listado Interactivo de Tarjetas KPI */}
+      {kpiModalCategory && (
+        <div
+          onClick={() => setKpiModalCategory(null)}
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+          >
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    kpiModalCategory === 'activas'
+                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400'
+                      : kpiModalCategory === 'criticos'
+                        ? 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400'
+                        : kpiModalCategory === 'proximos'
+                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  {kpiModalCategory === 'activas' && <Scale className="w-5 h-5" />}
+                  {kpiModalCategory === 'criticos' && <AlertTriangle className="w-5 h-5" />}
+                  {kpiModalCategory === 'proximos' && <CalendarClock className="w-5 h-5" />}
+                  {kpiModalCategory === 'cumplidas' && <Gavel className="w-5 h-5" />}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-black text-slate-900 dark:text-white truncate">
+                    {kpiModalCategory === 'activas' && `Causas Activas (${activeCasesCount})`}
+                    {kpiModalCategory === 'criticos' && `Plazos Críticos ≤ 3 Días (${urgentCount})`}
+                    {kpiModalCategory === 'proximos' && `Plazos Próximos 4–7 Días (${warningCount})`}
+                    {kpiModalCategory === 'cumplidas' && `Actuaciones Cumplidas (${completedStepsCount})`}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Haz clic en cualquier registro para abrir y trabajar directamente sobre el expediente.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setKpiModalCategory(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                aria-label="Cerrar ventana"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-2.5">
+              {kpiModalCategory === 'activas' && (
+                activeExpedientes.length === 0 ? (
+                  <div className="py-10 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
+                      <Scale className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                      No hay causas activas registradas
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                      Registra un nuevo expediente o revisa todos los expedientes archivados/finalizados.
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      {!isSoftBlocked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKpiModalCategory(null);
+                            openCreateModal();
+                          }}
+                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Nuevo Expediente</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleVerTodosDesdeKpiModal}
+                        className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+                      >
+                        Ver Todos los Expedientes
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  activeExpedientes.map((exp) => {
+                    const nextP = (exp.plazos || [])
+                      .filter((p) => !p.completado)
+                      .sort(
+                        (a, b) =>
+                          (calcDaysUntil(a.fechaVencimiento) ?? 9999) -
+                          (calcDaysUntil(b.fechaVencimiento) ?? 9999)
+                      )[0];
+                    const nextDays = nextP ? calcDaysUntil(nextP.fechaVencimiento) : null;
+                    return (
+                      <button
+                        key={exp.id}
+                        type="button"
+                        onClick={() => handleSelectExpedienteFromKpiModal(exp.id)}
+                        className="w-full text-left p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 hover:bg-blue-50/70 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-900 dark:bg-slate-800 text-white">
+                              {exp.tipoJuicio}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                              {exp.estado}
+                            </span>
+                            {exp.nroExpediente && (
+                              <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                                Expte. {exp.nroExpediente}/{exp.anio}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {exp.caratula}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {nextP
+                              ? `Próximo: ${nextP.titulo} • ${formatDateShort(nextP.fechaVencimiento)}`
+                              : exp.juzgado || 'Sin plazos pendientes'}
+                          </p>
+                        </div>
+                        <div className="shrink-0 flex flex-col items-end gap-1">
+                          {nextP && (
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${getDeadlineBadgeStyle(nextDays, false)}`}>
+                              {getDaysLabel(nextDays, false)}
+                            </span>
+                          )}
+                          <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                            Ir al expte. →
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )
+              )}
+
+              {(kpiModalCategory === 'criticos' || kpiModalCategory === 'proximos') && (() => {
+                const items = kpiModalCategory === 'criticos' ? criticalDeadlines : warningDeadlines;
+                if (items.length === 0) {
+                  return (
+                    <div className="py-10 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
+                        {kpiModalCategory === 'criticos' ? (
+                          <AlertTriangle className="w-6 h-6" />
+                        ) : (
+                          <CalendarClock className="w-6 h-6" />
+                        )}
+                      </div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {kpiModalCategory === 'criticos'
+                          ? 'Sin plazos críticos en este momento'
+                          : 'Sin plazos próximos entre 4 y 7 días'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                        {kpiModalCategory === 'criticos'
+                          ? 'No hay vencimientos urgentes o vencidos en las próximas 72 horas.'
+                          : 'No tienes plazos ni impulsos programados para el rango de 4 a 7 días.'}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                        {!isSoftBlocked && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setKpiModalCategory(null);
+                              openCreateModal();
+                            }}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Nuevo Expediente</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleVerTodosDesdeKpiModal}
+                          className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+                        >
+                          Ver Todos los Expedientes
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return items.map(({ expediente, plazo, diasRestantes }) => (
+                  <button
+                    key={`${expediente.id}-${plazo.id}`}
+                    type="button"
+                    onClick={() => handleSelectExpedienteFromKpiModal(expediente.id)}
+                    className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                      kpiModalCategory === 'criticos'
+                        ? 'border-red-200 dark:border-red-900/60 bg-red-50/50 dark:bg-red-950/20 hover:bg-red-100/60 dark:hover:bg-red-950/40'
+                        : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100/60 dark:hover:bg-amber-950/40'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${getDeadlineBadgeStyle(diasRestantes, false)}`}>
+                          {getDaysLabel(diasRestantes, false)}
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                          {formatDateShort(plazo.fechaVencimiento)}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {plazo.tipo === 'impulso' ? 'Impulso' : 'Plazo Legal'}
+                        </span>
+                        {expediente.nroExpediente && (
+                          <span className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400">
+                            Expte. {expediente.nroExpediente}/{expediente.anio}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {plazo.titulo}
+                      </p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
+                        {expediente.caratula}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0">
+                      Abrir →
+                    </span>
+                  </button>
+                ));
+              })()}
+
+              {kpiModalCategory === 'cumplidas' && (
+                completedDeadlines.length === 0 ? (
+                  <div className="py-10 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
+                      <Gavel className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                      Aún no hay actuaciones cumplidas
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                      Cuando marques un plazo o impulso procesal como cumplido aparecerá registrado aquí.
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleVerTodosDesdeKpiModal}
+                        className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+                      >
+                        Ver Todos los Expedientes
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  completedDeadlines.map(({ expediente, plazo }) => (
+                    <button
+                      key={`${expediente.id}-${plazo.id}`}
+                      type="button"
+                      onClick={() => handleSelectExpedienteFromKpiModal(expediente.id)}
+                      className="w-full text-left p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100/60 dark:hover:bg-emerald-950/35 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase border bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+                            Cumplido
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                            {formatDateShort(plazo.completadoEn || plazo.fechaVencimiento)}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {plazo.tipo === 'impulso' ? 'Impulso' : 'Plazo Legal'}
+                          </span>
+                          {expediente.nroExpediente && (
+                            <span className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400">
+                              Expte. {expediente.nroExpediente}/{expediente.anio}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {plazo.titulo}
+                        </p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
+                          {expediente.caratula}
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 shrink-0">
+                        Ver causa →
+                      </span>
+                    </button>
+                  ))
+                )
+              )}
+            </div>
           </div>
         </div>
       )}
