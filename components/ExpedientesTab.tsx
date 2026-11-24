@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -25,6 +25,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   EstadoExpediente,
   Expediente,
@@ -40,7 +41,7 @@ import {
   ExpedientePdfAnalysisPayload,
   redactarEscritoJudicialConIA,
 } from '../services/gemini';
-import { auth } from '../services/auth';
+import { auth, db } from '../services/auth';
 import { incrementarUsoIA } from '../services/firestore';
 
 interface ExpedientesTabProps {
@@ -163,6 +164,54 @@ const normalizeRolParte = (raw: string): RolParteExpediente => {
   return 'Actor / Demandante';
 };
 
+const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const rawPlazos = Array.isArray(src.plazos) ? src.plazos : [];
+  const plazos: PlazoProcesal[] = rawPlazos
+    .filter((p: any) => p && typeof p === 'object')
+    .map((p: any, idx: number) => ({
+      id: String(p.id || `plazo-${idx}-${Date.now()}`),
+      titulo: String(p.titulo || 'Plazo procesal').trim(),
+      fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+      diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+      completado: Boolean(p.completado),
+      tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+    }));
+
+  const rawEstado = String(src.estado || '').trim();
+  const estado: EstadoExpediente = (ESTADOS_EXPEDIENTE.includes(rawEstado as EstadoExpediente)
+    ? rawEstado
+    : rawEstado || 'En trámite') as EstadoExpediente;
+
+  const rawTipo = String(src.tipoJuicio || '').trim();
+  const tipoJuicio: TipoJuicioExpediente = rawTipo ? normalizeTipoJuicio(rawTipo) : 'Ordinario';
+
+  return {
+    id: String(src.id || docId).trim() || docId,
+    userId: String(src.userId ?? src.ownedByWorkspace ?? '').trim(),
+    ownedByWorkspace: String(src.ownedByWorkspace ?? src.userId ?? '').trim(),
+    caratula: String(src.caratula || '').trim() || 'Expediente sin carátula',
+    nroExpediente: String(src.nroExpediente || '').trim(),
+    anio: String(src.anio || new Date().getFullYear()).trim(),
+    juzgado: String(src.juzgado || '').trim(),
+    tipoJuicio,
+    rolParte: src.rolParte ? normalizeRolParte(String(src.rolParte)) : 'Actor / Demandante',
+    estado,
+    plazos,
+    ultimoAnalisisIA:
+      src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object' ? src.ultimoAnalisisIA : null,
+    notas: src.notas ? String(src.notas) : '',
+    clienteNombre: src.clienteNombre ? String(src.clienteNombre) : '',
+    clienteId: src.clienteId ? String(src.clienteId) : '',
+    createdAt: String(src.createdAt || new Date().toISOString()),
+    updatedAt: String(src.updatedAt || src.createdAt || new Date().toISOString()),
+    creator_id: src.creator_id ? String(src.creator_id) : '',
+    creator_name: src.creator_name ? String(src.creator_name) : '',
+    anulado: src.anulado === true,
+    eliminado: src.eliminado === true,
+  };
+};
+
 export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   expedientes,
   personas = [],
@@ -242,6 +291,151 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     ? 'bg-[#F4F4F0]/90 dark:bg-[#12141C]/90 border-amber-200/50 dark:border-amber-500/30'
     : 'bg-white dark:bg-[#121824]/95 border-slate-200/80 dark:border-slate-800';
 
+  const [liveExpedientes, setLiveExpedientes] = useState<Expediente[]>([]);
+  const [hasLiveSnapshot, setHasLiveSnapshot] = useState(false);
+
+  const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
+  const wsId = String(workspaceId || uid).trim();
+  const userEmail = String(currentUser?.email || auth?.currentUser?.email || userData?.email || '')
+    .toLowerCase()
+    .trim();
+  const userRole = String(userData?.role || userData?.rol || currentUser?.role || currentUser?.rol || '')
+    .toLowerCase()
+    .trim();
+  const isAdminOrSuperAdmin = userEmail === 'jotamolinas@gmail.com' || userRole === 'admin';
+
+  useEffect(() => {
+    if (!uid && !wsId && !isAdminOrSuperAdmin) {
+      setLiveExpedientes([]);
+      setHasLiveSnapshot(false);
+      return;
+    }
+
+    const colRef = collection(db, 'expedientes');
+    const adminMap = new Map<string, Expediente>();
+    const userIdMap = new Map<string, Expediente>();
+    const workspaceMap = new Map<string, Expediente>();
+    const fallbackWorkspaceUidMap = new Map<string, Expediente>();
+
+    const commitMerged = () => {
+      const unified = new Map<string, Expediente>();
+      const sources = isAdminOrSuperAdmin
+        ? [adminMap]
+        : [userIdMap, workspaceMap, fallbackWorkspaceUidMap];
+
+      sources.forEach((sourceMap) => {
+        sourceMap.forEach((exp, id) => {
+          if (exp.anulado === true || exp.eliminado === true) return;
+          unified.set(id, exp);
+        });
+      });
+
+      setLiveExpedientes(Array.from(unified.values()));
+      setHasLiveSnapshot(true);
+    };
+
+    const unsubs: Array<() => void> = [];
+
+    if (isAdminOrSuperAdmin) {
+      unsubs.push(
+        onSnapshot(
+          colRef,
+          (snapshot) => {
+            adminMap.clear();
+            snapshot.docs.forEach((docSnap) => {
+              const raw = docSnap.data() as any;
+              if (raw?.anulado === true || raw?.eliminado === true) return;
+              adminMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+            });
+            commitMerged();
+          },
+          (error) => {
+            console.error('[ExpedientesTab] Error en lectura onSnapshot (admin):', error);
+          }
+        )
+      );
+    } else {
+      if (uid) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('userId', '==', uid)),
+            (snapshot) => {
+              userIdMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                userIdMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('[ExpedientesTab] Error en lectura onSnapshot (userId):', error);
+            }
+          )
+        );
+      }
+
+      if (wsId) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('ownedByWorkspace', '==', wsId)),
+            (snapshot) => {
+              workspaceMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                workspaceMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('[ExpedientesTab] Error en lectura onSnapshot (ownedByWorkspace):', error);
+            }
+          )
+        );
+      }
+
+      if (uid && wsId && wsId !== uid) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('ownedByWorkspace', '==', uid)),
+            (snapshot) => {
+              fallbackWorkspaceUidMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                fallbackWorkspaceUidMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('[ExpedientesTab] Error en lectura onSnapshot (ownedByWorkspace=uid):', error);
+            }
+          )
+        );
+      }
+    }
+
+    return () => {
+      unsubs.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+    };
+  }, [uid, wsId, isAdminOrSuperAdmin]);
+
+  const effectiveExpedientes = useMemo(() => {
+    const source = hasLiveSnapshot ? liveExpedientes : (Array.isArray(expedientes) ? expedientes : []);
+    const dedup = new Map<string, Expediente>();
+    source.forEach((item) => {
+      if (!item || !item.id) return;
+      if (item.anulado === true || item.eliminado === true) return;
+      dedup.set(item.id, mapFirestoreDocToExpediente(item, item.id));
+    });
+    return Array.from(dedup.values());
+  }, [hasLiveSnapshot, liveExpedientes, expedientes]);
+
   const showToastSuccess = (msg: string) => {
     setErrorBanner(null);
     setSuccessBanner(msg);
@@ -258,9 +452,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       diasRestantes: number | null;
     }> = [];
 
-    expedientes.forEach((exp) => {
-      if (exp.estado === 'Finalizado') return;
-      (exp.plazos || []).forEach((plazo) => {
+    effectiveExpedientes.forEach((exp) => {
+      if ((exp.estado || 'En trámite') === 'Finalizado') return;
+      (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
         if (plazo.completado) return;
         const dias = calcDaysUntil(plazo.fechaVencimiento);
         items.push({ expediente: exp, plazo, diasRestantes: dias });
@@ -274,7 +468,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     });
 
     return items;
-  }, [expedientes]);
+  }, [effectiveExpedientes]);
 
   const urgentCount = useMemo(
     () => upcomingDeadlines.filter((i) => i.diasRestantes !== null && i.diasRestantes <= 3).length,
@@ -288,34 +482,37 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     [upcomingDeadlines]
   );
   const activeCasesCount = useMemo(
-    () => expedientes.filter((e) => e.estado !== 'Finalizado').length,
-    [expedientes]
+    () => effectiveExpedientes.filter((e) => (e.estado || 'En trámite') !== 'Finalizado').length,
+    [effectiveExpedientes]
   );
   const completedStepsCount = useMemo(
     () =>
-      expedientes.reduce(
-        (acc, exp) => acc + (exp.plazos || []).filter((p) => p.completado).length,
+      effectiveExpedientes.reduce(
+        (acc, exp) => acc + (Array.isArray(exp.plazos) ? exp.plazos : []).filter((p) => p.completado).length,
         0
       ),
-    [expedientes]
+    [effectiveExpedientes]
   );
 
   const filteredExpedientes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return [...expedientes]
+    return [...effectiveExpedientes]
       .filter((exp) => {
-        if (filterEstado !== 'TODOS' && exp.estado !== filterEstado) return false;
-        if (filterTipo !== 'TODOS' && exp.tipoJuicio !== filterTipo) return false;
+        if (exp.anulado === true || exp.eliminado === true) return false;
+        const expEstado = exp.estado || 'En trámite';
+        const expTipo = exp.tipoJuicio || 'Ordinario';
+        if (filterEstado !== 'TODOS' && expEstado !== filterEstado) return false;
+        if (filterTipo !== 'TODOS' && expTipo !== filterTipo) return false;
         if (!q) return true;
         return (
-          exp.caratula.toLowerCase().includes(q) ||
-          exp.nroExpediente.toLowerCase().includes(q) ||
-          exp.juzgado.toLowerCase().includes(q) ||
+          (exp.caratula || 'Expediente sin carátula').toLowerCase().includes(q) ||
+          (exp.nroExpediente || '').toLowerCase().includes(q) ||
+          (exp.juzgado || '').toLowerCase().includes(q) ||
           (exp.clienteNombre || '').toLowerCase().includes(q)
         );
       })
-      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-  }, [expedientes, searchQuery, filterEstado, filterTipo]);
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+  }, [effectiveExpedientes, searchQuery, filterEstado, filterTipo]);
 
   const resetFormFields = () => {
     setEditingExpediente(null);
@@ -464,7 +661,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       return;
     }
 
-    const exp = expedientes.find((e) => e.id === target);
+    const exp = effectiveExpedientes.find((e) => e.id === target);
     if (!exp) {
       setPendingAnalysisPreview(null);
       return;
@@ -966,7 +1163,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           </div>
           <p className="text-2xl font-black text-slate-900 dark:text-white">{activeCasesCount}</p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            {expedientes.length} totales registradas
+            {effectiveExpedientes.length} totales registradas
           </p>
         </div>
 
@@ -1173,15 +1370,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           </div>
           <div className="max-w-md space-y-1.5">
             <h3 className="text-lg font-black font-serif text-slate-900 dark:text-white">
-              {expedientes.length === 0 ? 'Tu carpeta de expedientes está lista' : 'Sin coincidencias para tu búsqueda'}
+              {effectiveExpedientes.length === 0 ? 'Tu carpeta de expedientes está lista' : 'Sin coincidencias para tu búsqueda'}
             </h3>
             <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              {expedientes.length === 0
+              {effectiveExpedientes.length === 0
                 ? 'Registra tu primera causa manualmente o sube una Demanda / Cédula en PDF para que O.L.G.A. extraiga la carátula, calcule plazos según el CPC de Paraguay y te ayude a redactar escritos.'
                 : 'Prueba limpiando los filtros o cambiando el texto de búsqueda.'}
             </p>
           </div>
-          {expedientes.length === 0 && (
+          {effectiveExpedientes.length === 0 && (
             <div className="flex flex-wrap items-center justify-center gap-2.5 mt-1">
               <button
                 type="button"

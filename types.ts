@@ -287,5 +287,7 @@ export interface Expediente {
   updatedAt: string;
   creator_id?: string;
   creator_name?: string;
+  anulado?: boolean;
+  eliminado?: boolean;
 }
 

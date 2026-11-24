@@ -1385,25 +1385,138 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // Sincronización en tiempo real de Expedientes Judiciales por Workspace (Abogados y Super Admin)
   useEffect(() => {
-    if (!workspaceId || !canUseExpedientes) {
+    const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
+    const wsId = String(workspaceId || uid).trim();
+    const isAdminViewer =
+      role === 'admin' ||
+      isActualAdminUser ||
+      String(currentUser?.email || auth?.currentUser?.email || '').toLowerCase().trim() === 'jotamolinas@gmail.com';
+
+    if ((!uid && !wsId && !isAdminViewer) || !canUseExpedientes) {
       setExpedientes([]);
       return;
     }
 
-    const q = query(
-      collection(db, 'expedientes'),
-      where('ownedByWorkspace', '==', workspaceId)
-    );
+    const colRef = collection(db, 'expedientes');
+    const adminMap = new Map<string, Expediente>();
+    const userIdMap = new Map<string, Expediente>();
+    const workspaceMap = new Map<string, Expediente>();
+    const fallbackUidWsMap = new Map<string, Expediente>();
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((docSnap) => normalizeExpediente(docSnap.data(), docSnap.id));
-      setExpedientes(list);
-    }, (error) => {
-      console.error('Fallo en sincronización de expedientes:', error);
-    });
+    const commitMerged = () => {
+      const unified = new Map<string, Expediente>();
+      const sources = isAdminViewer
+        ? [adminMap]
+        : [userIdMap, workspaceMap, fallbackUidWsMap];
 
-    return () => unsubscribe();
-  }, [workspaceId, canUseExpedientes]);
+      sources.forEach((source) => {
+        source.forEach((exp, id) => {
+          if (exp.anulado === true || exp.eliminado === true) return;
+          unified.set(id, exp);
+        });
+      });
+
+      setExpedientes(Array.from(unified.values()));
+    };
+
+    const unsubs: Array<() => void> = [];
+
+    if (isAdminViewer) {
+      unsubs.push(
+        onSnapshot(
+          colRef,
+          (snapshot) => {
+            adminMap.clear();
+            snapshot.docs.forEach((docSnap) => {
+              const raw = docSnap.data() as any;
+              if (raw?.anulado === true || raw?.eliminado === true) return;
+              const norm = normalizeExpediente(raw, docSnap.id);
+              if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+              adminMap.set(docSnap.id, norm);
+            });
+            commitMerged();
+          },
+          (error) => {
+            console.error('Fallo en sincronización de expedientes (admin):', error);
+          }
+        )
+      );
+    } else {
+      if (uid) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('userId', '==', uid)),
+            (snapshot) => {
+              userIdMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                const norm = normalizeExpediente(raw, docSnap.id);
+                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+                userIdMap.set(docSnap.id, norm);
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('Fallo en sincronización de expedientes (userId):', error);
+            }
+          )
+        );
+      }
+
+      if (wsId) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('ownedByWorkspace', '==', wsId)),
+            (snapshot) => {
+              workspaceMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                const norm = normalizeExpediente(raw, docSnap.id);
+                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+                workspaceMap.set(docSnap.id, norm);
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('Fallo en sincronización de expedientes (ownedByWorkspace):', error);
+            }
+          )
+        );
+      }
+
+      if (uid && wsId && wsId !== uid) {
+        unsubs.push(
+          onSnapshot(
+            query(colRef, where('ownedByWorkspace', '==', uid)),
+            (snapshot) => {
+              fallbackUidWsMap.clear();
+              snapshot.docs.forEach((docSnap) => {
+                const raw = docSnap.data() as any;
+                if (raw?.anulado === true || raw?.eliminado === true) return;
+                const norm = normalizeExpediente(raw, docSnap.id);
+                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+                fallbackUidWsMap.set(docSnap.id, norm);
+              });
+              commitMerged();
+            },
+            (error) => {
+              console.error('Fallo en sincronización de expedientes (ownedByWorkspace=uid):', error);
+            }
+          )
+        );
+      }
+    }
+
+    return () => {
+      unsubs.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+    };
+  }, [workspaceId, currentUser?.uid, currentUser?.email, role, isActualAdminUser, canUseExpedientes]);
 
   // FASE 2: Sincronización de Personas por Workspace en directorio_personas (Retrocompatible Multi-Usuario)
   useEffect(() => {
