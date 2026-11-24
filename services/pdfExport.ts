@@ -6,8 +6,11 @@ export interface EscribaniaPdfMetadata {
   registro?: string;
   telefono?: string;
   direccion?: string;
+  email?: string;
+  timbrado?: string;
   logo?: string;
   esAbogado?: boolean;
+  omitDefaultName?: boolean;
 }
 
 export interface GeneratedDocumentPdf {
@@ -551,16 +554,28 @@ const renderEscribaniaHeader = (
   startY: number
 ): number => {
   let cursorY = startY;
-  const nombreEsc = (escribania?.nombre || 'Escribanía Pública').trim();
+  const rawNombre = (escribania?.nombre || '').trim();
+  const nombreEsc = rawNombre
+    ? rawNombre
+    : escribania?.omitDefaultName
+      ? ''
+      : escribania?.esAbogado
+        ? 'Estudio Jurídico'
+        : 'Escribanía Pública';
 
-  doc.setFont('times', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  const nameLines = doc.splitTextToSize(nombreEsc.toUpperCase(), maxWidth);
-  nameLines.forEach((line: string) => {
-    doc.text(line, pageWidth / 2, cursorY, { align: 'center' });
-    cursorY += 5.5;
-  });
+  let drewAnything = false;
+
+  if (nombreEsc) {
+    drewAnything = true;
+    doc.setFont('times', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(15, 23, 42);
+    const nameLines = doc.splitTextToSize(nombreEsc.toUpperCase(), maxWidth);
+    nameLines.forEach((line: string) => {
+      doc.text(line, pageWidth / 2, cursorY, { align: 'center' });
+      cursorY += 5.5;
+    });
+  }
 
   const subParts: string[] = [];
   if (escribania?.registro && escribania.registro !== '---') {
@@ -577,8 +592,12 @@ const renderEscribaniaHeader = (
   if (escribania?.telefono && escribania.telefono !== '---') {
     subParts.push(`Tel.: ${escribania.telefono}`);
   }
+  if (escribania?.timbrado && escribania.timbrado !== '---') {
+    subParts.push(`Timbrado: ${escribania.timbrado}`);
+  }
 
   if (subParts.length > 0) {
+    drewAnything = true;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);
@@ -590,6 +609,7 @@ const renderEscribaniaHeader = (
   }
 
   if (escribania?.direccion && escribania.direccion !== '---') {
+    drewAnything = true;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
@@ -598,6 +618,22 @@ const renderEscribaniaHeader = (
       doc.text(line, pageWidth / 2, cursorY, { align: 'center' });
       cursorY += 3.8;
     });
+  }
+
+  if (escribania?.email && escribania.email !== '---') {
+    drewAnything = true;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    const emailLines = doc.splitTextToSize(escribania.email.trim(), maxWidth);
+    emailLines.forEach((line: string) => {
+      doc.text(line, pageWidth / 2, cursorY, { align: 'center' });
+      cursorY += 3.8;
+    });
+  }
+
+  if (!drewAnything) {
+    return cursorY;
   }
 
   cursorY += 2;
@@ -874,7 +910,14 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   const maxWidth = pageWidth - margin * 2; // 178mm
   const bottomLimit = pageHeight - margin;
 
-  let cursorY = renderEscribaniaHeader(doc, input.escribania, margin, maxWidth, pageWidth, margin);
+  let cursorY = renderEscribaniaHeader(
+    doc,
+    { ...(input.escribania || {}), omitDefaultName: true },
+    margin,
+    maxWidth,
+    pageWidth,
+    margin
+  );
 
   const ensureSpace = (needed: number) => {
     if (cursorY + needed > bottomLimit) {
@@ -883,17 +926,25 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
     }
   };
 
+  const isLawyer = Boolean(input.escribania?.esAbogado);
   const tipoLabel = (input.tipoComprobante || 'Presupuesto').trim();
   const numComp = (input.numeroComprobante || '').trim();
-  const cleanTitle = `Presupuesto de Honorarios y Gastos Notariales${numComp ? ` (${numComp})` : ''}`;
+  const cleanTitle = isLawyer
+    ? `Presupuesto de Honorarios y Gastos Jurídicos${numComp ? ` (${numComp})` : ''}`
+    : `Presupuesto de Honorarios y Gastos Notariales${numComp ? ` (${numComp})` : ''}`;
 
   // Título oficial
   doc.setFont('times', 'bold');
   doc.setFontSize(13.5);
   doc.setTextColor(15, 23, 42);
-  doc.text('PRESUPUESTO DE HONORARIOS Y GASTOS NOTARIALES', pageWidth / 2, cursorY, {
-    align: 'center',
-  });
+  doc.text(
+    isLawyer
+      ? 'PRESUPUESTO DE HONORARIOS Y GASTOS JURÍDICOS'
+      : 'PRESUPUESTO DE HONORARIOS Y GASTOS NOTARIALES',
+    pageWidth / 2,
+    cursorY,
+    { align: 'center' }
+  );
   cursorY += 5;
 
   const metaParts: string[] = [];
@@ -919,7 +970,9 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
     clienteLines.push(`Domicilio: ${input.clienteDireccion.trim()}`);
   }
   if (input.conceptoGeneral?.trim()) {
-    clienteLines.push(`Operación / Trámite: ${input.conceptoGeneral.trim()}`);
+    clienteLines.push(
+      `${isLawyer ? 'Causa / Concepto Jurídico' : 'Operación / Trámite'}: ${input.conceptoGeneral.trim()}`
+    );
   }
 
   const wrappedClientLines: string[] = [];
@@ -1030,7 +1083,11 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   }
 
   if (input.servicios.length > 0) {
-    drawSectionTitle('2. HONORARIOS PROFESIONALES Y SERVICIOS NOTARIALES');
+    drawSectionTitle(
+      isLawyer
+        ? '2. HONORARIOS PROFESIONALES Y SERVICIOS JURÍDICOS'
+        : '2. HONORARIOS PROFESIONALES Y SERVICIOS NOTARIALES'
+    );
     input.servicios.forEach((s, idx) => {
       const cantNum = Number(s.cantidad) || 1;
       const unitNum = Number(s.precioUnitario) || 0;
@@ -1047,7 +1104,15 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   }
 
   if (input.tasas.length === 0 && input.servicios.length === 0) {
-    drawRow('Servicios y gestiones notariales según detalle acordado', '1', '-', formatMontoPdf(input.totalGeneral, 'PYG'), 0);
+    drawRow(
+      isLawyer
+        ? 'Servicios jurídicos y gestiones procesales según detalle acordado'
+        : 'Servicios y gestiones notariales según detalle acordado',
+      '1',
+      '-',
+      formatMontoPdf(input.totalGeneral, 'PYG'),
+      0
+    );
   }
 
   cursorY += 5;
@@ -1128,9 +1193,16 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   const dataUri = doc.output('datauristring');
   const fileBase64 = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
 
+  const fileBase = numComp
+    ? `Presupuesto_${numComp}_${clienteNombre}`
+    : `Presupuesto_${clienteNombre}`;
+
   return {
     fileBase64,
-    fileName: buildSafeUnderscoreFileName(`Presupuesto_${clienteNombre}`, 'Presupuesto_Notarial'),
+    fileName: buildSafeUnderscoreFileName(
+      fileBase,
+      isLawyer ? 'Presupuesto_Juridico' : 'Presupuesto_Notarial'
+    ),
     cleanTitle,
   };
 };

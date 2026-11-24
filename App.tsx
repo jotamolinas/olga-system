@@ -2692,11 +2692,11 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                   userId={currentUser?.uid || currentUser?.email || 'default'}
                   userProfile={userProfile || userData}
                   onIrAConfiguracion={() => setActiveTab('cuenta')}
-                  escribaniaNombre={workspaceName || customBranding.nombreInstitucion || userData?.razonSocial || config.escribania.nombre}
-                  registroNotarial={customBranding.registroNotarial || userData?.matricula || config.escribania.nro_registro}
-                  rucEscribania={customBranding.ruc || userData?.ruc || '80012345-6'}
-                  direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion}
-                  telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono}
+                  escribaniaNombre={customBranding.nombreInstitucion || userData?.nombreInstitucion || userData?.razonSocial || config.escribania.nombre || ''}
+                  registroNotarial={customBranding.registroNotarial || userData?.registroNotarial || userData?.matriculaAbogado || userData?.matricula || config.escribania.nro_registro || ''}
+                  rucEscribania={customBranding.ruc || userData?.ruc || ''}
+                  direccionEscribania={(customBranding as any)?.direccion || userData?.direccion || config.escribania.direccion || ''}
+                  telefonoEscribania={(customBranding as any)?.telefono || userData?.telefono || config.escribania.telefono || ''}
                   esPlanFull={esPlanFull}
                   canUseWhatsApp={canUseWhatsApp}
                 />

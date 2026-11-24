@@ -25,7 +25,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import {
   EstadoExpediente,
   Expediente,
@@ -169,14 +169,22 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   const rawPlazos = Array.isArray(src.plazos) ? src.plazos : [];
   const plazos: PlazoProcesal[] = rawPlazos
     .filter((p: any) => p && typeof p === 'object')
-    .map((p: any, idx: number) => ({
-      id: String(p.id || `plazo-${idx}-${Date.now()}`),
-      titulo: String(p.titulo || 'Plazo procesal').trim(),
-      fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
-      diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
-      completado: Boolean(p.completado),
-      tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
-    }));
+    .map((p: any, idx: number) => {
+      const isCompleted = p.completado === true;
+      const completadoEn =
+        isCompleted && typeof p.completadoEn === 'string' && p.completadoEn.trim()
+          ? p.completadoEn.trim()
+          : null;
+      return {
+        id: String(p.id || `plazo-${idx}-${Date.now()}`),
+        titulo: String(p.titulo || 'Plazo procesal').trim(),
+        fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+        diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+        completado: isCompleted,
+        completadoEn,
+        tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+      };
+    });
 
   const rawEstado = String(src.estado || '').trim();
   const estado: EstadoExpediente = (ESTADOS_EXPEDIENTE.includes(rawEstado as EstadoExpediente)
@@ -293,6 +301,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   const [liveExpedientes, setLiveExpedientes] = useState<Expediente[]>([]);
   const [hasLiveSnapshot, setHasLiveSnapshot] = useState(false);
+  const [optimisticToggleByKey, setOptimisticToggleByKey] = useState<
+    Record<string, { completado: boolean; completadoEn: string | null }>
+  >({});
+  const [togglingPlazos, setTogglingPlazos] = useState<Record<string, boolean>>({});
+  const docIdByExpIdRef = useRef<Map<string, string>>(new Map());
 
   const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
   const wsId = String(workspaceId || uid).trim();
@@ -345,7 +358,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             snapshot.docs.forEach((docSnap) => {
               const raw = docSnap.data() as any;
               if (raw?.anulado === true || raw?.eliminado === true) return;
-              adminMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+              const mapped = mapFirestoreDocToExpediente(raw, docSnap.id);
+              docIdByExpIdRef.current.set(mapped.id, docSnap.id);
+              adminMap.set(docSnap.id, mapped);
             });
             commitMerged();
           },
@@ -364,7 +379,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               snapshot.docs.forEach((docSnap) => {
                 const raw = docSnap.data() as any;
                 if (raw?.anulado === true || raw?.eliminado === true) return;
-                userIdMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+                const mapped = mapFirestoreDocToExpediente(raw, docSnap.id);
+                docIdByExpIdRef.current.set(mapped.id, docSnap.id);
+                userIdMap.set(docSnap.id, mapped);
               });
               commitMerged();
             },
@@ -384,7 +401,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               snapshot.docs.forEach((docSnap) => {
                 const raw = docSnap.data() as any;
                 if (raw?.anulado === true || raw?.eliminado === true) return;
-                workspaceMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+                const mapped = mapFirestoreDocToExpediente(raw, docSnap.id);
+                docIdByExpIdRef.current.set(mapped.id, docSnap.id);
+                workspaceMap.set(docSnap.id, mapped);
               });
               commitMerged();
             },
@@ -404,7 +423,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               snapshot.docs.forEach((docSnap) => {
                 const raw = docSnap.data() as any;
                 if (raw?.anulado === true || raw?.eliminado === true) return;
-                fallbackWorkspaceUidMap.set(docSnap.id, mapFirestoreDocToExpediente(raw, docSnap.id));
+                const mapped = mapFirestoreDocToExpediente(raw, docSnap.id);
+                docIdByExpIdRef.current.set(mapped.id, docSnap.id);
+                fallbackWorkspaceUidMap.set(docSnap.id, mapped);
               });
               commitMerged();
             },
@@ -431,10 +452,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     source.forEach((item) => {
       if (!item || !item.id) return;
       if (item.anulado === true || item.eliminado === true) return;
-      dedup.set(item.id, mapFirestoreDocToExpediente(item, item.id));
+      const mapped = mapFirestoreDocToExpediente(item, item.id);
+      const patchedPlazos = mapped.plazos.map((p) => {
+        const override = optimisticToggleByKey[`${mapped.id}::${p.id}`];
+        return override
+          ? { ...p, completado: override.completado, completadoEn: override.completadoEn }
+          : p;
+      });
+      dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
     });
     return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes]);
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey]);
 
   const showToastSuccess = (msg: string) => {
     setErrorBanner(null);
@@ -455,7 +483,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     effectiveExpedientes.forEach((exp) => {
       if ((exp.estado || 'En trámite') === 'Finalizado') return;
       (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
-        if (plazo.completado) return;
+        if (plazo.completado === true) return;
         const dias = calcDaysUntil(plazo.fechaVencimiento);
         items.push({ expediente: exp, plazo, diasRestantes: dias });
       });
@@ -488,7 +516,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const completedStepsCount = useMemo(
     () =>
       effectiveExpedientes.reduce(
-        (acc, exp) => acc + (Array.isArray(exp.plazos) ? exp.plazos : []).filter((p) => p.completado).length,
+        (acc, exp) =>
+          acc + (Array.isArray(exp.plazos) ? exp.plazos : []).filter((p) => p.completado === true).length,
         0
       ),
     [effectiveExpedientes]
@@ -601,6 +630,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             ? result.plazoPrincipal.fechaVencimiento
             : addCalendarDaysIso(days),
         completado: false,
+        completadoEn: null,
         tipo: 'plazo_legal',
       });
     }
@@ -617,6 +647,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               ? imp.fechaVencimiento
               : addCalendarDaysIso(days),
           completado: false,
+          completadoEn: null,
           tipo: 'impulso',
         });
       });
@@ -691,14 +722,22 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const sanitizePlazosList = (list: PlazoProcesal[]): PlazoProcesal[] =>
     (Array.isArray(list) ? list : [])
       .filter((p) => p && typeof p === 'object')
-      .map((p, idx) => ({
-        id: String(p.id || `plazo-${Date.now()}-${idx}`),
-        titulo: String(p.titulo || 'Plazo procesal').trim(),
-        fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
-        diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
-        completado: Boolean(p.completado),
-        tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
-      }));
+      .map((p, idx) => {
+        const isCompleted = p.completado === true;
+        const completadoEn =
+          isCompleted && typeof p.completadoEn === 'string' && p.completadoEn.trim()
+            ? p.completadoEn.trim()
+            : null;
+        return {
+          id: String(p.id || `plazo-${Date.now()}-${idx}`),
+          titulo: String(p.titulo || 'Plazo procesal').trim(),
+          fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+          diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+          completado: isCompleted,
+          completadoEn,
+          tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+        };
+      });
 
   const sanitizeAnalisisIA = (analisis: ExpedienteAnalisisIA | null): ExpedienteAnalisisIA | null => {
     if (!analisis || typeof analisis !== 'object') return null;
@@ -825,22 +864,134 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     }
   };
 
-  const handleTogglePlazoCompletado = async (exp: Expediente, plazoId: string) => {
+  const togglePlazoCompletado = async (exp: Expediente, plazoId: string) => {
     if (isSoftBlocked) {
       setErrorBanner('Plan expirado: modo solo lectura activado.');
       return;
     }
+    const toggleKey = `${exp.id}::${plazoId}`;
+    if (togglingPlazos[toggleKey]) return;
+
+    const activeUid = String(auth?.currentUser?.uid || uid || '').trim();
+    if (!activeUid) {
+      setErrorBanner('No se detectó una sesión activa para guardar el cambio en Firestore.');
+      return;
+    }
+
+    setErrorBanner(null);
+    const nowIso = new Date().toISOString();
+    const targetPlazo = (exp.plazos || []).find((p) => p.id === plazoId);
+    const prevCompletado = targetPlazo?.completado === true;
+    const prevCompletadoEn =
+      prevCompletado && typeof targetPlazo?.completadoEn === 'string' && targetPlazo.completadoEn.trim()
+        ? targetPlazo.completadoEn.trim()
+        : null;
+    const nextCompletado = !prevCompletado;
+    const nextCompletadoEn = nextCompletado ? nowIso : null;
+    const previousUpdatedAt = String(exp.updatedAt || nowIso);
+
+    const updatedPlazos = sanitizePlazosList(
+      (exp.plazos || []).map((p) =>
+        p.id === plazoId
+          ? { ...p, completado: nextCompletado, completadoEn: nextCompletadoEn }
+          : p
+      )
+    );
+
+    setTogglingPlazos((prev) => ({ ...prev, [toggleKey]: true }));
+    setOptimisticToggleByKey((prev) => ({
+      ...prev,
+      [toggleKey]: { completado: nextCompletado, completadoEn: nextCompletadoEn },
+    }));
+    setLiveExpedientes((prev) =>
+      prev.map((item) =>
+        item.id === exp.id ? { ...item, plazos: updatedPlazos, updatedAt: nowIso } : item
+      )
+    );
+
+    const targetDocId = docIdByExpIdRef.current.get(exp.id) || exp.id;
+    const expRef = doc(db, 'expedientes', targetDocId);
+
     try {
-      const updatedPlazos = (exp.plazos || []).map((p) =>
-        p.id === plazoId ? { ...p, completado: !p.completado } : p
-      );
-      await onSaveExpediente({
-        ...exp,
-        plazos: updatedPlazos,
-        updatedAt: new Date().toISOString(),
+      try {
+        await updateDoc(expRef, {
+          plazos: updatedPlazos,
+          updatedAt: nowIso,
+          fechaActualizacion: serverTimestamp(),
+        });
+      } catch (updateErr: any) {
+        const errCode = String(updateErr?.code || '').toLowerCase();
+        const errMsg = String(updateErr?.message || '').toLowerCase();
+        if (errCode.includes('not-found') || errMsg.includes('no document to update')) {
+          await setDoc(
+            expRef,
+            {
+              id: targetDocId,
+              userId: String(exp.userId || wsId || activeUid),
+              ownedByWorkspace: String(exp.ownedByWorkspace || wsId || activeUid),
+              caratula: exp.caratula || 'Expediente sin carátula',
+              nroExpediente: exp.nroExpediente || '',
+              anio: exp.anio || String(new Date().getFullYear()),
+              juzgado: exp.juzgado || '',
+              tipoJuicio: exp.tipoJuicio || 'Ordinario',
+              rolParte: exp.rolParte || 'Actor / Demandante',
+              estado: exp.estado || 'En trámite',
+              plazos: updatedPlazos,
+              notas: exp.notas || '',
+              clienteNombre: exp.clienteNombre || '',
+              clienteId: exp.clienteId || '',
+              createdAt: exp.createdAt || nowIso,
+              updatedAt: nowIso,
+              fechaActualizacion: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } else {
+          throw updateErr;
+        }
+      }
+
+      setOptimisticToggleByKey((prev) => {
+        if (!prev[toggleKey]) return prev;
+        const next = { ...prev };
+        delete next[toggleKey];
+        return next;
       });
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo actualizar el estado del plazo.');
+      console.error('[ExpedientesTab] Error al persistir togglePlazoCompletado:', err);
+      setOptimisticToggleByKey((prev) => {
+        if (!prev[toggleKey]) return prev;
+        const next = { ...prev };
+        delete next[toggleKey];
+        return next;
+      });
+      setLiveExpedientes((prev) =>
+        prev.map((item) => {
+          if (item.id !== exp.id) return item;
+          return {
+            ...item,
+            plazos: (item.plazos || []).map((p) =>
+              p.id === plazoId
+                ? { ...p, completado: prevCompletado, completadoEn: prevCompletadoEn }
+                : p
+            ),
+            updatedAt: previousUpdatedAt,
+          };
+        })
+      );
+      const code = String(err?.code || '').toLowerCase();
+      setErrorBanner(
+        code.includes('permission')
+          ? 'Permiso denegado al guardar el estado del plazo en Firestore. Se revirtió el cambio.'
+          : err?.message || 'No se pudo guardar el estado del plazo en Firestore. Se revirtió el cambio.'
+      );
+    } finally {
+      setTogglingPlazos((prev) => {
+        if (!prev[toggleKey]) return prev;
+        const next = { ...prev };
+        delete next[toggleKey];
+        return next;
+      });
     }
   };
 
@@ -860,6 +1011,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         fechaVencimiento: newPlazoFecha,
         diasPlazo: Math.max(0, Number(newPlazoDias) || 0),
         completado: false,
+        completadoEn: null,
         tipo: newPlazoTipo,
       };
       await onSaveExpediente({
@@ -1269,8 +1421,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                   <div className="flex items-start gap-3 min-w-0">
                     <button
                       type="button"
-                      onClick={() => void handleTogglePlazoCompletado(expediente, plazo.id)}
-                      className="mt-0.5 w-5 h-5 rounded-md border-2 border-slate-400 dark:border-slate-500 hover:border-emerald-500 flex items-center justify-center shrink-0 transition-colors cursor-pointer bg-white dark:bg-slate-900"
+                      disabled={Boolean(togglingPlazos[`${expediente.id}::${plazo.id}`])}
+                      onClick={() => void togglePlazoCompletado(expediente, plazo.id)}
+                      className="mt-0.5 w-5 h-5 rounded-md border-2 border-slate-400 dark:border-slate-500 hover:border-emerald-500 flex items-center justify-center shrink-0 transition-colors cursor-pointer bg-white dark:bg-slate-900 disabled:opacity-60"
                       title="Marcar plazo como cumplido"
                     >
                       <span className="sr-only">Completar</span>
@@ -1721,8 +1874,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                                   <div className="flex items-start gap-3 min-w-0">
                                     <button
                                       type="button"
-                                      onClick={() => void handleTogglePlazoCompletado(exp, plazo.id)}
-                                      className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+                                      disabled={Boolean(togglingPlazos[`${exp.id}::${plazo.id}`])}
+                                      onClick={() => void togglePlazoCompletado(exp, plazo.id)}
+                                      className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer disabled:opacity-60 ${
                                         plazo.completado
                                           ? 'bg-emerald-600 border-emerald-600 text-white'
                                           : 'border-slate-400 dark:border-slate-500 bg-white dark:bg-slate-900 hover:border-emerald-500'

@@ -343,14 +343,22 @@ export const normalizeExpediente = (raw: any, docId: string): Expediente => {
   const plazos: PlazoProcesal[] = Array.isArray(src.plazos)
     ? src.plazos
         .filter((p: any) => p && typeof p === 'object')
-        .map((p: any, idx: number) => ({
-          id: String(p.id || `plazo-${idx}-${Date.now()}`),
-          titulo: String(p.titulo || 'Plazo procesal').trim(),
-          fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
-          diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
-          completado: Boolean(p.completado),
-          tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
-        }))
+        .map((p: any, idx: number) => {
+          const isCompleted = p.completado === true;
+          const completadoEn =
+            isCompleted && typeof p.completadoEn === 'string' && p.completadoEn.trim()
+              ? p.completadoEn.trim()
+              : null;
+          return {
+            id: String(p.id || `plazo-${idx}-${Date.now()}`),
+            titulo: String(p.titulo || 'Plazo procesal').trim(),
+            fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
+            diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
+            completado: isCompleted,
+            completadoEn,
+            tipo: p.tipo === 'impulso' ? 'impulso' : 'plazo_legal',
+          };
+        })
     : [];
 
   const ownedByWorkspace = String(src.ownedByWorkspace ?? src.userId ?? '').trim();

@@ -239,6 +239,7 @@ export interface PlazoProcesal {
   fechaVencimiento: string; // YYYY-MM-DD
   diasPlazo: number;
   completado: boolean;
+  completadoEn?: string | null;
   tipo: TipoPlazoProcesal;
 }
 

@@ -33,6 +33,8 @@ import {
   MessageCircle,
   Mic,
   MicOff,
+  Download,
+  FilePlus2,
 } from 'lucide-react';
 import {
   EncabezadoFacturaPresupuesto,
@@ -52,6 +54,7 @@ import {
   cargarMembreteUsuario,
   guardarMembreteUsuario,
   MEMBRETE_DEFAULT,
+  limpiarValorEjemplo,
 } from '../types/presupuesto';
 import { Persona, TipoPersona } from '../types';
 import { consultarRUC, formatearRUCConDV, calcularDVParaguay } from '../services/dnitService';
@@ -63,7 +66,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
-import { generatePresupuestoPdfBase64 } from '../services/pdfExport';
+import { generatePresupuestoPdfBase64, downloadPdfFromBase64 } from '../services/pdfExport';
 
 const limpiarParaFirestore = (valor: any): any => {
   if (valor === undefined) return '';
@@ -114,11 +117,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   userId,
   userProfile,
   onIrAConfiguracion,
-  escribaniaNombre = 'Escribanía Notarial Titular',
-  registroNotarial = 'Reg. Nº 1.292',
-  rucEscribania = '80012345-6',
-  direccionEscribania = 'Asunción, República del Paraguay',
-  telefonoEscribania = '+595 21 000-000',
+  escribaniaNombre = '',
+  registroNotarial = '',
+  rucEscribania = '',
+  direccionEscribania = '',
+  telefonoEscribania = '',
   esPlanFull,
   canUseWhatsApp,
 }) => {
@@ -149,24 +152,226 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     return () => unsubAuth();
   }, []);
 
-  const { workspaceId: resolvedWorkspaceId } = useWorkspace(auth?.currentUser || userProfile, userProfile);
+  const { workspaceId: resolvedWorkspaceId, workspaceData } = useWorkspace(auth?.currentUser || userProfile, userProfile);
   const effectiveWorkspaceId = resolvedWorkspaceId || authUid || (userId && userId !== 'default' ? userId : '');
 
-  // Estado dinámico del Membrete Institucional (Multi-usuario)
+  const VALORES_FICTICIOS_MEMBRETE = new Set([
+    'escribanía notarial titular',
+    'escribanía notarial',
+    'escribanía pública',
+    'escribanía titular',
+    'mi escribanía',
+    'estudio jurídico',
+    'estudio jurídico y abogacía',
+    'reg. nº 1.292',
+    'registro notarial',
+    'matrícula csj',
+    'matrícula profesional',
+    '80012345-6',
+    '16894321',
+    '+595 21 000-000',
+    'asunción, república del paraguay',
+    'sin r.u.c.',
+    'sin especificar',
+    '---',
+  ]);
+
+  const sanitizarDatoReal = (valor: unknown): string => {
+    const raw = typeof valor === 'string' || typeof valor === 'number' ? String(valor) : '';
+    const clean = limpiarValorEjemplo(raw);
+    if (!clean) return '';
+    if (VALORES_FICTICIOS_MEMBRETE.has(clean.toLowerCase())) return '';
+    return clean;
+  };
+
+  const elegirPrimerReal = (...candidatos: unknown[]): string => {
+    for (const cand of candidatos) {
+      const real = sanitizarDatoReal(cand);
+      if (real) return real;
+    }
+    return '';
+  };
+
+  const leerConfigLocalUsuario = (): Record<string, any> | null => {
+    try {
+      const candidates =
+        userId && userId !== 'default'
+          ? [`olga_configuracion_institucional_${userId}`]
+          : ['olga_configuracion_institucional_default', 'olga_configuracion_institucional'];
+      for (const key of candidates) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          return JSON.parse(raw);
+        }
+      }
+    } catch {}
+    return null;
+  };
+
+  const resolverMembreteDesdeFuentes = (
+    cargado: MembreteEscribaniaConfig,
+    configOverride?: Record<string, any> | null
+  ): MembreteEscribaniaConfig => {
+    const configLocal = configOverride !== undefined ? configOverride : leerConfigLocalUsuario();
+    const isOperador = String(userProfile?.role || userProfile?.rol || '').toLowerCase().trim() === 'operador';
+    const perfil = isOperador && workspaceData ? workspaceData : (userProfile || workspaceData || {});
+
+    if (esAbogado) {
+      const rawNombreProfesional = elegirPrimerReal(
+        cargado.nombreNotario,
+        configLocal?.nombreNotario,
+        perfil?.nombreTitular,
+        perfil?.nombre,
+        perfil?.razonSocial,
+        perfil?.nombreInstitucion
+      );
+      const rawNombreEstudio = elegirPrimerReal(
+        cargado.nombreEscribania,
+        configLocal?.nombreInstitucion,
+        perfil?.nombreInstitucion,
+        perfil?.razonSocial,
+        perfil?.escribania,
+        escribaniaNombre
+      );
+      const rawMatricula = elegirPrimerReal(perfil?.matriculaAbogado, perfil?.matricula);
+      const matriculaFormateada = rawMatricula
+        ? /matr[ií]cula/i.test(rawMatricula)
+          ? rawMatricula
+          : `Matrícula CSJ N.º ${rawMatricula}`
+        : '';
+      const rawRegistro = elegirPrimerReal(
+        cargado.registroNotarial,
+        configLocal?.registroNotarial,
+        matriculaFormateada,
+        perfil?.registroNotarial,
+        registroNotarial
+      );
+      const ubicacionPerfil = Array.from(
+        new Set(
+          [sanitizarDatoReal(perfil?.ciudad), sanitizarDatoReal(perfil?.circunscripcion)].filter(Boolean)
+        )
+      ).join(', ');
+      const rawCiudad = elegirPrimerReal(
+        cargado.ciudad,
+        configLocal?.ciudad,
+        perfil?.ciudad,
+        perfil?.circunscripcion
+      );
+      const rawDireccion = elegirPrimerReal(
+        cargado.direccion,
+        configLocal?.direccion,
+        perfil?.direccion,
+        ubicacionPerfil,
+        direccionEscribania
+      );
+
+      return {
+        ...MEMBRETE_DEFAULT,
+        ...cargado,
+        nombreNotario: rawNombreProfesional || rawNombreEstudio,
+        registroNotarial: rawRegistro,
+        nombreEscribania: rawNombreEstudio,
+        ruc: elegirPrimerReal(cargado.ruc, configLocal?.ruc, perfil?.ruc, rucEscribania),
+        direccion: rawDireccion,
+        ciudad: rawCiudad,
+        telefono: elegirPrimerReal(
+          cargado.telefono,
+          configLocal?.telefono,
+          perfil?.telefono,
+          perfil?.phoneNumber,
+          telefonoEscribania
+        ),
+        email: elegirPrimerReal(cargado.email, configLocal?.email, perfil?.email, perfil?.correo),
+        timbradoNumero: elegirPrimerReal(
+          cargado.timbradoNumero,
+          configLocal?.timbradoNumero,
+          perfil?.timbradoNumero
+        ),
+        timbradoVigenciaInicio: elegirPrimerReal(
+          cargado.timbradoVigenciaInicio,
+          configLocal?.timbradoVigenciaInicio,
+          perfil?.timbradoVigenciaInicio
+        ),
+        timbradoVigenciaFin: elegirPrimerReal(
+          cargado.timbradoVigenciaFin,
+          configLocal?.timbradoVigenciaFin,
+          perfil?.timbradoVigenciaFin
+        ),
+      };
+    }
+
+    const ubicacionNotarial = Array.from(
+      new Set(
+        [sanitizarDatoReal(perfil?.ciudad), sanitizarDatoReal(perfil?.localidad)].filter(Boolean)
+      )
+    ).join(', ');
+
+    return {
+      ...MEMBRETE_DEFAULT,
+      ...cargado,
+      nombreNotario: elegirPrimerReal(
+        cargado.nombreNotario,
+        configLocal?.nombreNotario,
+        perfil?.nombreTitular,
+        perfil?.nombre,
+        perfil?.escribania,
+        perfil?.razonSocial,
+        perfil?.nombreInstitucion
+      ),
+      registroNotarial: elegirPrimerReal(
+        cargado.registroNotarial,
+        configLocal?.registroNotarial,
+        perfil?.registroNotarial,
+        perfil?.matricula,
+        registroNotarial
+      ),
+      nombreEscribania: elegirPrimerReal(
+        cargado.nombreEscribania,
+        configLocal?.nombreInstitucion,
+        perfil?.nombreInstitucion,
+        perfil?.escribania,
+        perfil?.razonSocial,
+        escribaniaNombre
+      ),
+      ruc: elegirPrimerReal(cargado.ruc, configLocal?.ruc, perfil?.ruc, rucEscribania),
+      direccion: elegirPrimerReal(
+        cargado.direccion,
+        configLocal?.direccion,
+        perfil?.direccion,
+        ubicacionNotarial,
+        direccionEscribania
+      ),
+      ciudad: elegirPrimerReal(cargado.ciudad, configLocal?.ciudad, perfil?.ciudad, perfil?.localidad),
+      telefono: elegirPrimerReal(
+        cargado.telefono,
+        configLocal?.telefono,
+        perfil?.telefono,
+        perfil?.phoneNumber,
+        telefonoEscribania
+      ),
+      email: elegirPrimerReal(cargado.email, configLocal?.email, perfil?.email, perfil?.correo),
+      timbradoNumero: elegirPrimerReal(
+        cargado.timbradoNumero,
+        configLocal?.timbradoNumero,
+        perfil?.timbradoNumero
+      ),
+      timbradoVigenciaInicio: elegirPrimerReal(
+        cargado.timbradoVigenciaInicio,
+        configLocal?.timbradoVigenciaInicio,
+        perfil?.timbradoVigenciaInicio
+      ),
+      timbradoVigenciaFin: elegirPrimerReal(
+        cargado.timbradoVigenciaFin,
+        configLocal?.timbradoVigenciaFin,
+        perfil?.timbradoVigenciaFin
+      ),
+    };
+  };
+
+  // Estado dinámico del Membrete Institucional (Multi-usuario, solo datos reales)
   const [membrete, setMembrete] = useState<MembreteEscribaniaConfig>(() => {
     const cargado = cargarMembreteUsuario(userId);
-    return {
-      ...cargado,
-      nombreNotario: cargado.nombreNotario || userProfile?.nombreTitular || escribaniaNombre || MEMBRETE_DEFAULT.nombreNotario,
-      registroNotarial: cargado.registroNotarial || userProfile?.registroNotarial || registroNotarial || MEMBRETE_DEFAULT.registroNotarial,
-      ruc: cargado.ruc || userProfile?.ruc || rucEscribania || MEMBRETE_DEFAULT.ruc,
-      direccion: cargado.direccion || userProfile?.direccion || direccionEscribania || MEMBRETE_DEFAULT.direccion,
-      telefono: cargado.telefono || userProfile?.telefono || telefonoEscribania || MEMBRETE_DEFAULT.telefono,
-      email: cargado.email || userProfile?.email || MEMBRETE_DEFAULT.email,
-      timbradoNumero: cargado.timbradoNumero || userProfile?.timbradoNumero || MEMBRETE_DEFAULT.timbradoNumero,
-      timbradoVigenciaInicio: cargado.timbradoVigenciaInicio || userProfile?.timbradoVigenciaInicio || MEMBRETE_DEFAULT.timbradoVigenciaInicio,
-      timbradoVigenciaFin: cargado.timbradoVigenciaFin || userProfile?.timbradoVigenciaFin || MEMBRETE_DEFAULT.timbradoVigenciaFin,
-    };
+    return resolverMembreteDesdeFuentes(cargado);
   });
 
   // Modal para edición rápida de membrete dentro del módulo de facturación
@@ -176,23 +381,75 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   const [formatoPapel, setFormatoPapel] = useState<'a4' | 'oficio'>('a4');
   const [membreteDraft, setMembreteDraft] = useState<MembreteEscribaniaConfig>(membrete);
 
-  // Sincronización reactiva del membrete ante cambios en configuración o cambio de usuario
+  // Sincronización reactiva del membrete ante cambios en configuración, perfil o cambio de usuario
   useEffect(() => {
     const cargado = cargarMembreteUsuario(userId);
-    setMembrete(cargado);
-    setMembreteDraft(cargado);
+    const resuelto = resolverMembreteDesdeFuentes(cargado);
+    setMembrete(resuelto);
+    setMembreteDraft(resuelto);
 
     const handleActualizacion = (e: any) => {
-      const configNueva = e.detail?.config || cargarMembreteUsuario(userId);
+      const baseNueva = e.detail?.config || cargarMembreteUsuario(userId);
+      const configNueva = resolverMembreteDesdeFuentes(baseNueva);
+      setMembrete(configNueva);
+      setMembreteDraft(configNueva);
+    };
+
+    const handleConfigActualizada = (e: any) => {
+      const baseNueva = cargarMembreteUsuario(userId);
+      const configNueva = resolverMembreteDesdeFuentes(baseNueva, e.detail || null);
       setMembrete(configNueva);
       setMembreteDraft(configNueva);
     };
 
     window.addEventListener('olga_escribania_updated', handleActualizacion);
+    window.addEventListener('olga_config_updated', handleConfigActualizada);
     return () => {
       window.removeEventListener('olga_escribania_updated', handleActualizacion);
+      window.removeEventListener('olga_config_updated', handleConfigActualizada);
     };
-  }, [userId]);
+  }, [
+    userId,
+    esAbogado,
+    userProfile?.nombre,
+    userProfile?.nombreTitular,
+    userProfile?.razonSocial,
+    userProfile?.nombreInstitucion,
+    userProfile?.escribania,
+    userProfile?.matriculaAbogado,
+    userProfile?.matricula,
+    userProfile?.registroNotarial,
+    userProfile?.ruc,
+    userProfile?.telefono,
+    userProfile?.phoneNumber,
+    userProfile?.direccion,
+    userProfile?.ciudad,
+    userProfile?.circunscripcion,
+    userProfile?.email,
+    userProfile?.correo,
+    userProfile?.timbradoNumero,
+    userProfile?.timbradoVigenciaInicio,
+    userProfile?.timbradoVigenciaFin,
+    workspaceData?.nombre,
+    workspaceData?.nombreTitular,
+    workspaceData?.razonSocial,
+    workspaceData?.nombreInstitucion,
+    workspaceData?.escribania,
+    workspaceData?.matriculaAbogado,
+    workspaceData?.matricula,
+    workspaceData?.registroNotarial,
+    workspaceData?.ruc,
+    workspaceData?.telefono,
+    workspaceData?.direccion,
+    workspaceData?.ciudad,
+    workspaceData?.circunscripcion,
+    workspaceData?.email,
+    escribaniaNombre,
+    registroNotarial,
+    rucEscribania,
+    direccionEscribania,
+    telefonoEscribania,
+  ]);
 
   // Estado de encabezado
   const [encabezado, setEncabezado] = useState<EncabezadoFacturaPresupuesto>(() => {
@@ -267,6 +524,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   const [guardadoExito, setGuardadoExito] = useState(false);
   const [guardandoFirestore, setGuardandoFirestore] = useState(false);
+  const [guardandoEnDocumentos, setGuardandoEnDocumentos] = useState(false);
+  const [guardadoEnDocumentosExito, setGuardadoEnDocumentosExito] = useState(false);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
   const [pestañaActiva, setPestañaActiva] = useState<'todo' | 'tasas' | 'servicios' | 'resumen'>('todo');
@@ -1066,6 +1326,14 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     const prompt = aiPresupuestoTexto.trim();
     if (!prompt || cargandoAiPresupuesto) return;
 
+    if (escuchandoVozPresupuesto && aiPresupuestoRecognitionRef.current) {
+      try {
+        aiPresupuestoRecognitionRef.current.stop();
+      } catch {}
+      setEscuchandoVozPresupuesto(false);
+    }
+
+    setAiPresupuestoTexto('');
     setCargandoAiPresupuesto(true);
     setAiPresupuestoError(null);
     try {
@@ -1198,14 +1466,30 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
   // Guardar cambios rápidos del membrete institucional
   const handleGuardarMembrete = () => {
-    guardarMembreteUsuario(membreteDraft, userId);
-    setMembrete(membreteDraft);
+    const configAGuardar: MembreteEscribaniaConfig = {
+      ...membreteDraft,
+      nombreNotario: sanitizarDatoReal(membreteDraft.nombreNotario),
+      registroNotarial: sanitizarDatoReal(membreteDraft.registroNotarial),
+      nombreEscribania: sanitizarDatoReal(membreteDraft.nombreEscribania),
+      direccion: sanitizarDatoReal(membreteDraft.direccion),
+      ciudad: sanitizarDatoReal(membreteDraft.ciudad),
+      telefono: sanitizarDatoReal(membreteDraft.telefono),
+      email: sanitizarDatoReal(membreteDraft.email),
+      ruc: sanitizarDatoReal(membreteDraft.ruc),
+      timbradoNumero: sanitizarDatoReal(membreteDraft.timbradoNumero),
+      timbradoVigenciaInicio: sanitizarDatoReal(membreteDraft.timbradoVigenciaInicio),
+      timbradoVigenciaFin: sanitizarDatoReal(membreteDraft.timbradoVigenciaFin),
+      membreteConfigurado: true,
+    };
+    guardarMembreteUsuario(configAGuardar, userId);
+    setMembrete(configAGuardar);
+    setMembreteDraft(configAGuardar);
     // Sincronizar número de timbrado en el encabezado si aún es el mismo o estaba vacío
     if (!encabezado.timbrado || encabezado.timbrado === membrete.timbradoNumero) {
       setEncabezado(prev => ({
         ...prev,
-        timbrado: membreteDraft.timbradoNumero,
-        fechaVencimientoValidez: membreteDraft.timbradoVigenciaFin || prev.fechaVencimientoValidez,
+        timbrado: configAGuardar.timbradoNumero,
+        fechaVencimientoValidez: configAGuardar.timbradoVigenciaFin || prev.fechaVencimientoValidez,
       }));
     }
     setModalMembreteAbierto(false);
@@ -1215,6 +1499,250 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   const handleImprimir = () => {
     autoguardarClienteSilencioso();
     setModalImpresionAbierto(true);
+  };
+
+  const buildCurrentPresupuestoPdfInput = () => {
+    const clienteNombreVal = (encabezado.clienteNombre || '').trim() || 'Cliente';
+    const conceptoVal =
+      (encabezado.conceptoGeneral || '').trim() ||
+      (esAbogado ? 'Servicios Jurídicos y Patrocinio Procesal' : 'Servicios notariales y gestión registral');
+    const rawValidez = (encabezado.fechaVencimientoValidez || '').trim();
+    const validezParts = rawValidez.split('-');
+    const validezFmt =
+      validezParts.length === 3
+        ? `${validezParts[2]}/${validezParts[1]}/${validezParts[0]}`
+        : rawValidez || '30 días a partir de la fecha de emisión';
+    const nombreEntidad = sanitizarDatoReal(
+      esAbogado
+        ? membrete.nombreNotario || membrete.nombreEscribania
+        : membrete.nombreEscribania || membrete.nombreNotario
+    );
+
+    return {
+      tipoComprobante: encabezado.tipoComprobante || 'Presupuesto',
+      numeroComprobante: (encabezado.numeroComprobante || '').trim(),
+      fechaEmision: encabezado.fechaEmision,
+      validez: validezFmt,
+      condicionVenta: encabezado.condicionVenta,
+      conceptoGeneral: conceptoVal,
+      escribania: {
+        nombre: nombreEntidad,
+        ruc: sanitizarDatoReal(membrete.ruc),
+        registro: sanitizarDatoReal(membrete.registroNotarial),
+        telefono: sanitizarDatoReal(membrete.telefono),
+        direccion: sanitizarDatoReal(membrete.direccion),
+        email: sanitizarDatoReal(membrete.email),
+        timbrado: sanitizarDatoReal(membrete.timbradoNumero),
+        esAbogado,
+        omitDefaultName: true,
+      },
+      clienteNombre: clienteNombreVal,
+      clienteDocumento: encabezado.clienteRucCI,
+      clienteTelefono: encabezado.clienteTelefono,
+      clienteDireccion: encabezado.clienteDireccion,
+      tasas: tasas
+        .filter((t) => t.activo)
+        .map((t) => ({
+          descripcion: t.descripcion,
+          monto: Number(t.monto) || 0,
+          numeroComprobantePago: t.numeroComprobantePago,
+        })),
+      servicios: servicios
+        .filter((s) => s.activo)
+        .map((s) => ({
+          descripcion: s.descripcion,
+          cantidad: Number(s.cantidad) || 1,
+          precioUnitario: Number(s.precioUnitario) || 0,
+          total: Number(s.total) || (Number(s.cantidad) || 1) * (Number(s.precioUnitario) || 0),
+          tipoIva: s.tipoIva,
+        })),
+      subtotalTasas: Number(liquidacion.subtotalTasasReembolso) || 0,
+      subtotalServicios: Number(liquidacion.totalVentaServicios) || 0,
+      totalIva: Number(liquidacion.totalIvaLiquidado) || 0,
+      totalGeneral: Number(liquidacion.totalGeneralOperacion) || 0,
+      totalLetras: liquidacion.totalLetras,
+      notas: observaciones,
+    };
+  };
+
+  const handleDescargarPdfPresupuesto = () => {
+    if (descargandoPdf) return;
+    setDescargandoPdf(true);
+    setSaveError(null);
+    try {
+      autoguardarClienteSilencioso();
+      const payload = buildCurrentPresupuestoPdfInput();
+      const pdf = generatePresupuestoPdfBase64(payload);
+      const nroSafe = (payload.numeroComprobante || 'S-N').replace(/[\\/:*?"<>|\s]+/g, '-');
+      const cliSafe = (payload.clienteNombre || 'Cliente')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\\/:*?"<>|]+/g, '')
+        .replace(/\s+/g, '_')
+        .slice(0, 48) || 'Cliente';
+      const nombreArchivo = `Presupuesto_${nroSafe}_${cliSafe}.pdf`;
+      downloadPdfFromBase64(pdf.fileBase64, nombreArchivo);
+      setSaveToastMessage(`PDF descargado: ${nombreArchivo}`);
+      setTimeout(() => setSaveToastMessage(null), 3500);
+    } catch (err) {
+      console.warn('Error generando PDF directo, usando fallback de impresión:', err);
+      try {
+        handleImprimirPresupuestoDirecto(formatoPapel);
+      } catch {
+        window.print();
+      }
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
+
+  const handleGuardarEnDocumentos = async () => {
+    if (guardandoEnDocumentos) return;
+    setSaveError(null);
+
+    const authenticatedUser = auth?.currentUser;
+    if (!authenticatedUser?.uid) {
+      setSaveError('Debe iniciar sesión con una cuenta autenticada para guardar el presupuesto en Documentos.');
+      return;
+    }
+
+    setGuardandoEnDocumentos(true);
+    setGuardadoEnDocumentosExito(false);
+    try {
+      autoguardarClienteSilencioso();
+
+      const numComp = (encabezado.numeroComprobante || 'PRES-0001').trim();
+      const clienteNom = (encabezado.clienteNombre || 'Consumidor Final').trim();
+      const clienteDoc = (encabezado.clienteRucCI || 'A confirmar').trim();
+      const concepto =
+        (encabezado.conceptoGeneral || '').trim() ||
+        (esAbogado ? 'Servicios Jurídicos y Patrocinio Procesal' : 'Servicios y Gestiones Notariales');
+
+      const tasasActivas = tasas.filter((t) => t.activo);
+      const serviciosActivos = servicios.filter((s) => s.activo);
+
+      const lineasTasas =
+        tasasActivas.length > 0
+          ? tasasActivas.map(
+              (t, i) =>
+                `${i + 1}. ${t.descripcion}${t.numeroComprobantePago ? ` (Comp.: ${t.numeroComprobantePago})` : ''} — Gs. ${Number(t.monto || 0).toLocaleString('es-PY')}`
+            )
+          : ['Sin tasas judiciales o aranceles adicionales asignados.'];
+
+      const lineasServicios =
+        serviciosActivos.length > 0
+          ? serviciosActivos.map((s, i) => {
+              const cant = Number(s.cantidad) || 1;
+              const unit = Number(s.precioUnitario) || 0;
+              const tot = Number(s.total ?? cant * unit) || 0;
+              const ivaTxt = s.tipoIva === 'exenta' ? 'Exenta' : `IVA ${s.tipoIva}%`;
+              return `${i + 1}. ${s.descripcion} | Cant.: ${cant} x Gs. ${unit.toLocaleString('es-PY')} (${ivaTxt}) = Gs. ${tot.toLocaleString('es-PY')}`;
+            })
+          : ['Sin honorarios cargados.'];
+
+      const nombrePrincipalDoc = sanitizarDatoReal(membrete.nombreNotario || membrete.nombreEscribania);
+      const nombreSecundarioDoc =
+        membrete.nombreEscribania && membrete.nombreEscribania !== nombrePrincipalDoc
+          ? sanitizarDatoReal(membrete.nombreEscribania)
+          : '';
+      const headerLineas = [
+        nombrePrincipalDoc ? nombrePrincipalDoc.toUpperCase() : '',
+        [sanitizarDatoReal(membrete.registroNotarial), nombreSecundarioDoc].filter(Boolean).join(' • '),
+        [
+          sanitizarDatoReal(membrete.ruc) ? `RUC: ${sanitizarDatoReal(membrete.ruc)}` : '',
+          sanitizarDatoReal(membrete.telefono) ? `Tel.: ${sanitizarDatoReal(membrete.telefono)}` : '',
+          sanitizarDatoReal(membrete.timbradoNumero) ? `Timbrado: ${sanitizarDatoReal(membrete.timbradoNumero)}` : '',
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        sanitizarDatoReal(membrete.direccion),
+        sanitizarDatoReal(membrete.email),
+      ].filter(Boolean);
+
+      const textoFormateado = [
+        ...headerLineas,
+        ...(headerLineas.length > 0 ? ['============================================================'] : []),
+        esAbogado
+          ? 'PRESUPUESTO DE HONORARIOS Y GASTOS JURÍDICOS'
+          : 'PRESUPUESTO DE HONORARIOS Y GASTOS NOTARIALES',
+        `Comprobante: ${encabezado.tipoComprobante || 'Presupuesto'} N.º ${numComp}`,
+        `Fecha de Emisión: ${encabezado.fechaEmision || new Date().toISOString().slice(0, 10)}   |   Condición: ${encabezado.condicionVenta || 'Contado'}`,
+        '',
+        'DATOS DEL CLIENTE Y CONCEPTO:',
+        `• Cliente / Razón Social: ${clienteNom}`,
+        `• C.I. / R.U.C.: ${clienteDoc}`,
+        encabezado.clienteTelefono ? `• Teléfono: ${encabezado.clienteTelefono}` : '',
+        encabezado.clienteDireccion ? `• Domicilio: ${encabezado.clienteDireccion}` : '',
+        `• ${esAbogado ? 'Causa / Concepto Jurídico' : 'Acto / Concepto Notarial'}: ${concepto}`,
+        '',
+        'I. TASAS JUDICIALES, ARANCELES Y REEMBOLSOS OFICIALES (EXENTAS DE IVA):',
+        ...lineasTasas,
+        `Subtotal Tasas y Reembolsos: Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}`,
+        '',
+        `II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'SERVICIOS NOTARIALES Y HONORARIOS PROFESIONALES'}:`,
+        ...lineasServicios,
+        `Subtotal Servicios y Honorarios: Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}`,
+        '',
+        'LIQUIDACIÓN TRIBUTARIA Y TOTAL GENERAL:',
+        `• Liquidación IVA 5%: Gs. ${liquidacion.iva5.toLocaleString('es-PY')}`,
+        `• Liquidación IVA 10%: Gs. ${liquidacion.iva10.toLocaleString('es-PY')}`,
+        `• Total IVA Liquidado: Gs. ${liquidacion.totalIvaLiquidado.toLocaleString('es-PY')}`,
+        `• TOTAL GENERAL A PAGAR: Gs. ${liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}`,
+        '',
+        'OBSERVACIONES Y VALIDEZ:',
+        observaciones || 'Validez de 30 días desde su emisión.',
+      ]
+        .filter((line) => line !== undefined)
+        .join('\n');
+
+      const ownerWorkspaceId = effectiveWorkspaceId || authenticatedUser.uid;
+      const creatorName =
+        userProfile?.nombre ||
+        userProfile?.razonSocial ||
+        authenticatedUser.displayName ||
+        authenticatedUser.email?.split('@')[0] ||
+        'Usuario';
+      const creatorRole = userProfile?.role || userProfile?.rol || 'titular';
+      const carpetaDestino = 'Presupuestos';
+      const tituloDocumento = `${encabezado.tipoComprobante || 'Presupuesto'} ${numComp} - ${clienteNom}`;
+
+      await addDoc(collection(db, 'documentos_olga'), {
+        texto: textoFormateado,
+        tipo: tituloDocumento,
+        tipoHoja: 'blanca',
+        tipoPapel: 'blanco',
+        modoImpresion: 'simple',
+        includeHeader: true,
+        userId: ownerWorkspaceId,
+        creator_id: authenticatedUser.uid,
+        createdBy: authenticatedUser.uid,
+        creator_name: creatorName,
+        creator_role: creatorRole,
+        categoria: carpetaDestino,
+        origenModulo: 'presupuestos',
+        numeroComprobante: numComp,
+        clienteNombre: clienteNom,
+        montoTotal: Number(liquidacion.totalGeneralOperacion) || 0,
+        createdAt: new Date().toISOString(),
+        fechaCreacion: serverTimestamp(),
+      });
+
+      setGuardadoEnDocumentosExito(true);
+      setSaveToastMessage(`¡Presupuesto guardado en Documentos (carpeta "${carpetaDestino}")!`);
+      setTimeout(() => {
+        setGuardadoEnDocumentosExito(false);
+        setSaveToastMessage(null);
+      }, 4000);
+    } catch (e: any) {
+      console.error('Error al guardar presupuesto en documentos_olga:', e);
+      setSaveError(
+        e?.code === 'permission-denied'
+          ? 'Permiso denegado por Firestore al guardar en Documentos.'
+          : `No se pudo guardar en Documentos: ${e?.message || 'Error de conexión'}`
+      );
+    } finally {
+      setGuardandoEnDocumentos(false);
+    }
   };
 
   // Motor de Impresión Notarial Directo (Genera una ventana limpia calibrada a 1 página exacta en A4 u Oficio)
@@ -1430,10 +1958,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   <div class="hoja-impresion">
     <div class="header-box">
       <div>
-        <h1 class="notaria-title">${membrete.nombreNotario || 'Escribanía Notarial'}</h1>
-        <p class="notaria-sub"><strong>${membrete.registroNotarial || 'Registro Notarial'}</strong> • ${membrete.nombreEscribania || 'Escribanía Pública'}</p>
-        <p class="notaria-sub">${membrete.direccion || 'Asunción, República del Paraguay'}</p>
-        <p class="notaria-sub">Tel: ${membrete.telefono || '+595 21 000-000'} | R.U.C.: ${membrete.ruc || '80012345-6'} | Timbrado: ${membrete.timbradoNumero || '16894321'}</p>
+        ${(membrete.nombreNotario || membrete.nombreEscribania) ? `<h1 class="notaria-title">${membrete.nombreNotario || membrete.nombreEscribania}</h1>` : ''}
+        ${[membrete.registroNotarial ? `<strong>${membrete.registroNotarial}</strong>` : '', (membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario) ? membrete.nombreEscribania : ''].filter(Boolean).length > 0 ? `<p class="notaria-sub">${[membrete.registroNotarial ? `<strong>${membrete.registroNotarial}</strong>` : '', (membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario) ? membrete.nombreEscribania : ''].filter(Boolean).join(' • ')}</p>` : ''}
+        ${membrete.direccion ? `<p class="notaria-sub">${membrete.direccion}</p>` : ''}
+        ${[membrete.telefono ? `Tel: ${membrete.telefono}` : '', membrete.ruc ? `R.U.C.: ${membrete.ruc}` : '', membrete.timbradoNumero ? `Timbrado: ${membrete.timbradoNumero}` : '', membrete.email ? `Email: ${membrete.email}` : ''].filter(Boolean).length > 0 ? `<p class="notaria-sub">${[membrete.telefono ? `Tel: ${membrete.telefono}` : '', membrete.ruc ? `R.U.C.: ${membrete.ruc}` : '', membrete.timbradoNumero ? `Timbrado: ${membrete.timbradoNumero}` : '', membrete.email ? `Email: ${membrete.email}` : ''].filter(Boolean).join(' | ')}</p>` : ''}
       </div>
       <div class="presupuesto-badge">
         <h2>${encabezado.tipoComprobante || 'PRESUPUESTO'}</h2>
@@ -1571,8 +2099,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         <div class="cargo-firma">C.I. / R.U.C.: ${clienteRuc}</div>
       </div>
       <div>
-        <div class="linea-firma">${membrete.nombreNotario || (esAbogado ? 'Abogado / Estudio Jurídico' : 'Notario Público Titular')}</div>
-        <div class="cargo-firma">${membrete.registroNotarial || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')} • Sello Oficial</div>
+        <div class="linea-firma">${membrete.nombreNotario || membrete.nombreEscribania || (esAbogado ? 'Firma y Aclaración del Profesional' : 'Firma y Aclaración del Notario')}</div>
+        <div class="cargo-firma">${[membrete.registroNotarial, 'Sello Oficial'].filter(Boolean).join(' • ')}</div>
       </div>
     </div>
   </div>
@@ -1716,6 +2244,40 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
           <button
             type="button"
+            onClick={() => void handleGuardarEnDocumentos()}
+            disabled={guardandoEnDocumentos}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-60 ${
+              guardadoEnDocumentosExito
+                ? 'bg-emerald-600 text-white border-emerald-500'
+                : esFull
+                  ? 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+            title="Guardar copia formateada en Documentos de O.L.G.A."
+          >
+            {guardandoEnDocumentos ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : guardadoEnDocumentosExito ? (
+              <Check className="w-4 h-4 text-white" />
+            ) : (
+              <FilePlus2 className="w-4 h-4 text-indigo-400" />
+            )}
+            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'En Documentos' : 'Guardar en Documentos'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDescargarPdfPresupuesto}
+            disabled={descargandoPdf}
+            className="px-4 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md disabled:opacity-60"
+            title="Descargar archivo PDF directamente"
+          >
+            {descargandoPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-white" />}
+            <span>Descargar PDF</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleImprimir}
             className={`px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               esFull 
@@ -1825,41 +2387,65 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className={`text-base font-bold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
-                  {membrete.nombreNotario}
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold print:border-slate-400 print:text-black">
-                  {membrete.registroNotarial}
-                </span>
-                <span className={`text-xs font-mono ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'}`}>
-                  RUC: <strong className={modoFondoBlanco ? 'text-slate-900' : 'text-slate-200'}>{membrete.ruc}</strong>
-                </span>
+                {membrete.nombreNotario || membrete.nombreEscribania ? (
+                  <h3 className={`text-base font-bold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
+                    {membrete.nombreNotario || membrete.nombreEscribania}
+                  </h3>
+                ) : (
+                  <h3 className={`text-sm font-semibold italic ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Membrete sin configurar — Complete sus datos desde "Editar Membrete"
+                  </h3>
+                )}
+                {membrete.registroNotarial && (
+                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold print:border-slate-400 print:text-black">
+                    {membrete.registroNotarial}
+                  </span>
+                )}
+                {membrete.ruc && (
+                  <span className={`text-xs font-mono ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'}`}>
+                    RUC: <strong className={modoFondoBlanco ? 'text-slate-900' : 'text-slate-200'}>{membrete.ruc}</strong>
+                  </span>
+                )}
               </div>
-              <p className={`text-xs mt-1 font-medium ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'}`}>
-                {membrete.nombreEscribania}
-              </p>
-              <div className={`flex items-center gap-4 text-[11px] mt-1.5 flex-wrap ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-slate-400" />
-                  {membrete.direccion}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Phone className="w-3 h-3 text-slate-400" />
-                  {membrete.telefono}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Mail className="w-3 h-3 text-slate-400" />
-                  {membrete.email}
-                </span>
-              </div>
-              <div className={`mt-2 text-[10px] font-mono flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
-                <span className={`px-2 py-0.5 rounded border ${modoFondoBlanco ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-slate-800 text-slate-300 border-slate-700'} print:border-slate-400 print:text-black`}>
-                  Timbrado Nº: {membrete.timbradoNumero}
-                </span>
-                <span>
-                  Vigencia: {membrete.timbradoVigenciaInicio} al {membrete.timbradoVigenciaFin}
-                </span>
-              </div>
+              {membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario && (
+                <p className={`text-xs mt-1 font-medium ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'}`}>
+                  {membrete.nombreEscribania}
+                </p>
+              )}
+              {(membrete.direccion || membrete.telefono || membrete.email) && (
+                <div className={`flex items-center gap-4 text-[11px] mt-1.5 flex-wrap ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {membrete.direccion && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-slate-400" />
+                      {membrete.direccion}
+                    </span>
+                  )}
+                  {membrete.telefono && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-slate-400" />
+                      {membrete.telefono}
+                    </span>
+                  )}
+                  {membrete.email && (
+                    <span className="flex items-center gap-1">
+                      <Mail className="w-3 h-3 text-slate-400" />
+                      {membrete.email}
+                    </span>
+                  )}
+                </div>
+              )}
+              {membrete.timbradoNumero && (
+                <div className={`mt-2 text-[10px] font-mono flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                  <span className={`px-2 py-0.5 rounded border ${modoFondoBlanco ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-slate-800 text-slate-300 border-slate-700'} print:border-slate-400 print:text-black`}>
+                    Timbrado Nº: {membrete.timbradoNumero}
+                  </span>
+                  {(membrete.timbradoVigenciaInicio || membrete.timbradoVigenciaFin) && (
+                    <span>
+                      Vigencia: {membrete.timbradoVigenciaInicio} al {membrete.timbradoVigenciaFin}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1867,7 +2453,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             <button
               type="button"
               onClick={() => {
-                setMembreteDraft(membrete);
+                const actualizado = resolverMembreteDesdeFuentes(cargarMembreteUsuario(userId));
+                setMembrete(actualizado);
+                setMembreteDraft(actualizado);
                 setModalMembreteAbierto(true);
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
@@ -2820,6 +3408,38 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
           <button
             type="button"
+            onClick={() => void handleGuardarEnDocumentos()}
+            disabled={guardandoEnDocumentos}
+            className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-60 ${
+              guardadoEnDocumentosExito
+                ? 'bg-emerald-600 text-white border-emerald-500'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
+            }`}
+            title="Guardar copia formateada en Documentos de O.L.G.A."
+          >
+            {guardandoEnDocumentos ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : guardadoEnDocumentosExito ? (
+              <Check className="w-4 h-4 text-white" />
+            ) : (
+              <FilePlus2 className="w-4 h-4 text-indigo-400" />
+            )}
+            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'Guardado en Documentos' : 'Guardar en Documentos'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDescargarPdfPresupuesto}
+            disabled={descargandoPdf}
+            className="px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+            title="Descargar archivo PDF directamente"
+          >
+            {descargandoPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>Descargar PDF</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleImprimir}
             className={`px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               esFull 
@@ -2843,12 +3463,18 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           )}
         </div>
 
-        {/* Bloque de Firmas Notariales Oficiales (Exclusivo para Impresión Física) */}
+        {/* Bloque de Firmas Oficiales (Exclusivo para Impresión Física) */}
         <div className="hidden print:grid grid-cols-2 gap-12 pt-16 pb-6 text-center text-xs text-black">
           <div className="border-t border-slate-900 pt-2 mx-8">
-            <p className="font-bold uppercase tracking-wider">{membrete.nombreNotario}</p>
-            <p className="text-[10px] text-slate-700">Notario y Escribano Público - {membrete.registroNotarial}</p>
-            <p className="text-[9px] text-slate-500 font-mono">Firma y Sello Notarial</p>
+            <p className="font-bold uppercase tracking-wider">{membrete.nombreNotario || membrete.nombreEscribania || ''}</p>
+            <p className="text-[10px] text-slate-700">
+              {esAbogado
+                ? ['Abogado/a', membrete.registroNotarial].filter(Boolean).join(' • ')
+                : ['Notario y Escribano Público', membrete.registroNotarial].filter(Boolean).join(' - ')}
+            </p>
+            <p className="text-[9px] text-slate-500 font-mono">
+              {esAbogado ? 'Firma y Sello Profesional' : 'Firma y Sello Notarial'}
+            </p>
           </div>
           <div className="border-t border-slate-900 pt-2 mx-8">
             <p className="font-bold uppercase tracking-wider">{encabezado.clienteNombre || 'Firma del Cliente / Aceptante'}</p>
@@ -2858,7 +3484,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </div>
 
-      {/* Modal de Configuración Rápida de Membrete Notarial */}
+      {/* Modal de Configuración Rápida de Membrete */}
       {modalMembreteAbierto && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl shadow-2xl p-6 md:p-8 space-y-6 text-slate-100 max-h-[90vh] overflow-y-auto">
@@ -2868,7 +3494,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   <Building className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Membrete Institucional del Escribano</h3>
+                  <h3 className="text-base font-bold text-white">
+                    {esAbogado ? 'Membrete del Estudio Jurídico / Abogado' : 'Membrete Institucional del Escribano'}
+                  </h3>
                   <p className="text-xs text-slate-400">Configuración particular para presupuestos y facturación</p>
                 </div>
               </div>
@@ -2883,29 +3511,35 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div className="md:col-span-2">
-                <label className="block text-slate-300 font-bold mb-1">Nombre y Apellido del Notario / Escribano Público *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Nombre y Apellido del Abogado' : 'Nombre y Apellido del Notario / Escribano Público *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.nombreNotario}
                   onChange={(e) => setMembreteDraft(prev => ({ ...prev, nombreNotario: e.target.value }))}
-                  placeholder="Ej. Esc. Sandra Molinas"
+                  placeholder={esAbogado ? 'Ej. Abg. Juan Pérez' : 'Ej. Esc. Sandra Molinas'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-bold focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Número de Registro Notarial *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Matrícula CSJ' : 'Número de Registro Notarial *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.registroNotarial}
                   onChange={(e) => setMembreteDraft(prev => ({ ...prev, registroNotarial: e.target.value }))}
-                  placeholder="Ej. Reg. Nº 1.292"
+                  placeholder={esAbogado ? 'Ej. Matrícula CSJ N.º 45.120' : 'Ej. Reg. Nº 1.292'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white font-mono font-bold focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">RUC de la Escribanía *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'RUC' : 'RUC de la Escribanía *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.ruc}
@@ -2916,29 +3550,35 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-slate-300 font-bold mb-1">Firma / Nombre de la Escribanía</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Estudio Jurídico' : 'Firma / Nombre de la Escribanía'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.nombreEscribania || ''}
                   onChange={(e) => setMembreteDraft(prev => ({ ...prev, nombreEscribania: e.target.value }))}
-                  placeholder="Ej. Escribanía Sandra Molinas & Asociados"
+                  placeholder={esAbogado ? 'Ej. Estudio Jurídico Pérez & Asociados' : 'Ej. Escribanía Sandra Molinas & Asociados'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-slate-300 font-bold mb-1">Dirección Comercial *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Ciudad / Dirección' : 'Dirección Comercial *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.direccion}
                   onChange={(e) => setMembreteDraft(prev => ({ ...prev, direccion: e.target.value }))}
-                  placeholder="Ej. Avda. Carlos Antonio López 450, Asunción"
+                  placeholder={esAbogado ? 'Ej. Avda. Carlos Antonio López 450, Asunción' : 'Ej. Avda. Carlos Antonio López 450, Asunción'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Teléfono de Contacto *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Teléfono' : 'Teléfono de Contacto *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.telefono}
@@ -2949,18 +3589,22 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Correo Electrónico *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Correo Electrónico' : 'Correo Electrónico *'}
+                </label>
                 <input
                   type="email"
                   value={membreteDraft.email}
                   onChange={(e) => setMembreteDraft(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="Ej. contacto@escribaniamolinas.com.py"
+                  placeholder={esAbogado ? 'Ej. estudio@abogado.com.py' : 'Ej. contacto@escribaniamolinas.com.py'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Nº de Timbrado Oficial *</label>
+                <label className="block text-slate-300 font-bold mb-1">
+                  {esAbogado ? 'Timbrado (Opcional)' : 'Nº de Timbrado Oficial *'}
+                </label>
                 <input
                   type="text"
                   value={membreteDraft.timbradoNumero}
@@ -3029,7 +3673,9 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 <FileText className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-white font-bold text-sm tracking-tight">Previsualización de Presupuesto Notarial</h3>
+                <h3 className="text-white font-bold text-sm tracking-tight">
+                  {esAbogado ? 'Previsualización de Presupuesto Jurídico' : 'Previsualización de Presupuesto Notarial'}
+                </h3>
                 <p className="text-slate-400 text-xs">Formato oficial calibrado para encajar perfectamente en 1 sola página</p>
               </div>
             </div>
@@ -3060,6 +3706,32 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   Oficio (216 × 330 mm)
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={handleDescargarPdfPresupuesto}
+                disabled={descargandoPdf}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer disabled:opacity-60"
+              >
+                {descargandoPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-white" />}
+                <span>Descargar PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleGuardarEnDocumentos()}
+                disabled={guardandoEnDocumentos}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60"
+              >
+                {guardandoEnDocumentos ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : guardadoEnDocumentosExito ? (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <FilePlus2 className="w-4 h-4 text-indigo-400" />
+                )}
+                <span>{guardadoEnDocumentosExito ? 'En Documentos' : 'Guardar en Documentos'}</span>
+              </button>
 
               <button
                 type="button"
@@ -3107,18 +3779,50 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 {/* CABECERA NOTARIAL */}
                 <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start gap-4">
                   <div>
-                    <h2 className="text-xl font-serif font-black uppercase tracking-wide text-slate-900">
-                      {membrete.nombreNotario || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')}
-                    </h2>
-                    <p className="text-xs text-slate-600 font-bold mt-0.5">
-                      {membrete.registroNotarial || (esAbogado ? 'Matrícula Profesional' : 'Registro Notarial')} • {membrete.nombreEscribania || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Pública')}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {membrete.direccion || 'Asunción, República del Paraguay'}
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      Tel: {membrete.telefono || '+595 21 000-000'} | R.U.C.: {membrete.ruc || '80012345-6'} | Timbrado: {membrete.timbradoNumero || '16894321'}
-                    </p>
+                    {(membrete.nombreNotario || membrete.nombreEscribania) && (
+                      <h2 className="text-xl font-serif font-black uppercase tracking-wide text-slate-900">
+                        {membrete.nombreNotario || membrete.nombreEscribania}
+                      </h2>
+                    )}
+                    {[
+                      membrete.registroNotarial,
+                      membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario
+                        ? membrete.nombreEscribania
+                        : '',
+                    ].filter(Boolean).length > 0 && (
+                      <p className="text-xs text-slate-600 font-bold mt-0.5">
+                        {[
+                          membrete.registroNotarial,
+                          membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario
+                            ? membrete.nombreEscribania
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </p>
+                    )}
+                    {membrete.direccion && (
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {membrete.direccion}
+                      </p>
+                    )}
+                    {[
+                      membrete.telefono ? `Tel: ${membrete.telefono}` : '',
+                      membrete.ruc ? `R.U.C.: ${membrete.ruc}` : '',
+                      membrete.timbradoNumero ? `Timbrado: ${membrete.timbradoNumero}` : '',
+                      membrete.email ? `Email: ${membrete.email}` : '',
+                    ].filter(Boolean).length > 0 && (
+                      <p className="text-[10px] text-slate-500">
+                        {[
+                          membrete.telefono ? `Tel: ${membrete.telefono}` : '',
+                          membrete.ruc ? `R.U.C.: ${membrete.ruc}` : '',
+                          membrete.timbradoNumero ? `Timbrado: ${membrete.timbradoNumero}` : '',
+                          membrete.email ? `Email: ${membrete.email}` : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' | ')}
+                      </p>
+                    )}
                   </div>
                   <div style={{ backgroundColor: "#f8fafc", borderColor: "#cbd5e1" }} className="border rounded-xl p-3 text-right min-w-[170px] shrink-0">
                     <span className="text-xs font-black text-slate-900 uppercase tracking-widest block">
@@ -3279,9 +3983,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 </div>
                 <div>
                   <div className="border-t border-slate-800 pt-1.5 text-xs font-bold text-slate-800">
-                    {membrete.nombreNotario || (esAbogado ? 'Abogado / Estudio Jurídico' : 'Notario Público Titular')}
+                    {membrete.nombreNotario || membrete.nombreEscribania || (esAbogado ? 'Firma del Profesional' : 'Firma del Notario')}
                   </div>
-                  <span className="text-[10px] text-slate-500 block">{membrete.registroNotarial || (esAbogado ? 'Estudio Jurídico' : 'Escribanía Notarial')} • Sello</span>
+                  <span className="text-[10px] text-slate-500 block">
+                    {[membrete.registroNotarial, 'Sello'].filter(Boolean).join(' • ')}
+                  </span>
                 </div>
               </div>
             </div>
@@ -3405,65 +4111,15 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       )}
 
       {isWhatsAppEnabled && modalWhatsAppAbierto && (() => {
-        const clienteWa = (encabezado.clienteNombre || '').trim() || 'Cliente';
-        const conceptoWa = (encabezado.conceptoGeneral || '').trim() || 'Servicios notariales y gestión registral';
+        const pdfInput = buildCurrentPresupuestoPdfInput();
+        const clienteWa = pdfInput.clienteNombre;
+        const conceptoWa = pdfInput.conceptoGeneral;
         const totalGsWa = `${Number(liquidacion.totalGeneralOperacion || 0).toLocaleString('es-PY')} Gs.`;
-        const rawValidez = (encabezado.fechaVencimientoValidez || '').trim();
-        const validezParts = rawValidez.split('-');
-        const validezWa =
-          validezParts.length === 3
-            ? `${validezParts[2]}/${validezParts[1]}/${validezParts[0]}`
-            : rawValidez || '30 días a partir de la fecha de emisión';
-        const escribaniaWa =
-          membrete.nombreEscribania || membrete.nombreNotario || escribaniaNombre || 'Escribanía Titular';
-        const tipoComp = encabezado.tipoComprobante || 'Presupuesto';
-        const numComp = (encabezado.numeroComprobante || '').trim();
-
-        const tasasActivas = tasas
-          .filter((t) => t.activo)
-          .map((t) => ({
-            descripcion: t.descripcion,
-            monto: Number(t.monto) || 0,
-            numeroComprobantePago: t.numeroComprobantePago,
-          }));
-
-        const serviciosActivos = servicios
-          .filter((s) => s.activo)
-          .map((s) => ({
-            descripcion: s.descripcion,
-            cantidad: Number(s.cantidad) || 1,
-            precioUnitario: Number(s.precioUnitario) || 0,
-            total: Number(s.total) || (Number(s.cantidad) || 1) * (Number(s.precioUnitario) || 0),
-            tipoIva: s.tipoIva,
-          }));
-
-        const pdfPresupuesto = generatePresupuestoPdfBase64({
-          tipoComprobante: tipoComp,
-          numeroComprobante: numComp,
-          fechaEmision: encabezado.fechaEmision,
-          validez: validezWa,
-          condicionVenta: encabezado.condicionVenta,
-          conceptoGeneral: conceptoWa,
-          escribania: {
-            nombre: escribaniaWa,
-            ruc: membrete.ruc || rucEscribania,
-            registro: membrete.registroNotarial || registroNotarial,
-            telefono: membrete.telefono || telefonoEscribania,
-            direccion: membrete.direccion || direccionEscribania,
-          },
-          clienteNombre: clienteWa,
-          clienteDocumento: encabezado.clienteRucCI,
-          clienteTelefono: encabezado.clienteTelefono,
-          clienteDireccion: encabezado.clienteDireccion,
-          tasas: tasasActivas,
-          servicios: serviciosActivos,
-          subtotalTasas: Number(liquidacion.subtotalTasasReembolso) || 0,
-          subtotalServicios: Number(liquidacion.totalVentaServicios) || 0,
-          totalIva: Number(liquidacion.totalIvaLiquidado) || 0,
-          totalGeneral: Number(liquidacion.totalGeneralOperacion) || 0,
-          totalLetras: liquidacion.totalLetras,
-          notas: observaciones,
-        });
+        const validezWa = pdfInput.validez;
+        const escribaniaWa = pdfInput.escribania.nombre;
+        const tipoComp = pdfInput.tipoComprobante;
+        const numComp = pdfInput.numeroComprobante;
+        const pdfPresupuesto = generatePresupuestoPdfBase64(pdfInput);
 
         const defaultMsg = [
           `Estimado/a ${clienteWa},`,
@@ -3474,7 +4130,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           `• Concepto: ${conceptoWa}`,
           `• Total: ${totalGsWa}`,
           `• Validez: ${validezWa}`,
-          `• ${esAbogado ? 'Estudio Jurídico' : 'Escribanía'}: ${escribaniaWa}`,
+          ...(escribaniaWa ? [`• ${esAbogado ? 'Estudio Jurídico' : 'Escribanía'}: ${escribaniaWa}`] : []),
           '',
           'Quedamos atentos para confirmar e iniciar la gestión.',
         ].join('\n');
