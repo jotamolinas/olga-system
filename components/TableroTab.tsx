@@ -1,12 +1,18 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, query, serverTimestamp, updateDoc, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, Expediente, PlazoProcesal, formatCurrencyValue } from '../types';
 import { fetchPersonasFromFirestore, normalizePersona, incrementarUsoIA } from '../services/firestore';
 import { redactarEscritoJudicialConIA } from '../services/gemini';
-import { calcDaysUntil } from './ExpedientesTab';
+import {
+  calcDaysUntil,
+  buildExpedienteDismissKeys,
+  loadDiscardedExpKeys,
+  loadLocalPlazoChecksForExpediente,
+  saveLocalPlazoCheckForExpediente,
+} from './ExpedientesTab';
 import {
   FileText,
   Users,
@@ -21,6 +27,7 @@ import {
   Bell,
   Bot,
   ArrowRight,
+  Check,
   CheckCircle2,
   Loader2,
   Briefcase,
@@ -817,17 +824,42 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     return ids;
   }, [activeUid, activeWorkspaceId]);
 
+  const [legalChecksTick, setLegalChecksTick] = useState(0);
+  const [pendingLegalMarkDone, setPendingLegalMarkDone] = useState<{
+    expediente: Expediente;
+    plazo: PlazoProcesal;
+  } | null>(null);
+
   const ownExpedientes = useMemo(() => {
     if (!esAbogado || !Array.isArray(expedientes) || expedientes.length === 0) return [];
-    return expedientes.filter((exp) => {
-      if (!exp || exp.anulado === true || exp.eliminado === true) return false;
-      if (allowedLegalOwners.size === 0) return false;
-      const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
-        .map((v) => String(v || '').trim())
-        .filter(Boolean);
-      return owners.length > 0 && owners.some((id) => allowedLegalOwners.has(id));
-    });
-  }, [esAbogado, expedientes, allowedLegalOwners]);
+    const discardedSet = activeUid ? new Set(loadDiscardedExpKeys(activeUid)) : new Set<string>();
+    return expedientes
+      .filter((exp) => {
+        if (!exp || exp.anulado === true || exp.eliminado === true) return false;
+        if (allowedLegalOwners.size === 0) return false;
+        const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+          .map((v) => String(v || '').trim())
+          .filter(Boolean);
+        if (owners.length === 0 || !owners.some((id) => allowedLegalOwners.has(id))) return false;
+        if (discardedSet.size > 0) {
+          const keys = buildExpedienteDismissKeys(exp);
+          if (keys.some((k) => discardedSet.has(k))) return false;
+        }
+        return true;
+      })
+      .map((exp) => {
+        if (!activeUid || !Array.isArray(exp.plazos) || exp.plazos.length === 0) return exp;
+        const localChecks = loadLocalPlazoChecksForExpediente(activeUid, exp.id);
+        if (Object.keys(localChecks).length === 0) return exp;
+        return {
+          ...exp,
+          plazos: exp.plazos.map((p) => {
+            const ov = localChecks[p.id];
+            return ov ? { ...p, completado: ov.completado, completadoEn: ov.completadoEn } : p;
+          }),
+        };
+      });
+  }, [esAbogado, expedientes, allowedLegalOwners, activeUid, legalChecksTick]);
 
   const activeLegalExpedientes = useMemo(
     () =>
@@ -912,6 +944,32 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     onNavigateTab?.('expedientes');
   };
 
+  const handleMarkLegalPlazoDoneFromTablero = async (exp: Expediente, plazo: PlazoProcesal) => {
+    const nowIso = new Date().toISOString();
+    if (activeUid) {
+      saveLocalPlazoCheckForExpediente(activeUid, exp.id, plazo.id, {
+        completado: true,
+        completadoEn: nowIso,
+        updatedAt: nowIso,
+      });
+      setLegalChecksTick((t) => t + 1);
+    }
+    const updatedPlazos = (exp.plazos || []).map((p) =>
+      p.id === plazo.id ? { ...p, completado: true, completadoEn: nowIso } : p
+    );
+    try {
+      if (auth?.currentUser?.uid) {
+        await updateDoc(doc(db, 'expedientes', exp.id), {
+          plazos: updatedPlazos,
+          updatedAt: nowIso,
+          fechaActualizacion: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn('[TableroTab] Check guardado localmente (Firestore diferido):', err);
+    }
+  };
+
   const handleRedactarPlazoDesdeTablero = async (exp: Expediente, plazo: PlazoProcesal) => {
     const key = `${exp.id}::${plazo.id}`;
     if (draftingPlazoKey) return;
@@ -941,6 +999,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       void incrementarUsoIA(currentUser?.uid || auth?.currentUser?.uid || userData?.uid);
       setLegalKpiModalCategory(null);
       onOpenDocument?.(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
+      if (esAbogado && plazo.completado !== true) {
+        setPendingLegalMarkDone({ expediente: exp, plazo });
+      }
     } catch (err: any) {
       setLegalDraftError(err?.message || 'No se pudo generar el escrito judicial con IA.');
     } finally {
@@ -2379,6 +2440,65 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           />
         );
       })()}
+
+      {/* Confirmación breve al generar un escrito vinculado a un plazo/impulso desde el Tablero (solo esAbogado === true) */}
+      {esAbogado && pendingLegalMarkDone && (
+        <div
+          role="dialog"
+          aria-live="polite"
+          aria-label="Confirmar cumplimiento de plazo procesal"
+          className="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-[400px] z-[90] rounded-2xl border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-[#121824] shadow-2xl p-4 space-y-3 animate-fade-in"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white leading-snug">
+                  ¿Deseas marcar este plazo/impulso como cumplido?
+                </h4>
+                <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
+                  {pendingLegalMarkDone.plazo.titulo}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {pendingLegalMarkDone.expediente.caratula}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingLegalMarkDone(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
+              aria-label="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setPendingLegalMarkDone(null)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Mantener pendiente
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const { expediente, plazo } = pendingLegalMarkDone;
+                setPendingLegalMarkDone(null);
+                void handleMarkLegalPlazoDoneFromTablero(expediente, plazo);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Marcar como hecho</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

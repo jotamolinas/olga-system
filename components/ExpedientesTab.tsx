@@ -225,8 +225,15 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
 };
 
 const EXPEDIENTES_DESCARTADOS_KEY_PREFIX = 'olga_expedientes_descartados_';
+const PLAZOS_CHECKS_KEY_PREFIX = 'olga_plazos_checks_';
 
-const loadDiscardedExpKeys = (uid: string): string[] => {
+export interface LocalPlazoCheckOverride {
+  completado: boolean;
+  completadoEn: string | null;
+  updatedAt?: string;
+}
+
+export const loadDiscardedExpKeys = (uid: string): string[] => {
   if (!uid) return [];
   try {
     const raw = localStorage.getItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${uid}`);
@@ -246,7 +253,7 @@ const saveDiscardedExpKeys = (uid: string, keys: string[]): void => {
   } catch {}
 };
 
-const buildExpedienteDismissKeys = (
+export const buildExpedienteDismissKeys = (
   exp: Partial<Expediente> | null | undefined,
   docId?: string
 ): string[] => {
@@ -262,6 +269,52 @@ const buildExpedienteDismissKeys = (
     keys.push(`sig:${sigCaratula}|${sigNro}|${sigAnio}`);
   }
   return keys;
+};
+
+const getPlazosChecksStorageKey = (uid: string, expedienteId: string): string =>
+  `${PLAZOS_CHECKS_KEY_PREFIX}${uid}_${expedienteId}`;
+
+export const loadLocalPlazoChecksForExpediente = (
+  uid: string,
+  expedienteId: string
+): Record<string, LocalPlazoCheckOverride> => {
+  if (!uid || !expedienteId) return {};
+  try {
+    const raw = localStorage.getItem(getPlazosChecksStorageKey(uid, expedienteId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: Record<string, LocalPlazoCheckOverride> = {};
+    Object.entries(parsed).forEach(([plazoId, val]: [string, any]) => {
+      if (val && typeof val === 'object' && typeof val.completado === 'boolean') {
+        result[plazoId] = {
+          completado: val.completado,
+          completadoEn:
+            val.completado && typeof val.completadoEn === 'string' && val.completadoEn.trim()
+              ? val.completadoEn.trim()
+              : null,
+          updatedAt: typeof val.updatedAt === 'string' ? val.updatedAt : undefined,
+        };
+      }
+    });
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+export const saveLocalPlazoCheckForExpediente = (
+  uid: string,
+  expedienteId: string,
+  plazoId: string,
+  override: LocalPlazoCheckOverride
+): void => {
+  if (!uid || !expedienteId || !plazoId) return;
+  try {
+    const existing = loadLocalPlazoChecksForExpediente(uid, expedienteId);
+    existing[plazoId] = override;
+    localStorage.setItem(getPlazosChecksStorageKey(uid, expedienteId), JSON.stringify(existing));
+  } catch {}
 };
 
 const isGhostOrMockExpId = (rawId: string): boolean => {
@@ -427,9 +480,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [discardedExpKeys, setDiscardedExpKeys] = useState<string[]>(() =>
     uid ? loadDiscardedExpKeys(uid) : []
   );
+  const [localChecksVersion, setLocalChecksVersion] = useState(0);
+  const [pendingMarkDonePrompt, setPendingMarkDonePrompt] = useState<{
+    expediente: Expediente;
+    plazo: PlazoProcesal;
+  } | null>(null);
 
   useEffect(() => {
     setDiscardedExpKeys(uid ? loadDiscardedExpKeys(uid) : []);
+    setLocalChecksVersion((v) => v + 1);
   }, [uid]);
 
   const discardedExpKeySet = useMemo(() => new Set(discardedExpKeys), [discardedExpKeys]);
@@ -616,21 +675,32 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       if (item.anulado === true || item.eliminado === true) return;
       const mapped = mapFirestoreDocToExpediente(item, item.id);
       if (!belongsToCurrentAccount(mapped)) return;
+      const mappedDocId = docIdByExpIdRef.current.get(mapped.id);
       if (esAbogado && discardedExpKeySet.size > 0) {
-        const mappedDocId = docIdByExpIdRef.current.get(mapped.id);
         const itemKeys = buildExpedienteDismissKeys(mapped, mappedDocId);
         if (itemKeys.some((k) => discardedExpKeySet.has(k))) return;
       }
+      const localChecksByPlazo =
+        esAbogado && uid
+          ? {
+              ...(mappedDocId && mappedDocId !== mapped.id
+                ? loadLocalPlazoChecksForExpediente(uid, mappedDocId)
+                : {}),
+              ...loadLocalPlazoChecksForExpediente(uid, mapped.id),
+            }
+          : {};
       const patchedPlazos = mapped.plazos.map((p) => {
-        const override = optimisticToggleByKey[`${mapped.id}::${p.id}`];
-        return override
-          ? { ...p, completado: override.completado, completadoEn: override.completadoEn }
+        const localSaved = localChecksByPlazo[p.id];
+        const optimistic = optimisticToggleByKey[`${mapped.id}::${p.id}`];
+        const effectiveOverride = optimistic || localSaved;
+        return effectiveOverride
+          ? { ...p, completado: effectiveOverride.completado, completadoEn: effectiveOverride.completadoEn }
           : p;
       });
       dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
     });
     return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet]);
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet, uid, localChecksVersion]);
 
   useEffect(() => {
     if (!initialSelectedExpedienteId) return;
@@ -1133,7 +1203,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     }
   };
 
-  const togglePlazoCompletado = async (exp: Expediente, plazoId: string) => {
+  const togglePlazoCompletado = async (
+    exp: Expediente,
+    plazoId: string,
+    forcedNextState?: boolean
+  ) => {
     if (isSoftBlocked) {
       setErrorBanner('Plan expirado: modo solo lectura activado.');
       return;
@@ -1142,7 +1216,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     if (togglingPlazos[toggleKey]) return;
 
     const activeUid = String(auth?.currentUser?.uid || uid || '').trim();
-    if (!activeUid) {
+    if (!activeUid && !esAbogado) {
       setErrorBanner('No se detectó una sesión activa para guardar el cambio en Firestore.');
       return;
     }
@@ -1155,7 +1229,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       prevCompletado && typeof targetPlazo?.completadoEn === 'string' && targetPlazo.completadoEn.trim()
         ? targetPlazo.completadoEn.trim()
         : null;
-    const nextCompletado = !prevCompletado;
+    const nextCompletado =
+      typeof forcedNextState === 'boolean' ? forcedNextState : !prevCompletado;
     const nextCompletadoEn = nextCompletado ? nowIso : null;
     const previousUpdatedAt = String(exp.updatedAt || nowIso);
 
@@ -1167,6 +1242,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       )
     );
 
+    const targetDocId = docIdByExpIdRef.current.get(exp.id) || exp.id;
+
+    // 1. Actualización inmediata en estado local + respaldo en localStorage por uid + expedienteId
     setTogglingPlazos((prev) => ({ ...prev, [toggleKey]: true }));
     setOptimisticToggleByKey((prev) => ({
       ...prev,
@@ -1178,82 +1256,104 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       )
     );
 
-    const targetDocId = docIdByExpIdRef.current.get(exp.id) || exp.id;
+    if (esAbogado && activeUid) {
+      const checkPayload: LocalPlazoCheckOverride = {
+        completado: nextCompletado,
+        completadoEn: nextCompletadoEn,
+        updatedAt: nowIso,
+      };
+      saveLocalPlazoCheckForExpediente(activeUid, exp.id, plazoId, checkPayload);
+      if (targetDocId && targetDocId !== exp.id) {
+        saveLocalPlazoCheckForExpediente(activeUid, targetDocId, plazoId, checkPayload);
+      }
+      setLocalChecksVersion((v) => v + 1);
+    }
+
+    // 2. Intentar persistir en Firestore (expedientes/{expedienteId})
     const expRef = doc(db, 'expedientes', targetDocId);
 
     try {
-      try {
-        await updateDoc(expRef, {
-          plazos: updatedPlazos,
-          updatedAt: nowIso,
-          fechaActualizacion: serverTimestamp(),
-        });
-      } catch (updateErr: any) {
-        const errCode = String(updateErr?.code || '').toLowerCase();
-        const errMsg = String(updateErr?.message || '').toLowerCase();
-        if (errCode.includes('not-found') || errMsg.includes('no document to update')) {
-          await setDoc(
-            expRef,
-            {
-              id: targetDocId,
-              userId: String(exp.userId || wsId || activeUid),
-              ownedByWorkspace: String(exp.ownedByWorkspace || wsId || activeUid),
-              caratula: exp.caratula || 'Expediente sin carátula',
-              nroExpediente: exp.nroExpediente || '',
-              anio: exp.anio || String(new Date().getFullYear()),
-              juzgado: exp.juzgado || '',
-              tipoJuicio: exp.tipoJuicio || 'Ordinario',
-              rolParte: exp.rolParte || 'Actor / Demandante',
-              estado: exp.estado || 'En trámite',
-              plazos: updatedPlazos,
-              notas: exp.notas || '',
-              clienteNombre: exp.clienteNombre || '',
-              clienteId: exp.clienteId || '',
-              createdAt: exp.createdAt || nowIso,
-              updatedAt: nowIso,
-              fechaActualizacion: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        } else {
-          throw updateErr;
+      if (auth?.currentUser?.uid) {
+        try {
+          await updateDoc(expRef, {
+            plazos: updatedPlazos,
+            updatedAt: nowIso,
+            fechaActualizacion: serverTimestamp(),
+          });
+        } catch (updateErr: any) {
+          const errCode = String(updateErr?.code || '').toLowerCase();
+          const errMsg = String(updateErr?.message || '').toLowerCase();
+          if (errCode.includes('not-found') || errMsg.includes('no document to update')) {
+            await setDoc(
+              expRef,
+              {
+                id: targetDocId,
+                userId: String(exp.userId || wsId || activeUid),
+                ownedByWorkspace: String(exp.ownedByWorkspace || wsId || activeUid),
+                caratula: exp.caratula || 'Expediente sin carátula',
+                nroExpediente: exp.nroExpediente || '',
+                anio: exp.anio || String(new Date().getFullYear()),
+                juzgado: exp.juzgado || '',
+                tipoJuicio: exp.tipoJuicio || 'Ordinario',
+                rolParte: exp.rolParte || 'Actor / Demandante',
+                estado: exp.estado || 'En trámite',
+                plazos: updatedPlazos,
+                notas: exp.notas || '',
+                clienteNombre: exp.clienteNombre || '',
+                clienteId: exp.clienteId || '',
+                createdAt: exp.createdAt || nowIso,
+                updatedAt: nowIso,
+                fechaActualizacion: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          } else {
+            throw updateErr;
+          }
         }
       }
 
-      setOptimisticToggleByKey((prev) => {
-        if (!prev[toggleKey]) return prev;
-        const next = { ...prev };
-        delete next[toggleKey];
-        return next;
-      });
+      if (!esAbogado) {
+        setOptimisticToggleByKey((prev) => {
+          if (!prev[toggleKey]) return prev;
+          const next = { ...prev };
+          delete next[toggleKey];
+          return next;
+        });
+      }
     } catch (err: any) {
-      console.error('[ExpedientesTab] Error al persistir togglePlazoCompletado:', err);
-      setOptimisticToggleByKey((prev) => {
-        if (!prev[toggleKey]) return prev;
-        const next = { ...prev };
-        delete next[toggleKey];
-        return next;
-      });
-      setLiveExpedientes((prev) =>
-        prev.map((item) => {
-          if (item.id !== exp.id) return item;
-          return {
-            ...item,
-            plazos: (item.plazos || []).map((p) =>
-              p.id === plazoId
-                ? { ...p, completado: prevCompletado, completadoEn: prevCompletadoEn }
-                : p
-            ),
-            updatedAt: previousUpdatedAt,
-          };
-        })
-      );
-      const code = String(err?.code || '').toLowerCase();
-      setErrorBanner(
-        code.includes('permission')
-          ? 'Permiso denegado al guardar el estado del plazo en Firestore. Se revirtió el cambio.'
-          : err?.message || 'No se pudo guardar el estado del plazo en Firestore. Se revirtió el cambio.'
-      );
+      if (esAbogado) {
+        // Nunca revertir en falso ni romper la UI para abogados: el check queda persistido localmente por uid + expedienteId
+        console.warn('[ExpedientesTab] Check guardado localmente (sincronización Firestore diferida):', err);
+      } else {
+        console.error('[ExpedientesTab] Error al persistir togglePlazoCompletado:', err);
+        setOptimisticToggleByKey((prev) => {
+          if (!prev[toggleKey]) return prev;
+          const next = { ...prev };
+          delete next[toggleKey];
+          return next;
+        });
+        setLiveExpedientes((prev) =>
+          prev.map((item) => {
+            if (item.id !== exp.id) return item;
+            return {
+              ...item,
+              plazos: (item.plazos || []).map((p) =>
+                p.id === plazoId
+                  ? { ...p, completado: prevCompletado, completadoEn: prevCompletadoEn }
+                  : p
+              ),
+              updatedAt: previousUpdatedAt,
+            };
+          })
+        );
+        const code = String(err?.code || '').toLowerCase();
+        setErrorBanner(
+          code.includes('permission')
+            ? 'Permiso denegado al guardar el estado del plazo en Firestore. Se revirtió el cambio.'
+            : err?.message || 'No se pudo guardar el estado del plazo en Firestore. Se revirtió el cambio.'
+        );
+      }
     } finally {
       setTogglingPlazos((prev) => {
         if (!prev[toggleKey]) return prev;
@@ -1330,7 +1430,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         estudio: {
           razonSocial: userData?.razonSocial || userData?.nombreInstitucion || estudioNombre,
           nombre: userData?.nombre || estudioNombre,
-          matricula: userData?.matricula || userData?.registroNotarial || '',
+          matricula: userData?.matriculaAbogado || userData?.matricula || userData?.registroNotarial || '',
           ciudad: userData?.ciudad || userData?.localidad || 'Asunción',
         },
         instruccionesAdicionales:
@@ -1342,6 +1442,19 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           : `Impulso: ${(plazoObjetivo?.titulo || exp.caratula).slice(0, 48)}`;
       void incrementarUsoIA(currentUser?.uid || userData?.uid);
       onOpenDocument(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
+
+      if (esAbogado) {
+        const pendingInExp = (exp.plazos || []).filter((p) => p && p.completado !== true);
+        const linkedPlazo =
+          (plazoObjetivo && plazoObjetivo.completado !== true ? plazoObjetivo : null) ||
+          (modo === 'contestacion'
+            ? pendingInExp.find((p) => /contest/i.test(p.titulo || '')) || pendingInExp[0] || null
+            : null);
+
+        if (linkedPlazo) {
+          setPendingMarkDonePrompt({ expediente: exp, plazo: linkedPlazo });
+        }
+      }
     } catch (err: any) {
       setErrorBanner(err?.message || 'No se pudo generar el escrito judicial con IA.');
     } finally {
@@ -1383,73 +1496,52 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         return;
       }
 
+      // Para abogados: remover siempre de inmediato de la vista y guardar en descartados por uid (localStorage)
+      removeFromLocalUiAndDiscard(true);
+
       const validFirestoreIds = candidateDocIds.filter((id) => !isGhostOrMockExpId(id));
       const hasAuthSession = Boolean(auth?.currentUser?.uid);
-
-      if (!hasAuthSession || validFirestoreIds.length === 0) {
-        removeFromLocalUiAndDiscard(true);
-        try {
-          await onDeleteExpediente(targetId);
-        } catch {}
-        showToastSuccess('Expediente fantasma eliminado de tu lista.');
-        return;
-      }
-
       let deletedFromFirestore = false;
-      let missingInFirestore = true;
-      let lastUnexpectedError: any = null;
 
-      for (const docId of validFirestoreIds) {
-        try {
-          const docRef = doc(db, 'expedientes', docId);
-          const existingSnap = await getDoc(docRef);
-          if (existingSnap.exists()) {
-            missingInFirestore = false;
-            await deleteDoc(docRef);
-            deletedFromFirestore = true;
+      if (hasAuthSession && validFirestoreIds.length > 0) {
+        for (const docId of validFirestoreIds) {
+          try {
+            const docRef = doc(db, 'expedientes', docId);
+            const existingSnap = await getDoc(docRef);
+            if (existingSnap.exists()) {
+              await deleteDoc(docRef);
+              deletedFromFirestore = true;
+            }
+          } catch (docErr: any) {
+            console.warn('[ExpedientesTab] Borrado remoto omitido/diferido (expediente ocultado localmente):', docErr);
           }
-        } catch (docErr: any) {
-          const code = String(docErr?.code || '').toLowerCase();
-          const msg = String(docErr?.message || '').toLowerCase();
-          if (code.includes('not-found') || msg.includes('no document')) {
-            continue;
-          }
-          lastUnexpectedError = docErr;
         }
       }
 
-      if (deletedFromFirestore) {
-        removeFromLocalUiAndDiscard(true);
-        try {
-          await onDeleteExpediente(mappedDocId);
-          if (targetId !== mappedDocId) {
-            await onDeleteExpediente(targetId);
-          }
-        } catch {}
-        showToastSuccess('Expediente eliminado correctamente.');
-        return;
-      }
-
-      if (missingInFirestore && !lastUnexpectedError) {
-        removeFromLocalUiAndDiscard(true);
-        try {
+      try {
+        await onDeleteExpediente(mappedDocId);
+        if (targetId !== mappedDocId) {
           await onDeleteExpediente(targetId);
-        } catch {}
-        showToastSuccess('Expediente fantasma descartado y eliminado de tu lista.');
-        return;
+        }
+      } catch {
+        // Ya removido y ocultado localmente por uid para evitar que reaparezca como fantasma
       }
 
-      throw lastUnexpectedError || new Error('No se pudo confirmar la eliminación en Firestore.');
+      showToastSuccess(
+        deletedFromFirestore
+          ? 'Expediente eliminado correctamente.'
+          : 'Expediente eliminado y ocultado de tu lista.'
+      );
     } catch (err: any) {
-      console.error('[ExpedientesTab] Error eliminando expediente:', err);
-      const code = String(err?.code || '').toLowerCase();
-      const rawMsg = String(err?.message || '');
-      const reason =
-        code.includes('permission') || rawMsg.toLowerCase().includes('permission')
-          ? 'Permiso denegado por Firestore al intentar eliminar el expediente.'
-          : rawMsg || 'Error de conexión al intentar eliminar el expediente.';
-      setConfirmDeleteId(null);
-      setErrorBanner(`No se pudo eliminar el expediente: ${reason}`);
+      if (esAbogado) {
+        removeFromLocalUiAndDiscard(true);
+        console.warn('[ExpedientesTab] Expediente ocultado localmente tras error remoto:', err);
+        showToastSuccess('Expediente eliminado y ocultado de tu lista.');
+      } else {
+        console.error('[ExpedientesTab] Error eliminando expediente:', err);
+        setConfirmDeleteId(null);
+        setErrorBanner(err?.message || 'No se pudo eliminar el expediente.');
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -3188,6 +3280,68 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           </div>
         );
       })()}
+
+      {/* Confirmación breve al generar un escrito vinculado a un plazo/impulso (solo esAbogado === true) */}
+      {esAbogado && pendingMarkDonePrompt && (
+        <div
+          role="dialog"
+          aria-live="polite"
+          aria-label="Confirmar cumplimiento de plazo procesal"
+          className="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-[400px] z-[90] rounded-2xl border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-[#121824] shadow-2xl p-4 space-y-3 animate-fade-in"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white leading-snug">
+                  ¿Deseas marcar este plazo/impulso como cumplido?
+                </h4>
+                <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
+                  {pendingMarkDonePrompt.plazo.titulo}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {pendingMarkDonePrompt.expediente.caratula}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingMarkDonePrompt(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
+              aria-label="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setPendingMarkDonePrompt(null)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Mantener pendiente
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const { expediente, plazo } = pendingMarkDonePrompt;
+                const freshExp =
+                  effectiveExpedientes.find((item) => item.id === expediente.id) || expediente;
+                setPendingMarkDonePrompt(null);
+                void togglePlazoCompletado(freshExp, plazo.id, true);
+                showToastSuccess(`Plazo "${plazo.titulo}" marcado como cumplido.`);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Marcar como hecho</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
