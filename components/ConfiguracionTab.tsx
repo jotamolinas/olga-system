@@ -425,18 +425,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [autenticacion2FA, setAutenticacion2FA] = useState(initialValues.autenticacion2FA);
   const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
 
-  // Pagarés activos: de props o de localStorage si prop está vacío
+  // Pagarés activos: estrictamente desde props de la cuenta autenticada (sin fallback global en localStorage)
   const pagaresEfectivos = useMemo(() => {
-    if (pagares && Array.isArray(pagares) && pagares.length > 0) {
+    if (pagares && Array.isArray(pagares)) {
       return pagares;
     }
-    try {
-      const stored = localStorage.getItem('olga_pagares') || localStorage.getItem('ihara_pagares');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
     return [];
   }, [pagares]);
 

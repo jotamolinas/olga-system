@@ -531,24 +531,61 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     String(workspaceData?.tipoPerfil || activeUserData?.tipoPerfil || userProfile?.tipoPerfil || '').toLowerCase() ===
     'abogado';
 
-  const nombreEscHeader =
-    workspaceData?.razonSocial ||
-    workspaceData?.nombreInstitucion ||
-    activeUserData?.razonSocial ||
-    activeUserData?.nombreInstitucion ||
-    userProfile?.razonSocial ||
-    activeUserData?.nombre ||
-    userProfile?.nombre ||
-    (esAbogadoEsc ? 'Estudio Jurídico' : 'Escribanía Pública');
-  const rucEscHeader = workspaceData?.ruc || activeUserData?.ruc || userProfile?.ruc || '';
+  const pickRealEscHeader = (...candidates: unknown[]): string => {
+    for (const candidate of candidates) {
+      const clean = String(candidate || '').trim();
+      if (!clean) continue;
+      const lower = clean.toLowerCase();
+      if (
+        lower === '---' ||
+        lower === 'sin especificar' ||
+        lower === 'sin r.u.c.' ||
+        lower === 'mi escribanía' ||
+        lower === 'escribanía titular' ||
+        lower === 'escribanía pública' ||
+        lower === 'estudio jurídico'
+      ) {
+        continue;
+      }
+      return clean;
+    }
+    return '';
+  };
+
+  const nombreEscHeader = esAbogadoEsc
+    ? pickRealEscHeader(
+        workspaceData?.razonSocial,
+        workspaceData?.nombreInstitucion,
+        activeUserData?.razonSocial,
+        activeUserData?.nombreInstitucion,
+        userProfile?.razonSocial,
+        workspaceData?.nombre,
+        activeUserData?.nombre,
+        userProfile?.nombre
+      )
+    : (workspaceData?.razonSocial ||
+        workspaceData?.nombreInstitucion ||
+        activeUserData?.razonSocial ||
+        activeUserData?.nombreInstitucion ||
+        userProfile?.razonSocial ||
+        activeUserData?.nombre ||
+        userProfile?.nombre ||
+        'Escribanía Pública');
+  const rucEscHeader = esAbogadoEsc
+    ? pickRealEscHeader(workspaceData?.ruc, activeUserData?.ruc, userProfile?.ruc)
+    : (workspaceData?.ruc || activeUserData?.ruc || userProfile?.ruc || '');
   const registroEscHeader = esAbogadoEsc
-    ? (workspaceData?.matricula ||
-        activeUserData?.matricula ||
-        userProfile?.matricula ||
-        workspaceData?.registroNotarial ||
-        activeUserData?.registroNotarial ||
-        userProfile?.registroNotarial ||
-        '')
+    ? pickRealEscHeader(
+        workspaceData?.matriculaAbogado,
+        activeUserData?.matriculaAbogado,
+        userProfile?.matriculaAbogado,
+        workspaceData?.matricula,
+        activeUserData?.matricula,
+        userProfile?.matricula,
+        workspaceData?.registroNotarial,
+        activeUserData?.registroNotarial,
+        userProfile?.registroNotarial
+      )
     : (workspaceData?.registroNotarial ||
         workspaceData?.matricula ||
         activeUserData?.registroNotarial ||
@@ -556,10 +593,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         userProfile?.registroNotarial ||
         userProfile?.matricula ||
         '');
-  const telefonoEscHeader =
-    workspaceData?.telefono || activeUserData?.telefono || userProfile?.telefono || '';
-  const direccionEscHeader =
-    workspaceData?.direccion || activeUserData?.direccion || userProfile?.direccion || '';
+  const telefonoEscHeader = esAbogadoEsc
+    ? pickRealEscHeader(workspaceData?.telefono, activeUserData?.telefono, userProfile?.telefono)
+    : (workspaceData?.telefono || activeUserData?.telefono || userProfile?.telefono || '');
+  const direccionEscHeader = esAbogadoEsc
+    ? pickRealEscHeader(
+        workspaceData?.direccion,
+        activeUserData?.direccion,
+        userProfile?.direccion,
+        workspaceData?.ciudad,
+        activeUserData?.ciudad,
+        userProfile?.ciudad
+      )
+    : (workspaceData?.direccion || activeUserData?.direccion || userProfile?.direccion || '');
 
   const buildEscribaniaPdfMeta = () => ({
     nombre: nombreEscHeader,

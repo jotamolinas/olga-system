@@ -770,6 +770,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   });
   const [pagares, setPagares] = useState<Pagare[]>([]);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [selectedExpedienteIdForNav, setSelectedExpedienteIdForNav] = useState<string | null>(null);
 
   // Purgar claves globales antiguas de localStorage para evitar fugas entre cuentas en el mismo navegador
   useEffect(() => {
@@ -779,6 +780,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       localStorage.removeItem('ihara_personas');
       localStorage.removeItem('olga_pagares');
       localStorage.removeItem('ihara_pagares');
+      localStorage.removeItem('olga_alertas_leidas_ids');
     } catch {}
   }, []);
 
@@ -1357,8 +1359,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   // FASE 2: Sincronización de Pagarés por Workspace (Aislamiento Estricto Multi-Usuario)
   useEffect(() => {
+    setPagares([]);
     if (!workspaceId) {
-      setPagares([]);
       return;
     }
 
@@ -1368,10 +1370,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(docSnap => {
-        const item = docSnap.data() as any;
-        return { ...item, id: docSnap.id } as Pagare;
-      });
+      const data = snapshot.docs
+        .map(docSnap => {
+          const item = docSnap.data() as any;
+          return { ...item, id: docSnap.id } as Pagare;
+        })
+        .filter((item) => String(item.userId || '').trim() === String(workspaceId).trim());
       setPagares(data);
       try {
         localStorage.setItem(`olga_pagares_${workspaceId}`, JSON.stringify(data));
@@ -1383,35 +1387,33 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     return () => unsubscribe();
   }, [workspaceId]);
 
-  // Sincronización en tiempo real de Expedientes Judiciales por Workspace (Abogados y Super Admin)
+  // Sincronización en tiempo real de Expedientes Judiciales aislados estrictamente por cuenta/workspace autenticado
   useEffect(() => {
     const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
     const wsId = String(workspaceId || uid).trim();
-    const isAdminViewer =
-      role === 'admin' ||
-      isActualAdminUser ||
-      String(currentUser?.email || auth?.currentUser?.email || '').toLowerCase().trim() === 'jotamolinas@gmail.com';
+    setExpedientes([]);
 
-    if ((!uid && !wsId && !isAdminViewer) || !canUseExpedientes) {
-      setExpedientes([]);
+    if ((!uid && !wsId) || !canUseExpedientes) {
       return;
     }
 
+    const allowedOwners = new Set<string>([uid, wsId].filter(Boolean));
     const colRef = collection(db, 'expedientes');
-    const adminMap = new Map<string, Expediente>();
     const userIdMap = new Map<string, Expediente>();
     const workspaceMap = new Map<string, Expediente>();
     const fallbackUidWsMap = new Map<string, Expediente>();
 
     const commitMerged = () => {
       const unified = new Map<string, Expediente>();
-      const sources = isAdminViewer
-        ? [adminMap]
-        : [userIdMap, workspaceMap, fallbackUidWsMap];
+      const sources = [userIdMap, workspaceMap, fallbackUidWsMap];
 
       sources.forEach((source) => {
         source.forEach((exp, id) => {
           if (exp.anulado === true || exp.eliminado === true) return;
+          const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+            .map((v) => String(v || '').trim())
+            .filter(Boolean);
+          if (owners.length === 0 || !owners.some((o) => allowedOwners.has(o))) return;
           unified.set(id, exp);
         });
       });
@@ -1421,92 +1423,70 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
     const unsubs: Array<() => void> = [];
 
-    if (isAdminViewer) {
+    if (uid) {
       unsubs.push(
         onSnapshot(
-          colRef,
+          query(colRef, where('userId', '==', uid)),
           (snapshot) => {
-            adminMap.clear();
+            userIdMap.clear();
             snapshot.docs.forEach((docSnap) => {
               const raw = docSnap.data() as any;
               if (raw?.anulado === true || raw?.eliminado === true) return;
               const norm = normalizeExpediente(raw, docSnap.id);
               if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
-              adminMap.set(docSnap.id, norm);
+              userIdMap.set(docSnap.id, norm);
             });
             commitMerged();
           },
           (error) => {
-            console.error('Fallo en sincronización de expedientes (admin):', error);
+            console.error('Fallo en sincronización de expedientes (userId):', error);
           }
         )
       );
-    } else {
-      if (uid) {
-        unsubs.push(
-          onSnapshot(
-            query(colRef, where('userId', '==', uid)),
-            (snapshot) => {
-              userIdMap.clear();
-              snapshot.docs.forEach((docSnap) => {
-                const raw = docSnap.data() as any;
-                if (raw?.anulado === true || raw?.eliminado === true) return;
-                const norm = normalizeExpediente(raw, docSnap.id);
-                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
-                userIdMap.set(docSnap.id, norm);
-              });
-              commitMerged();
-            },
-            (error) => {
-              console.error('Fallo en sincronización de expedientes (userId):', error);
-            }
-          )
-        );
-      }
+    }
 
-      if (wsId) {
-        unsubs.push(
-          onSnapshot(
-            query(colRef, where('ownedByWorkspace', '==', wsId)),
-            (snapshot) => {
-              workspaceMap.clear();
-              snapshot.docs.forEach((docSnap) => {
-                const raw = docSnap.data() as any;
-                if (raw?.anulado === true || raw?.eliminado === true) return;
-                const norm = normalizeExpediente(raw, docSnap.id);
-                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
-                workspaceMap.set(docSnap.id, norm);
-              });
-              commitMerged();
-            },
-            (error) => {
-              console.error('Fallo en sincronización de expedientes (ownedByWorkspace):', error);
-            }
-          )
-        );
-      }
+    if (wsId) {
+      unsubs.push(
+        onSnapshot(
+          query(colRef, where('ownedByWorkspace', '==', wsId)),
+          (snapshot) => {
+            workspaceMap.clear();
+            snapshot.docs.forEach((docSnap) => {
+              const raw = docSnap.data() as any;
+              if (raw?.anulado === true || raw?.eliminado === true) return;
+              const norm = normalizeExpediente(raw, docSnap.id);
+              if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+              workspaceMap.set(docSnap.id, norm);
+            });
+            commitMerged();
+          },
+          (error) => {
+            console.error('Fallo en sincronización de expedientes (ownedByWorkspace):', error);
+          }
+        )
+      );
+    }
 
-      if (uid && wsId && wsId !== uid) {
-        unsubs.push(
-          onSnapshot(
-            query(colRef, where('ownedByWorkspace', '==', uid)),
-            (snapshot) => {
-              fallbackUidWsMap.clear();
-              snapshot.docs.forEach((docSnap) => {
-                const raw = docSnap.data() as any;
-                if (raw?.anulado === true || raw?.eliminado === true) return;
-                const norm = normalizeExpediente(raw, docSnap.id);
-                if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
-                fallbackUidWsMap.set(docSnap.id, norm);
-              });
-              commitMerged();
-            },
-            (error) => {
-              console.error('Fallo en sincronización de expedientes (ownedByWorkspace=uid):', error);
-            }
-          )
-        );
-      }
+    if (uid && wsId && wsId !== uid) {
+      unsubs.push(
+        onSnapshot(
+          query(colRef, where('ownedByWorkspace', '==', uid)),
+          (snapshot) => {
+            fallbackUidWsMap.clear();
+            snapshot.docs.forEach((docSnap) => {
+              const raw = docSnap.data() as any;
+              if (raw?.anulado === true || raw?.eliminado === true) return;
+              const norm = normalizeExpediente(raw, docSnap.id);
+              if (!norm.caratula) norm.caratula = 'Expediente sin carátula';
+              fallbackUidWsMap.set(docSnap.id, norm);
+            });
+            commitMerged();
+          },
+          (error) => {
+            console.error('Fallo en sincronización de expedientes (ownedByWorkspace=uid):', error);
+          }
+        )
+      );
     }
 
     return () => {
@@ -1516,7 +1496,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         } catch {}
       });
     };
-  }, [workspaceId, currentUser?.uid, currentUser?.email, role, isActualAdminUser, canUseExpedientes]);
+  }, [workspaceId, currentUser?.uid, canUseExpedientes]);
 
   // FASE 2: Sincronización de Personas por Workspace en directorio_personas (Retrocompatible Multi-Usuario)
   useEffect(() => {
@@ -2154,12 +2134,18 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         setShowBenefits={setShowBenefits}
         onLogout={async () => {
           localStorage.removeItem('appSessionId');
+          try {
+            localStorage.removeItem('olga_pagares');
+            localStorage.removeItem('ihara_pagares');
+            localStorage.removeItem('olga_alertas_leidas_ids');
+          } catch {}
           await logout();
           setCurrentUser(null);
           setUserProfile(null);
           setPersonas([]);
           setPagares([]);
           setExpedientes([]);
+          setSelectedExpedienteIdForNav(null);
           setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
         }}
         isStandalone={isStandalone}
@@ -2341,6 +2327,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
             {/* Campana de Notificaciones Notariales y Judiciales Global */}
             <NotificationBell 
               currentUser={currentUser}
+              workspaceId={currentWorkspaceId || workspaceId || currentUser?.uid || ''}
+              esAbogado={esAbogado}
               pagares={pagares}
               expedientes={canUseExpedientes ? expedientes : []}
               onSelectPagare={(id) => {
@@ -2350,7 +2338,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 }
                 setActiveTab('pagares');
               }}
-              onSelectExpediente={() => {
+              onSelectExpediente={(expedienteId) => {
+                if (expedienteId) setSelectedExpedienteIdForNav(expedienteId);
                 setActiveTab('expedientes');
               }}
             />
@@ -2500,8 +2489,13 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               <TableroTab 
                 pagares={pagares}
                 personas={personas}
+                expedientes={esAbogado ? expedientes : []}
                 config={config}
                 onSelectPagareForPreview={handleAbrirPagarePreview}
+                onSelectExpediente={(expedienteId) => {
+                  if (expedienteId) setSelectedExpedienteIdForNav(expedienteId);
+                  setActiveTab('expedientes');
+                }}
                 onOpenDocument={handleOpenDocumentModal} 
                 onAddPagare={handleAddPagare}
                 onUpdatePagare={handleUpdatePagare}
@@ -2510,6 +2504,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 onUpdatePersona={handleUpdatePersona}
                 onDeletePersona={handleDeletePersona}
                 isAdmin={role === 'admin'}
+                currentUser={currentUser}
                 userData={userProfile || userData}
                 workspaceId={workspaceId}
                 workspaceName={workspaceName}
@@ -2612,6 +2607,9 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 workspaceId={currentWorkspaceId || workspaceId || currentUser?.uid || auth?.currentUser?.uid || ''}
                 esPlanFull={esPlanFull}
                 isSoftBlocked={isSoftBlocked}
+                isSuperAdminView={isAdmin}
+                initialSelectedExpedienteId={selectedExpedienteIdForNav}
+                onClearInitialSelectedExpediente={() => setSelectedExpedienteIdForNav(null)}
                 onSaveExpediente={async (exp) => {
                   const targetWs =
                     currentWorkspaceId || workspaceId || currentUser?.uid || auth?.currentUser?.uid || '';

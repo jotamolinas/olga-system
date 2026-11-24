@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
-import { Pagare, Persona, GlobalConfig, formatCurrencyValue } from '../types';
-import { fetchPersonasFromFirestore, normalizePersona } from '../services/firestore';
+import { Pagare, Persona, GlobalConfig, Expediente, PlazoProcesal, formatCurrencyValue } from '../types';
+import { fetchPersonasFromFirestore, normalizePersona, incrementarUsoIA } from '../services/firestore';
+import { redactarEscritoJudicialConIA } from '../services/gemini';
+import { calcDaysUntil } from './ExpedientesTab';
 import {
   FileText,
   Users,
@@ -21,6 +23,11 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
+  Briefcase,
+  CalendarClock,
+  Gavel,
+  Scale,
+  Sparkles,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { PagaresTab } from './PagaresTab';
@@ -31,9 +38,18 @@ import { generatePagarePdfBase64 } from '../services/pdfExport';
 interface TableroTabProps {
   pagares: Pagare[];
   personas: Persona[];
+  expedientes?: Expediente[];
   config: GlobalConfig;
   onSelectPagareForPreview?: (pagare: Pagare) => void;
-  onOpenDocument?: (text: string) => void;
+  onSelectExpediente?: (expedienteId: string) => void;
+  onOpenDocument?: (
+    text: string,
+    docId?: string,
+    tipo?: string,
+    categoria?: string,
+    tipoHoja?: 'blanca' | 'protocolo',
+    includeHeader?: boolean
+  ) => void;
   onAddPagare: (pagare: Pagare) => void;
   onUpdatePagare?: (pagare: Pagare) => void;
   onDeletePagare: (id: string) => void;
@@ -41,13 +57,14 @@ interface TableroTabProps {
   onUpdatePersona: (persona: Persona) => void;
   onDeletePersona: (id: string) => void;
   isAdmin: boolean;
+  currentUser?: any;
   userData?: any;
   workspaceId?: string;
   workspaceName?: string;
   isSoftBlocked?: boolean; // <-- NUEVO
   esPlanFull?: boolean;
   canUseWhatsApp?: boolean;
-  onNavigateTab?: (tab: 'pagares' | 'whatsapp' | 'escritos' | 'personas') => void;
+  onNavigateTab?: (tab: 'pagares' | 'whatsapp' | 'escritos' | 'personas' | 'expedientes') => void;
 }
 
 interface WhatsAppActivityItem {
@@ -376,8 +393,10 @@ const OverlayDetails: React.FC<{
 export const TableroTab: React.FC<TableroTabProps> = ({ 
   pagares, 
   personas, 
+  expedientes = [],
   config, 
   onSelectPagareForPreview, 
+  onSelectExpediente,
   onOpenDocument,
   onAddPagare,
   onUpdatePagare,
@@ -386,6 +405,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   onUpdatePersona,
   onDeletePersona,
   isAdmin,
+  currentUser,
   userData,
   workspaceId,
   workspaceName,
@@ -404,6 +424,10 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   const [escritos, setEscritos] = useState<any[]>([]);
   const [activeOverlay, setActiveOverlay] = useState<'pagares' | 'personas' | 'escritos' | 'valor' | 'vencimientos' | 'vencidos' | null>(null);
+  const [showAllLegalDeadlines, setShowAllLegalDeadlines] = useState(false);
+  const [draftingPlazoKey, setDraftingPlazoKey] = useState<string | null>(null);
+  const [legalDraftError, setLegalDraftError] = useState<string | null>(null);
+  const [legalKpiModalCategory, setLegalKpiModalCategory] = useState<'activas' | 'criticos' | 'proximos' | 'cumplidas' | null>(null);
 
   const [isPagareEditorOpen, setIsPagareEditorOpen] = useState(false);
   const [editingPagareId, setEditingPagareId] = useState<string | null>(null);
@@ -784,13 +808,161 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     ];
   }, [pagares]);
 
+  // --- MÉTRICAS EXCLUSIVAS PARA PERFIL ABOGADO (esAbogado === true) ---
+  const activeUid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
+  const allowedLegalOwners = useMemo(() => {
+    const ids = new Set<string>();
+    if (activeUid) ids.add(activeUid);
+    if (activeWorkspaceId) ids.add(String(activeWorkspaceId).trim());
+    return ids;
+  }, [activeUid, activeWorkspaceId]);
+
+  const ownExpedientes = useMemo(() => {
+    if (!esAbogado || !Array.isArray(expedientes) || expedientes.length === 0) return [];
+    return expedientes.filter((exp) => {
+      if (!exp || exp.anulado === true || exp.eliminado === true) return false;
+      if (allowedLegalOwners.size === 0) return false;
+      const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean);
+      return owners.length > 0 && owners.some((id) => allowedLegalOwners.has(id));
+    });
+  }, [esAbogado, expedientes, allowedLegalOwners]);
+
+  const activeLegalExpedientes = useMemo(
+    () =>
+      ownExpedientes
+        .filter((e) => (e.estado || 'En trámite') !== 'Finalizado')
+        .sort((a, b) =>
+          String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''))
+        ),
+    [ownExpedientes]
+  );
+
+  const upcomingLegalDeadlines = useMemo(() => {
+    const list: Array<{
+      expediente: Expediente;
+      plazo: PlazoProcesal;
+      diasRestantes: number | null;
+    }> = [];
+
+    ownExpedientes.forEach((exp) => {
+      if ((exp.estado || 'En trámite') === 'Finalizado') return;
+      (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
+        if (!plazo || plazo.completado === true) return;
+        const dias = calcDaysUntil(plazo.fechaVencimiento);
+        list.push({ expediente: exp, plazo, diasRestantes: dias });
+      });
+    });
+
+    list.sort((a, b) => (a.diasRestantes ?? 9999) - (b.diasRestantes ?? 9999));
+    return list;
+  }, [ownExpedientes]);
+
+  const criticalLegalDeadlines = useMemo(
+    () => upcomingLegalDeadlines.filter((item) => item.diasRestantes !== null && item.diasRestantes <= 3),
+    [upcomingLegalDeadlines]
+  );
+
+  const warningLegalDeadlines = useMemo(
+    () =>
+      upcomingLegalDeadlines.filter(
+        (item) => item.diasRestantes !== null && item.diasRestantes > 3 && item.diasRestantes <= 7
+      ),
+    [upcomingLegalDeadlines]
+  );
+
+  const completedLegalDeadlines = useMemo(() => {
+    const list: Array<{ expediente: Expediente; plazo: PlazoProcesal }> = [];
+    ownExpedientes.forEach((exp) => {
+      (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
+        if (plazo && plazo.completado === true) {
+          list.push({ expediente: exp, plazo });
+        }
+      });
+    });
+    list.sort((a, b) =>
+      String(b.plazo.completadoEn || b.plazo.fechaVencimiento || '').localeCompare(
+        String(a.plazo.completadoEn || a.plazo.fechaVencimiento || '')
+      )
+    );
+    return list;
+  }, [ownExpedientes]);
+
+  const formatLegalDateShort = (isoDate?: string): string => {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}/.test(isoDate)) return isoDate || 'Sin fecha';
+    const [y, m, d] = isoDate.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  const getLegalDaysLabel = (dias: number | null): string => {
+    if (dias === null) return 'Sin fecha';
+    if (dias < 0) return `Vencido hace ${Math.abs(dias)}d`;
+    if (dias === 0) return 'Vence HOY';
+    if (dias === 1) return 'Vence MAÑANA';
+    return `En ${dias} días`;
+  };
+
+  const handleOpenExpedienteFromDashboard = (expedienteId?: string) => {
+    setLegalKpiModalCategory(null);
+    if (expedienteId && onSelectExpediente) {
+      onSelectExpediente(expedienteId);
+      return;
+    }
+    onNavigateTab?.('expedientes');
+  };
+
+  const handleRedactarPlazoDesdeTablero = async (exp: Expediente, plazo: PlazoProcesal) => {
+    const key = `${exp.id}::${plazo.id}`;
+    if (draftingPlazoKey) return;
+    setDraftingPlazoKey(key);
+    setLegalDraftError(null);
+    try {
+      const estudioLabel =
+        String(userData?.razonSocial || userData?.nombreInstitucion || userData?.nombre || workspaceName || '').trim() ||
+        'Estudio Jurídico';
+      const draftText = await redactarEscritoJudicialConIA({
+        expediente: exp,
+        modo: 'impulso',
+        plazoObjetivo: {
+          titulo: plazo.titulo,
+          fechaVencimiento: plazo.fechaVencimiento,
+        },
+        estudio: {
+          razonSocial: userData?.razonSocial || userData?.nombreInstitucion || estudioLabel,
+          nombre: userData?.nombre || estudioLabel,
+          matricula: userData?.matriculaAbogado || userData?.matricula || userData?.registroNotarial || '',
+          ciudad: userData?.ciudad || userData?.localidad || 'Asunción',
+        },
+        instruccionesAdicionales:
+          'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Adapta cualquier denominación de juzgado o término procesal a la jurisdicción paraguaya vigente.',
+      });
+      const tituloModal = `Impulso: ${(plazo.titulo || exp.caratula).slice(0, 48)}`;
+      void incrementarUsoIA(currentUser?.uid || auth?.currentUser?.uid || userData?.uid);
+      setLegalKpiModalCategory(null);
+      onOpenDocument?.(draftText, undefined, tituloModal, 'Expedientes', 'blanca', true);
+    } catch (err: any) {
+      setLegalDraftError(err?.message || 'No se pudo generar el escrito judicial con IA.');
+    } finally {
+      setDraftingPlazoKey(null);
+    }
+  };
+
+  const visibleLegalDeadlines = showAllLegalDeadlines
+    ? upcomingLegalDeadlines
+    : upcomingLegalDeadlines.slice(0, 6);
+
+  const legalSurfaceCls = esPlanFull
+    ? 'bg-[#F4F4F0]/85 dark:bg-[#12141C]/85 backdrop-blur-xl border-amber-200/40 dark:border-amber-500/30 shadow-xs'
+    : 'bg-white dark:bg-[#121824]/90 border-slate-100 dark:border-slate-800/80 shadow-xs';
+
   return (
-    <div className="w-full box-border flex flex-col gap-8 w-full animate-fade-in pb-12">
+    <div className="w-full box-border flex flex-col gap-6 md:gap-8 animate-fade-in pb-12">
       <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 md:p-7 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
         <div className="relative z-10 text-center md:text-left w-full box-border">
           <h2 className="text-white text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center border border-slate-700 shadow-xs">
-              <Activity className="w-5 h-5" />
+              {esAbogado ? <Briefcase className="w-5 h-5" /> : <Activity className="w-5 h-5" />}
             </div>
             Tablero Principal
           </h2>
@@ -820,8 +992,490 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             })()}
           </p>
         </div>
+
+        {esAbogado && (
+          <div className="relative z-10 flex flex-wrap items-center justify-center md:justify-end gap-2.5 shrink-0 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('expedientes')}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Briefcase className="w-4 h-4" />
+              <span>Ir a Expedientes</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('escritos')}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Redactar Escrito</span>
+            </button>
+          </div>
+        )}
       </div>
 
+      {esAbogado ? (
+        <>
+          {/* 1. MÉTRICAS DE EXPEDIENTES Y PLAZOS PROCESALES (PARTE SUPERIOR DEL DASHBOARD DEL ABOGADO) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-5">
+            <button
+              type="button"
+              onClick={() => setLegalKpiModalCategory('activas')}
+              className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-blue-400/70 dark:hover:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${legalSurfaceCls}`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Causas Activas
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Scale className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
+                {activeLegalExpedientes.length}
+              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {ownExpedientes.length} totales registradas
+                </p>
+                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 shrink-0">Ver →</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLegalKpiModalCategory('criticos')}
+              className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-red-400/70 dark:hover:border-red-500/60 focus:outline-none focus:ring-2 focus:ring-red-500/40 ${legalSurfaceCls}`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Críticos ≤ 3 Días
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+              </div>
+              <p className={`text-2xl md:text-3xl font-black ${criticalLegalDeadlines.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                {criticalLegalDeadlines.length}
+              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Vencidos o urgentes
+                </p>
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400 shrink-0">Ver →</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLegalKpiModalCategory('proximos')}
+              className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-amber-400/70 dark:hover:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/40 ${legalSurfaceCls}`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Próximos 4–7 Días
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <CalendarClock className="w-4 h-4" />
+                </div>
+              </div>
+              <p className={`text-2xl md:text-3xl font-black ${warningLegalDeadlines.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                {warningLegalDeadlines.length}
+              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Seguimiento cercano
+                </p>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 shrink-0">Ver →</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLegalKpiModalCategory('cumplidas')}
+              className={`text-left w-full rounded-2xl p-4 md:p-5 border transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-emerald-400/70 dark:hover:border-emerald-500/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${legalSurfaceCls}`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Actuaciones Cumplidas
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Gavel className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
+                {completedLegalDeadlines.length}
+              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Plazos e impulsos cerrados
+                </p>
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">Ver →</span>
+              </div>
+            </button>
+          </div>
+
+          {/* 2. LISTADO RÁPIDO DE PLAZOS PRÓXIMOS A VENCER (ACCESO DIRECTO AL EXPEDIENTE O REDACCIÓN CON IA) */}
+          <section className={`rounded-3xl border p-4 md:p-5 transition-all ${legalSurfaceCls}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  criticalLegalDeadlines.length > 0
+                    ? 'bg-red-100 dark:bg-red-950/70 text-red-600 dark:text-red-400'
+                    : 'bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400'
+                }`}>
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm md:text-base font-extrabold font-serif text-slate-900 dark:text-slate-100">
+                    Plazos Próximos a Vencer ({upcomingLegalDeadlines.length})
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Accede directo al expediente o redacta el escrito de impulso con IA en un clic.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {upcomingLegalDeadlines.length > 6 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLegalDeadlines((prev) => !prev)}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {showAllLegalDeadlines ? 'Ver menos' : `Ver los ${upcomingLegalDeadlines.length}`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('expedientes')}
+                  className="text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Todos los Expedientes</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {legalDraftError && (
+              <div className="mb-3 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs text-red-700 dark:text-red-300 font-semibold">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{legalDraftError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLegalDraftError(null)}
+                  className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {upcomingLegalDeadlines.length === 0 ? (
+              <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-[#0B0F17]/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      Sin plazos procesales pendientes próximos a vencer
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {ownExpedientes.length === 0
+                        ? 'Carga tu primer expediente o analiza una demanda/cédula PDF con IA.'
+                        : 'Todas tus actuaciones vigentes están controladas.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('expedientes')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+                >
+                  <span>Abrir Expedientes</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {visibleLegalDeadlines.map(({ expediente, plazo, diasRestantes }) => {
+                  const isCritical = diasRestantes !== null && diasRestantes <= 3;
+                  const isWarning = diasRestantes !== null && diasRestantes > 3 && diasRestantes <= 7;
+                  const rowKey = `${expediente.id}::${plazo.id}`;
+                  const isDraftingThis = draftingPlazoKey === rowKey;
+
+                  return (
+                    <div
+                      key={rowKey}
+                      className={`rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                        isCritical
+                          ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-800/60'
+                          : isWarning
+                            ? 'bg-amber-50/70 dark:bg-amber-950/25 border-amber-200 dark:border-amber-800/50'
+                            : 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${
+                              isCritical
+                                ? 'bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700'
+                                : isWarning
+                                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {getLegalDaysLabel(diasRestantes)}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                            {formatLegalDateShort(plazo.fechaVencimiento)}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {plazo.tipo === 'impulso' ? 'Impulso' : 'Plazo Legal'}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white mt-1 truncate">
+                          {plazo.titulo}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
+                          className="text-[11px] text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 text-left truncate max-w-full cursor-pointer"
+                        >
+                          {expediente.caratula}{' '}
+                          {expediente.nroExpediente ? `• Expte. ${expediente.nroExpediente}/${expediente.anio}` : ''}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
+                          className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          Ver Expediente
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(draftingPlazoKey)}
+                          onClick={() => void handleRedactarPlazoDesdeTablero(expediente, plazo)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {isDraftingThis ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          )}
+                          <span>Escrito IA</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* MONITOR WHATSAPP COMPACTO (SOLO SI ESTÁ HABILITADO PARA EL ESTUDIO) */}
+          {isWhatsAppEnabled && (
+            <section className={`rounded-2xl border p-4 transition-all ${legalSurfaceCls}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Bot className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                    {waPendingThreadsCount === 0
+                      ? 'WhatsApp del Estudio: sin chats pendientes'
+                      : `WhatsApp del Estudio: ${waPendingThreadsCount} ${
+                          waPendingThreadsCount === 1
+                            ? 'chat pendiente por revisar'
+                            : 'chats pendientes por revisar'
+                        }`}
+                  </span>
+                  {isLoadingWaMonitor && (
+                    <Loader2 className="w-3 h-3 text-emerald-600 animate-spin shrink-0" />
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('whatsapp')}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <span>Abrir Bandeja</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+              {waActivities.length > 0 && (
+                <div className="space-y-1.5 max-h-32 overflow-y-auto pt-2.5 mt-2.5 border-t border-slate-200/70 dark:border-slate-800/80">
+                  {waActivities.slice(0, 3).map((act) => (
+                    <div
+                      key={act.id}
+                      className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#121824] px-2.5 py-1.5 flex items-center justify-between gap-2"
+                    >
+                      <p className="text-[11px] text-slate-700 dark:text-slate-200 truncate">
+                        🤖 <span className="font-bold">O.L.G.A.</span> respondió a{' '}
+                        <span className="font-bold text-slate-900 dark:text-white">{act.pushName}</span> ({act.messagesCount}{' '}
+                        {act.messagesCount === 1 ? 'msj' : 'msjs'})
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab?.('whatsapp')}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        Revisar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 3. ACCESOS SECUNDARIOS DEL ESTUDIO: CLIENTES/PARTES Y ESCRITOS GUARDADOS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`group relative rounded-3xl p-5 flex items-center justify-between gap-4 overflow-hidden transition-all duration-300 hover:shadow-md border ${legalSurfaceCls}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+                    Clientes / Partes
+                  </p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white">
+                    <CountUp end={personasActivas} />
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveOverlay('personas')}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>Ver Detalles</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className={`group relative rounded-3xl p-5 flex items-center justify-between gap-4 overflow-hidden transition-all duration-300 hover:shadow-md border ${legalSurfaceCls}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center shrink-0">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+                    Escritos Guardados
+                  </p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white">
+                    <CountUp end={escritos.length} />
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveOverlay('escritos')}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>Ver Detalles</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 4. ÚLTIMOS ESCRITOS JURÍDICOS GUARDADOS */}
+          <div className="bg-white dark:bg-[#121824]/90 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm overflow-hidden">
+            <div className="p-5 md:p-6 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+              <h3 className="text-lg font-bold font-serif text-slate-800 dark:text-slate-100">
+                Gestión de Escritos (O.L.G.A.)
+              </h3>
+              <button
+                type="button"
+                onClick={() => onNavigateTab?.('escritos')}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <span>Ir a Escritos</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="p-5 md:p-6">
+              <div className="space-y-3">
+                {escritos.slice(0, 6).map((escrito, idx) => {
+                  const previewText = escrito.texto ? escrito.texto.substring(0, 90) + '...' : '';
+                  let dateStr = 'Fecha desconocida';
+                  if (escrito.createdAt) {
+                    dateStr = new Date(escrito.createdAt).toLocaleDateString('es-PY', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                  } else if (escrito.fechaCreacion && typeof escrito.fechaCreacion.toMillis === 'function') {
+                    dateStr = new Date(escrito.fechaCreacion.toMillis()).toLocaleDateString('es-PY', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                  }
+
+                  return (
+                    <div
+                      key={escrito.id || idx}
+                      onClick={() => {
+                        if (escrito.texto) {
+                          onOpenDocument?.(
+                            escrito.texto,
+                            escrito.id,
+                            escrito.tipo || 'Escrito Jurídico',
+                            escrito.categoria || 'Expedientes',
+                            'blanca',
+                            true
+                          );
+                        }
+                      }}
+                      className="p-3.5 rounded-2xl border bg-white dark:bg-slate-900/60 border-slate-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 shadow-xs transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
+                            {escrito.tipo || 'Escrito Jurídico'}
+                          </h4>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            {previewText}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between md:flex-col md:items-end gap-1 shrink-0">
+                        <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {dateStr}
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md">
+                          {escrito.categoria || 'Expedientes'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {escritos.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 font-bold text-sm">
+                    Aún no hay escritos guardados en tu estudio.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
       {/* CENTRO DE NOTIFICACIONES COMPACTO */}
       <section
         className={`rounded-2xl border p-4 transition-all ${
@@ -1252,6 +1906,189 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           </div>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Modal de detalle de KPIs procesales (EXCLUSIVO ABOGADOS) */}
+      {esAbogado && legalKpiModalCategory && (() => {
+        const modalMeta = {
+          activas: {
+            title: 'Causas Activas',
+            subtitle: `${activeLegalExpedientes.length} expediente${activeLegalExpedientes.length === 1 ? '' : 's'} en trámite`,
+          },
+          criticos: {
+            title: 'Plazos Críticos (≤ 3 días)',
+            subtitle: `${criticalLegalDeadlines.length} vencimiento${criticalLegalDeadlines.length === 1 ? '' : 's'} urgente${criticalLegalDeadlines.length === 1 ? '' : 's'}`,
+          },
+          proximos: {
+            title: 'Plazos Próximos (4–7 días)',
+            subtitle: `${warningLegalDeadlines.length} vencimiento${warningLegalDeadlines.length === 1 ? '' : 's'} en seguimiento`,
+          },
+          cumplidas: {
+            title: 'Actuaciones Cumplidas',
+            subtitle: `${completedLegalDeadlines.length} plazo${completedLegalDeadlines.length === 1 ? '' : 's'} e impulso${completedLegalDeadlines.length === 1 ? '' : 's'} cerrado${completedLegalDeadlines.length === 1 ? '' : 's'}`,
+          },
+        }[legalKpiModalCategory];
+
+        return (
+          <div
+            className="fixed inset-0 z-[70] bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+            onClick={() => setLegalKpiModalCategory(null)}
+          >
+            <div
+              className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/60">
+                <div>
+                  <h3 className="text-base md:text-lg font-black font-serif text-slate-900 dark:text-white">
+                    {modalMeta.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{modalMeta.subtitle}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLegalKpiModalCategory(null)}
+                  className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto space-y-2.5 flex-1">
+                {legalKpiModalCategory === 'activas' && (
+                  activeLegalExpedientes.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-8 font-semibold">
+                      No tienes causas activas registradas todavía.
+                    </p>
+                  ) : (
+                    activeLegalExpedientes.map((exp) => (
+                      <div
+                        key={exp.id}
+                        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-3.5 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{exp.caratula}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            {[
+                              exp.nroExpediente ? `Expte. ${exp.nroExpediente}/${exp.anio}` : null,
+                              exp.juzgado || null,
+                              exp.estado || 'En trámite',
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExpedienteFromDashboard(exp.id)}
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                        >
+                          Abrir
+                        </button>
+                      </div>
+                    ))
+                  )
+                )}
+
+                {(legalKpiModalCategory === 'criticos' || legalKpiModalCategory === 'proximos') && (() => {
+                  const rows = legalKpiModalCategory === 'criticos' ? criticalLegalDeadlines : warningLegalDeadlines;
+                  if (rows.length === 0) {
+                    return (
+                      <p className="text-sm text-slate-400 text-center py-8 font-semibold">
+                        No hay plazos en esta categoría.
+                      </p>
+                    );
+                  }
+                  return rows.map(({ expediente, plazo, diasRestantes }) => {
+                    const rowKey = `${expediente.id}::${plazo.id}`;
+                    return (
+                      <div
+                        key={rowKey}
+                        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase">
+                            <span className={legalKpiModalCategory === 'criticos' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>
+                              {getLegalDaysLabel(diasRestantes)}
+                            </span>
+                            <span className="text-slate-400 font-mono">
+                              {formatLegalDateShort(plazo.fechaVencimiento)}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 truncate">{plazo.titulo}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{expediente.caratula}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
+                            className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer"
+                          >
+                            Ver Expediente
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(draftingPlazoKey)}
+                            onClick={() => void handleRedactarPlazoDesdeTablero(expediente, plazo)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            {draftingPlazoKey === rowKey ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                            )}
+                            <span>Escrito IA</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+
+                {legalKpiModalCategory === 'cumplidas' && (
+                  completedLegalDeadlines.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-8 font-semibold">
+                      Aún no hay actuaciones marcadas como cumplidas.
+                    </p>
+                  ) : (
+                    completedLegalDeadlines.map(({ expediente, plazo }) => (
+                      <div
+                        key={`${expediente.id}::${plazo.id}`}
+                        className="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{plazo.titulo}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            {expediente.caratula} • Venc.: {formatLegalDateShort(plazo.fechaVencimiento)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExpedienteFromDashboard(expediente.id)}
+                          className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold shrink-0 cursor-pointer"
+                        >
+                          Ver
+                        </button>
+                      </div>
+                    ))
+                  )
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end bg-slate-50/60 dark:bg-slate-900/40">
+                <button
+                  type="button"
+                  onClick={() => handleOpenExpedienteFromDashboard()}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  Ir al Módulo de Expedientes
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {activeOverlay === 'pagares' && (
         <OverlayDetails 

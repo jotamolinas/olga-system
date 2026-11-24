@@ -335,31 +335,72 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
 
   const isHojaBlanca = paperMode !== 'protocolo';
   const esAbogadoDoc = String(workspaceData?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
-  const nombreEscribaniaHeader =
-    workspaceData?.razonSocial ||
-    workspaceData?.nombreInstitucion ||
-    userData?.razonSocial ||
-    userData?.nombreInstitucion ||
-    (!esAbogadoDoc ? config?.escribania?.nombre : '') ||
-    userData?.nombre ||
-    (esAbogadoDoc ? 'Estudio Jurídico' : 'Escribanía Pública');
-  const rucHeader = workspaceData?.ruc || userData?.ruc || '';
+  const pickRealLegalHeader = (...candidates: unknown[]): string => {
+    for (const candidate of candidates) {
+      const clean = String(candidate || '').trim();
+      if (!clean) continue;
+      const lower = clean.toLowerCase();
+      if (
+        lower === '---' ||
+        lower === 'sin especificar' ||
+        lower === 'sin r.u.c.' ||
+        lower === 'mi escribanía' ||
+        lower === 'escribanía titular' ||
+        lower === 'escribanía pública' ||
+        lower === 'estudio jurídico'
+      ) {
+        continue;
+      }
+      return clean;
+    }
+    return '';
+  };
+
+  const nombreEscribaniaHeader = esAbogadoDoc
+    ? pickRealLegalHeader(
+        workspaceData?.razonSocial,
+        workspaceData?.nombreInstitucion,
+        userData?.razonSocial,
+        userData?.nombreInstitucion,
+        workspaceData?.nombre,
+        userData?.nombre
+      )
+    : (workspaceData?.razonSocial ||
+        workspaceData?.nombreInstitucion ||
+        userData?.razonSocial ||
+        userData?.nombreInstitucion ||
+        config?.escribania?.nombre ||
+        userData?.nombre ||
+        'Escribanía Pública');
+  const rucHeader = esAbogadoDoc
+    ? pickRealLegalHeader(workspaceData?.ruc, userData?.ruc)
+    : (workspaceData?.ruc || userData?.ruc || '');
   const registroHeader = esAbogadoDoc
-    ? (workspaceData?.matricula ||
-        userData?.matricula ||
-        workspaceData?.registroNotarial ||
-        userData?.registroNotarial ||
-        '')
+    ? pickRealLegalHeader(
+        workspaceData?.matriculaAbogado,
+        userData?.matriculaAbogado,
+        workspaceData?.matricula,
+        userData?.matricula,
+        workspaceData?.registroNotarial,
+        userData?.registroNotarial
+      )
     : (workspaceData?.registroNotarial ||
         workspaceData?.matricula ||
         userData?.registroNotarial ||
         userData?.matricula ||
         config?.escribania?.nro_registro ||
         '');
-  const telefonoHeader =
-    workspaceData?.telefono || userData?.telefono || config?.escribania?.telefono || '';
-  const direccionHeader =
-    workspaceData?.direccion || userData?.direccion || config?.escribania?.direccion || '';
+  const telefonoHeader = esAbogadoDoc
+    ? pickRealLegalHeader(workspaceData?.telefono, userData?.telefono)
+    : (workspaceData?.telefono || userData?.telefono || config?.escribania?.telefono || '');
+  const direccionHeader = esAbogadoDoc
+    ? pickRealLegalHeader(
+        workspaceData?.direccion,
+        userData?.direccion,
+        workspaceData?.ciudad,
+        userData?.ciudad
+      )
+    : (workspaceData?.direccion || userData?.direccion || config?.escribania?.direccion || '');
 
   const buildEscribaniaPdfMeta = () => ({
     nombre: nombreEscribaniaHeader,
@@ -1014,18 +1055,20 @@ export const DocumentoModal: React.FC<DocumentoModalProps> = ({
             }}
           >
             {/* Encabezado Institucional (visible únicamente cuando includeHeader === true y Hoja en Blanco) */}
-            {includeHeader && isHojaBlanca && (
+            {includeHeader && isHojaBlanca && (!esAbogadoDoc || Boolean(rawLogoInstitucional || nombreEscribaniaHeader || registroHeader || rucHeader || telefonoHeader || direccionHeader)) && (
               <div className="mb-6 border-b-2 border-slate-800 pb-3.5 text-center print:border-black">
                 {rawLogoInstitucional && (
                   <img
                     src={rawLogoInstitucional}
-                    alt={nombreEscribaniaHeader}
+                    alt={nombreEscribaniaHeader || 'Logo institucional'}
                     className="mx-auto mb-2.5 max-h-14 max-w-[140px] object-contain"
                   />
                 )}
-                <h2 className="text-xl md:text-2xl font-serif font-bold uppercase tracking-wider text-slate-900">
-                  {nombreEscribaniaHeader}
-                </h2>
+                {nombreEscribaniaHeader && (
+                  <h2 className="text-xl md:text-2xl font-serif font-bold uppercase tracking-wider text-slate-900">
+                    {nombreEscribaniaHeader}
+                  </h2>
+                )}
                 {(registroHeader && registroHeader !== '---') || (rucHeader && rucHeader !== '---') || telefonoHeader ? (
                   <p className="text-xs font-mono text-slate-600 mt-1">
                     {[

@@ -156,7 +156,7 @@ export const generateDocumentPdfBase64 = ({
   };
 
   // 1. Encabezado de Escribanía / Estudio Jurídico (solo si includeHeader === true)
-  const nombreEsc = (escribania?.nombre || (escribania?.esAbogado ? 'Estudio Jurídico' : 'Escribanía Pública')).trim();
+  const nombreEsc = (escribania?.nombre || (escribania?.esAbogado ? '' : 'Escribanía Pública')).trim();
   const rawLogo = escribania?.logo?.trim();
   const hasSupportedLogo = Boolean(
     rawLogo && /^data:image\/(png|jpe?g);base64,/i.test(rawLogo)

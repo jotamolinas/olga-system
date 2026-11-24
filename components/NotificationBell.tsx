@@ -17,7 +17,7 @@ import { auth, db } from '../services/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const ALERTAS_LEIDAS_KEY = 'olga_alertas_leidas_ids';
+const ALERTAS_LEIDAS_KEY_PREFIX = 'olga_alertas_leidas_ids_';
 
 export interface NotificationBellProps {
   pagares?: Pagare[];
@@ -25,6 +25,8 @@ export interface NotificationBellProps {
   onSelectPagare?: (pagareId: string) => void;
   onSelectExpediente?: (expedienteId: string) => void;
   currentUser?: any;
+  workspaceId?: string;
+  esAbogado?: boolean;
 }
 
 interface AlertaJudicial {
@@ -39,12 +41,30 @@ interface AlertaJudicial {
   leida: boolean;
 }
 
+const getAlertasLeidasStorageKey = (uid: string | null): string | null =>
+  uid ? `${ALERTAS_LEIDAS_KEY_PREFIX}${uid}` : null;
+
+const loadAlertasLeidasForUser = (uid: string | null): string[] => {
+  const key = getAlertasLeidasStorageKey(uid);
+  if (!key) return [];
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+};
+
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   pagares = [],
   expedientes = [],
   onSelectPagare,
   onSelectExpediente,
-  currentUser
+  currentUser,
+  workspaceId,
+  esAbogado = false
 }) => {
   const [dropdownAbierto, setDropdownAbierto] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,21 +80,32 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Almacenar IDs de alertas marcadas como leídas desde localStorage
-  const [alertasLeidasIds, setAlertasLeidasIds] = useState<string[]>(() => {
+  const effectiveWorkspaceId = String(workspaceId || activeUid || '').trim();
+
+  // Almacenar IDs de alertas marcadas como leídas aisladas estrictamente por UID
+  const [alertasLeidasIds, setAlertasLeidasIds] = useState<string[]>(() =>
+    loadAlertasLeidasForUser(currentUser?.uid || auth.currentUser?.uid || null)
+  );
+
+  useEffect(() => {
+    setAlertasLeidasIds(loadAlertasLeidasForUser(activeUid));
+  }, [activeUid]);
+
+  const persistAlertasLeidas = (updated: string[]) => {
+    setAlertasLeidasIds(updated);
+    const key = getAlertasLeidasStorageKey(activeUid);
+    if (!key) return;
     try {
-      const stored = localStorage.getItem(ALERTAS_LEIDAS_KEY);
-      if (stored) return JSON.parse(stored);
+      localStorage.setItem(key, JSON.stringify(updated));
     } catch {}
-    return [];
-  });
+  };
 
   const [ticketsNotificados, setTicketsNotificados] = useState<any[]>([]);
 
   useEffect(() => {
-    const uid = activeUid || currentUser?.uid || auth.currentUser?.uid;
+    const uid = String(activeUid || currentUser?.uid || auth.currentUser?.uid || '').trim();
+    setTicketsNotificados([]);
     if (!uid) {
-      setTicketsNotificados([]);
       return;
     }
 
@@ -86,6 +117,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       const tickets: any[] = [];
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
+        const docUid = String(data?.userId || '').trim();
+        if (docUid !== uid) return;
         if (data.estado === 'en_proceso' || data.estado === 'resuelto') {
           tickets.push({ id: docSnap.id, ...data });
         }
@@ -97,32 +130,44 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     return () => unsubscribe();
   }, [activeUid, currentUser]);
 
-  // Pagarés activos: de props o de localStorage
+  const allowedOwnerIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (activeUid) ids.add(String(activeUid).trim());
+    if (effectiveWorkspaceId) ids.add(effectiveWorkspaceId);
+    return ids;
+  }, [activeUid, effectiveWorkspaceId]);
+
+  // Pagarés activos: únicamente los de la cuenta/workspace autenticado actual (sin fallback a localStorage global)
   const pagaresEfectivos = useMemo(() => {
-    if (pagares && Array.isArray(pagares) && pagares.length > 0) {
-      return pagares;
+    if (!activeUid || !Array.isArray(pagares) || pagares.length === 0) {
+      return [];
     }
-    try {
-      const stored = localStorage.getItem('olga_pagares') || localStorage.getItem('ihara_pagares');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
-  }, [pagares]);
+    return pagares.filter((pag: any) => {
+      if (!pag || typeof pag !== 'object') return false;
+      const ownerCandidates = [pag.userId, pag.ownedByWorkspace, pag.creator_id]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean);
+      if (ownerCandidates.length === 0) return false;
+      return ownerCandidates.some((id) => allowedOwnerIds.has(id));
+    });
+  }, [pagares, activeUid, allowedOwnerIds]);
 
   // Cálculo Dinámico en Tiempo Real de Alertas Notariales
   const alertasNotariales = useMemo(() => {
     return calcularAlertasNotariales(pagaresEfectivos, alertasLeidasIds);
   }, [pagaresEfectivos, alertasLeidasIds]);
 
-  // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos)
+  // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos) aislados por cuenta
   const alertasJudiciales = useMemo<AlertaJudicial[]>(() => {
-    if (!Array.isArray(expedientes) || expedientes.length === 0) return [];
+    if (!activeUid || !Array.isArray(expedientes) || expedientes.length === 0) return [];
     const list: AlertaJudicial[] = [];
     expedientes.forEach((exp) => {
-      if (!exp || exp.estado === 'Finalizado') return;
+      if (!exp || exp.anulado === true || exp.eliminado === true || exp.estado === 'Finalizado') return;
+      const expOwners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean);
+      if (expOwners.length === 0 || !expOwners.some((id) => allowedOwnerIds.has(id))) return;
+
       (exp.plazos || []).forEach((plazo) => {
         if (!plazo || plazo.completado || !plazo.fechaVencimiento) return;
         const dias = calcDaysUntil(plazo.fechaVencimiento);
@@ -143,7 +188,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     });
     list.sort((a, b) => a.diasRestantes - b.diasRestantes);
     return list;
-  }, [expedientes, alertasLeidasIds]);
+  }, [expedientes, alertasLeidasIds, activeUid, allowedOwnerIds]);
 
   // Cantidad real de incidencias no leídas
   const totalAlertasNoLeidas = useMemo(() => {
@@ -174,10 +219,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     const allJudicialIds = alertasJudiciales.map(a => a.id);
     const allTicketIds = ticketsNotificados.map(t => `ticket_${t.id}_${t.estado}`);
     const updated = Array.from(new Set([...alertasLeidasIds, ...allNotarialIds, ...allJudicialIds, ...allTicketIds]));
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
+    persistAlertasLeidas(updated);
   };
 
   const marcarTicketLeido = (ticket: any) => {
@@ -188,10 +230,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     } else {
       updated = [...alertasLeidasIds, ticketKey];
     }
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
+    persistAlertasLeidas(updated);
   };
 
   const alternarLeidaAlerta = (alerta: AlertaNotarial) => {
@@ -202,10 +241,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     } else {
       updated = [...alertasLeidasIds, id];
     }
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
+    persistAlertasLeidas(updated);
 
     if (onSelectPagare && alerta.pagareId) {
       onSelectPagare(alerta.pagareId);
@@ -218,10 +254,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     const updated = alertasLeidasIds.includes(id)
       ? alertasLeidasIds
       : [...alertasLeidasIds, id];
-    setAlertasLeidasIds(updated);
-    try {
-      localStorage.setItem(ALERTAS_LEIDAS_KEY, JSON.stringify(updated));
-    } catch {}
+    persistAlertasLeidas(updated);
 
     if (onSelectExpediente && alerta.expedienteId) {
       onSelectExpediente(alerta.expedienteId);
@@ -231,8 +264,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const restablecerLeidas = () => {
     setAlertasLeidasIds([]);
+    const key = getAlertasLeidasStorageKey(activeUid);
+    if (!key) return;
     try {
-      localStorage.removeItem(ALERTAS_LEIDAS_KEY);
+      localStorage.removeItem(key);
     } catch {}
   };
 
@@ -243,7 +278,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         type="button"
         onClick={() => setDropdownAbierto(prev => !prev)}
         className="relative p-2 sm:p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white rounded-xl border border-slate-700 transition-all flex items-center justify-center shadow-sm"
-        title="Centro de Alertas Notariales (Vencimientos y Cuotas)"
+        title={esAbogado ? 'Centro de Alertas (Plazos Procesales y Notificaciones)' : 'Centro de Alertas Notariales (Vencimientos y Cuotas)'}
         aria-label="Notificaciones"
       >
         <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -378,7 +413,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                 </div>
                 <p className="text-xs font-bold text-slate-800">No hay alertas pendientes</p>
                 <p className="text-[11px] text-slate-400 max-w-[240px] mx-auto leading-relaxed">
-                  Todos los pagarés, plazos procesales y cuotas se encuentran al día en los próximos 5 días.
+                  {esAbogado
+                    ? 'Todos tus plazos procesales y alertas se encuentran al día en los próximos 5 días.'
+                    : 'Todos los pagarés, plazos procesales y cuotas se encuentran al día en los próximos 5 días.'}
                 </p>
               </div>
             ) : (

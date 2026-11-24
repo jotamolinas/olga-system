@@ -52,6 +52,9 @@ interface ExpedientesTabProps {
   workspaceId?: string;
   esPlanFull?: boolean;
   isSoftBlocked?: boolean;
+  isSuperAdminView?: boolean;
+  initialSelectedExpedienteId?: string | null;
+  onClearInitialSelectedExpediente?: () => void;
   onSaveExpediente: (expediente: Expediente) => Promise<void>;
   onDeleteExpediente: (expedienteId: string) => Promise<void>;
   onOpenDocument: (
@@ -228,6 +231,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   workspaceId = '',
   esPlanFull = false,
   isSoftBlocked = false,
+  isSuperAdminView = false,
+  initialSelectedExpedienteId = null,
+  onClearInitialSelectedExpediente,
   onSaveExpediente,
   onDeleteExpediente,
   onOpenDocument,
@@ -312,18 +318,30 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
   const wsId = String(workspaceId || uid).trim();
-  const userEmail = String(currentUser?.email || auth?.currentUser?.email || userData?.email || '')
-    .toLowerCase()
-    .trim();
-  const userRole = String(userData?.role || userData?.rol || currentUser?.role || currentUser?.rol || '')
-    .toLowerCase()
-    .trim();
-  const isAdminOrSuperAdmin = userEmail === 'jotamolinas@gmail.com' || userRole === 'admin';
+  const isExplicitSuperAdmin = isSuperAdminView === true;
+
+  const allowedOwnerIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (uid) ids.add(uid);
+    if (wsId) ids.add(wsId);
+    return ids;
+  }, [uid, wsId]);
+
+  const belongsToCurrentAccount = (exp: Expediente): boolean => {
+    if (isExplicitSuperAdmin) return true;
+    const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    if (owners.length === 0) return false;
+    return owners.some((id) => allowedOwnerIds.has(id));
+  };
 
   useEffect(() => {
-    if (!uid && !wsId && !isAdminOrSuperAdmin) {
-      setLiveExpedientes([]);
-      setHasLiveSnapshot(false);
+    setLiveExpedientes([]);
+    setHasLiveSnapshot(false);
+    docIdByExpIdRef.current.clear();
+
+    if (!uid && !wsId && !isExplicitSuperAdmin) {
       return;
     }
 
@@ -335,13 +353,19 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
     const commitMerged = () => {
       const unified = new Map<string, Expediente>();
-      const sources = isAdminOrSuperAdmin
+      const sources = isExplicitSuperAdmin
         ? [adminMap]
         : [userIdMap, workspaceMap, fallbackWorkspaceUidMap];
 
       sources.forEach((sourceMap) => {
         sourceMap.forEach((exp, id) => {
           if (exp.anulado === true || exp.eliminado === true) return;
+          if (!isExplicitSuperAdmin) {
+            const owners = [exp.userId, exp.ownedByWorkspace, exp.creator_id]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean);
+            if (owners.length === 0 || !owners.some((o) => allowedOwnerIds.has(o))) return;
+          }
           unified.set(id, exp);
         });
       });
@@ -352,7 +376,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
     const unsubs: Array<() => void> = [];
 
-    if (isAdminOrSuperAdmin) {
+    if (isExplicitSuperAdmin) {
       unsubs.push(
         onSnapshot(
           colRef,
@@ -368,7 +392,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             commitMerged();
           },
           (error) => {
-            console.error('[ExpedientesTab] Error en lectura onSnapshot (admin):', error);
+            console.error('[ExpedientesTab] Error en lectura onSnapshot (superadmin):', error);
           }
         )
       );
@@ -447,7 +471,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         } catch {}
       });
     };
-  }, [uid, wsId, isAdminOrSuperAdmin]);
+  }, [uid, wsId, isExplicitSuperAdmin, allowedOwnerIds]);
 
   const effectiveExpedientes = useMemo(() => {
     const source = hasLiveSnapshot ? liveExpedientes : (Array.isArray(expedientes) ? expedientes : []);
@@ -456,6 +480,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       if (!item || !item.id) return;
       if (item.anulado === true || item.eliminado === true) return;
       const mapped = mapFirestoreDocToExpediente(item, item.id);
+      if (!belongsToCurrentAccount(mapped)) return;
       const patchedPlazos = mapped.plazos.map((p) => {
         const override = optimisticToggleByKey[`${mapped.id}::${p.id}`];
         return override
@@ -465,7 +490,24 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
     });
     return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey]);
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds]);
+
+  useEffect(() => {
+    if (!initialSelectedExpedienteId) return;
+    const exists = effectiveExpedientes.some((item) => item.id === initialSelectedExpedienteId);
+    if (!exists) return;
+    setSearchQuery('');
+    setFilterEstado('TODOS');
+    setFilterTipo('TODOS');
+    setSelectedExpId(initialSelectedExpedienteId);
+    window.setTimeout(() => {
+      const targetEl = expedienteCardRefs.current[initialSelectedExpedienteId];
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+    onClearInitialSelectedExpediente?.();
+  }, [initialSelectedExpedienteId, effectiveExpedientes, onClearInitialSelectedExpediente]);
 
   const showToastSuccess = (msg: string) => {
     setErrorBanner(null);
