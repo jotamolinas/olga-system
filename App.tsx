@@ -7,7 +7,7 @@ import { RecursosPage } from './components/RecursosPage';
 import { AdminLoginRoute } from './components/AdminLoginRoute';
 import { Persona, GlobalConfig, Pagare, Expediente } from './types';
 import { INITIAL_PERSONAS, INITIAL_CONFIG, INITIAL_PAGARES } from './initialData';
-import { User, signOut, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, logout, getAccessToken, ensureUserDocumentInFirestore } from './services/auth';
 import { 
   fetchPersonasFromFirestore, syncPersonaToFirestore, deletePersonaFromFirestore, normalizePersona,
@@ -435,7 +435,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     };
   }, []);
   const [olgaDocsCount, setOlgaDocsCount] = useState<number>(0);
-  const [sessionKickedAlert, setSessionKickedAlert] = useState<string | null>(null);
 
   // Hook unificado de Workspace y membrete del Titular
   const { workspaceId, workspaceName, workspaceData } = useWorkspace(currentUser, userProfile || userData);
@@ -1048,7 +1047,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       
       setIsCheckingProfile(true);
       setCurrentUser(user);
-      const loginTimestamp = Date.now();
 
       // Sesión local única para este dispositivo/inicio de sesión
       let localSessionId = localStorage.getItem('appSessionId');
@@ -1059,7 +1057,6 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         localStorage.setItem('appSessionId', localSessionId);
       }
 
-      // El usuario acaba de iniciar sesión: ACEPTAR la sesión actual y sincronizar el activeSessionId de Firestore
       let isFirstSnapshotAfterAuth = true;
       
       try {
@@ -1277,38 +1274,16 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
           }
 
           const firestoreSessionId = data.activeSessionId;
-          let currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
+          const currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
           if (!localStorage.getItem('appSessionId') && currentLocalSession) {
             localStorage.setItem('appSessionId', currentLocalSession);
           }
-          const withinGraceWindow = Date.now() - loginTimestamp < 10000;
 
-          // Durante los primeros 10 segundos tras el login (o en el primer snapshot),
-          // NUNCA ejecutar signOut/logout por diferencia de activeSessionId; solo sincronizar con Firestore.
-          if (isFirstSnapshotAfterAuth || withinGraceWindow) {
+          // Sincronización pasiva de activeSessionId sin expulsión automática ni cierre de sesión
+          if (isFirstSnapshotAfterAuth) {
             isFirstSnapshotAfterAuth = false;
-            if (firestoreSessionId !== currentLocalSession) {
+            if (!firestoreSessionId && currentLocalSession) {
               setDoc(doc(db, 'users', user.uid), { activeSessionId: currentLocalSession }, { merge: true }).catch(console.error);
-            }
-          } else {
-            // Lógica de Expulsión (solo pasado el periodo de gracia de 10 segundos):
-            // El bloqueo SÓLO debe dispararse si otro dispositivo sobrescribió activeSessionId en Firestore
-            // con un valor diferente al appSessionId de este dispositivo.
-            const latestLocalSession = localStorage.getItem('appSessionId') || currentLocalSession;
-            if (firestoreSessionId && latestLocalSession && firestoreSessionId !== latestLocalSession) {
-              console.warn("⚠️ Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
-              localStorage.removeItem('appSessionId');
-              if (unsubscribeSnapshot) {
-                unsubscribeSnapshot();
-                unsubscribeSnapshot = null;
-              }
-              setSessionKickedAlert("Sesión revocada: Se ha iniciado sesión desde otro dispositivo.");
-              signOut(auth).catch(console.error);
-              logout().catch(console.error);
-              setCurrentUser(null);
-              setUserProfile(null);
-              setIsCheckingProfile(false);
-              return;
             }
           }
 
@@ -1579,29 +1554,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   if (!isBypassAuth && !currentUser) {
     return (
       <div className="relative">
-        {sessionKickedAlert && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[92%] animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="bg-slate-900 border-2 border-[#FF3131] text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-[#FF3131] flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white leading-snug">{sessionKickedAlert}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Por directiva de seguridad, solo se permite una sesión activa simultánea por cuenta.</p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setSessionKickedAlert(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-        <LoginScreen onLogin={() => setSessionKickedAlert(null)} sessionRevokedAlert={sessionKickedAlert} />
+        <LoginScreen onLogin={() => {}} />
       </div>
     );
   }
