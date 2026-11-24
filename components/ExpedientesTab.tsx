@@ -23,9 +23,10 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  User,
   X,
 } from 'lucide-react';
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import {
   EstadoExpediente,
   Expediente,
@@ -223,6 +224,107 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   };
 };
 
+const EXPEDIENTES_DESCARTADOS_KEY_PREFIX = 'olga_expedientes_descartados_';
+
+const loadDiscardedExpKeys = (uid: string): string[] => {
+  if (!uid) return [];
+  try {
+    const raw = localStorage.getItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${uid}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveDiscardedExpKeys = (uid: string, keys: string[]): void => {
+  if (!uid) return;
+  try {
+    const unique = Array.from(new Set(keys.filter((k) => typeof k === 'string' && k.trim().length > 0)));
+    localStorage.setItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${uid}`, JSON.stringify(unique));
+  } catch {}
+};
+
+const buildExpedienteDismissKeys = (
+  exp: Partial<Expediente> | null | undefined,
+  docId?: string
+): string[] => {
+  const keys: string[] = [];
+  const cleanId = String(exp?.id || '').trim();
+  const cleanDocId = String(docId || '').trim();
+  if (cleanId) keys.push(cleanId);
+  if (cleanDocId && cleanDocId !== cleanId) keys.push(cleanDocId);
+  const sigCaratula = String(exp?.caratula || '').trim().toLowerCase();
+  const sigNro = String(exp?.nroExpediente || '').trim().toLowerCase();
+  const sigAnio = String(exp?.anio || '').trim().toLowerCase();
+  if (sigCaratula || sigNro) {
+    keys.push(`sig:${sigCaratula}|${sigNro}|${sigAnio}`);
+  }
+  return keys;
+};
+
+const isGhostOrMockExpId = (rawId: string): boolean => {
+  const clean = String(rawId || '').trim().toLowerCase();
+  if (!clean) return true;
+  return /^(mock|seed|demo|ghost|sample|temp|ejemplo|inicial)[-_:]/.test(clean);
+};
+
+interface ExpedienteVisualAccent {
+  stripeCls: string;
+  nroBadgeCls: string;
+  dotCls: string;
+  hoverBorderCls: string;
+}
+
+const EXPEDIENTE_ACCENT_PALETTE: ExpedienteVisualAccent[] = [
+  {
+    stripeCls: 'bg-indigo-500',
+    nroBadgeCls: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border-indigo-200 dark:border-indigo-700/70',
+    dotCls: 'bg-indigo-500',
+    hoverBorderCls: 'hover:border-indigo-300 dark:hover:border-indigo-700/80',
+  },
+  {
+    stripeCls: 'bg-emerald-500',
+    nroBadgeCls: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-700/70',
+    dotCls: 'bg-emerald-500',
+    hoverBorderCls: 'hover:border-emerald-300 dark:hover:border-emerald-700/80',
+  },
+  {
+    stripeCls: 'bg-amber-500',
+    nroBadgeCls: 'bg-amber-50 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-200 dark:border-amber-700/70',
+    dotCls: 'bg-amber-500',
+    hoverBorderCls: 'hover:border-amber-300 dark:hover:border-amber-700/80',
+  },
+  {
+    stripeCls: 'bg-sky-500',
+    nroBadgeCls: 'bg-sky-50 dark:bg-sky-950/70 text-sky-800 dark:text-sky-200 border-sky-200 dark:border-sky-700/70',
+    dotCls: 'bg-sky-500',
+    hoverBorderCls: 'hover:border-sky-300 dark:hover:border-sky-700/80',
+  },
+  {
+    stripeCls: 'bg-violet-500',
+    nroBadgeCls: 'bg-violet-50 dark:bg-violet-950/70 text-violet-800 dark:text-violet-200 border-violet-200 dark:border-violet-700/70',
+    dotCls: 'bg-violet-500',
+    hoverBorderCls: 'hover:border-violet-300 dark:hover:border-violet-700/80',
+  },
+  {
+    stripeCls: 'bg-teal-500',
+    nroBadgeCls: 'bg-teal-50 dark:bg-teal-950/70 text-teal-800 dark:text-teal-200 border-teal-200 dark:border-teal-700/70',
+    dotCls: 'bg-teal-500',
+    hoverBorderCls: 'hover:border-teal-300 dark:hover:border-teal-700/80',
+  },
+];
+
+const getExpedienteVisualAccent = (exp: Expediente): ExpedienteVisualAccent => {
+  const seed = `${exp.id || ''}|${exp.nroExpediente || ''}|${exp.caratula || ''}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return EXPEDIENTE_ACCENT_PALETTE[hash % EXPEDIENTE_ACCENT_PALETTE.length];
+};
+
 export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   expedientes,
   personas = [],
@@ -319,6 +421,39 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
   const wsId = String(workspaceId || uid).trim();
   const isExplicitSuperAdmin = isSuperAdminView === true;
+  const esAbogado =
+    String(userData?.tipoPerfil || currentUser?.tipoPerfil || '').toLowerCase() === 'abogado';
+
+  const [discardedExpKeys, setDiscardedExpKeys] = useState<string[]>(() =>
+    uid ? loadDiscardedExpKeys(uid) : []
+  );
+
+  useEffect(() => {
+    setDiscardedExpKeys(uid ? loadDiscardedExpKeys(uid) : []);
+  }, [uid]);
+
+  const discardedExpKeySet = useMemo(() => new Set(discardedExpKeys), [discardedExpKeys]);
+
+  const persistDiscardedExpKeys = (newKeys: string[]) => {
+    if (!esAbogado || newKeys.length === 0) return;
+    setDiscardedExpKeys((prev) => {
+      const merged = Array.from(new Set([...prev, ...newKeys.filter(Boolean)]));
+      if (uid) saveDiscardedExpKeys(uid, merged);
+      return merged;
+    });
+  };
+
+  const removeDiscardedExpKeys = (keysToRestore: string[]) => {
+    if (!esAbogado || keysToRestore.length === 0) return;
+    const toRemove = new Set(keysToRestore.filter(Boolean));
+    setDiscardedExpKeys((prev) => {
+      const next = prev.filter((k) => !toRemove.has(k));
+      if (next.length !== prev.length && uid) {
+        saveDiscardedExpKeys(uid, next);
+      }
+      return next;
+    });
+  };
 
   const allowedOwnerIds = useMemo(() => {
     const ids = new Set<string>();
@@ -481,6 +616,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       if (item.anulado === true || item.eliminado === true) return;
       const mapped = mapFirestoreDocToExpediente(item, item.id);
       if (!belongsToCurrentAccount(mapped)) return;
+      if (esAbogado && discardedExpKeySet.size > 0) {
+        const mappedDocId = docIdByExpIdRef.current.get(mapped.id);
+        const itemKeys = buildExpedienteDismissKeys(mapped, mappedDocId);
+        if (itemKeys.some((k) => discardedExpKeySet.has(k))) return;
+      }
       const patchedPlazos = mapped.plazos.map((p) => {
         const override = optimisticToggleByKey[`${mapped.id}::${p.id}`];
         return override
@@ -490,7 +630,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
     });
     return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds]);
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet]);
 
   useEffect(() => {
     if (!initialSelectedExpedienteId) return;
@@ -896,8 +1036,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     try {
       const nowIso = new Date().toISOString();
       const wasEditing = Boolean(editingExpediente);
+      const resolvedDocId = wasEditing && editingExpediente
+        ? (docIdByExpIdRef.current.get(editingExpediente.id) || editingExpediente.id)
+        : `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const expToSave: Expediente = {
-        id: editingExpediente?.id || `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: resolvedDocId,
         userId: String(editingExpediente?.userId || effectiveUid),
         ownedByWorkspace: String(editingExpediente?.ownedByWorkspace || effectiveUid),
         caratula: caratula.trim(),
@@ -930,7 +1073,43 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         }, 8000);
       });
 
-      await Promise.race([onSaveExpediente(expToSave), timeoutPromise]);
+      const persistEditOrCreate = async () => {
+        if (esAbogado && wasEditing) {
+          const expRef = doc(db, 'expedientes', resolvedDocId);
+          await setDoc(
+            expRef,
+            {
+              ...expToSave,
+              fechaActualizacion: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          try {
+            await onSaveExpediente(expToSave);
+          } catch {
+            // El documento ya fue persistido directamente en expedientes/{id}
+          }
+          return;
+        }
+        await onSaveExpediente(expToSave);
+      };
+
+      await Promise.race([persistEditOrCreate(), timeoutPromise]);
+
+      docIdByExpIdRef.current.set(expToSave.id, resolvedDocId);
+      if (esAbogado) {
+        removeDiscardedExpKeys(buildExpedienteDismissKeys(expToSave, resolvedDocId));
+        setLiveExpedientes((prev) => {
+          const prevId = editingExpediente?.id;
+          const exists = prev.some((item) => item.id === expToSave.id || (prevId && item.id === prevId));
+          if (exists) {
+            return prev.map((item) =>
+              item.id === expToSave.id || (prevId && item.id === prevId) ? expToSave : item
+            );
+          }
+          return [expToSave, ...prev];
+        });
+      }
 
       setModalOpen(false);
       resetFormFields();
@@ -945,6 +1124,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           ? 'Permiso denegado por Firestore al guardar el expediente. Verifica tu sesión y permisos.'
           : rawMessage || 'Ocurrió un error al guardar el expediente.';
       setModalError(friendlyMsg);
+      setErrorBanner(friendlyMsg);
     } finally {
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
@@ -1171,14 +1351,105 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   const handleConfirmDeleteExpediente = async () => {
     if (!confirmDeleteId) return;
+    const targetId = confirmDeleteId;
+    const targetExp = effectiveExpedientes.find((item) => item.id === targetId) || null;
+    const mappedDocId = docIdByExpIdRef.current.get(targetId) || targetId;
+    const candidateDocIds = Array.from(
+      new Set([mappedDocId, targetId].map((v) => String(v || '').trim()).filter(Boolean))
+    );
+
     setIsDeleting(true);
-    try {
-      await onDeleteExpediente(confirmDeleteId);
-      if (selectedExpId === confirmDeleteId) setSelectedExpId(null);
+    setErrorBanner(null);
+
+    const removeFromLocalUiAndDiscard = (dismissLocally: boolean) => {
+      setLiveExpedientes((prev) =>
+        prev.filter((item) => item.id !== targetId && item.id !== mappedDocId)
+      );
+      if (dismissLocally && esAbogado) {
+        const dismissKeys = buildExpedienteDismissKeys(targetExp || { id: targetId }, mappedDocId);
+        persistDiscardedExpKeys(dismissKeys);
+      }
+      if (selectedExpId === targetId || selectedExpId === mappedDocId) {
+        setSelectedExpId(null);
+      }
       setConfirmDeleteId(null);
-      showToastSuccess('Expediente eliminado.');
+    };
+
+    try {
+      if (!esAbogado) {
+        await onDeleteExpediente(mappedDocId);
+        removeFromLocalUiAndDiscard(false);
+        showToastSuccess('Expediente eliminado.');
+        return;
+      }
+
+      const validFirestoreIds = candidateDocIds.filter((id) => !isGhostOrMockExpId(id));
+      const hasAuthSession = Boolean(auth?.currentUser?.uid);
+
+      if (!hasAuthSession || validFirestoreIds.length === 0) {
+        removeFromLocalUiAndDiscard(true);
+        try {
+          await onDeleteExpediente(targetId);
+        } catch {}
+        showToastSuccess('Expediente fantasma eliminado de tu lista.');
+        return;
+      }
+
+      let deletedFromFirestore = false;
+      let missingInFirestore = true;
+      let lastUnexpectedError: any = null;
+
+      for (const docId of validFirestoreIds) {
+        try {
+          const docRef = doc(db, 'expedientes', docId);
+          const existingSnap = await getDoc(docRef);
+          if (existingSnap.exists()) {
+            missingInFirestore = false;
+            await deleteDoc(docRef);
+            deletedFromFirestore = true;
+          }
+        } catch (docErr: any) {
+          const code = String(docErr?.code || '').toLowerCase();
+          const msg = String(docErr?.message || '').toLowerCase();
+          if (code.includes('not-found') || msg.includes('no document')) {
+            continue;
+          }
+          lastUnexpectedError = docErr;
+        }
+      }
+
+      if (deletedFromFirestore) {
+        removeFromLocalUiAndDiscard(true);
+        try {
+          await onDeleteExpediente(mappedDocId);
+          if (targetId !== mappedDocId) {
+            await onDeleteExpediente(targetId);
+          }
+        } catch {}
+        showToastSuccess('Expediente eliminado correctamente.');
+        return;
+      }
+
+      if (missingInFirestore && !lastUnexpectedError) {
+        removeFromLocalUiAndDiscard(true);
+        try {
+          await onDeleteExpediente(targetId);
+        } catch {}
+        showToastSuccess('Expediente fantasma descartado y eliminado de tu lista.');
+        return;
+      }
+
+      throw lastUnexpectedError || new Error('No se pudo confirmar la eliminación en Firestore.');
     } catch (err: any) {
-      setErrorBanner(err?.message || 'No se pudo eliminar el expediente.');
+      console.error('[ExpedientesTab] Error eliminando expediente:', err);
+      const code = String(err?.code || '').toLowerCase();
+      const rawMsg = String(err?.message || '');
+      const reason =
+        code.includes('permission') || rawMsg.toLowerCase().includes('permission')
+          ? 'Permiso denegado por Firestore al intentar eliminar el expediente.'
+          : rawMsg || 'Error de conexión al intentar eliminar el expediente.';
+      setConfirmDeleteId(null);
+      setErrorBanner(`No se pudo eliminar el expediente: ${reason}`);
     } finally {
       setIsDeleting(false);
     }
@@ -1689,106 +1960,263 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             const impulsoGeneralKey = `${exp.id}-impulso-general`;
             const analisisOpen = Boolean(expandedAnalisisIds[exp.id]);
 
+            const accent = getExpedienteVisualAccent(exp);
+            const nroDisplay = exp.nroExpediente
+              ? `Expte. N.º ${exp.nroExpediente}${exp.anio ? `/${exp.anio}` : ''}`
+              : 'Sin N.º asignado';
+            const rolLabelShort =
+              exp.rolParte === 'Actor / Demandante'
+                ? 'Actor'
+                : exp.rolParte || 'Parte';
+
             return (
               <div
                 key={exp.id}
                 ref={(el) => {
                   expedienteCardRefs.current[exp.id] = el;
                 }}
-                className={`scroll-mt-24 rounded-3xl border transition-all shadow-sm overflow-hidden ${cardSurfaceCls} ${
+                className={`scroll-mt-24 rounded-3xl border transition-all shadow-sm overflow-hidden relative ${cardSurfaceCls} ${
+                  esAbogado ? accent.hoverBorderCls : ''
+                } ${
                   isOpen ? 'ring-2 ring-blue-500/40' : ''
                 }`}
               >
+                {/* Franja lateral de acento visual consistente por expediente (solo esAbogado === true) */}
+                {esAbogado && (
+                  <div
+                    className={`absolute left-0 top-0 bottom-0 w-1.5 ${accent.stripeCls} pointer-events-none`}
+                    aria-hidden="true"
+                  />
+                )}
+
                 {/* Cabecera de la tarjeta */}
-                <div
-                  onClick={() => setSelectedExpId(isOpen ? null : exp.id)}
-                  className="p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
-                >
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-900 dark:bg-slate-800 text-white border border-slate-700">
-                        {exp.tipoJuicio}
-                      </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        exp.rolParte === 'Demandado'
-                          ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60'
-                          : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
-                      }`}>
-                        {exp.rolParte}
-                      </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        exp.estado === 'Finalizado'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50'
-                          : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                      }`}>
-                        {exp.estado}
-                      </span>
-                      {exp.nroExpediente && (
-                        <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
-                          Expte. N° {exp.nroExpediente}/{exp.anio}
+                {esAbogado ? (
+                  <div
+                    onClick={() => setSelectedExpId(isOpen ? null : exp.id)}
+                    className="pl-5 pr-4 py-4 md:pl-6 md:pr-5 md:py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1 space-y-2.5">
+                      {/* Fila superior destacada: N.º Expediente / Año + Tipo de Juicio / Fuero + Rol + Estado */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-black border ${
+                            exp.nroExpediente
+                              ? accent.nroBadgeCls
+                              : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dotCls}`} />
+                          <span>{nroDisplay}</span>
                         </span>
-                      )}
-                    </div>
 
-                    <h3 className="text-base md:text-lg font-black font-serif text-slate-900 dark:text-white leading-snug">
-                      {exp.caratula}
-                    </h3>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                      <span>{exp.juzgado || 'Juzgado sin especificar'}</span>
-                      {exp.clienteNombre && (
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          Cliente: {exp.clienteNombre}
+                        <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 dark:bg-slate-800 text-white border border-slate-700">
+                          {exp.tipoJuicio}
                         </span>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5 shrink-0">
-                    {nextPlazo ? (
-                      <div className={`px-3 py-1.5 rounded-xl border text-left ${getDeadlineBadgeStyle(nextDays, false)}`}>
-                        <p className="text-[10px] font-black uppercase tracking-wider">
-                          {getDaysLabel(nextDays, false)}
-                        </p>
-                        <p className="text-[11px] font-semibold truncate max-w-[200px]">
-                          {nextPlazo.titulo} ({formatDateShort(nextPlazo.fechaVencimiento)})
-                        </p>
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border ${
+                          exp.rolParte === 'Demandado'
+                            ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60'
+                            : exp.rolParte === 'Tercero'
+                              ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60'
+                              : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
+                        }`}>
+                          Rol: {rolLabelShort}
+                        </span>
+
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${
+                          exp.estado === 'Finalizado'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50'
+                            : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}>
+                          {exp.estado}
+                        </span>
                       </div>
-                    ) : (
-                      <span className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                        Sin plazos pendientes
-                      </span>
-                    )}
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditModal(exp);
-                        }}
-                        className="p-2 rounded-xl text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="Editar expediente"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmDeleteId(exp.id);
-                        }}
-                        className="p-2 rounded-xl text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
-                        title="Eliminar expediente"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <span className="p-2 text-slate-400">
-                        {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </span>
+                      {/* Carátula */}
+                      <h3 className="text-base md:text-lg font-black font-serif text-slate-900 dark:text-white leading-snug">
+                        {exp.caratula}
+                      </h3>
+
+                      {/* Separación visual clara entre Juzgado y Cliente */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                        <div className="flex items-start gap-2 min-w-0 rounded-xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 px-3 py-2">
+                          <Gavel className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                              Juzgado / Fuero
+                            </p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                              {exp.juzgado || 'Juzgado sin especificar'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 min-w-0 rounded-xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 px-3 py-2">
+                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                              Cliente / Mandante
+                            </p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                              {exp.clienteNombre || 'Sin cliente asignado'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Próximo plazo separado visualmente + botones Editar / Eliminar */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center justify-between lg:justify-end gap-3 shrink-0 lg:border-l lg:border-slate-200/80 dark:lg:border-slate-800 lg:pl-4">
+                      {nextPlazo ? (
+                        <div className={`px-3.5 py-2 rounded-2xl border text-left min-w-[180px] max-w-[240px] ${getDeadlineBadgeStyle(nextDays, false)}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[9px] font-black uppercase tracking-wider opacity-80">
+                              Próximo Plazo
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-wider">
+                              {getDaysLabel(nextDays, false)}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold truncate mt-0.5">
+                            {nextPlazo.titulo}
+                          </p>
+                          <p className="text-[10px] font-mono opacity-80 mt-0.5">
+                            Vence: {formatDateShort(nextPlazo.fechaVencimiento)}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="px-3.5 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-left min-w-[160px]">
+                          <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                            Próximo Plazo
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
+                            Sin plazos pendientes
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(exp);
+                          }}
+                          className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-blue-600 hover:border-blue-300 dark:text-slate-300 dark:hover:text-blue-400 hover:bg-blue-50/70 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                          title="Editar expediente"
+                          aria-label={`Editar expediente ${exp.caratula}`}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(exp.id);
+                          }}
+                          className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-red-600 hover:border-red-300 dark:text-slate-300 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                          title="Eliminar expediente"
+                          aria-label={`Eliminar expediente ${exp.caratula}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <span className="p-2 text-slate-400">
+                          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    onClick={() => setSelectedExpId(isOpen ? null : exp.id)}
+                    className="p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-900 dark:bg-slate-800 text-white border border-slate-700">
+                          {exp.tipoJuicio}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          exp.rolParte === 'Demandado'
+                            ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60'
+                            : 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
+                        }`}>
+                          {exp.rolParte}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          exp.estado === 'Finalizado'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50'
+                            : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}>
+                          {exp.estado}
+                        </span>
+                        {exp.nroExpediente && (
+                          <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                            Expte. N° {exp.nroExpediente}/{exp.anio}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-base md:text-lg font-black font-serif text-slate-900 dark:text-white leading-snug">
+                        {exp.caratula}
+                      </h3>
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        <span>{exp.juzgado || 'Juzgado sin especificar'}</span>
+                        {exp.clienteNombre && (
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            Cliente: {exp.clienteNombre}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5 shrink-0">
+                      {nextPlazo ? (
+                        <div className={`px-3 py-1.5 rounded-xl border text-left ${getDeadlineBadgeStyle(nextDays, false)}`}>
+                          <p className="text-[10px] font-black uppercase tracking-wider">
+                            {getDaysLabel(nextDays, false)}
+                          </p>
+                          <p className="text-[11px] font-semibold truncate max-w-[200px]">
+                            {nextPlazo.titulo} ({formatDateShort(nextPlazo.fechaVencimiento)})
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          Sin plazos pendientes
+                        </span>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(exp);
+                          }}
+                          className="p-2 rounded-xl text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Editar expediente"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(exp.id);
+                          }}
+                          className="p-2 rounded-xl text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                          title="Eliminar expediente"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <span className="p-2 text-slate-400">
+                          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Cuerpo expandido del Expediente */}
                 {isOpen && (
@@ -2710,41 +3138,56 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       )}
 
       {/* Modal Confirmación Eliminación */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
-            <div className="w-11 h-11 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white">
-                Eliminar Expediente
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Esta acción eliminará el expediente y su cronograma de plazos de forma permanente.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() => void handleConfirmDeleteExpediente()}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Eliminar</span>
-              </button>
+      {confirmDeleteId && (() => {
+        const expToDelete = effectiveExpedientes.find((item) => item.id === confirmDeleteId) || null;
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+              <div className="w-11 h-11 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  Eliminar Expediente
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Esta acción eliminará el expediente y su cronograma de plazos de forma permanente.
+                </p>
+                {esAbogado && expToDelete && (
+                  <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-2.5 text-left">
+                    <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                      {expToDelete.nroExpediente
+                        ? `Expte. N.º ${expToDelete.nroExpediente}${expToDelete.anio ? `/${expToDelete.anio}` : ''}`
+                        : 'Sin N.º asignado'}
+                    </p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 line-clamp-2">
+                      {expToDelete.caratula}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => void handleConfirmDeleteExpediente()}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Eliminar</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
