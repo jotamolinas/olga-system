@@ -349,8 +349,16 @@ export const normalizeExpediente = (raw: any, docId: string): Expediente => {
             isCompleted && typeof p.completadoEn === 'string' && p.completadoEn.trim()
               ? p.completadoEn.trim()
               : null;
+          const existingPlazoId = String(p.id || '').trim();
+          const slugTitulo = String(p.titulo || 'plazo')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 32);
+          const cleanFecha = String(p.fechaVencimiento || '').slice(0, 10);
           return {
-            id: String(p.id || `plazo-${idx}-${Date.now()}`),
+            id: existingPlazoId || `plazo-${idx}-${slugTitulo || 'item'}-${cleanFecha || 'sin-fecha'}`,
             titulo: String(p.titulo || 'Plazo procesal').trim(),
             fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
             diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,

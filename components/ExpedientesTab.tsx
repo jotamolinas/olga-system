@@ -168,6 +168,25 @@ const normalizeRolParte = (raw: string): RolParteExpediente => {
   return 'Actor / Demandante';
 };
 
+const buildStablePlazoId = (p: any, idx: number): string => {
+  const existing = String(p?.id || '').trim();
+  if (existing) return existing;
+  const slugTitulo = String(p?.titulo || 'plazo')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+  const fecha = String(p?.fechaVencimiento || '').slice(0, 10);
+  return `plazo-${idx}-${slugTitulo || 'item'}-${fecha || 'sin-fecha'}`;
+};
+
+const buildPlazoFallbackKey = (p: Partial<PlazoProcesal>, idx: number): string => {
+  const titulo = String(p?.titulo || '').trim().toLowerCase();
+  const fecha = String(p?.fechaVencimiento || '').slice(0, 10);
+  return `sig:${idx}|${titulo}|${fecha}`;
+};
+
 const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   const src = raw && typeof raw === 'object' ? raw : {};
   const rawPlazos = Array.isArray(src.plazos) ? src.plazos : [];
@@ -180,7 +199,7 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
           ? p.completadoEn.trim()
           : null;
       return {
-        id: String(p.id || `plazo-${idx}-${Date.now()}`),
+        id: buildStablePlazoId(p, idx),
         titulo: String(p.titulo || 'Plazo procesal').trim(),
         fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
         diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
@@ -233,23 +252,32 @@ export interface LocalPlazoCheckOverride {
   updatedAt?: string;
 }
 
+const normalizeCheckStorageUid = (rawUid?: string | null): string =>
+  String(rawUid || '').trim() || 'anon';
+
 export const loadDiscardedExpKeys = (uid: string): string[] => {
-  if (!uid) return [];
-  try {
-    const raw = localStorage.getItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${uid}`);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
-  } catch {
-    return [];
-  }
+  const normUid = normalizeCheckStorageUid(uid);
+  const readOne = (bucketUid: string): string[] => {
+    try {
+      const raw = localStorage.getItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${bucketUid}`);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  if (normUid === 'anon') return readOne('anon');
+  return Array.from(new Set([...readOne('anon'), ...readOne(normUid)]));
 };
 
 const saveDiscardedExpKeys = (uid: string, keys: string[]): void => {
-  if (!uid) return;
+  const normUid = normalizeCheckStorageUid(uid);
   try {
     const unique = Array.from(new Set(keys.filter((k) => typeof k === 'string' && k.trim().length > 0)));
-    localStorage.setItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${uid}`, JSON.stringify(unique));
+    localStorage.setItem(`${EXPEDIENTES_DESCARTADOS_KEY_PREFIX}${normUid}`, JSON.stringify(unique));
   } catch {}
 };
 
@@ -272,15 +300,16 @@ export const buildExpedienteDismissKeys = (
 };
 
 const getPlazosChecksStorageKey = (uid: string, expedienteId: string): string =>
-  `${PLAZOS_CHECKS_KEY_PREFIX}${uid}_${expedienteId}`;
+  `${PLAZOS_CHECKS_KEY_PREFIX}${normalizeCheckStorageUid(uid)}_${String(expedienteId || '').trim()}`;
 
-export const loadLocalPlazoChecksForExpediente = (
-  uid: string,
+const readRawPlazoChecksBucket = (
+  storageUid: string,
   expedienteId: string
 ): Record<string, LocalPlazoCheckOverride> => {
-  if (!uid || !expedienteId) return {};
+  const cleanExpId = String(expedienteId || '').trim();
+  if (!cleanExpId) return {};
   try {
-    const raw = localStorage.getItem(getPlazosChecksStorageKey(uid, expedienteId));
+    const raw = localStorage.getItem(getPlazosChecksStorageKey(storageUid, cleanExpId));
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -303,17 +332,58 @@ export const loadLocalPlazoChecksForExpediente = (
   }
 };
 
+const pickNewestOverride = (
+  a?: LocalPlazoCheckOverride,
+  b?: LocalPlazoCheckOverride
+): LocalPlazoCheckOverride | undefined => {
+  if (!a) return b;
+  if (!b) return a;
+  const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+  const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+  return tb >= ta ? b : a;
+};
+
+export const loadLocalPlazoChecksForExpediente = (
+  uid: string,
+  expedienteId: string
+): Record<string, LocalPlazoCheckOverride> => {
+  const cleanExpId = String(expedienteId || '').trim();
+  if (!cleanExpId) return {};
+  const normUid = normalizeCheckStorageUid(uid);
+  const anonBucket = readRawPlazoChecksBucket('anon', cleanExpId);
+  if (normUid === 'anon') return anonBucket;
+  const userBucket = readRawPlazoChecksBucket(normUid, cleanExpId);
+  const merged: Record<string, LocalPlazoCheckOverride> = { ...anonBucket };
+  Object.entries(userBucket).forEach(([key, val]) => {
+    const newest = pickNewestOverride(merged[key], val);
+    if (newest) merged[key] = newest;
+  });
+  return merged;
+};
+
 export const saveLocalPlazoCheckForExpediente = (
   uid: string,
   expedienteId: string,
   plazoId: string,
-  override: LocalPlazoCheckOverride
+  override: LocalPlazoCheckOverride,
+  fallbackSigKey?: string
 ): void => {
-  if (!uid || !expedienteId || !plazoId) return;
+  const cleanExpId = String(expedienteId || '').trim();
+  const cleanPlazoId = String(plazoId || '').trim();
+  if (!cleanExpId || !cleanPlazoId) return;
+  const normUid = normalizeCheckStorageUid(uid);
   try {
-    const existing = loadLocalPlazoChecksForExpediente(uid, expedienteId);
-    existing[plazoId] = override;
-    localStorage.setItem(getPlazosChecksStorageKey(uid, expedienteId), JSON.stringify(existing));
+    const existing = readRawPlazoChecksBucket(normUid, cleanExpId);
+    const normalizedOverride: LocalPlazoCheckOverride = {
+      completado: override.completado === true,
+      completadoEn: override.completado === true ? (override.completadoEn || new Date().toISOString()) : null,
+      updatedAt: override.updatedAt || new Date().toISOString(),
+    };
+    existing[cleanPlazoId] = normalizedOverride;
+    if (fallbackSigKey) {
+      existing[fallbackSigKey] = normalizedOverride;
+    }
+    localStorage.setItem(getPlazosChecksStorageKey(normUid, cleanExpId), JSON.stringify(existing));
   } catch {}
 };
 
@@ -466,19 +536,20 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [liveExpedientes, setLiveExpedientes] = useState<Expediente[]>([]);
   const [hasLiveSnapshot, setHasLiveSnapshot] = useState(false);
   const [optimisticToggleByKey, setOptimisticToggleByKey] = useState<
-    Record<string, { completado: boolean; completadoEn: string | null }>
+    Record<string, LocalPlazoCheckOverride>
   >({});
   const [togglingPlazos, setTogglingPlazos] = useState<Record<string, boolean>>({});
   const docIdByExpIdRef = useRef<Map<string, string>>(new Map());
 
   const uid = String(currentUser?.uid || auth?.currentUser?.uid || '').trim();
   const wsId = String(workspaceId || uid).trim();
+  const storageUid = normalizeCheckStorageUid(uid || userData?.uid || wsId);
   const isExplicitSuperAdmin = isSuperAdminView === true;
   const esAbogado =
     String(userData?.tipoPerfil || currentUser?.tipoPerfil || '').toLowerCase() === 'abogado';
 
   const [discardedExpKeys, setDiscardedExpKeys] = useState<string[]>(() =>
-    uid ? loadDiscardedExpKeys(uid) : []
+    loadDiscardedExpKeys(storageUid)
   );
   const [localChecksVersion, setLocalChecksVersion] = useState(0);
   const [pendingMarkDonePrompt, setPendingMarkDonePrompt] = useState<{
@@ -487,9 +558,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   } | null>(null);
 
   useEffect(() => {
-    setDiscardedExpKeys(uid ? loadDiscardedExpKeys(uid) : []);
+    setDiscardedExpKeys(loadDiscardedExpKeys(storageUid));
     setLocalChecksVersion((v) => v + 1);
-  }, [uid]);
+  }, [storageUid]);
 
   const discardedExpKeySet = useMemo(() => new Set(discardedExpKeys), [discardedExpKeys]);
 
@@ -497,7 +568,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     if (!esAbogado || newKeys.length === 0) return;
     setDiscardedExpKeys((prev) => {
       const merged = Array.from(new Set([...prev, ...newKeys.filter(Boolean)]));
-      if (uid) saveDiscardedExpKeys(uid, merged);
+      saveDiscardedExpKeys(storageUid, merged);
       return merged;
     });
   };
@@ -507,8 +578,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     const toRemove = new Set(keysToRestore.filter(Boolean));
     setDiscardedExpKeys((prev) => {
       const next = prev.filter((k) => !toRemove.has(k));
-      if (next.length !== prev.length && uid) {
-        saveDiscardedExpKeys(uid, next);
+      if (next.length !== prev.length) {
+        saveDiscardedExpKeys(storageUid, next);
       }
       return next;
     });
@@ -680,27 +751,45 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         const itemKeys = buildExpedienteDismissKeys(mapped, mappedDocId);
         if (itemKeys.some((k) => discardedExpKeySet.has(k))) return;
       }
-      const localChecksByPlazo =
-        esAbogado && uid
-          ? {
-              ...(mappedDocId && mappedDocId !== mapped.id
-                ? loadLocalPlazoChecksForExpediente(uid, mappedDocId)
-                : {}),
-              ...loadLocalPlazoChecksForExpediente(uid, mapped.id),
+      const localChecksByPlazo = esAbogado
+        ? (() => {
+            const merged: Record<string, LocalPlazoCheckOverride> = {
+              ...loadLocalPlazoChecksForExpediente(storageUid, mapped.id),
+            };
+            if (mappedDocId && mappedDocId !== mapped.id) {
+              const docBucket = loadLocalPlazoChecksForExpediente(storageUid, mappedDocId);
+              Object.entries(docBucket).forEach(([k, v]) => {
+                const newest = pickNewestOverride(merged[k], v);
+                if (newest) merged[k] = newest;
+              });
             }
-          : {};
-      const patchedPlazos = mapped.plazos.map((p) => {
-        const localSaved = localChecksByPlazo[p.id];
-        const optimistic = optimisticToggleByKey[`${mapped.id}::${p.id}`];
-        const effectiveOverride = optimistic || localSaved;
+            return merged;
+          })()
+        : {};
+      const patchedPlazos = mapped.plazos.map((p, idx) => {
+        const sigKey = buildPlazoFallbackKey(p, idx);
+        const localSaved = esAbogado
+          ? pickNewestOverride(localChecksByPlazo[p.id], localChecksByPlazo[sigKey])
+          : undefined;
+        const optByExp = optimisticToggleByKey[`${mapped.id}::${p.id}`];
+        const optByDoc =
+          mappedDocId && mappedDocId !== mapped.id
+            ? optimisticToggleByKey[`${mappedDocId}::${p.id}`]
+            : undefined;
+        const optimistic = pickNewestOverride(optByExp, optByDoc);
+        const effectiveOverride = pickNewestOverride(localSaved, optimistic);
         return effectiveOverride
-          ? { ...p, completado: effectiveOverride.completado, completadoEn: effectiveOverride.completadoEn }
+          ? {
+              ...p,
+              completado: effectiveOverride.completado === true,
+              completadoEn: effectiveOverride.completado === true ? effectiveOverride.completadoEn : null,
+            }
           : p;
       });
       dedup.set(mapped.id, { ...mapped, plazos: patchedPlazos });
     });
     return Array.from(dedup.values());
-  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet, uid, localChecksVersion]);
+  }, [hasLiveSnapshot, liveExpedientes, expedientes, optimisticToggleByKey, isExplicitSuperAdmin, allowedOwnerIds, esAbogado, discardedExpKeySet, storageUid, localChecksVersion]);
 
   useEffect(() => {
     if (!initialSelectedExpedienteId) return;
@@ -1028,7 +1117,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             ? p.completadoEn.trim()
             : null;
         return {
-          id: String(p.id || `plazo-${Date.now()}-${idx}`),
+          id: buildStablePlazoId(p, idx),
           titulo: String(p.titulo || 'Plazo procesal').trim(),
           fechaVencimiento: String(p.fechaVencimiento || '').slice(0, 10),
           diasPlazo: Number.isFinite(Number(p.diasPlazo)) ? Number(p.diasPlazo) : 0,
@@ -1212,10 +1301,13 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       setErrorBanner('Plan expirado: modo solo lectura activado.');
       return;
     }
-    const toggleKey = `${exp.id}::${plazoId}`;
+
+    const latestExp = effectiveExpedientes.find((item) => item.id === exp.id) || exp;
+    const toggleKey = `${latestExp.id}::${plazoId}`;
     if (togglingPlazos[toggleKey]) return;
 
     const activeUid = String(auth?.currentUser?.uid || uid || '').trim();
+    const effectiveStorageUid = normalizeCheckStorageUid(activeUid || storageUid);
     if (!activeUid && !esAbogado) {
       setErrorBanner('No se detectó una sesión activa para guardar el cambio en Firestore.');
       return;
@@ -1223,7 +1315,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
     setErrorBanner(null);
     const nowIso = new Date().toISOString();
-    const targetPlazo = (exp.plazos || []).find((p) => p.id === plazoId);
+    const currentPlazos = Array.isArray(latestExp.plazos) ? latestExp.plazos : [];
+    const targetPlazoIdx = currentPlazos.findIndex((p) => p.id === plazoId);
+    const targetPlazo = targetPlazoIdx >= 0 ? currentPlazos[targetPlazoIdx] : undefined;
     const prevCompletado = targetPlazo?.completado === true;
     const prevCompletadoEn =
       prevCompletado && typeof targetPlazo?.completadoEn === 'string' && targetPlazo.completadoEn.trim()
@@ -1232,39 +1326,78 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     const nextCompletado =
       typeof forcedNextState === 'boolean' ? forcedNextState : !prevCompletado;
     const nextCompletadoEn = nextCompletado ? nowIso : null;
-    const previousUpdatedAt = String(exp.updatedAt || nowIso);
+    const previousUpdatedAt = String(latestExp.updatedAt || nowIso);
 
     const updatedPlazos = sanitizePlazosList(
-      (exp.plazos || []).map((p) =>
+      currentPlazos.map((p) =>
         p.id === plazoId
           ? { ...p, completado: nextCompletado, completadoEn: nextCompletadoEn }
           : p
       )
     );
 
-    const targetDocId = docIdByExpIdRef.current.get(exp.id) || exp.id;
+    const targetDocId = docIdByExpIdRef.current.get(latestExp.id) || latestExp.id;
+    const checkOverride: LocalPlazoCheckOverride = {
+      completado: nextCompletado,
+      completadoEn: nextCompletadoEn,
+      updatedAt: nowIso,
+    };
+    const fallbackSigKey =
+      targetPlazo && targetPlazoIdx >= 0
+        ? buildPlazoFallbackKey(targetPlazo, targetPlazoIdx)
+        : undefined;
 
-    // 1. Actualización inmediata en estado local + respaldo en localStorage por uid + expedienteId
+    // 1. Actualización inmediata en estado local + respaldo en localStorage (exp.id y targetDocId, uid con fallback 'anon')
     setTogglingPlazos((prev) => ({ ...prev, [toggleKey]: true }));
     setOptimisticToggleByKey((prev) => ({
       ...prev,
-      [toggleKey]: { completado: nextCompletado, completadoEn: nextCompletadoEn },
+      [toggleKey]: checkOverride,
+      ...(targetDocId && targetDocId !== latestExp.id
+        ? { [`${targetDocId}::${plazoId}`]: checkOverride }
+        : {}),
     }));
     setLiveExpedientes((prev) =>
       prev.map((item) =>
-        item.id === exp.id ? { ...item, plazos: updatedPlazos, updatedAt: nowIso } : item
+        item.id === latestExp.id || item.id === targetDocId
+          ? { ...item, plazos: updatedPlazos, updatedAt: nowIso }
+          : item
       )
     );
 
-    if (esAbogado && activeUid) {
-      const checkPayload: LocalPlazoCheckOverride = {
-        completado: nextCompletado,
-        completadoEn: nextCompletadoEn,
-        updatedAt: nowIso,
-      };
-      saveLocalPlazoCheckForExpediente(activeUid, exp.id, plazoId, checkPayload);
-      if (targetDocId && targetDocId !== exp.id) {
-        saveLocalPlazoCheckForExpediente(activeUid, targetDocId, plazoId, checkPayload);
+    if (esAbogado) {
+      saveLocalPlazoCheckForExpediente(
+        effectiveStorageUid,
+        latestExp.id,
+        plazoId,
+        checkOverride,
+        fallbackSigKey
+      );
+      if (targetDocId && targetDocId !== latestExp.id) {
+        saveLocalPlazoCheckForExpediente(
+          effectiveStorageUid,
+          targetDocId,
+          plazoId,
+          checkOverride,
+          fallbackSigKey
+        );
+      }
+      if (effectiveStorageUid !== storageUid) {
+        saveLocalPlazoCheckForExpediente(
+          storageUid,
+          latestExp.id,
+          plazoId,
+          checkOverride,
+          fallbackSigKey
+        );
+        if (targetDocId && targetDocId !== latestExp.id) {
+          saveLocalPlazoCheckForExpediente(
+            storageUid,
+            targetDocId,
+            plazoId,
+            checkOverride,
+            fallbackSigKey
+          );
+        }
       }
       setLocalChecksVersion((v) => v + 1);
     }
@@ -1288,20 +1421,20 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               expRef,
               {
                 id: targetDocId,
-                userId: String(exp.userId || wsId || activeUid),
-                ownedByWorkspace: String(exp.ownedByWorkspace || wsId || activeUid),
-                caratula: exp.caratula || 'Expediente sin carátula',
-                nroExpediente: exp.nroExpediente || '',
-                anio: exp.anio || String(new Date().getFullYear()),
-                juzgado: exp.juzgado || '',
-                tipoJuicio: exp.tipoJuicio || 'Ordinario',
-                rolParte: exp.rolParte || 'Actor / Demandante',
-                estado: exp.estado || 'En trámite',
+                userId: String(latestExp.userId || wsId || activeUid),
+                ownedByWorkspace: String(latestExp.ownedByWorkspace || wsId || activeUid),
+                caratula: latestExp.caratula || 'Expediente sin carátula',
+                nroExpediente: latestExp.nroExpediente || '',
+                anio: latestExp.anio || String(new Date().getFullYear()),
+                juzgado: latestExp.juzgado || '',
+                tipoJuicio: latestExp.tipoJuicio || 'Ordinario',
+                rolParte: latestExp.rolParte || 'Actor / Demandante',
+                estado: latestExp.estado || 'En trámite',
                 plazos: updatedPlazos,
-                notas: exp.notas || '',
-                clienteNombre: exp.clienteNombre || '',
-                clienteId: exp.clienteId || '',
-                createdAt: exp.createdAt || nowIso,
+                notas: latestExp.notas || '',
+                clienteNombre: latestExp.clienteNombre || '',
+                clienteId: latestExp.clienteId || '',
+                createdAt: latestExp.createdAt || nowIso,
                 updatedAt: nowIso,
                 fechaActualizacion: serverTimestamp(),
               },
@@ -1323,7 +1456,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       }
     } catch (err: any) {
       if (esAbogado) {
-        // Nunca revertir en falso ni romper la UI para abogados: el check queda persistido localmente por uid + expedienteId
+        // Nunca revertir en falso ni romper la UI para abogados: el check queda persistido localmente
         console.warn('[ExpedientesTab] Check guardado localmente (sincronización Firestore diferida):', err);
       } else {
         console.error('[ExpedientesTab] Error al persistir togglePlazoCompletado:', err);
@@ -1335,7 +1468,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         });
         setLiveExpedientes((prev) =>
           prev.map((item) => {
-            if (item.id !== exp.id) return item;
+            if (item.id !== latestExp.id) return item;
             return {
               ...item,
               plazos: (item.plazos || []).map((p) =>
