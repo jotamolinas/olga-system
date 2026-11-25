@@ -7,13 +7,14 @@ import {
   FileText, FilePlus, Loader2, Calendar, Trash2, Settings, MoreVertical, 
   Copy, FolderInput, X, Check, Edit3, Plus, Printer, Save, 
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
-  Paperclip, Send, ChevronDown, ChevronUp, CheckCheck,
+  Paperclip, Send, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
   HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload, MessageCircle, Download
 } from 'lucide-react';
 import { limpiarLatexJuridico, redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
 import mammoth from 'mammoth';
+import { Expediente } from '../types';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
 import { EditorNotarialOficial } from './EditorNotarialOficial';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
@@ -94,6 +95,7 @@ interface EscritosTabProps {
   currentUser: User | null;
   userProfile?: any;
   personas?: any[];
+  expedientes?: Expediente[];
   onOpenDocument: (text: string, docId?: string, tipo?: string, categoria?: string, tipoHoja?: 'blanca' | 'protocolo', includeHeader?: boolean) => void;
   esPlanFull?: boolean;
   isSoftBlocked?: boolean;
@@ -486,6 +488,517 @@ ____________________________________                  __________________________
   }
 ];
 
+export interface AbogadoPerfilDatos {
+  nombreAbogado: string;
+  matriculaCsj: string;
+  domicilioProcesal: string;
+  telefonoAbogado: string;
+  emailAbogado: string;
+}
+
+export interface PlantillaAbogadoMeta {
+  id: string;
+  nombre: string;
+  categoriaSugerida: string;
+  descripcion: string;
+}
+
+export const PLANTILLAS_ABOGADOS_META: PlantillaAbogadoMeta[] = [
+  {
+    id: 'abg_demanda_ejecutiva',
+    nombre: 'Demanda Ejecutiva (Cobro de Pagaré / Título Ejecutivo)',
+    categoriaSugerida: 'Demandas y Contestaciones',
+    descripcion: 'Juicio ejecutivo paraguayo (Arts. 439, 443 y sgtes. CPC) para cobro de pagarés y títulos ejecutivos.',
+  },
+  {
+    id: 'abg_contestacion_excepciones',
+    nombre: 'Contestación de Demanda / Oposición de Excepciones',
+    categoriaSugerida: 'Demandas y Contestaciones',
+    descripcion: 'Contestación de traslado y oposición de excepciones procesales conforme al CPC Paraguay.',
+  },
+  {
+    id: 'abg_impulso_procesal',
+    nombre: 'Escrito de Impulso Procesal / Urgimiento',
+    categoriaSugerida: 'Escritos de Impulso',
+    descripcion: 'Solicitud de pronto despacho e impulso del trámite procesal en expediente judicial.',
+  },
+  {
+    id: 'abg_reposicion_apelacion',
+    nombre: 'Recurso de Reposición y Apelación en Subsidio',
+    categoriaSugerida: 'Expedientes',
+    descripcion: 'Impugnación de providencia o resolución judicial (Arts. 390, 394 y sgtes. CPC).',
+  },
+  {
+    id: 'abg_carta_poder',
+    nombre: 'Carta Poder / Poder Especial Judicial',
+    categoriaSugerida: 'Contratos Privados',
+    descripcion: 'Mandato especial judicial para representación procesal ante los Juzgados de la República.',
+  },
+  {
+    id: 'abg_intimacion_pago',
+    nombre: 'Intimación de Pago / Telegrama Colacionado',
+    categoriaSugerida: 'Pagarés',
+    descripcion: 'Requerimiento fehaciente de pago bajo apercibimiento de ejecución judicial.',
+  },
+  {
+    id: 'abg_acuerdo_extrajudicial',
+    nombre: 'Acuerdo Extrajudicial / Transacción',
+    categoriaSugerida: 'Contratos Privados',
+    descripcion: 'Convenio transaccional extrajudicial con solicitud de homologación judicial.',
+  },
+  {
+    id: 'hoja_en_blanco',
+    nombre: 'Hoja en Blanco',
+    categoriaSugerida: 'Expedientes',
+    descripcion: 'Modo de redacción libre en hoja judicial.',
+  },
+];
+
+export interface CampoJudicialMeta {
+  label: string;
+  placeholder: string;
+  help: string;
+  multiline?: boolean;
+}
+
+export const CAMPOS_META: Record<string, CampoJudicialMeta> = {
+  JUZGADO: {
+    label: 'Juzgado / Tribunal',
+    placeholder: 'Ej: Juzgado de Primera Instancia en lo Civil y Comercial del 1er Turno',
+    help: 'Dejar en blanco o escribir \'A sortear\' si es demanda nueva',
+  },
+  CARATULA: {
+    label: 'Carátula del Expediente',
+    placeholder: 'Ej: Juan Pérez c/ Carlos Gómez s/ Acción Ejecutiva',
+    help: 'Título completo del juicio o referencia de las partes',
+  },
+  NRO_EXPEDIENTE: {
+    label: 'Número de Expediente',
+    placeholder: 'Ej: 1245/2026',
+    help: 'Dejar en blanco o escribir \'A sortear\' si aún no fue asignado',
+  },
+  CLIENTE: {
+    label: 'Nombre o Razón Social del Cliente',
+    placeholder: 'Ej: María Elena Benítez de López',
+    help: 'Nombre completo o denominación de tu mandante / representado',
+  },
+  CI_RUC: {
+    label: 'C.I. / RUC del Cliente',
+    placeholder: 'Ej: 3.456.789',
+    help: 'Cédula de Identidad Civil o RUC del cliente representado',
+  },
+  DOMICILIO_CLIENTE: {
+    label: 'Domicilio Real del Cliente',
+    placeholder: 'Ej: Avda. España 1240 c/ Brasil, Asunción',
+    help: 'Dirección real declarada por tu cliente en el escrito',
+  },
+  NOMBRE_DEMANDADO: {
+    label: 'Nombre del Demandado',
+    placeholder: 'Ej: Roberto Carlos Villalba',
+    help: 'Nombre completo tal como figura en el pagaré o C.I.',
+  },
+  CI_DEMANDADO: {
+    label: 'C.I. / RUC del Demandado',
+    placeholder: 'Ej: 4.123.456',
+    help: 'Número de cédula o RUC del deudor demandado',
+  },
+  DOMICILIO_DEMANDADO: {
+    label: 'Domicilio del Demandado',
+    placeholder: 'Ej: Calle Palma 450 casi Alberdi, Asunción',
+    help: 'Domicilio donde se diligenciará la intimación y el embargo',
+  },
+  MONTO_RECLAMADO: {
+    label: 'Monto Reclamado (Gs.)',
+    placeholder: 'Ej: 15.000.000',
+    help: 'Capital en guaraníes; convierte automáticamente a letras',
+  },
+  MONTO_LETRAS: {
+    label: 'Monto en Letras',
+    placeholder: 'Ej: Quince millones',
+    help: 'Se sugiere automáticamente al ingresar el monto (editable)',
+  },
+  FECHA_TITULO: {
+    label: 'Fecha de Suscripción del Título',
+    placeholder: 'Ej: 10 de enero de 2026',
+    help: 'Fecha en que el deudor firmó el pagaré o título ejecutivo',
+  },
+  FECHA_VENCIMIENTO: {
+    label: 'Fecha de Vencimiento del Pagaré',
+    placeholder: 'Ej: 10 de mayo de 2026',
+    help: 'Fecha en que venció el pagaré para calcular la mora',
+  },
+  EXPOSICION_HECHOS_DEFENSA: {
+    label: 'Exposición de Hechos y Defensas',
+    placeholder: 'Ej: la obligación fue cancelada parcialmente según recibo N.º 0045',
+    help: 'Resume los hechos concretos que fundamentan la contestación o excepción',
+    multiline: true,
+  },
+  FECHA_ULTIMA_ACTUACION: {
+    label: 'Fecha de Última Actuación',
+    placeholder: 'Ej: 14 de agosto de 2026',
+    help: 'Fecha del último escrito o diligencia pendiente de proveimiento',
+  },
+  FECHA_NOTIFICACION: {
+    label: 'Fecha de Notificación',
+    placeholder: 'Ej: 18 de octubre de 2026',
+    help: 'Día en que se recibió la cédula o notificación electrónica',
+  },
+  FECHA_RESOLUCION: {
+    label: 'Fecha de la Resolución Impugnada',
+    placeholder: 'Ej: 15 de octubre de 2026',
+    help: 'Fecha de la providencia o A.I. objeto del recurso',
+  },
+  SINTESIS_RESOLUCION_IMPUGNADA: {
+    label: 'Síntesis de la Resolución Impugnada',
+    placeholder: 'Ej: el rechazo liminar de la prueba documental ofrecida',
+    help: 'Describe brevemente lo dispuesto por el Juzgado que se recurre',
+    multiline: true,
+  },
+  FUNDAMENTO_DEL_AGRAVIO: {
+    label: 'Fundamento del Agravio',
+    placeholder: 'Ej: vulnera el derecho a la defensa al omitir constancias de fs. 45',
+    help: 'Explica el error de hecho o derecho que justifica la revocatoria',
+    multiline: true,
+  },
+  NOMBRE_DEUDOR: {
+    label: 'Nombre del Deudor Intimado',
+    placeholder: 'Ej: Marcos Antonio Duarte',
+    help: 'Nombre completo de la persona o empresa a quien se intima',
+  },
+  CI_DEUDOR: {
+    label: 'C.I. / RUC del Deudor',
+    placeholder: 'Ej: 3.987.654',
+    help: 'Documento de identidad o RUC del destinatario',
+  },
+  DOMICILIO_DEUDOR: {
+    label: 'Domicilio del Deudor',
+    placeholder: 'Ej: Ruta Mcal. Estigarribia Km 9, San Lorenzo',
+    help: 'Dirección para entrega del telegrama colacionado o intimación',
+  },
+  PLAZO_HORAS_DIAS: {
+    label: 'Plazo Otorgado',
+    placeholder: 'Ej: 48 horas',
+    help: 'Término perentorio concedido para regularizar el pago (ej. 48 horas o 5 días)',
+  },
+  CONCEPTO_DEUDA: {
+    label: 'Concepto de la Deuda',
+    placeholder: 'Ej: pagaré vencido N.º 01/03 suscripto el 15/02/2026',
+    help: 'Detalle del título, factura o contrato que origina el crédito',
+  },
+  NOMBRE_CONTRAPARTE: {
+    label: 'Nombre de la Contraparte',
+    placeholder: 'Ej: Silvia Raquel Méndez',
+    help: 'Nombre completo de la contraparte co-suscriptora del acuerdo',
+  },
+  CI_CONTRAPARTE: {
+    label: 'C.I. / RUC de la Contraparte',
+    placeholder: 'Ej: 2.654.321',
+    help: 'Cédula de Identidad Civil o RUC de la otra parte firmante',
+  },
+  DOMICILIO_CONTRAPARTE: {
+    label: 'Domicilio de la Contraparte',
+    placeholder: 'Ej: Avda. Aviadores del Chaco 2050, Asunción',
+    help: 'Domicilio real o especial constituido por la contraparte',
+  },
+  CONDICIONES_DE_PAGO: {
+    label: 'Condiciones y Forma de Pago',
+    placeholder: 'Ej: 6 cuotas mensuales de Gs. 2.500.000 desde el 05/11/2026',
+    help: 'Detalla cuotas, fechas de vencimiento y medio de pago pactado',
+    multiline: true,
+  },
+  CLAUSULA_COSTAS: {
+    label: 'Cláusula de Costas y Honorarios',
+    placeholder: 'Ej: por su orden, asumiendo cada parte los honorarios de su patrocinante',
+    help: 'Indica quién soporta las costas judiciales y honorarios del acuerdo',
+  },
+  NOMBRE_DEL_ABOGADO: {
+    label: 'Nombre del Abogado',
+    placeholder: 'Ej: Abg. Sofía Martínez',
+    help: 'Completa si aún no cargaste tu nombre titular en Configuración',
+  },
+  MATRICULA_CSJ: {
+    label: 'Matrícula CSJ',
+    placeholder: 'Ej: 45.120',
+    help: 'Número de matrícula otorgada por la Corte Suprema de Justicia',
+  },
+  DOMICILIO_PROCESAL: {
+    label: 'Domicilio Procesal',
+    placeholder: 'Ej: Edificio Ayfra, Piso 8, Asunción',
+    help: 'Dirección dentro del radio del Juzgado para notificaciones',
+  },
+  TELEFONO_ABOGADO: {
+    label: 'Teléfono del Estudio',
+    placeholder: 'Ej: 0981 555 123',
+    help: 'Número de contacto profesional para el encabezado y firma',
+  },
+  EMAIL_ABOGADO: {
+    label: 'Correo Electrónico',
+    placeholder: 'Ej: estudio@martinezabogados.com.py',
+    help: 'Email profesional del estudio jurídico',
+  },
+};
+
+export const getCampoMeta = (key: string): CampoJudicialMeta => {
+  if (CAMPOS_META[key]) {
+    return CAMPOS_META[key];
+  }
+  const readable = key
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+  return {
+    label: readable,
+    placeholder: `Ej: Ingrese ${readable.toLowerCase()}`,
+    help: `Completa este dato para reemplazar [${key}] en el escrito`,
+  };
+};
+
+export function extraerMarcadoresJudiciales(html: string): string[] {
+  if (!html) return [];
+  const regex = /\[([A-Z0-9_]+)\]/g;
+  const result: string[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    const key = match[1].trim();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      result.push(key);
+    }
+  }
+  const idxLetras = result.indexOf('MONTO_LETRAS');
+  const idxMonto = result.indexOf('MONTO_RECLAMADO');
+  if (idxLetras !== -1 && idxMonto !== -1 && idxLetras < idxMonto) {
+    result.splice(idxMonto, 1);
+    result.splice(idxLetras, 0, 'MONTO_RECLAMADO');
+  }
+  return result;
+}
+
+export function construirPlantillaJudicial(
+  plantillaId: string,
+  abogado: AbogadoPerfilDatos
+): string {
+  const now = new Date();
+  const dia = String(now.getDate());
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  const mes = meses[now.getMonth()];
+  const anio = String(now.getFullYear());
+
+  const esc = escapeHtmlText;
+  const nombreAbg = esc(abogado.nombreAbogado);
+  const matricula = esc(abogado.matriculaCsj);
+  const domProc = esc(abogado.domicilioProcesal);
+  const telAbg = esc(abogado.telefonoAbogado);
+  const emailAbg = esc(abogado.emailAbogado);
+
+  const bloqueFirmaAbogado =
+    `<p><br></p>` +
+    `<p style="text-align: right;"><strong>PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA.</strong></p>` +
+    `<p><br></p>` +
+    `<p style="text-align: center;">____________________________________________</p>` +
+    `<p style="text-align: center;"><strong>${nombreAbg}</strong></p>` +
+    `<p style="text-align: center;">Abogado — Matrícula CSJ N.º ${matricula}</p>` +
+    `<p style="text-align: center;">Dom. Procesal: ${domProc} | Tel.: ${telAbg} | ${emailAbg}</p>`;
+
+  const bloqueComparecenciaProfesional = `<strong>${nombreAbg}</strong>, Abogado con Matrícula de la Excma. Corte Suprema de Justicia N.º <strong>${matricula}</strong>, constituyendo domicilio procesal en <strong>${domProc}</strong>, teléfono <strong>${telAbg}</strong> y correo electrónico <strong>${emailAbg}</strong>, en nombre y representación de <strong>[CLIENTE]</strong>, con C.I./RUC N.º <strong>[CI_RUC]</strong> y domicilio real en <strong>[DOMICILIO_CLIENTE]</strong>, conforme lo acredito con el testimonio de poder / carta poder que adjunto`;
+
+  switch (plantillaId) {
+    case 'abg_demanda_ejecutiva':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: PROMOVER JUICIO EJECUTIVO DE COBRO DE GUARANÍES.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, a V.S. respetuosamente me presento y digo:</p>` +
+        `<p>Que vengo por el presente escrito a promover formal <strong>DEMANDA EJECUTIVA</strong> contra [NOMBRE_DEMANDADO], con C.I./RUC N.º [CI_DEMANDADO] y domicilio en [DOMICILIO_DEMANDADO], por el cobro de la suma de GUARANÍES [MONTO_LETRAS] (Gs. [MONTO_RECLAMADO]), más intereses pactados y moratorios, gastos y costas del juicio.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. En fecha [FECHA_TITULO], la parte demandada suscribió a favor de mi mandante <strong>[CLIENTE]</strong> un pagaré a la orden / título ejecutivo por la suma total de Gs. [MONTO_RECLAMADO], con vencimiento el día [FECHA_VENCIMIENTO].</p>` +
+        `<p>2. Llegado el vencimiento de la obligación, y pese a los reiterados requerimientos extrajudiciales efectuados, el deudor no ha dado cumplimiento al pago, encontrándose en mora de pleno derecho conforme a lo pactado.</p>` +
+        `<p>3. En consecuencia, queda expedita la vía ejecutiva para el cobro compulsivo del crédito líquido y exigible instrumentado en el título original que se acompaña.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo la presente acción en las disposiciones de los artículos 439, 443 inc. f), 448, 450, 452 y concordantes del Código Procesal Civil de la República del Paraguay, así como en los artículos pertinentes del Código Civil Paraguayo respecto a la mora y efectos de los títulos de crédito.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por todo lo expuesto, a V.S. solicito:</p>` +
+        `<p>1. Tenerme por presentado en el carácter invocado, por reconocida mi personería y por constituido el domicilio procesal en el lugar indicado.</p>` +
+        `<p>2. Tener por promovida la presente Demanda Ejecutiva por cobro de Gs. [MONTO_RECLAMADO], más accesorios legales, disponiendo el desglose del título original y su guarda en la caja de seguridad del Juzgado previa agregación de copia autenticada.</p>` +
+        `<p>3. Librar mandamiento de intimación de pago y embargo ejecutivo sobre bienes suficientes del deudor hasta cubrir el capital reclamado más la suma presupuestada provisoriamente por el Juzgado para gastos de justicia.</p>` +
+        `<p>4. Oportunamente, previo traslado y citación de remate, dictar Sentencia Definitiva mandando llevar adelante la ejecución hasta hacer íntegro pago a mi mandante del capital, intereses y costas.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    case 'abg_contestacion_excepciones':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: CONTESTAR DEMANDA Y OPONER EXCEPCIONES.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, en los autos caratulados <strong>"[CARATULA]"</strong>, Expediente N.º <strong>[NRO_EXPEDIENTE]</strong>, a V.S. respetuosamente digo:</p>` +
+        `<p>Que vengo en tiempo y forma a contestar el traslado de la demanda promovida contra mi mandante y, en su caso, a oponer las excepciones procesales y defensas de fondo que hacen a su legítimo derecho.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. Niego categóricamente todos y cada uno de los hechos invocados por la parte actora en su escrito inicial que no sean objeto de expreso reconocimiento en la presente contestación.</p>` +
+        `<p>2. La pretensión deducida resulta improcedente en razón de que [EXPOSICION_HECHOS_DEFENSA].</p>` +
+        `<p>3. Asimismo, se acompaña la prueba documental pertinente que acredita los extremos fácticos alegados por esta parte, reservándose el derecho de ofrecer los demás medios probatorios en la etapa procesal oportuna.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo esta presentación en el artículo 16 de la Constitución Nacional (defensa en juicio), y en los artículos 224, 235, 462, 464 y concordantes del Código Procesal Civil de la República del Paraguay, doctrina y jurisprudencia aplicables al caso.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por tanto, a V.S. solicito:</p>` +
+        `<p>1. Reconocer mi personería en el carácter invocado y tener por constituido mi domicilio procesal en el lugar denunciado.</p>` +
+        `<p>2. Tener por contestada en tiempo y forma la demanda / citación de remate y por opuestas las excepciones articuladas, con las pruebas documentales agregadas.</p>` +
+        `<p>3. Correr traslado a la parte actora por el término de ley.</p>` +
+        `<p>4. Oportunamente, dictar resolución haciendo lugar a las excepciones planteadas y rechazando la demanda promovida, con expresa imposición de costas a la contraria.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    case 'abg_impulso_procesal':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: URGIR PRONTO DESPACHO E IMPULSO PROCESAL.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, con intervención ya reconocida en los autos caratulados <strong>"[CARATULA]"</strong>, Expediente N.º <strong>[NRO_EXPEDIENTE]</strong>, que tramitan ante <strong>[JUZGADO]</strong>, a V.S. digo:</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. Que habiéndose cumplido el trámite procesal anterior en fecha [FECHA_ULTIMA_ACTUACION], los presentes autos se encuentran pendientes de providencia o resolución judicial respecto a la petición formulada por esta parte.</p>` +
+        `<p>2. Que el transcurso del tiempo sin pronunciamiento genera un perjuicio directo a los derechos e intereses de mi representado/a <strong>[CLIENTE]</strong>, motivo por el cual corresponde instar el inmediato impulso del proceso.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo el presente pedido en el principio de celeridad y economía procesal, el artículo 40 de la Constitución Nacional, y los artículos 15, 107, 162, 172 y concordantes del Código Procesal Civil de la República del Paraguay.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por lo expuesto, a V.S. solicito:</p>` +
+        `<p>1. Tener por reiterada la petición pendiente de despacho en estos autos.</p>` +
+        `<p>2. Dictar sin más dilación la providencia / resolución correspondiente a fin de dar continuidad al trámite procesal del juicio.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    case 'abg_reposicion_apelacion':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: INTERPONER RECURSO DE REPOSICIÓN Y APELACIÓN EN SUBSIDIO.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, en los autos caratulados <strong>"[CARATULA]"</strong>, Expediente N.º <strong>[NRO_EXPEDIENTE]</strong>, radicados ante <strong>[JUZGADO]</strong>, a V.S. respetuosamente digo:</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. Que en fecha [FECHA_NOTIFICACION], esta parte fue notificada de la providencia / resolución de fecha [FECHA_RESOLUCION] dictada por V.S., por la cual se dispuso [SINTESIS_RESOLUCION_IMPUGNADA].</p>` +
+        `<p>2. Que dicha determinación causa gravamen irreparable a mi mandante <strong>[CLIENTE]</strong>, por cuanto [FUNDAMENTO_DEL_AGRAVIO], apartándose de las constancias obrantes en autos y de la normativa procesal aplicable.</p>` +
+        `<p>3. En tiempo hábil y forma legal, vengo a interponer Recurso de Reposición contra la citada resolución, llevando implícito el Recurso de Apelación en Subsidio para el caso de que V.S. no haga lugar a la revocatoria solicitada.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo este recurso en los artículos 390, 391, 392, 394, 395 y concordantes del Código Procesal Civil de la República del Paraguay.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por todo lo expuesto, a V.S. solicito:</p>` +
+        `<p>1. Tener por interpuesto en tiempo y forma el Recurso de Reposición con Apelación en Subsidio contra la providencia / resolución de fecha [FECHA_RESOLUCION].</p>` +
+        `<p>2. Previo traslado de rigor si correspondiere, hacer lugar a la reposición deducida, revocando por contrario imperio la resolución recurrida y disponiendo lo que en derecho corresponda.</p>` +
+        `<p>3. En el supuesto improbable de mantenerse la decisión impugnada, conceder el Recurso de Apelación en Subsidio por ante el Excmo. Tribunal de Apelación en lo Civil y Comercial, disponiendo la elevación de los autos.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    case 'abg_carta_poder':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: OTORGAR CARTA PODER / PODER ESPECIAL JUDICIAL.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>En la ciudad de Asunción, República del Paraguay, a los ${dia} días del mes de ${mes} del año ${anio}, quien suscribe, <strong>[CLIENTE]</strong>, de nacionalidad paraguaya, mayor de edad, titular de la Cédula de Identidad Civil / RUC N.º <strong>[CI_RUC]</strong>, con domicilio real en <strong>[DOMICILIO_CLIENTE]</strong>, comparece ante V.S. a efectos de otorgar formal <strong>CARTA PODER ESPECIAL JUDICIAL</strong> a favor de <strong>${nombreAbg}</strong>, Abogado con Matrícula CSJ N.º <strong>${matricula}</strong>, con domicilio procesal constituido en <strong>${domProc}</strong>, teléfono <strong>${telAbg}</strong> y correo electrónico <strong>${emailAbg}</strong>.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. El presente mandato se confiere expresamente para que el profesional designado intervenga en nombre y representación del/de la otorgante en los autos caratulados <strong>"[CARATULA]"</strong>, Expediente N.º <strong>[NRO_EXPEDIENTE]</strong>, ante <strong>[JUZGADO]</strong> y demás instancias ordinarias y extraordinarias.</p>` +
+        `<p>2. Queda el mandatario ampliamente facultado para presentar escritos, ofrecer y diligenciar pruebas, interponer recursos, asistir a audiencias, solicitar medidas cautelares, percibir importes judiciales previa autorización y realizar cuantos actos procesales resulten necesarios para la defensa de los derechos del mandante.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Se otorga la presente Carta Poder de conformidad con los artículos 61, 62, 63 y concordantes del Código Procesal Civil de la República del Paraguay, y las reglas del mandato establecidas en los artículos 880 y siguientes del Código Civil Paraguayo.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por lo expuesto, a V.S. solicitamos:</p>` +
+        `<p>1. Tener por otorgada y aceptada la presente Carta Poder Especial Judicial a favor de <strong>${nombreAbg}</strong>, Matrícula CSJ N.º <strong>${matricula}</strong>.</p>` +
+        `<p>2. Reconocer la personería del profesional apoderado y tener por constituido el domicilio procesal indicado a todos los efectos legales.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: right;"><strong>PROVEER DE CONFORMIDAD Y SERÁ JUSTICIA.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: center;">_______________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; _______________________________</p>` +
+        `<p style="text-align: center;"><strong>[CLIENTE]</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>${nombreAbg}</strong></p>` +
+        `<p style="text-align: center;">C.I./RUC: [CI_RUC] &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Abogado — Mat. CSJ N.º ${matricula}</p>`
+      );
+
+    case 'abg_intimacion_pago':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: FORMULAR INTIMACIÓN DE PAGO BAJO APERCIBIMIENTO DE ACCIÓN JUDICIAL.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ / DESTINATARIO DE LA INTIMACIÓN:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p style="text-align: left;"><em>Asunción, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, deja formal constancia del requerimiento fehaciente dirigido al Sr./Sra. [NOMBRE_DEUDOR], con C.I./RUC N.º [CI_DEUDOR] y domicilio en [DOMICILIO_DEUDOR], para su eventual agregación judicial ante V.S.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. Por instrucciones expresas de mi cliente <strong>[CLIENTE]</strong> (C.I./RUC N.º <strong>[CI_RUC]</strong>), intimo formalmente a usted para que en el plazo perentorio e improrrogable de <strong>[PLAZO_HORAS_DIAS]</strong> a partir de la recepción de la presente comunicación, abone la suma adeudada de GUARANÍES [MONTO_LETRAS] (Gs. [MONTO_RECLAMADO]), correspondiente a [CONCEPTO_DEUDA].</p>` +
+        `<p>2. El pago deberá efectuarse en el estudio jurídico sito en <strong>${domProc}</strong>, o mediante transferencia acreditada, coordinando al teléfono <strong>${telAbg}</strong> o correo <strong>${emailAbg}</strong>.</p>` +
+        `<p>3. Vencido el plazo otorgado sin verificarse el pago íntegro, se promoverán sin más trámite las acciones judiciales ejecutivas o de cobro que correspondan, con imposición de intereses, gastos y costas a su exclusivo cargo.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo el presente requerimiento en los artículos 424, 475, 715 y concordantes del Código Civil Paraguayo sobre constitución en mora y cumplimiento de las obligaciones, y en los artículos 439 y siguientes del Código Procesal Civil.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>1. Tener por formulada la presente intimación fehaciente de pago a todos sus efectos legales y probatorios.</p>` +
+        `<p>2. En caso de incumplimiento, solicitar oportunamente ante V.S. la agregación del comprobante de remisión como antecedente de la acción judicial pertinente.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    case 'abg_acuerdo_extrajudicial':
+      return (
+        `<p style="text-align: right;"><strong>OBJETO: PRESENTAR ACUERDO EXTRAJUDICIAL / TRANSACCIÓN Y SOLICITAR HOMOLOGACIÓN JUDICIAL.</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>SEÑOR JUEZ:</strong></p>` +
+        `<p style="text-align: left;"><em>(Juzgado: [JUZGADO] — Autos: "[CARATULA]" - Exp. N.° [NRO_EXPEDIENTE])</em></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>I. PERSONERÍA</strong></p>` +
+        `<p>${bloqueComparecenciaProfesional}, conjuntamente con la parte co-suscriptora [NOMBRE_CONTRAPARTE], con C.I./RUC N.º [CI_CONTRAPARTE] y domicilio en [DOMICILIO_CONTRAPARTE], en los autos caratulados <strong>"[CARATULA]"</strong>, Expediente N.º <strong>[NRO_EXPEDIENTE]</strong>, a V.S. respetuosamente decimos:</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>II. HECHOS</strong></p>` +
+        `<p>1. Que en la ciudad de Asunción, a los ${dia} días del mes de ${mes} del año ${anio}, las partes han arribado a un <strong>ACUERDO EXTRAJUDICIAL / TRANSACCIÓN</strong> con el objeto de extinguir las obligaciones litigiosas o controvertidas mediante concesiones recíprocas.</p>` +
+        `<p>2. <strong>MONTO Y FORMA DE PAGO:</strong> La parte obligada reconoce adeudar y se compromete a abonar a favor de <strong>[CLIENTE]</strong> la suma total y convenida de GUARANÍES [MONTO_LETRAS] (Gs. [MONTO_RECLAMADO]), pagadera de la siguiente manera: [CONDICIONES_DE_PAGO].</p>` +
+        `<p>3. <strong>CADUCIDAD DE PLAZOS Y MORA:</strong> La falta de pago puntual de cualquiera de las cuotas pactadas producirá la mora automática y la caducidad de los plazos acordados, habilitando la ejecución inmediata del saldo impago por la vía judicial.</p>` +
+        `<p>4. <strong>COSTAS Y HONORARIOS:</strong> Las partes convienen que las costas del acuerdo y honorarios profesionales serán soportados conforme a lo estipulado en la cláusula [CLAUSULA_COSTAS].</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>III. DERECHO</strong></p>` +
+        `<p>Fundo el presente acuerdo en las disposiciones de los artículos 1495, 1496, 1504 y concordantes del Código Civil Paraguayo respecto de la transacción, y en los artículos 170, 171 y concordantes del Código Procesal Civil.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: left;"><strong>IV. PETITORIO</strong></p>` +
+        `<p>Por todo lo expuesto, a V.S. solicitamos:</p>` +
+        `<p>1. Tener por presentado el presente Acuerdo Extrajudicial / Transacción suscripto entre las partes.</p>` +
+        `<p>2. Previa ratificación o trámite de rigor, dictar resolución homologando judicialmente el convenio celebrado, otorgándole fuerza de cosa juzgada y título ejecutorio.</p>` +
+        bloqueFirmaAbogado
+      );
+
+    default:
+      return '';
+  }
+}
+
 const LOCAL_STORAGE_DRAFT_TEXT = 'olga_escritos_redaccion_draft_texto';
 const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
@@ -495,7 +1008,7 @@ const LOCAL_STORAGE_DRAFT_INCLUDE_HEADER = 'olga_escritos_redaccion_draft_includ
 const LOCAL_STORAGE_DRAFT_FONT_FAMILY = 'olga_escritos_redaccion_draft_font_family';
 const LOCAL_STORAGE_DRAFT_FONT_SIZE = 'olga_escritos_redaccion_draft_font_size';
 
-export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false, canUseWhatsApp }) => {
+export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, expedientes = [], onOpenDocument, esPlanFull, isSoftBlocked = false, canUseWhatsApp }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
   const { workspaceId, workspaceData } = useWorkspace(currentUser, userProfile);
   // Estado de prueba gratuita / billing
@@ -673,6 +1186,58 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     esAbogado: esAbogadoEsc,
   });
 
+  // Datos reales del perfil del Abogado para autocompletado automático en escritos judiciales
+  const abogadoPerfilDatos: AbogadoPerfilDatos = React.useMemo(() => {
+    const rawNombre = pickRealEscHeader(
+      workspaceData?.nombreTitular,
+      activeUserData?.nombreTitular,
+      userProfile?.nombreTitular,
+      workspaceData?.nombreCompleto,
+      activeUserData?.nombreCompleto,
+      userProfile?.nombreCompleto,
+      workspaceData?.nombre,
+      activeUserData?.nombre,
+      userProfile?.nombre,
+      nombreEscHeader,
+      currentUser?.displayName
+    );
+    const rawMatricula = String(registroEscHeader || '')
+      .replace(/^matr[ií]cula\s*(csj)?\s*(n[º°o]\.?\s*)?/i, '')
+      .trim();
+    const rawDomicilio = pickRealEscHeader(
+      workspaceData?.domicilioProcesal,
+      activeUserData?.domicilioProcesal,
+      userProfile?.domicilioProcesal,
+      workspaceData?.domicilio,
+      activeUserData?.domicilio,
+      userProfile?.domicilio,
+      direccionEscHeader
+    );
+    const rawEmail = pickRealEscHeader(
+      workspaceData?.email,
+      activeUserData?.email,
+      userProfile?.email,
+      currentUser?.email
+    );
+    return {
+      nombreAbogado: rawNombre || '[NOMBRE_DEL_ABOGADO]',
+      matriculaCsj: rawMatricula || '[MATRICULA_CSJ]',
+      domicilioProcesal: rawDomicilio || '[DOMICILIO_PROCESAL]',
+      telefonoAbogado: telefonoEscHeader || '[TELEFONO_ABOGADO]',
+      emailAbogado: rawEmail || '[EMAIL_ABOGADO]',
+    };
+  }, [
+    workspaceData,
+    activeUserData,
+    userProfile,
+    currentUser?.displayName,
+    currentUser?.email,
+    nombreEscHeader,
+    registroEscHeader,
+    direccionEscHeader,
+    telefonoEscHeader,
+  ]);
+
   const handleSendDocumentByWhatsApp = (
     rawTitle?: string,
     rawContent?: string,
@@ -740,6 +1305,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Estado del Redactor de Escritos
   const [textoLateral, setTextoLateral] = useState<string>('PARA REGISTROS PÚBLICOS - PROTOCOLO NOTARIAL');
   const [editorText, setEditorText] = useState<string>('');
+  const editorTextRef = useRef<string>('');
+  editorTextRef.current = editorText;
   const [documentTitle, setDocumentTitle] = useState<string>('Escrito en Blanco');
   const [selectedCategoryForSave, setSelectedCategoryForSave] = useState<string>('Contratos Privados');
   const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
@@ -979,15 +1546,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     nextP.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  // Callback ref para el contentEditable con desempaquetado de seguridad
-  const setEditorRef = (el: HTMLDivElement | null) => {
+  // Callback ref estable para el contentEditable con desempaquetado de seguridad
+  const setEditorRef = React.useCallback((el: HTMLDivElement | null) => {
     (editorContentRef as any).current = el;
     if (el) {
       try {
         document.execCommand('defaultParagraphSeparator', false, 'p');
       } catch (e) {}
-      if (editorText) {
-        const limpio = desempaquetarContenidoFluido(editorText);
+      const latestText = editorTextRef.current;
+      if (latestText) {
+        const limpio = desempaquetarContenidoFluido(latestText);
         if (el.innerHTML !== limpio) {
           el.innerHTML = limpio;
         }
@@ -996,7 +1564,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         }, 50);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (editorContentRef.current && editorText !== undefined) {
@@ -1066,6 +1634,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Historial de Estados para Deshacer / Retroceder en el Asistente Flotante
   const [historialTextos, setHistorialTextos] = useState<string[]>([]);
+  const [skippedJudicialMarkers, setSkippedJudicialMarkers] = useState<string[]>([]);
+  const [historialSkipped, setHistorialSkipped] = useState<string[][]>([]);
 
   // Diccionario de Memoria Global (Context-Awareness y Cálculos Automáticos)
   const [memoria, setMemoria] = useState<{
@@ -1345,7 +1915,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return matches;
   }, [currentPlainText]);
 
-  const totalBlanks = blankMatches.length;
+  const marcadoresAbogadoPendientes = React.useMemo(() => {
+    if (!esAbogadoEsc) return [];
+    return extraerMarcadoresJudiciales(editorText).filter(
+      (k) => !skippedJudicialMarkers.includes(k)
+    );
+  }, [esAbogadoEsc, editorText, skippedJudicialMarkers]);
+
+  const isJudicialMarkersActive = esAbogadoEsc && marcadoresAbogadoPendientes.length > 0;
+  const totalBlanks = isJudicialMarkersActive ? marcadoresAbogadoPendientes.length : blankMatches.length;
 
   // =========================================================================
   // SINCRONIZACIÓN CONTEXTUAL DEL ASISTENTE (AUTOFILL WIZARD)
@@ -1353,8 +1931,26 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // al ÚNICO espacio que actualmente tiene el <span id="espacio-activo">,
   // ignorando los demás espacios vacíos del documento.
   // =========================================================================
-  const currentBlankContext = React.useMemo(() => {
+  const currentBlankContext = React.useMemo<{
+    instruccion: string;
+    ayuda: string;
+    placeholder: string;
+    isJudicialMarker?: boolean;
+    markerKey?: string;
+  } | null>(() => {
     if (totalBlanks === 0) return null;
+
+    if (isJudicialMarkersActive) {
+      const markerKey = marcadoresAbogadoPendientes[0];
+      const meta = getCampoMeta(markerKey);
+      return {
+        instruccion: meta.label,
+        ayuda: meta.help,
+        placeholder: meta.placeholder,
+        isJudicialMarker: true,
+        markerKey,
+      };
+    }
 
     let textBeforeActive = '';
     let textAfterActive = '';
@@ -1832,7 +2428,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         : 'Complete el dato notarial correspondiente para continuar con el autocompletado del documento.',
       placeholder: 'Ingrese el dato requerido...'
     };
-  }, [editorText, totalBlanks]);
+  }, [editorText, totalBlanks, isJudicialMarkersActive, marcadoresAbogadoPendientes]);
 
   // Mensaje o instrucción del asistente de autocompletado si hay espacios en blanco activos
   const mensajeAsistente = totalBlanks > 0 && currentBlankContext ? currentBlankContext.instruccion : null;
@@ -2103,6 +2699,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   useEffect(() => {
     if (!mostrarEditor || isRedaccionEnBlanco) return;
 
+    if (isJudicialMarkersActive) {
+      const firstKey = marcadoresAbogadoPendientes[0];
+      const token = `[${firstKey}]`;
+      if (editorText.includes(token) && !editorText.includes('id="espacio-activo"')) {
+        const idx = editorText.indexOf(token);
+        const textoConMarcadorActivo =
+          editorText.slice(0, idx) +
+          `<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">${token}</span>` +
+          editorText.slice(idx + token.length);
+        setEditorText(textoConMarcadorActivo);
+        if (editorContentRef.current) {
+          editorContentRef.current.innerHTML = textoConMarcadorActivo;
+        }
+      }
+      return;
+    }
+
     // Si hay espacios en blanco pendientes, verificar si alguno se puede resolver silenciosamente
     if (/_{3,}/.test(editorText)) {
       const res = intentarResolverEspacioSilencioso(editorText, memoria);
@@ -2147,7 +2760,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria]);
+  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
@@ -2185,6 +2798,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const nuevoHistorial = [...historialTextos];
     const textoPrevio = nuevoHistorial.pop();
     setHistorialTextos(nuevoHistorial);
+
+    if (historialSkipped.length > 0) {
+      const nuevoSkippedHist = [...historialSkipped];
+      const skippedPrevio = nuevoSkippedHist.pop();
+      setHistorialSkipped(nuevoSkippedHist);
+      if (skippedPrevio !== undefined) {
+        setSkippedJudicialMarkers(skippedPrevio);
+      }
+    }
+
     if (textoPrevio !== undefined) {
       setEditorText(textoPrevio);
       if (editorContentRef.current) {
@@ -2202,6 +2825,79 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
+  const unwrapEspacioActivo = (rawHtml: string): string => {
+    if (!rawHtml || !rawHtml.includes('espacio-activo')) return rawHtml;
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = rawHtml;
+      tmp.querySelectorAll('#espacio-activo').forEach((el) => {
+        const parent = el.parentNode;
+        if (!parent) return;
+        while (el.firstChild) {
+          parent.insertBefore(el.firstChild, el);
+        }
+        parent.removeChild(el);
+      });
+      return tmp.innerHTML;
+    } catch {
+      return rawHtml.replace(/<span\b[^>]*\bid=["']?espacio-activo["']?[^>]*>([\s\S]*?)<\/span>/gi, '$1');
+    }
+  };
+
+  const reemplazarMarcadorJudicial = (rawHtml: string, markerKey: string, value: string): string => {
+    const escapedKey = markerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const markerRegex = new RegExp(
+      `\\[(?:\\s|<[^>]+>|&nbsp;)*${escapedKey}(?:\\s|<[^>]+>|&nbsp;)*\\]`,
+      'g'
+    );
+    return rawHtml.replace(markerRegex, escapeHtmlText(value));
+  };
+
+  const handleOmitirMarcador = () => {
+    if (!currentBlankContext?.isJudicialMarker || !currentBlankContext.markerKey) return;
+    const markerKey = currentBlankContext.markerKey;
+    const container = editorContentRef.current;
+    const htmlBase = container ? container.innerHTML : editorText;
+
+    setHistorialTextos((prev) => [...prev, htmlBase]);
+    setHistorialSkipped((prev) => [...prev, skippedJudicialMarkers]);
+
+    const nextSkipped = [...skippedJudicialMarkers, markerKey];
+    setSkippedJudicialMarkers(nextSkipped);
+
+    let iterHtml = unwrapEspacioActivo(htmlBase);
+    const remaining = extraerMarcadoresJudiciales(iterHtml).filter((k) => !nextSkipped.includes(k));
+    if (remaining.length > 0) {
+      const nextToken = `[${remaining[0]}]`;
+      const idx = iterHtml.indexOf(nextToken);
+      if (idx !== -1) {
+        iterHtml =
+          iterHtml.slice(0, idx) +
+          `<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">${nextToken}</span>` +
+          iterHtml.slice(idx + nextToken.length);
+      }
+    }
+
+    if (container) {
+      container.innerHTML = iterHtml;
+    }
+    setEditorText(iterHtml);
+    setAutofillInput('');
+    setMostrarTooltipAyuda(false);
+    debouncedVerificarPaginacion();
+
+    if (remaining.length === 0) {
+      setTimeout(() => {
+        const bloque = document.getElementById('editor-notarial-activo-bloque');
+        bloque?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    } else {
+      setTimeout(() => {
+        autofillInputRef.current?.focus();
+      }, 50);
+    }
+  };
+
   // =========================================================================
   // INYECCIÓN DE DATOS: MOTOR INTERCEPTOR, SMART REPLACE Y MEMORIA GLOBAL
   // =========================================================================
@@ -2214,6 +2910,61 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     const container = editorContentRef.current;
     const htmlBase = container ? container.innerHTML : editorText;
     setHistorialTextos(prev => [...prev, htmlBase]);
+
+    // FLUJO DEDICADO PARA MARCADORES JUDICIALES [CAMPO] (SOLO ABOGADOS)
+    if (currentBlankContext?.isJudicialMarker && currentBlankContext.markerKey) {
+      const markerKey = currentBlankContext.markerKey;
+      setHistorialSkipped((prev) => [...prev, skippedJudicialMarkers]);
+
+      let iterHtml = unwrapEspacioActivo(htmlBase);
+      iterHtml = reemplazarMarcadorJudicial(iterHtml, markerKey, valorOriginal);
+
+      const nextMarkers = extraerMarcadoresJudiciales(iterHtml).filter(
+        (k) => !skippedJudicialMarkers.includes(k)
+      );
+
+      if (nextMarkers.length > 0) {
+        const nextToken = `[${nextMarkers[0]}]`;
+        const idx = iterHtml.indexOf(nextToken);
+        if (idx !== -1) {
+          iterHtml =
+            iterHtml.slice(0, idx) +
+            `<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">${nextToken}</span>` +
+            iterHtml.slice(idx + nextToken.length);
+        }
+      }
+
+      if (container) {
+        container.innerHTML = iterHtml;
+      }
+      setEditorText(iterHtml);
+      debouncedVerificarPaginacion();
+      setMostrarTooltipAyuda(false);
+
+      let nextSuggestedInput = '';
+      if (markerKey === 'MONTO_RECLAMADO' && nextMarkers[0] === 'MONTO_LETRAS') {
+        const soloDigitosAbg = valorOriginal.replace(/\./g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
+        if (/^\d+$/.test(soloDigitosAbg) && soloDigitosAbg.length > 0) {
+          const numAbg = parseInt(soloDigitosAbg, 10);
+          if (Number.isFinite(numAbg) && numAbg > 0) {
+            nextSuggestedInput = numeroALetras(numAbg);
+          }
+        }
+      }
+      setAutofillInput(nextSuggestedInput);
+
+      if (nextMarkers.length === 0) {
+        setTimeout(() => {
+          const bloque = document.getElementById('editor-notarial-activo-bloque');
+          bloque?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      } else {
+        setTimeout(() => {
+          autofillInputRef.current?.focus();
+        }, 50);
+      }
+      return;
+    }
 
     // 1. MOTOR INTERCEPTOR DE NÚMEROS A LETRAS
     const soloDigitos = valorOriginal.replace(/\./g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
@@ -2561,52 +3312,73 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   };
 
   // Manejo del selector de plantillas:
-  // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega inmediatamente el Editor Notarial Activo.
+  // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega inmediatamente el Editor Activo.
   const handleSelectPlantilla = (plantillaId: string) => {
     if (!plantillaId || isMenuPlantillasBloqueado) return;
     setMostrarEditor(true);
     setEditandoDocumentoExistente(false);
     setSelectedPlantillaId(plantillaId);
     setMemoria({});
+    setSkippedJudicialMarkers([]);
+    setHistorialTextos([]);
+    setHistorialSkipped([]);
+    setAutofillInput('');
 
     let textoParaEditor = '';
-    const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
-    if (!found || plantillaId === 'hoja_en_blanco') {
-      // Limpieza total del editor
-      textoParaEditor = '';
-      setTipoHoja('blanca');
-      setEditorText('');
-      setDocumentTitle('Escrito en Blanco');
-      setSelectedCategoryForSave('Contratos Privados');
-    } else if (plantillaId === 'constitucion_sa') {
-      setTipoHoja('protocolo');
-      // Generador Dinámico de Socios (Prompt Inicial):
-      // Pregunta al usuario la cantidad de socios que conformarán la S.A.
-      let numSocios = 2;
-      try {
-        const respuestaPrompt = window.prompt('¿Cuántos socios conformarán la S.A.? (Ej. 2, 3, 4)', '2');
-        if (respuestaPrompt !== null) {
-          const parsed = parseInt(respuestaPrompt.trim(), 10);
-          if (!isNaN(parsed) && parsed >= 1) {
-            numSocios = parsed;
-          }
-        }
-      } catch (err) {
-        console.warn('Error al solicitar cantidad de socios:', err);
+    if (esAbogadoEsc) {
+      const foundAbg = PLANTILLAS_ABOGADOS_META.find((p) => p.id === plantillaId);
+      if (!foundAbg || plantillaId === 'hoja_en_blanco') {
+        textoParaEditor = '';
+        setTipoHoja('blanca');
+        setEditorText('');
+        setDocumentTitle('Escrito en Blanco');
+        setSelectedCategoryForSave('Expedientes');
+      } else {
+        setTipoHoja('blanca');
+        textoParaEditor = construirPlantillaJudicial(plantillaId, abogadoPerfilDatos);
+        setEditorText(textoParaEditor);
+        setDocumentTitle(foundAbg.nombre);
+        setSelectedCategoryForSave(foundAbg.categoriaSugerida);
       }
-
-      // Reconstruye el texto con N comparecientes sin datos pre-cargados de usuario
-      textoParaEditor = construirConstitucionSA(numSocios);
-      setEditorText(textoParaEditor);
-      setDocumentTitle('Constitución de S.A.');
-      setSelectedCategoryForSave('Contratos Privados');
     } else {
-      setTipoHoja('protocolo');
-      // Plantillas limpias con espacios en blanco (_______)
-      textoParaEditor = procesarAutofillPlantilla(found.contenido);
-      setEditorText(textoParaEditor);
-      setDocumentTitle(found.nombre);
-      setSelectedCategoryForSave(found.categoriaSugerida);
+      const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
+      if (!found || plantillaId === 'hoja_en_blanco') {
+        // Limpieza total del editor
+        textoParaEditor = '';
+        setTipoHoja('blanca');
+        setEditorText('');
+        setDocumentTitle('Escrito en Blanco');
+        setSelectedCategoryForSave('Contratos Privados');
+      } else if (plantillaId === 'constitucion_sa') {
+        setTipoHoja('protocolo');
+        // Generador Dinámico de Socios (Prompt Inicial):
+        // Pregunta al usuario la cantidad de socios que conformarán la S.A.
+        let numSocios = 2;
+        try {
+          const respuestaPrompt = window.prompt('¿Cuántos socios conformarán la S.A.? (Ej. 2, 3, 4)', '2');
+          if (respuestaPrompt !== null) {
+            const parsed = parseInt(respuestaPrompt.trim(), 10);
+            if (!isNaN(parsed) && parsed >= 1) {
+              numSocios = parsed;
+            }
+          }
+        } catch (err) {
+          console.warn('Error al solicitar cantidad de socios:', err);
+        }
+
+        // Reconstruye el texto con N comparecientes sin datos pre-cargados de usuario
+        textoParaEditor = construirConstitucionSA(numSocios);
+        setEditorText(textoParaEditor);
+        setDocumentTitle('Constitución de S.A.');
+        setSelectedCategoryForSave('Contratos Privados');
+      } else {
+        setTipoHoja('protocolo');
+        // Plantillas limpias con espacios en blanco (_______)
+        textoParaEditor = procesarAutofillPlantilla(found.contenido);
+        setEditorText(textoParaEditor);
+        setDocumentTitle(found.nombre);
+        setSelectedCategoryForSave(found.categoriaSugerida);
+      }
     }
 
     if (editorContentRef.current) {
@@ -2646,6 +3418,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setPreviewMode(false);
     setMostrarEditor(true);
     setMemoria({});
+    setSkippedJudicialMarkers([]);
+    setHistorialTextos([]);
+    setHistorialSkipped([]);
+    setAutofillInput('');
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = '';
     }
@@ -2674,6 +3450,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
     setMemoria({});
+    setSkippedJudicialMarkers([]);
+    setHistorialTextos([]);
+    setHistorialSkipped([]);
+    setAutofillInput('');
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = '';
     }
@@ -3540,6 +4320,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
     setPreviewMode(false);
     setMemoria({});
+    setSkippedJudicialMarkers([]);
+    setHistorialTextos([]);
+    setHistorialSkipped([]);
+    setAutofillInput('');
 
     try {
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, docTexto);
@@ -3856,7 +4640,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     Modelo base
                   </label>
                   <select
-                    value={isMenuPlantillasBloqueado ? '' : selectedPlantillaId}
+                    value={
+                      isMenuPlantillasBloqueado
+                        ? ''
+                        : (esAbogadoEsc ? PLANTILLAS_ABOGADOS_META : PLANTILLAS_NOTARIALES).some(
+                              (p) => p.id === selectedPlantillaId
+                            )
+                          ? selectedPlantillaId
+                          : ''
+                    }
                     disabled={isMenuPlantillasBloqueado}
                     onChange={(e) => {
                       if (isMenuPlantillasBloqueado) return;
@@ -3879,14 +4671,24 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                         : 'Seleccionar plantilla o hoja en blanco...'}
                     </option>
                     {!isMenuPlantillasBloqueado && (
-                      <>
-                        <option value="hoja_en_blanco">Hoja en Blanco (Redacción Libre)</option>
-                        {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
-                          <option key={plantilla.id} value={plantilla.id}>
-                            {plantilla.nombre}
-                          </option>
-                        ))}
-                      </>
+                      esAbogadoEsc ? (
+                        <>
+                          {PLANTILLAS_ABOGADOS_META.map((plantilla) => (
+                            <option key={plantilla.id} value={plantilla.id}>
+                              {plantilla.nombre}
+                            </option>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          <option value="hoja_en_blanco">Hoja en Blanco (Redacción Libre)</option>
+                          {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
+                            <option key={plantilla.id} value={plantilla.id}>
+                              {plantilla.nombre}
+                            </option>
+                          ))}
+                        </>
+                      )
                     )}
                   </select>
                 </div>
@@ -5416,7 +6218,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {mostrarEditor && condicionAutocompletado && currentBlankContext && (
         <aside
           role="region"
-          aria-label="Asistente de Autocompletado Notarial"
+          aria-label={currentBlankContext.isJudicialMarker ? 'Asistente de Autocompletado Judicial' : 'Asistente de Autocompletado Notarial'}
           className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-white shadow-2xl rounded-3xl border border-slate-200/90 ring-1 ring-slate-100 p-4 sm:p-5 max-w-lg w-[92%] sm:w-[90%] animate-in fade-in slide-in-from-bottom-6 duration-300 transition-all backdrop-blur-sm"
         >
           {/* Cabecera del Wizard: Instrucción y Contador */}
@@ -5427,7 +6229,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 {currentBlankContext.instruccion}
               </h4>
 
-              {/* Botón de Ayuda (?) con Tooltip Notarial */}
+              {/* Botón de Ayuda (?) con Tooltip */}
               <div className="relative inline-block shrink-0">
                 <button
                   type="button"
@@ -5444,7 +6246,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 {mostrarTooltipAyuda && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
                     <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
-                      Guía Notarial de Llenado
+                      {currentBlankContext.isJudicialMarker ? 'Guía de Llenado Judicial' : 'Guía Notarial de Llenado'}
                     </p>
                     <p className="text-slate-200 leading-relaxed font-normal">
                       {currentBlankContext.ayuda}
@@ -5498,17 +6300,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               value={autofillInput}
               onChange={(e) => {
                 const val = e.target.value;
-                const soloNums = val.replace(/\./g, '').trim();
-                // Si el valor contiene solo números (ignorando puntos)
-                if (/^\d+$/.test(soloNums)) {
-                  // Separar los miles con puntos (.) usando formato de Paraguay
-                  const numParsed = parseInt(soloNums, 10);
-                  if (!isNaN(numParsed)) {
-                    setAutofillInput(numParsed.toLocaleString('es-PY'));
-                    return;
+                // Formateo de miles con puntos exclusivamente cuando el campo actual es MONTO_RECLAMADO
+                if (currentBlankContext.markerKey === 'MONTO_RECLAMADO') {
+                  const soloNums = val.replace(/\./g, '');
+                  if (/^\d+$/.test(soloNums)) {
+                    const numParsed = parseInt(soloNums, 10);
+                    if (!isNaN(numParsed)) {
+                      setAutofillInput(numParsed.toLocaleString('es-PY'));
+                      return;
+                    }
                   }
                 }
-                // Si el usuario escribe letras o texto mixto, deja el valor tal cual
                 setAutofillInput(val);
               }}
               onKeyDown={(e) => {
@@ -5523,6 +6325,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               className="flex-1 box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] focus:bg-white rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-all shadow-inner placeholder:text-slate-400 placeholder:font-normal"
             />
 
+            {currentBlankContext.isJudicialMarker && (
+              <button
+                type="button"
+                onClick={handleOmitirMarcador}
+                className="py-2.5 px-2.5 bg-white hover:bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-semibold transition-all border border-slate-200 shrink-0 cursor-pointer"
+                title="Omitir este campo y pasar al siguiente"
+              >
+                Saltar
+              </button>
+            )}
+
             <button
               type="submit"
               disabled={!autofillInput.trim()}
@@ -5534,11 +6347,22 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             </button>
           </form>
 
-          {/* Pista de teclado */}
-          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-medium px-1">
-            <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para insertar y pasar al siguiente</span>
-            <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
-          </div>
+          {currentBlankContext.isJudicialMarker ? (
+            <div className="mt-2 space-y-1 px-1">
+              <p className="text-[11px] text-slate-600 leading-snug">
+                {currentBlankContext.ayuda}
+              </p>
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para completar y pasar al siguiente</span>
+                <span>Campo: <span className="font-mono text-slate-600">[{currentBlankContext.markerKey}]</span></span>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-medium px-1">
+              <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para insertar y pasar al siguiente</span>
+              <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
+            </div>
+          )}
         </aside>
       )}
 

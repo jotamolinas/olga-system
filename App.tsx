@@ -2642,6 +2642,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 currentUser={currentUser} 
                 userProfile={userProfile || userData}
                 personas={personas}
+                expedientes={esAbogado ? expedientes : []}
                 onOpenDocument={handleOpenDocumentModal} 
                 esPlanFull={esPlanFull}
                 isSoftBlocked={isSoftBlocked}
