@@ -427,6 +427,15 @@ export const analyzeExpedientePdf = async (
   throw new Error('La IA no devolvió datos procesales válidos para este documento.');
 };
 
+export interface MemoriaDocumentoEscritoPayload {
+  titulo?: string;
+  fecha?: string;
+  parteOrigen?: string;
+  resumen?: string;
+  fundamentoCPC?: string;
+  extracto?: string;
+}
+
 export const redactarEscritoJudicialConIA = async (params: {
   expediente: Record<string, any>;
   modo: 'contestacion' | 'impulso';
@@ -438,6 +447,7 @@ export const redactarEscritoJudicialConIA = async (params: {
     ciudad?: string;
   };
   instruccionesAdicionales?: string;
+  memoriaDocumentos?: MemoriaDocumentoEscritoPayload[];
   esAbogado?: boolean;
 }): Promise<string> => {
   const esAbogado = Boolean(params?.esAbogado);

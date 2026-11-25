@@ -37,11 +37,14 @@ import {
 } from '../types/presupuesto';
 import {
   DEFAULT_SECRETARIA_SCHEDULE,
+  fetchConnectedWorkspaceWhatsApp,
+  formatAbogadoWhatsAppDisplay,
   formatSecretariaScheduleSummary,
+  loadAbogadoCustomWhatsappSecretaria,
   loadAbogadoSecretariaSchedule,
-  loadAbogadoWhatsappSecretaria,
   normalizeAbogadoWhatsAppPhone,
   normalizeSecretariaSchedule,
+  resolveEffectiveAbogadoWhatsapp,
   sanitizeFrecuenciaDias,
   sanitizeHoraEnvio,
   saveAbogadoSecretariaSchedule,
@@ -344,9 +347,14 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const [timbradoVigenciaFin, setTimbradoVigenciaFin] = useState(
     tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : ''
   );
+  const [connectedWaPhone, setConnectedWaPhone] = useState<string>('');
   const [whatsappSecretaria, setWhatsappSecretaria] = useState(() =>
     esAbogado
-      ? loadAbogadoWhatsappSecretaria(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+      ? loadAbogadoCustomWhatsappSecretaria(
+          auth?.currentUser?.uid || userData?.uid || userKey,
+          userData,
+          effectiveWorkspaceId
+        )
       : ''
   );
   const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
@@ -355,6 +363,37 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
       : { ...DEFAULT_SECRETARIA_SCHEDULE }
   );
   const [logoPreview, setLogoPreview] = useState<string | null>(firestoreLogo);
+
+  const waResolution = useMemo(
+    () =>
+      esAbogado
+        ? resolveEffectiveAbogadoWhatsapp({
+            uid: auth?.currentUser?.uid || userData?.uid || userKey,
+            workspaceId: effectiveWorkspaceId,
+            userData,
+            currentUser,
+            connectedWaPhone,
+            customPhoneOverride: whatsappSecretaria,
+          })
+        : { effectivePhone: '', defaultPhone: '', customPhone: '', source: 'none' as const },
+    [esAbogado, userData, currentUser, userKey, effectiveWorkspaceId, connectedWaPhone, whatsappSecretaria]
+  );
+
+  useEffect(() => {
+    if (!esAbogado) {
+      setConnectedWaPhone('');
+      return;
+    }
+    const targetWs = effectiveWorkspaceId || auth?.currentUser?.uid || userData?.uid;
+    if (!targetWs) return;
+    let active = true;
+    void fetchConnectedWorkspaceWhatsApp(targetWs).then((phone) => {
+      if (active) setConnectedWaPhone(phone);
+    });
+    return () => {
+      active = false;
+    };
+  }, [esAbogado, effectiveWorkspaceId, userData?.uid]);
 
   // Sincronizar campos cuando cambia la cuenta activa (userKey)
   useEffect(() => {
@@ -373,7 +412,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     setTimbradoVigenciaFin(configurado ? limpiarValorEjemplo(m.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : '');
     if (esAbogado) {
       setWhatsappSecretaria(
-        loadAbogadoWhatsappSecretaria(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
+        loadAbogadoCustomWhatsappSecretaria(
+          auth?.currentUser?.uid || userData?.uid || userKey,
+          userData,
+          effectiveWorkspaceId
+        )
       );
       setSecretariaSchedule(
         loadAbogadoSecretariaSchedule(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
@@ -1188,19 +1231,78 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
               {esAbogado && (
                 <div className="mt-4 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-emerald-200/70 dark:border-emerald-800/50">
+                    <div>
+                      <span className="block text-xs font-black uppercase text-emerald-900 dark:text-emerald-200 tracking-wider">
+                        Secretaría O.L.G.A. • Autoenvío WhatsApp
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                        {waResolution.effectivePhone
+                          ? waResolution.source === 'custom'
+                            ? `Enviando a otro número: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`
+                            : waResolution.source === 'connected'
+                              ? `Usando automáticamente tu WhatsApp vinculado: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`
+                              : `Usando tu teléfono de perfil: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`
+                          : 'Vinculá tu WhatsApp o ingresá un número alternativo abajo.'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={secretariaSchedule.recordatorioActivo}
+                      onClick={() =>
+                        setSecretariaSchedule((prev) => ({
+                          ...prev,
+                          recordatorioActivo: !prev.recordatorioActivo,
+                        }))
+                      }
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider border transition-colors cursor-pointer ${
+                        secretariaSchedule.recordatorioActivo
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          secretariaSchedule.recordatorioActivo ? 'bg-white' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span>
+                        {secretariaSchedule.recordatorioActivo
+                          ? 'Secretaría O.L.G.A. Activa'
+                          : 'Secretaría Inactiva'}
+                      </span>
+                    </button>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300 tracking-wider mb-1.5">
-                      WhatsApp propio — Secretaría O.L.G.A. (Autoenvío de partes)
+                      Recibir avisos en otro número (opcional)
                     </label>
-                    <input
-                      type="tel"
-                      value={whatsappSecretaria}
-                      onChange={(e) => setWhatsappSecretaria(e.target.value)}
-                      placeholder="Ej. 0981 123 456 o +595 981 123 456"
-                      className="w-full md:max-w-md bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 outline-none transition-colors"
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="tel"
+                        value={whatsappSecretaria}
+                        onChange={(e) => setWhatsappSecretaria(e.target.value)}
+                        placeholder={
+                          waResolution.defaultPhone
+                            ? `Dejá vacío para usar ${formatAbogadoWhatsAppDisplay(waResolution.defaultPhone)}`
+                            : 'Ej. 0981 123 456 o +595 981 123 456'
+                        }
+                        className="w-full md:max-w-md bg-white dark:bg-[#0B0F17] border border-emerald-300 dark:border-emerald-700/80 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 outline-none transition-colors"
+                      />
+                      {whatsappSecretaria.trim() && waResolution.defaultPhone && (
+                        <button
+                          type="button"
+                          onClick={() => setWhatsappSecretaria('')}
+                          className="px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-bold cursor-pointer"
+                        >
+                          Usar vinculado
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                      Se usa exclusivamente para autoenviarte los partes y recordatorios diarios de tus expedientes por WhatsApp.
+                      Si ya tienes un número vinculado, O.L.G.A. lo usa automáticamente; completá este campo solo si querés recibir el parte en un número distinto.
                     </p>
                   </div>
 

@@ -268,6 +268,18 @@ export interface ExpedienteAnalisisIA {
   archivoNombre?: string;
 }
 
+export type OrigenDocumentoExpediente = 'Adversa' | 'Propia' | 'Juzgado' | 'General';
+
+export interface ExpedienteDocumentoMemoria {
+  id: string;
+  archivoNombre: string;
+  tipoActo?: string;
+  parteOrigen?: OrigenDocumentoExpediente;
+  resumenHechos: string;
+  fundamentoCPC?: string;
+  analizadoAt: string;
+}
+
 export interface Expediente {
   id: string;
   userId: string;
@@ -281,6 +293,7 @@ export interface Expediente {
   estado: EstadoExpediente;
   plazos: PlazoProcesal[];
   ultimoAnalisisIA?: ExpedienteAnalisisIA | null;
+  historialDocumentos?: ExpedienteDocumentoMemoria[];
   notas?: string;
   clienteNombre?: string;
   clienteId?: string;

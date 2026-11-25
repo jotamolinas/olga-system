@@ -27,6 +27,8 @@ import {
   Briefcase
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
+import { UsePWAInstallResult } from '../hooks/usePWAInstall';
+import { PWAInstallButton } from './PWAInstallBanner';
 
 export type SidebarTabId =
   | 'tablero'
@@ -71,6 +73,7 @@ export interface SidebarProps {
   isStandalone?: boolean;
   installMessage?: string | null;
   handleInstallClick?: () => void;
+  pwaInstall?: UsePWAInstallResult;
   isSoftBlocked?: boolean;
   hasUnreadChatResponse?: boolean;
   isChatLoading?: boolean;
@@ -104,6 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isStandalone = true,
   installMessage,
   handleInstallClick,
+  pwaInstall,
   isSoftBlocked = false,
   hasUnreadChatResponse = false,
   isChatLoading = false,
@@ -590,6 +594,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 4. PIE DEL SIDEBAR: TARJETA DE ASISTENCIA + BOTÓN EXPANDIR/CERRAR*/}
         {/* ============================================================== */}
         <div className="p-3 border-t border-slate-800 shrink-0">
+          {!isStandalone && pwaInstall && (
+            <div className="mb-2">
+              {isExpanded ? (
+                <PWAInstallButton pwa={pwaInstall} variant="sidebar" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void pwaInstall.triggerInstall()}
+                  className="w-full p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 flex items-center justify-center transition-colors cursor-pointer relative group"
+                  title="Instalar App en tu celular"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-slate-800 text-white text-xs font-medium rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-[60]">
+                    📲 Instalar App en tu celular
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+          {!isStandalone && !pwaInstall && handleInstallClick && isExpanded && (
+            <div className="mb-2">
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="w-full px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span className="truncate">📲 Instalar App en tu celular</span>
+              </button>
+            </div>
+          )}
           {/* Logo / Isotipo gráfico minimalista de O.L.G.A. */}
           <div className="flex items-center justify-center py-2 mb-1 bg-transparent">
             <img

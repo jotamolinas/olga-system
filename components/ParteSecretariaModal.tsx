@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Bell,
   Calendar,
   Check,
@@ -22,16 +23,19 @@ import {
   buildDocumentoDirectUrl,
   buildSecretariaOlgaParte,
   buildSecretariaOlgaParteGeneral,
+  buildSecretariaOlgaUrgenteDia,
   buildWhatsAppSelfSendUrl,
   DEFAULT_SECRETARIA_SCHEDULE,
+  fetchConnectedWorkspaceWhatsApp,
   formatAbogadoWhatsAppDisplay,
   formatSecretariaScheduleSummary,
   LinkedDocResumen,
+  loadAbogadoCustomWhatsappSecretaria,
   loadAbogadoSecretariaSchedule,
-  loadAbogadoWhatsappSecretaria,
   markSecretariaReminderSentToday,
   normalizeAbogadoWhatsAppPhone,
   normalizeSecretariaSchedule,
+  resolveEffectiveAbogadoWhatsapp,
   sanitizeFrecuenciaDias,
   sanitizeHoraEnvio,
   saveAbogadoSecretariaSchedule,
@@ -40,7 +44,7 @@ import {
   shouldTriggerSecretariaReminder,
 } from '../services/secretariaOlga';
 
-export type ParteSecretariaMode = 'general' | 'detallado';
+export type ParteSecretariaMode = 'urgente' | 'general' | 'detallado';
 
 interface ParteSecretariaModalProps {
   isOpen: boolean;
@@ -52,6 +56,7 @@ interface ParteSecretariaModalProps {
   userData?: any;
   currentUser?: any;
   workspaceId?: string;
+  connectedWaPhone?: string;
   linkedDocs?: LinkedDocResumen[];
   isScheduledTrigger?: boolean;
   onWhatsappSaved?: (savedPhone: string) => void;
@@ -76,6 +81,7 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
   userData,
   currentUser,
   workspaceId,
+  connectedWaPhone = '',
   linkedDocs = [],
   isScheduledTrigger = false,
   onWhatsappSaved,
@@ -84,8 +90,9 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
   const uid = String(currentUser?.uid || userData?.uid || '').trim();
   const wsId = String(workspaceId || uid).trim();
 
-  const [phoneInput, setPhoneInput] = useState('');
-  const [savedPhone, setSavedPhone] = useState('');
+  const [detectedConnectedWa, setDetectedConnectedWa] = useState<string>(connectedWaPhone);
+  const [customPhoneInput, setCustomPhoneInput] = useState('');
+  const [savedCustomPhone, setSavedCustomPhone] = useState('');
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [phoneFeedback, setPhoneFeedback] = useState<string | null>(null);
 
@@ -97,6 +104,7 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
   });
   const [showSchedulePanel, setShowSchedulePanel] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [isTogglingMaster, setIsTogglingMaster] = useState(false);
   const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
 
   const resolvedInitialMode: ParteSecretariaMode =
@@ -142,9 +150,19 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const loaded = loadAbogadoWhatsappSecretaria(uid, userData, wsId);
-    setPhoneInput(loaded);
-    setSavedPhone(normalizeAbogadoWhatsAppPhone(loaded));
+    let active = true;
+    const initialConnected = normalizeAbogadoWhatsAppPhone(connectedWaPhone);
+    setDetectedConnectedWa(initialConnected);
+    if (!initialConnected && wsId) {
+      void fetchConnectedWorkspaceWhatsApp(wsId).then((fetched) => {
+        if (active && fetched) {
+          setDetectedConnectedWa(fetched);
+        }
+      });
+    }
+    const loadedCustom = loadAbogadoCustomWhatsappSecretaria(uid, userData, wsId);
+    setCustomPhoneInput(loadedCustom ? formatAbogadoWhatsAppDisplay(loadedCustom) : '');
+    setSavedCustomPhone(loadedCustom);
     setPhoneFeedback(null);
 
     const loadedSched = loadAbogadoSecretariaSchedule(uid, userData, wsId);
@@ -175,7 +193,10 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
       setSelectedPlazoId(firstPending ? firstPending.id : '__general__');
     }
     setHoraFranja('');
-  }, [isOpen, expediente?.id, initialPlazo?.id, defaultMode, uid, wsId]);
+    return () => {
+      active = false;
+    };
+  }, [isOpen, expediente?.id, initialPlazo?.id, defaultMode, uid, wsId, connectedWaPhone]);
 
   const activePlazo = useMemo(() => {
     if (!effectiveExpediente || !selectedPlazoId || selectedPlazoId === '__general__') return null;
@@ -183,18 +204,28 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
   }, [effectiveExpediente, selectedPlazoId, sortedPlazos]);
 
   const regeneratedParte = useMemo(() => {
+    const sourceList =
+      activeCausesList.length > 0
+        ? activeCausesList
+        : effectiveExpediente
+          ? [effectiveExpediente]
+          : [];
+
+    if (parteMode === 'urgente') {
+      return buildSecretariaOlgaUrgenteDia({
+        expedientes: sourceList,
+        userData,
+        currentUser,
+        horaFranja,
+      });
+    }
     if (parteMode === 'general') {
-      const sourceList =
-        activeCausesList.length > 0
-          ? activeCausesList
-          : effectiveExpediente
-            ? [effectiveExpediente]
-            : [];
       return buildSecretariaOlgaParteGeneral({
         expedientes: sourceList,
         userData,
         currentUser,
         horaFranja,
+        includeUrgentPrefix: true,
       });
     }
     if (!effectiveExpediente) return '';
@@ -232,33 +263,97 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
   const pendingGeneralSummary = useMemo(() => {
     let causesWithPending = 0;
     let totalPending = 0;
+    let urgentTodayTomorrow = 0;
     activeCausesList.forEach((exp) => {
       if ((exp.estado || 'En trámite') === 'Finalizado') return;
       const pend = (Array.isArray(exp.plazos) ? exp.plazos : []).filter((p) => p && !p.completado);
       if (pend.length > 0) {
         causesWithPending += 1;
         totalPending += pend.length;
+        pend.forEach((p) => {
+          if (p.fechaVencimiento && /^\d{4}-\d{2}-\d{2}/.test(p.fechaVencimiento)) {
+            const todayIso = new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'America/Asuncion',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(new Date());
+            const [ty, tm, td] = todayIso.split('-').map(Number);
+            const [fy, fm, fd] = p.fechaVencimiento.slice(0, 10).split('-').map(Number);
+            if (ty && tm && td && fy && fm && fd) {
+              const diff = Math.round(
+                (Date.UTC(fy, fm - 1, fd) - Date.UTC(ty, tm - 1, td)) / (1000 * 60 * 60 * 24)
+              );
+              if (diff <= 1) urgentTodayTomorrow += 1;
+            }
+          }
+        });
       }
     });
-    return { causesWithPending, totalPending };
+    return { causesWithPending, totalPending, urgentTodayTomorrow };
   }, [activeCausesList]);
 
   if (!isOpen) return null;
 
-  const normalizedDraft = normalizeAbogadoWhatsAppPhone(phoneInput);
-  const isPhoneValid = normalizedDraft.length >= 8;
-  const targetPhoneForSend = normalizedDraft || savedPhone;
-  const waUrl = buildWhatsAppSelfSendUrl(targetPhoneForSend, parteText);
+  const waResolution = resolveEffectiveAbogadoWhatsapp({
+    uid,
+    workspaceId: wsId,
+    userData,
+    currentUser,
+    connectedWaPhone: detectedConnectedWa,
+    customPhoneOverride: customPhoneInput.trim() ? customPhoneInput : '',
+  });
+
+  const normalizedCustomDraft = normalizeAbogadoWhatsAppPhone(customPhoneInput);
+  const effectivePhoneForSend =
+    normalizedCustomDraft.length >= 8
+      ? normalizedCustomDraft
+      : waResolution.defaultPhone || savedCustomPhone;
+  const isPhoneValid = effectivePhoneForSend.length >= 8;
+  const waUrl = buildWhatsAppSelfSendUrl(effectivePhoneForSend, parteText);
   const causaUrl =
-    parteMode === 'general'
+    parteMode === 'general' || parteMode === 'urgente'
       ? 'https://olgatech.com.py/consola?tab=expedientes'
       : effectiveExpediente
         ? buildCausaDirectUrl(effectiveExpediente.id)
         : 'https://olgatech.com.py/consola?tab=expedientes';
 
-  const handleSavePhone = async (silent = false) => {
-    const norm = normalizeAbogadoWhatsAppPhone(phoneInput);
-    if (phoneInput.trim() && norm.length < 8) {
+  const handleToggleMasterActive = async () => {
+    if (isTogglingMaster) return;
+    const nextActivo = !scheduleDraft.recordatorioActivo;
+    setIsTogglingMaster(true);
+    setScheduleFeedback(null);
+    try {
+      const normalized = normalizeSecretariaSchedule({
+        ...scheduleDraft,
+        recordatorioActivo: nextActivo,
+        ultimoEnvioFecha: savedSchedule.ultimoEnvioFecha ?? scheduleDraft.ultimoEnvioFecha ?? null,
+      });
+      const res = await saveAbogadoSecretariaSchedule({
+        uid,
+        workspaceId: wsId,
+        schedule: normalized,
+      });
+      setScheduleDraft(res.schedule);
+      setSavedSchedule(res.schedule);
+      onScheduleSaved?.(res.schedule);
+      setScheduleFeedback(
+        nextActivo
+          ? 'Secretaría O.L.G.A. activada.'
+          : 'Secretaría O.L.G.A. pausada.'
+      );
+      window.setTimeout(() => setScheduleFeedback(null), 3000);
+    } catch {
+      setScheduleFeedback('No se pudo actualizar el estado.');
+    } finally {
+      setIsTogglingMaster(false);
+    }
+  };
+
+  const handleSaveCustomPhone = async (silent = false, forceClear = false) => {
+    const rawValue = forceClear ? '' : customPhoneInput;
+    const norm = normalizeAbogadoWhatsAppPhone(rawValue);
+    if (!forceClear && rawValue.trim() && norm.length < 8) {
       if (!silent) {
         setPhoneFeedback('Ingresa un número de WhatsApp válido (ej. 0981 123 456 o +595981123456).');
       }
@@ -270,16 +365,18 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
       const res = await saveAbogadoWhatsappSecretaria({
         uid,
         workspaceId: wsId,
-        phone: norm,
+        phone: forceClear ? '' : norm,
       });
-      setSavedPhone(res.savedPhone);
-      setPhoneInput(res.savedPhone ? formatAbogadoWhatsAppDisplay(res.savedPhone) : '');
+      setSavedCustomPhone(res.savedPhone);
+      setCustomPhoneInput(res.savedPhone ? formatAbogadoWhatsAppDisplay(res.savedPhone) : '');
       onWhatsappSaved?.(res.savedPhone);
       if (!silent) {
         setPhoneFeedback(
           res.savedPhone
-            ? `WhatsApp guardado (${formatAbogadoWhatsAppDisplay(res.savedPhone)}).`
-            : 'Número de WhatsApp eliminado.'
+            ? `Avisos configurados en: ${formatAbogadoWhatsAppDisplay(res.savedPhone)}.`
+            : waResolution.defaultPhone
+              ? `Se usará automáticamente tu número vinculado (${formatAbogadoWhatsAppDisplay(waResolution.defaultPhone)}).`
+              : 'Número alternativo eliminado.'
         );
       }
     } catch {
@@ -368,11 +465,13 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
                 Parte Secretaría O.L.G.A. — Autoenvío WhatsApp
               </h3>
               <p className="text-[11px] text-slate-400 truncate">
-                {parteMode === 'general'
-                  ? `Parte General Compacto · ${pendingGeneralSummary.causesWithPending} causa(s) con ${pendingGeneralSummary.totalPending} actuación(es) pendiente(s)`
-                  : effectiveExpediente
-                    ? `${effectiveExpediente.caratula}${effectiveExpediente.nroExpediente ? ` • Expte. ${effectiveExpediente.nroExpediente}/${effectiveExpediente.anio}` : ''}`
-                    : 'Sin causa seleccionada'}
+                {parteMode === 'urgente'
+                  ? `Foco Urgente del Día · ${pendingGeneralSummary.urgentTodayTomorrow} vencido(s)/hoy/mañana`
+                  : parteMode === 'general'
+                    ? `Parte General Compacto · ${pendingGeneralSummary.causesWithPending} causa(s) con ${pendingGeneralSummary.totalPending} actuación(es) pendiente(s)`
+                    : effectiveExpediente
+                      ? `${effectiveExpediente.caratula}${effectiveExpediente.nroExpediente ? ` • Expte. ${effectiveExpediente.nroExpediente}/${effectiveExpediente.anio}` : ''}`
+                      : 'Sin causa seleccionada'}
               </p>
             </div>
           </div>
@@ -411,56 +510,96 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
             </div>
           )}
 
-          {/* WhatsApp propio del abogado */}
-          <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/25 p-3.5 space-y-2.5">
+          {/* Llave ON/OFF + WhatsApp automático / alternativo opcional */}
+          <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/25 p-3.5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
-                  Tu WhatsApp propio para autoenvío
-                </span>
+              <div className="flex items-center gap-2.5">
+                <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                    {scheduleDraft.recordatorioActivo
+                      ? 'Secretaría O.L.G.A. Activa'
+                      : 'Secretaría O.L.G.A. Inactiva'}
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                    {effectivePhoneForSend
+                      ? savedCustomPhone
+                        ? `Avisos configurados en otro número: ${formatAbogadoWhatsAppDisplay(effectivePhoneForSend)}`
+                        : `Usando automáticamente tu número vinculado: ${formatAbogadoWhatsAppDisplay(effectivePhoneForSend)}`
+                      : 'Sin número vinculado aún: ingresa tu WhatsApp abajo para recibir avisos.'}
+                  </p>
+                </div>
               </div>
-              {savedPhone && (
-                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                  Activo: {formatAbogadoWhatsAppDisplay(savedPhone)}
-                </span>
-              )}
-            </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <input
-                type="tel"
-                value={phoneInput}
-                onChange={(e) => {
-                  setPhoneInput(e.target.value);
-                  setPhoneFeedback(null);
-                }}
-                placeholder="Ej. 0981 123 456 o +595 981 123 456"
-                className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300/80 dark:border-emerald-700/70 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-emerald-500"
-              />
               <button
                 type="button"
-                disabled={isSavingPhone}
-                onClick={() => void handleSavePhone(false)}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                role="switch"
+                aria-checked={scheduleDraft.recordatorioActivo}
+                disabled={isTogglingMaster}
+                onClick={() => void handleToggleMasterActive()}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-black transition-all cursor-pointer disabled:opacity-60 ${
+                  scheduleDraft.recordatorioActivo
+                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-xs'
+                    : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
               >
-                {isSavingPhone ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                <span>Guardar WhatsApp</span>
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    scheduleDraft.recordatorioActivo ? 'bg-white' : 'bg-slate-400'
+                  }`}
+                />
+                <span>{scheduleDraft.recordatorioActivo ? 'ON · Activa' : 'OFF · Inactiva'}</span>
               </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-emerald-900/80 dark:text-emerald-300">
+                Recibir avisos en otro número (opcional)
+              </label>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="tel"
+                  value={customPhoneInput}
+                  onChange={(e) => {
+                    setCustomPhoneInput(e.target.value);
+                    setPhoneFeedback(null);
+                  }}
+                  placeholder={
+                    waResolution.defaultPhone
+                      ? `Dejá vacío para usar tu número vinculado (${formatAbogadoWhatsAppDisplay(waResolution.defaultPhone)})`
+                      : 'Ej. 0981 123 456 o +595 981 123 456'
+                  }
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300/80 dark:border-emerald-700/70 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-emerald-500 placeholder:font-normal"
+                />
+                <button
+                  type="button"
+                  disabled={isSavingPhone}
+                  onClick={() => void handleSaveCustomPhone(false, false)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  {isSavingPhone ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>Guardar</span>
+                </button>
+                {(savedCustomPhone || customPhoneInput.trim()) && waResolution.defaultPhone && (
+                  <button
+                    type="button"
+                    disabled={isSavingPhone}
+                    onClick={() => void handleSaveCustomPhone(false, true)}
+                    className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 text-xs font-bold cursor-pointer shrink-0 hover:bg-emerald-100/60"
+                  >
+                    Usar vinculado
+                  </button>
+                )}
+              </div>
             </div>
 
             {phoneFeedback && (
               <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
                 {phoneFeedback}
-              </p>
-            )}
-            {!isPhoneValid && !phoneFeedback && (
-              <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                Guarda tu número celular una sola vez para enviarte los partes de Secretaría O.L.G.A. directo a tu WhatsApp.
               </p>
             )}
           </div>
@@ -600,35 +739,78 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
             )}
           </div>
 
-          {/* Selector de modalidad: Parte General (Todas) vs Parte Detallado (Causa individual) */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80 p-1.5 flex flex-col sm:flex-row gap-1.5">
+          {/* Selector de modalidad: Urgente del Día vs Parte General vs Parte Detallado */}
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80 p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setParteMode('urgente')}
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer text-center inline-flex items-center justify-center gap-1.5 ${
+                parteMode === 'urgente'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-red-700 dark:text-red-300 hover:bg-white/70 dark:hover:bg-slate-800/70'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>Urgente del Día (Acción)</span>
+            </button>
             <button
               type="button"
               onClick={() => setParteMode('general')}
-              className={`flex-1 px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer text-center ${
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer text-center ${
                 parteMode === 'general'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800/70'
               }`}
             >
-              Parte General Compacto (Todas las causas)
+              Parte General Compacto
             </button>
             <button
               type="button"
               disabled={!effectiveExpediente}
               onClick={() => setParteMode('detallado')}
-              className={`flex-1 px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer text-center disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer text-center disabled:opacity-40 disabled:cursor-not-allowed ${
                 parteMode === 'detallado'
                   ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800/70'
               }`}
             >
-              Parte Detallado (Causa individual)
+              Parte Detallado (Causa)
             </button>
           </div>
 
           {/* Opciones de contexto del parte */}
-          {parteMode === 'general' ? (
+          {parteMode === 'urgente' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-red-200/80 dark:border-red-800/60 bg-red-50/50 dark:bg-red-950/25 px-3.5 py-2.5 flex flex-col justify-center">
+                <span className="text-[10px] font-black uppercase tracking-wider text-red-700 dark:text-red-300">
+                  🚨 Foco Urgente del Día
+                </span>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+                  {pendingGeneralSummary.urgentTodayTomorrow > 0
+                    ? `${pendingGeneralSummary.urgentTodayTomorrow} actuación(es) vencida(s), hoy o mañana con plan QUÉ HACER / PROVEER / ENVIAR.`
+                    : 'Sin vencimientos hoy/mañana: muestra la próxima actuación prioritaria más cercana.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Franja horaria del parte</span>
+                </label>
+                <select
+                  value={horaFranja}
+                  onChange={(e) => setHoraFranja(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                >
+                  {FRANJA_OPTIONS.map((opt) => (
+                    <option key={opt.value || 'auto'} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : parteMode === 'general' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 bg-emerald-50/40 dark:bg-emerald-950/20 px-3.5 py-2.5 flex flex-col justify-center">
                 <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
@@ -728,7 +910,7 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {parteMode === 'general'
+                {parteMode === 'general' || parteMode === 'urgente'
                   ? 'Enlaces directos incluidos por cada causa en el parte'
                   : 'Enlaces incluidos en el mensaje'}
               </span>
@@ -741,7 +923,7 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
                 <span>
                   {copiedLink
                     ? 'Enlace copiado'
-                    : parteMode === 'general'
+                    : parteMode === 'general' || parteMode === 'urgente'
                       ? 'Copiar enlace del panel'
                       : 'Copiar enlace directo de la causa'}
                 </span>
@@ -832,8 +1014,8 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {
-                  if (normalizedDraft && normalizedDraft !== savedPhone) {
-                    void handleSavePhone(true);
+                  if (normalizedCustomDraft && normalizedCustomDraft !== savedCustomPhone) {
+                    void handleSaveCustomPhone(true, false);
                   }
                   void markSecretariaReminderSentToday({
                     uid,
@@ -855,7 +1037,7 @@ export const ParteSecretariaModal: React.FC<ParteSecretariaModalProps> = ({
               <button
                 type="button"
                 disabled
-                title="Ingresa y guarda tu número de WhatsApp arriba para habilitar el autoenvío"
+                title="Ingresa tu número de WhatsApp arriba para habilitar el autoenvío"
                 className="px-4 py-2 rounded-xl bg-emerald-600/40 text-white/80 text-xs font-black uppercase tracking-wider inline-flex items-center gap-1.5 cursor-not-allowed"
               >
                 <MessageCircle className="w-4 h-4" />

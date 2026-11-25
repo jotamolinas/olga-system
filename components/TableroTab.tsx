@@ -5,7 +5,7 @@ import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare, Persona, GlobalConfig, Expediente, PlazoProcesal, formatCurrencyValue } from '../types';
 import { fetchPersonasFromFirestore, normalizePersona, incrementarUsoIA } from '../services/firestore';
-import { limpiarLatexJuridico, redactarEscritoJudicialConIA } from '../services/gemini';
+import { limpiarLatexJuridico, MemoriaDocumentoEscritoPayload, redactarEscritoJudicialConIA } from '../services/gemini';
 import {
   calcDaysUntil,
   buildExpedienteDismissKeys,
@@ -43,15 +43,20 @@ import { PagaresTab } from './PagaresTab';
 import { PersonasTab } from './PersonasTab';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
 import { generatePagarePdfBase64 } from '../services/pdfExport';
-import { ParteSecretariaModal } from './ParteSecretariaModal';
+import { ParteSecretariaModal, ParteSecretariaMode } from './ParteSecretariaModal';
 import {
   DEFAULT_SECRETARIA_SCHEDULE,
+  fetchConnectedWorkspaceWhatsApp,
   findLinkedDocumentosForExpediente,
+  formatAbogadoWhatsAppDisplay,
   formatSecretariaScheduleSummary,
   LinkedDocResumen,
+  loadAbogadoCustomWhatsappSecretaria,
   loadAbogadoSecretariaSchedule,
   markSecretariaReminderPromptedSession,
+  normalizeAbogadoWhatsAppPhone,
   normalizeSecretariaSchedule,
+  resolveEffectiveAbogadoWhatsapp,
   sanitizeFrecuenciaDias,
   sanitizeHoraEnvio,
   saveAbogadoSecretariaSchedule,
@@ -851,8 +856,18 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     expediente: Expediente | null;
     plazo?: PlazoProcesal | null;
     isScheduledTrigger?: boolean;
-    mode?: 'general' | 'detallado';
+    mode?: ParteSecretariaMode;
   } | null>(null);
+  const [connectedWaPhone, setConnectedWaPhone] = useState<string>('');
+  const [customWaPhone, setCustomWaPhone] = useState<string>(() =>
+    esAbogado
+      ? loadAbogadoCustomWhatsappSecretaria(
+          auth?.currentUser?.uid || currentUser?.uid || userData?.uid,
+          userData,
+          activeWorkspaceId
+        )
+      : ''
+  );
   const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
     esAbogado
       ? loadAbogadoSecretariaSchedule(
@@ -874,6 +889,48 @@ export const TableroTab: React.FC<TableroTabProps> = ({
   const [showLegalScheduleEditor, setShowLegalScheduleEditor] = useState(false);
   const [isSavingLegalSchedule, setIsSavingLegalSchedule] = useState(false);
   const [legalScheduleFeedback, setLegalScheduleFeedback] = useState<string | null>(null);
+
+  const legalWaResolution = useMemo(
+    () =>
+      esAbogado
+        ? resolveEffectiveAbogadoWhatsapp({
+            uid: activeUid || userData?.uid,
+            workspaceId: activeWorkspaceId,
+            userData,
+            currentUser,
+            connectedWaPhone,
+            customPhoneOverride: customWaPhone,
+          })
+        : { effectivePhone: '', defaultPhone: '', customPhone: '', source: 'none' as const },
+    [esAbogado, activeUid, activeWorkspaceId, userData, currentUser, connectedWaPhone, customWaPhone]
+  );
+
+  useEffect(() => {
+    if (!esAbogado) {
+      setConnectedWaPhone('');
+      return;
+    }
+    const targetWs = activeWorkspaceId || activeUid;
+    if (!targetWs) return;
+    let active = true;
+    void fetchConnectedWorkspaceWhatsApp(targetWs).then((phone) => {
+      if (active) setConnectedWaPhone(phone);
+    });
+    return () => {
+      active = false;
+    };
+  }, [esAbogado, activeWorkspaceId, activeUid]);
+
+  useEffect(() => {
+    if (!esAbogado) return;
+    setCustomWaPhone(
+      loadAbogadoCustomWhatsappSecretaria(
+        auth?.currentUser?.uid || currentUser?.uid || userData?.uid,
+        userData,
+        activeWorkspaceId
+      )
+    );
+  }, [esAbogado, activeUid, activeWorkspaceId, userData?.whatsappSecretaria]);
 
   useEffect(() => {
     if (!esAbogado) return;
@@ -899,6 +956,11 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   useEffect(() => {
     if (!esAbogado) return;
+    const onWaUpdated = (e: any) => {
+      if (e?.detail?.phone !== undefined) {
+        setCustomWaPhone(normalizeAbogadoWhatsAppPhone(String(e.detail.phone || '')));
+      }
+    };
     const onScheduleUpdated = (e: any) => {
       if (e?.detail?.schedule) {
         const next = normalizeSecretariaSchedule(e.detail.schedule);
@@ -906,8 +968,12 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         setScheduleDraft(next);
       }
     };
+    window.addEventListener('olga_abogado_wa_updated', onWaUpdated);
     window.addEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
-    return () => window.removeEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    return () => {
+      window.removeEventListener('olga_abogado_wa_updated', onWaUpdated);
+      window.removeEventListener('olga_abogado_schedule_updated', onScheduleUpdated);
+    };
   }, [esAbogado]);
 
   const ownExpedientes = useMemo(() => {
@@ -1063,6 +1129,27 @@ export const TableroTab: React.FC<TableroTabProps> = ({
     }
   };
 
+  const handleToggleLegalSecretariaActivo = async () => {
+    if (!esAbogado) return;
+    const normalized = normalizeSecretariaSchedule({
+      ...secretariaSchedule,
+      recordatorioActivo: !secretariaSchedule.recordatorioActivo,
+    });
+    setSecretariaSchedule(normalized);
+    setScheduleDraft(normalized);
+    const res = await saveAbogadoSecretariaSchedule({
+      uid: activeUid || userData?.uid,
+      workspaceId: activeWorkspaceId,
+      schedule: normalized,
+    });
+    setSecretariaSchedule(res.schedule);
+    setScheduleDraft(res.schedule);
+    setLegalScheduleFeedback(
+      res.schedule.recordatorioActivo ? 'Secretaría O.L.G.A. activada.' : 'Secretaría O.L.G.A. pausada.'
+    );
+    window.setTimeout(() => setLegalScheduleFeedback(null), 3000);
+  };
+
   const completedLegalDeadlines = useMemo(() => {
     const list: Array<{ expediente: Expediente; plazo: PlazoProcesal }> = [];
     ownExpedientes.forEach((exp) => {
@@ -1138,6 +1225,47 @@ export const TableroTab: React.FC<TableroTabProps> = ({
       const estudioLabel =
         String(userData?.razonSocial || userData?.nombreInstitucion || userData?.nombre || workspaceName || '').trim() ||
         'Estudio Jurídico';
+      const memoriaDocumentos: MemoriaDocumentoEscritoPayload[] | undefined = esAbogado
+        ? (() => {
+            const memList: MemoriaDocumentoEscritoPayload[] = [];
+            if (Array.isArray(exp.historialDocumentos) && exp.historialDocumentos.length > 0) {
+              exp.historialDocumentos.forEach((docMem) => {
+                memList.push({
+                  titulo: docMem.archivoNombre || docMem.tipoActo,
+                  fecha: docMem.analizadoAt,
+                  parteOrigen: docMem.parteOrigen,
+                  resumen: docMem.resumenHechos,
+                  fundamentoCPC: docMem.fundamentoCPC,
+                });
+              });
+            } else if (exp.ultimoAnalisisIA?.resumenHechos) {
+              memList.push({
+                titulo: exp.ultimoAnalisisIA.archivoNombre || exp.ultimoAnalisisIA.plazoPrincipal?.titulo || 'Documento analizado',
+                fecha: exp.ultimoAnalisisIA.analizadoAt,
+                parteOrigen: 'General',
+                resumen: exp.ultimoAnalisisIA.resumenHechos,
+                fundamentoCPC: exp.ultimoAnalisisIA.fundamentoCPC,
+              });
+            }
+            const linked = findLinkedDocumentosForExpediente(
+              exp,
+              (Array.isArray(escritos) ? escritos : []) as LinkedDocResumen[]
+            );
+            linked.forEach((ld) => {
+              const snippet = String(ld.texto || '').trim();
+              if (!snippet) return;
+              memList.push({
+                titulo: ld.tipo || ld.categoria || 'Escrito vinculado',
+                fecha: ld.createdAt,
+                parteOrigen: 'Propia',
+                resumen: `Escrito/documento previo de nuestra parte (${ld.categoria || 'Expedientes'})`,
+                extracto: snippet.slice(0, 500),
+              });
+            });
+            return memList.length > 0 ? memList : undefined;
+          })()
+        : undefined;
+
       const rawDraftText = await redactarEscritoJudicialConIA({
         expediente: exp,
         modo: 'impulso',
@@ -1154,6 +1282,7 @@ export const TableroTab: React.FC<TableroTabProps> = ({
         instruccionesAdicionales:
           'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Adapta cualquier denominación de juzgado o término procesal a la jurisdicción paraguaya vigente.',
         esAbogado,
+        memoriaDocumentos,
       });
       const draftText = esAbogado ? limpiarLatexJuridico(rawDraftText) : rawDraftText;
       const tituloModal = esAbogado
@@ -1369,6 +1498,22 @@ export const TableroTab: React.FC<TableroTabProps> = ({
                       expediente: upcomingLegalDeadlines[0]?.expediente || activeLegalExpedientes[0] || null,
                       plazo: upcomingLegalDeadlines[0]?.plazo || null,
                       isScheduledTrigger: false,
+                      mode: 'urgente',
+                    })
+                  }
+                  className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  title="Ver alerta Foco Urgente del Día (qué hacer, qué proveer y qué presentar)"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>🚨 Urgente del Día</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setParteModalTarget({
+                      expediente: upcomingLegalDeadlines[0]?.expediente || activeLegalExpedientes[0] || null,
+                      plazo: upcomingLegalDeadlines[0]?.plazo || null,
+                      isScheduledTrigger: false,
                       mode: 'general',
                     })
                   }
@@ -1415,9 +1560,32 @@ export const TableroTab: React.FC<TableroTabProps> = ({
             </div>
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-[11px]">
-              <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200 font-semibold">
+              <div className="flex flex-wrap items-center gap-2 text-emerald-900 dark:text-emerald-200 font-semibold">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={secretariaSchedule.recordatorioActivo}
+                  onClick={() => void handleToggleLegalSecretariaActivo()}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-colors cursor-pointer ${
+                    secretariaSchedule.recordatorioActivo
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      secretariaSchedule.recordatorioActivo ? 'bg-white' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>{secretariaSchedule.recordatorioActivo ? 'ON • Activa' : 'OFF • Inactiva'}</span>
+                </button>
                 <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>Secretaría O.L.G.A.: {formatSecretariaScheduleSummary(secretariaSchedule)}</span>
+                {legalWaResolution.effectivePhone && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/80 dark:bg-slate-900/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    {formatAbogadoWhatsAppDisplay(legalWaResolution.effectivePhone)}
+                  </span>
+                )}
               </div>
               {legalScheduleFeedback && (
                 <span className="font-bold text-emerald-700 dark:text-emerald-300">
@@ -2835,7 +3003,9 @@ export const TableroTab: React.FC<TableroTabProps> = ({
           userData={userData}
           currentUser={currentUser}
           workspaceId={activeWorkspaceId || activeUid}
+          connectedWaPhone={connectedWaPhone}
           isScheduledTrigger={Boolean(parteModalTarget.isScheduledTrigger)}
+          onWhatsappSaved={(saved) => setCustomWaPhone(saved)}
           onScheduleSaved={(saved) => {
             setSecretariaSchedule(saved);
             setScheduleDraft(saved);

@@ -1557,6 +1557,7 @@ INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal
       plazoObjetivo?: Record<string, unknown>;
       estudio?: Record<string, unknown>;
       instruccionesAdicionales?: unknown;
+      memoriaDocumentos?: unknown;
       esAbogado?: unknown;
     };
 
@@ -1609,6 +1610,69 @@ INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal
     const resumenHechos = ultimoAnalisis?.resumenHechos ? String(ultimoAnalisis.resumenHechos).slice(0, 6000) : '';
     const fundamentoCPC = ultimoAnalisis?.fundamentoCPC ? String(ultimoAnalisis.fundamentoCPC).slice(0, 2000) : '';
 
+    // Memoria acumulada del expediente (EXCLUSIVO ABOGADOS)
+    let memoriaAcumuladaBloque = '';
+    if (esAbogado) {
+      const memoriaItems: string[] = [];
+      const seenKeys = new Set<string>();
+      const pushMem = (
+        titulo: string,
+        origen: string,
+        fecha: string,
+        resumen: string,
+        fundamento: string,
+        extracto: string
+      ) => {
+        const cleanTitle = titulo.trim() || 'Documento del expediente';
+        const cleanBody = (resumen || extracto || '').trim();
+        if (!cleanBody) return;
+        const dedupKey = `${cleanTitle.toLowerCase()}::${cleanBody.slice(0, 80).toLowerCase()}`;
+        if (seenKeys.has(dedupKey)) return;
+        seenKeys.add(dedupKey);
+        const metaParts = [origen ? `Origen: ${origen}` : '', fecha ? `Fecha: ${fecha.slice(0, 10)}` : '']
+          .filter(Boolean)
+          .join(' | ');
+        const lines = [
+          `[Doc ${memoriaItems.length + 1}] ${cleanTitle}${metaParts ? ` (${metaParts})` : ''}`,
+          cleanBody.slice(0, 1600),
+          fundamento ? `Base/CPC: ${fundamento.slice(0, 400)}` : '',
+        ].filter(Boolean);
+        memoriaItems.push(lines.join('\n'));
+      };
+
+      const bodyMemList = Array.isArray(body?.memoriaDocumentos) ? body.memoriaDocumentos : [];
+      bodyMemList.forEach((m: any) => {
+        if (!m || typeof m !== 'object') return;
+        pushMem(
+          String(m.titulo || m.archivoNombre || ''),
+          String(m.parteOrigen || 'General'),
+          String(m.fecha || m.analizadoAt || ''),
+          String(m.resumen || m.resumenHechos || ''),
+          String(m.fundamentoCPC || ''),
+          String(m.extracto || '')
+        );
+      });
+
+      const expHistorial = Array.isArray(expediente.historialDocumentos)
+        ? expediente.historialDocumentos
+        : [];
+      expHistorial.forEach((h: any) => {
+        if (!h || typeof h !== 'object') return;
+        pushMem(
+          String(h.archivoNombre || h.tipoActo || ''),
+          String(h.parteOrigen || 'General'),
+          String(h.analizadoAt || ''),
+          String(h.resumenHechos || ''),
+          String(h.fundamentoCPC || ''),
+          ''
+        );
+      });
+
+      if (memoriaItems.length > 0) {
+        memoriaAcumuladaBloque = memoriaItems.join('\n\n---\n\n').slice(0, 11000);
+      }
+    }
+
     const nombreEstudio = String(estudio?.razonSocial || estudio?.nombre || '[ESTUDIO JURÍDICO / ABOGADO PATROCINANTE]').trim();
     const matricula = String(estudio?.matricula || '[MATRÍCULA CSJ N.º ____]').trim();
     const ciudad = String(estudio?.ciudad || 'Asunción').trim();
@@ -1617,7 +1681,7 @@ INSTRUCCIONES DE ANÁLISIS PROCESAL PARAGUAYO (Ley N° 1.337/88 Código Procesal
     const objetivoVenc = plazoObjetivo?.fechaVencimiento ? String(plazoObjetivo.fechaVencimiento).trim() : '';
 
     const formatoAbogadoExtra = esAbogado
-      ? `\n- PROHIBIDO usar sintaxis LaTeX o delimitadores "$" como "$N^{\circ}$" (escribe siempre "N.º" o "N°" en texto plano).\n- Redacta el título, el encabezado "OBJETO: ..." y la carátula completos, sin recortes ni abreviaturas abruptas.`
+      ? `\n- PROHIBIDO usar sintaxis LaTeX o delimitadores "$" como "$N^{\circ}$" (escribe siempre "N.º" o "N°" en texto plano).\n- Redacta el título, el encabezado "OBJETO: ..." y la carátula completos, sin recortes ni abreviaturas abruptas.\n- REGLA DE MEMORIA ACUMULADA Y DIFERENCIACIÓN DE PARTES: Si existe historial acumulado del expediente, integra todos los documentos y actuaciones previas sin ignorar constancias anteriores. Identifica y diferencia expresamente QUÉ ALEGÓ, RECLAMÓ u OFRECIÓ LA PARTE ADVERSA frente a QUÉ ALEGÓ, NEGÓ u OFRECIÓ NUESTRA PARTE (${rolParte}), evitando contradicciones con escritos o pruebas ya incorporadas al expediente.`
       : '';
 
     const promptText =
@@ -1634,8 +1698,9 @@ DATOS DEL EXPEDIENTE:
 - Cliente / Mandante: ${clienteNombre}
 - Abogado / Estudio Jurídico: ${nombreEstudio} (Matrícula CSJ: ${matricula})
 - Ciudad y Fecha de referencia en Paraguay: ${ciudad}, ${fechaHoyParaguay}
-${resumenHechos ? `- Resumen de hechos y análisis de la demanda:\n${resumenHechos}` : ''}
+${resumenHechos ? `- Último análisis / documento reciente:\n${resumenHechos}` : ''}
 ${fundamentoCPC ? `- Fundamento CPC detectado:\n${fundamentoCPC}` : ''}
+${memoriaAcumuladaBloque ? `\nMEMORIA ACUMULADA DEL EXPEDIENTE (TODOS LOS DOCUMENTOS Y ACTUACIONES ANALIZADAS/VINCULADAS):\n${memoriaAcumuladaBloque}` : ''}
 ${notas ? `- Notas adicionales del estudio:\n${notas}` : ''}
 
 ESTRUCTURA OBLIGATORIA PARAGUAYA:
@@ -1667,7 +1732,8 @@ DATOS DEL EXPEDIENTE:
 - Abogado / Estudio Jurídico: ${nombreEstudio} (Matrícula CSJ: ${matricula})
 - Ciudad y Fecha de referencia en Paraguay: ${ciudad}, ${fechaHoyParaguay}
 - ACTUACIÓN / IMPULSO ESPECÍFICO A SOLICITAR: "${objetivoTitulo || 'Urge trámite procesal / Solicita prosecución de la causa'}"${objetivoVenc ? ` (Fecha límite de referencia: ${objetivoVenc})` : ''}
-${resumenHechos ? `- Contexto de la causa:\n${resumenHechos}` : ''}
+${resumenHechos ? `- Último análisis / contexto reciente:\n${resumenHechos}` : ''}
+${memoriaAcumuladaBloque ? `\nMEMORIA ACUMULADA DEL EXPEDIENTE (TODOS LOS DOCUMENTOS Y ACTUACIONES ANALIZADAS/VINCULADAS):\n${memoriaAcumuladaBloque}` : ''}
 ${notas ? `- Notas adicionales del estudio:\n${notas}` : ''}
 
 ESTRUCTURA OBLIGATORIA PARAGUAYA:
@@ -1694,8 +1760,8 @@ ${instruccionesAdicionales ? `- Indicaciones específicas del caso: ${instruccio
           contents: [{ role: 'user', parts: [{ text: promptText }] }],
           config: {
             systemInstruction: esAbogado
-              ? 'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables con ortografía estricta en español y adaptados al Poder Judicial del Paraguay (Juzgados de Primera Instancia y Juzgados de Paz). Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;), bloques de código markdown (```), o sintaxis LaTeX como $N^{\\circ}$ (usa siempre "N.º"). Entrega únicamente el texto completo del escrito judicial listo para editar e imprimir, sin cortar títulos.'
-              : 'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables con ortografía estricta en español y adaptados al Poder Judicial del Paraguay (Juzgados de Primera Instancia y Juzgados de Paz). Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;) o bloques de código markdown (```). Entrega únicamente el texto del escrito judicial listo para editar e imprimir.',
+              ? 'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables con ortografía estricta en español y adaptados al Poder Judicial del Paraguay (Juzgados de Primera Instancia y Juzgados de Paz). Aprovechas toda la memoria acumulada del expediente diferenciando lo alegado/ofrecido por la parte adversa frente a nuestra parte. Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;), bloques de código markdown (```), o sintaxis LaTeX como $N^{\\circ}$ (usa siempre "N.º"). Entrega únicamente el texto completo del escrito judicial listo para editar e imprimir, sin cortar títulos.'
+              : 'Eres O.L.G.A., abogada litigante senior de la República del Paraguay. Redactas escritos judiciales impecables con ortografía estricta en español y adaptados al Poder Judicial del Paraguay (Juzgados de Primera Instancia y Juzgados de Paz). Prohibido usar etiquetas HTML (<br>, <p>, <div>, &nbsp;) o bloques de código markdown (```). Entrega únicamente el texto completo del escrito judicial listo para editar e imprimir.',
             maxOutputTokens: esAbogado ? 8192 : 4096,
             ...(model === 'gemini-4-hydrogen'
               ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }

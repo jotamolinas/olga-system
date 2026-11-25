@@ -47,3 +47,11 @@ try {
   console.error('[Initialization Fatal Error] Exception thrown during React mounting:', initError);
 }
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[PWA] Service worker registration skipped:', err);
+    });
+  });
+}
+

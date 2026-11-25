@@ -70,7 +70,53 @@ export const formatAbogadoWhatsAppDisplay = (raw?: string | null): string => {
   return `+${digits}`;
 };
 
-export const loadAbogadoWhatsappSecretaria = (
+export const fetchConnectedWorkspaceWhatsApp = async (
+  workspaceId?: string | null
+): Promise<string> => {
+  const ws = String(workspaceId || '').trim();
+  if (!ws || !/^[a-zA-Z0-9_-]{4,128}$/.test(ws)) return '';
+  const currentUser = auth?.currentUser;
+  if (!currentUser) return '';
+  try {
+    const token = await currentUser.getIdToken();
+    const res = await fetch(`/api/whatsapp/status/${encodeURIComponent(ws)}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    if (data?.status === 'connected' && data?.phone) {
+      return normalizeAbogadoWhatsAppPhone(String(data.phone));
+    }
+    return '';
+  } catch {
+    return '';
+  }
+};
+
+export const resolveDefaultAbogadoPhone = (params: {
+  connectedWaPhone?: string | null;
+  userData?: any;
+  currentUser?: any;
+}): string => {
+  const candidates = [
+    params.connectedWaPhone,
+    params.userData?.whatsappConnectedPhone,
+    params.userData?.whatsappPhone,
+    params.userData?.telefono,
+    params.userData?.phoneNumber,
+    params.currentUser?.phoneNumber,
+  ];
+  for (const cand of candidates) {
+    const norm = normalizeAbogadoWhatsAppPhone(cand ? String(cand) : '');
+    if (norm.length >= 8) return norm;
+  }
+  return '';
+};
+
+export const loadAbogadoCustomWhatsappSecretaria = (
   uid?: string | null,
   userData?: any,
   workspaceId?: string | null
@@ -84,20 +130,80 @@ export const loadAbogadoWhatsappSecretaria = (
       const cleared = localStorage.getItem(`${STORAGE_WA_CLEARED_PREFIX}${keyId}`) === '1';
       const stored = localStorage.getItem(`${STORAGE_WA_PREFIX}${keyId}`);
       if (stored && stored.trim()) {
-        return stored.trim();
+        return normalizeAbogadoWhatsAppPhone(stored.trim());
       }
       if (cleared) {
-        return String(userData?.whatsappSecretaria || '').trim();
+        return normalizeAbogadoWhatsAppPhone(String(userData?.whatsappSecretaria || '').trim());
       }
     } catch {
       // Ignorar errores de almacenamiento
     }
   }
 
-  const explicitWa = String(userData?.whatsappSecretaria || '').trim();
-  if (explicitWa) return explicitWa;
+  return normalizeAbogadoWhatsAppPhone(String(userData?.whatsappSecretaria || '').trim());
+};
 
-  return String(userData?.telefono || userData?.phoneNumber || '').trim();
+export const loadAbogadoWhatsappSecretaria = (
+  uid?: string | null,
+  userData?: any,
+  workspaceId?: string | null,
+  connectedWaPhone?: string | null,
+  currentUser?: any
+): string => {
+  const custom = loadAbogadoCustomWhatsappSecretaria(uid, userData, workspaceId);
+  if (custom) return custom;
+  return resolveDefaultAbogadoPhone({ connectedWaPhone, userData, currentUser });
+};
+
+export interface EffectiveAbogadoWhatsappResolution {
+  effectivePhone: string;
+  defaultPhone: string;
+  customPhone: string;
+  source: 'custom' | 'connected' | 'profile' | 'none';
+}
+
+export const resolveEffectiveAbogadoWhatsapp = (params: {
+  uid?: string | null;
+  workspaceId?: string | null;
+  userData?: any;
+  currentUser?: any;
+  connectedWaPhone?: string | null;
+  customPhoneOverride?: string | null;
+}): EffectiveAbogadoWhatsappResolution => {
+  const customPhone =
+    params.customPhoneOverride !== undefined
+      ? normalizeAbogadoWhatsAppPhone(params.customPhoneOverride)
+      : loadAbogadoCustomWhatsappSecretaria(params.uid, params.userData, params.workspaceId);
+
+  const connectedNorm = normalizeAbogadoWhatsAppPhone(params.connectedWaPhone);
+  const defaultPhone = resolveDefaultAbogadoPhone({
+    connectedWaPhone: connectedNorm,
+    userData: params.userData,
+    currentUser: params.currentUser,
+  });
+
+  if (customPhone && customPhone.length >= 8) {
+    return {
+      effectivePhone: customPhone,
+      defaultPhone,
+      customPhone,
+      source: 'custom',
+    };
+  }
+  if (defaultPhone) {
+    return {
+      effectivePhone: defaultPhone,
+      defaultPhone,
+      customPhone: '',
+      source: connectedNorm && connectedNorm === defaultPhone ? 'connected' : 'profile',
+    };
+  }
+  return {
+    effectivePhone: '',
+    defaultPhone: '',
+    customPhone: '',
+    source: 'none',
+  };
 };
 
 export const saveAbogadoWhatsappSecretaria = async (params: {
@@ -884,6 +990,7 @@ export interface BuildParteGeneralSecretariaParams {
   userData?: any;
   currentUser?: any;
   horaFranja?: string;
+  includeUrgentPrefix?: boolean;
 }
 
 const formatCompactDateShort = (isoDate?: string): string => {
@@ -899,8 +1006,224 @@ const formatCompactUrgencyLabel = (dias: number | null): string => {
     return `VENCIDO hace ${abs} día${abs === 1 ? '' : 's'}`;
   }
   if (dias === 0) return 'VENCE HOY';
-  if (dias === 1) return 'Mañana';
+  if (dias === 1) return 'VENCE MAÑANA';
   return `En ${dias} días`;
+};
+
+export interface UrgentActionPlan {
+  queHacer: string;
+  queProveerConseguir: string;
+  queEnviarPresentar: string;
+}
+
+export const buildActionPlanForPlazo = (
+  exp: Expediente,
+  plazo?: PlazoProcesal | null
+): UrgentActionPlan => {
+  const tituloRaw = String(plazo?.titulo || '').trim();
+  const tituloLow = tituloRaw.toLowerCase();
+  const tipoJuicio = String(exp?.tipoJuicio || 'Ordinario').trim();
+  const rolParte = String(exp?.rolParte || 'Demandado').trim();
+  const fundamento = String(exp?.ultimoAnalisisIA?.fundamentoCPC || '').trim();
+
+  if (/contest|excepci[oó]n|traslado|oponer/i.test(tituloLow)) {
+    return {
+      queHacer: `Redactar y presentar ${tituloRaw || 'contestación de demanda / oposición de excepciones'} antes del cierre del plazo (${tipoJuicio}, rol ${rolParte}).`,
+      queProveerConseguir: `Copia íntegra de la cédula/demanda en Judisoft, poder/patrocinio vigente, pruebas documentales de descargo y boleta de tasa judicial (si corresponde).`,
+      queEnviarPresentar: `Escrito de Contestación / Oposición de Excepciones generado en O.L.G.A. y presentado electrónicamente en Judisoft.${fundamento ? ` Base: ${fundamento}.` : ''}`,
+    };
+  }
+
+  if (/prueba|ofrec|diligenci|audiencia|pericia|testig|informe|oficio/i.test(tituloLow)) {
+    return {
+      queHacer: `Ejecutar "${tituloRaw || 'ofrecimiento / diligenciamiento de pruebas'}" y controlar constancias en el expediente electrónico.`,
+      queProveerConseguir: `Documentales originales o copias autenticadas, nómina de testigos/puntos de pericia, oficios firmados o comprobante de tasa de diligenciamiento.`,
+      queEnviarPresentar: `Escrito de Ofrecimiento / Urgimiento Probatorio o agregación de diligencias en O.L.G.A. y carga en Judisoft.`,
+    };
+  }
+
+  if (/alegat/i.test(tituloLow)) {
+    return {
+      queHacer: `Elaborar y presentar alegatos de bien probado (${tipoJuicio}) valorando las pruebas producidas a favor del cliente.`,
+      queProveerConseguir: `Constancia de cierre del período probatorio, actas de audiencias, oficios contestados y liquidación/cálculo actualizado si aplica.`,
+      queEnviarPresentar: `Escrito de Alegatos de Bien Probado generado en O.L.G.A. y presentado vía Judisoft.`,
+    };
+  }
+
+  if (/c[eé]dula|notific|mandamiento|intimaci[oó]n|embargo|secuestro/i.test(tituloLow)) {
+    return {
+      queHacer: `Gestionar "${tituloRaw}" (librar/retirar cédula o mandamiento y coordinar diligenciamiento con Oficial de Justicia).`,
+      queProveerConseguir: `Copias para traslado, domicilio real/procesal verificado, tasa judicial y arancel/movilidad de Oficial de Justicia.`,
+      queEnviarPresentar: `Pedido de libramiento o escrito agregando cédula/mandamiento diligenciado en Judisoft.`,
+    };
+  }
+
+  if (/recurso|reposici[oó]n|apelaci[oó]n|aclaratoria|nulidad|memorial/i.test(tituloLow)) {
+    return {
+      queHacer: `Interponer o fundar "${tituloRaw}" de forma inmediata dentro del plazo perentorio.`,
+      queProveerConseguir: `Resolución/providencia impugnada, fecha exacta de notificación electrónica y agravios técnicos concretos.`,
+      queEnviarPresentar: `Escrito de Recurso / Memorial de Agravios generado en O.L.G.A. y presentado en Judisoft.`,
+    };
+  }
+
+  if (/sentencia|autos|resolver|resoluci[oó]n|urgir/i.test(tituloLow)) {
+    return {
+      queHacer: `Presentar "${tituloRaw || 'urgimiento de resolución / autos para sentencia'}" para destrabar el despacho judicial.`,
+      queProveerConseguir: `Verificar en Judisoft que no queden traslados, cédulas ni oficios pendientes de agregación.`,
+      queEnviarPresentar: `Escrito de Impulso / Pedido de Resolución o Autos para Sentencia generado en O.L.G.A. y subido a Judisoft.`,
+    };
+  }
+
+  return {
+    queHacer: tituloRaw
+      ? `Atender "${tituloRaw}" (${plazo?.tipo === 'impulso' ? 'impulso procesal' : 'plazo legal'}) y controlar movimientos hoy en Judisoft.`
+      : `Revisar estado "${exp.estado || 'En trámite'}" en Judisoft y definir el próximo impulso procesal.`,
+    queProveerConseguir: `Últimas providencias/cédulas en Judisoft, tasas judiciales aplicables y respaldos documentales del cliente (${exp.clienteNombre || rolParte}).`,
+    queEnviarPresentar: `Escrito de impulso o presentación correspondiente generada en O.L.G.A. y cargada en Judisoft.${fundamento ? ` Base: ${fundamento}.` : ''}`,
+  };
+};
+
+interface PendingActionEntry {
+  expediente: Expediente;
+  plazo: PlazoProcesal;
+  diasRestantes: number | null;
+}
+
+const collectSortedPendingActions = (expedientes: Expediente[]): PendingActionEntry[] => {
+  const activeCauses = (Array.isArray(expedientes) ? expedientes : []).filter(
+    (exp) =>
+      exp &&
+      exp.id &&
+      exp.anulado !== true &&
+      exp.eliminado !== true &&
+      (exp.estado || 'En trámite') !== 'Finalizado'
+  );
+
+  const items: PendingActionEntry[] = [];
+  activeCauses.forEach((exp) => {
+    (Array.isArray(exp.plazos) ? exp.plazos : []).forEach((plazo) => {
+      if (!plazo || plazo.completado === true) return;
+      items.push({
+        expediente: exp,
+        plazo,
+        diasRestantes: calcDaysUntilLocal(plazo.fechaVencimiento),
+      });
+    });
+  });
+
+  items.sort((a, b) => (a.diasRestantes ?? 9999) - (b.diasRestantes ?? 9999));
+  return items;
+};
+
+const formatUrgentActionBlockLines = (item: PendingActionEntry): string[] => {
+  const { expediente, plazo, diasRestantes } = item;
+  const urgLabel = formatCompactUrgencyLabel(diasRestantes);
+  const fechaTxt = formatCompactDateShort(plazo.fechaVencimiento);
+  const nroTxt = expediente.nroExpediente
+    ? `Expte. N.º ${expediente.nroExpediente}${expediente.anio ? `/${expediente.anio}` : ''}`
+    : 'Expte. S/N';
+  const plan = buildActionPlanForPlazo(expediente, plazo);
+  const link = buildCausaDirectUrl(expediente.id);
+
+  return [
+    `• *${urgLabel}* (${fechaTxt}) — *${expediente.caratula || 'Expediente sin carátula'}* (${nroTxt})`,
+    `  *QUÉ HACER:* ${plan.queHacer}`,
+    `  *QUÉ PROVEER / CONSEGUIR:* ${plan.queProveerConseguir}`,
+    `  *QUÉ ENVIAR / PRESENTAR:* ${plan.queEnviarPresentar}`,
+    `  *Enlace directo:* ${link}`,
+  ];
+};
+
+export const buildUrgentPrefixLinesForGeneral = (
+  expedientes: Expediente[],
+  maxItems: number = 4
+): string[] => {
+  const pending = collectSortedPendingActions(expedientes);
+  const urgentTodayTomorrow = pending.filter(
+    (item) => item.diasRestantes !== null && item.diasRestantes <= 1
+  );
+  if (urgentTodayTomorrow.length === 0) return [];
+
+  const sliced = urgentTodayTomorrow.slice(0, maxItems);
+  const lines: string[] = [
+    `🚨 *FOCO URGENTE DEL DÍA (Vencidos / Hoy / Mañana)*`,
+  ];
+  sliced.forEach((item) => {
+    lines.push(...formatUrgentActionBlockLines(item));
+  });
+  if (urgentTodayTomorrow.length > maxItems) {
+    lines.push(
+      `  _(+${urgentTodayTomorrow.length - maxItems} actuación(es) urgente(s) adicional(es) en el listado inferior)_`
+    );
+  }
+  return lines;
+};
+
+export const buildSecretariaOlgaUrgenteDia = ({
+  expedientes,
+  userData,
+  currentUser,
+  horaFranja,
+}: BuildParteGeneralSecretariaParams): string => {
+  const activeCauses = (Array.isArray(expedientes) ? expedientes : []).filter(
+    (exp) =>
+      exp &&
+      exp.id &&
+      exp.anulado !== true &&
+      exp.eliminado !== true &&
+      (exp.estado || 'En trámite') !== 'Finalizado'
+  );
+  const allPending = collectSortedPendingActions(expedientes);
+  const urgentOnly = allPending.filter(
+    (item) => item.diasRestantes !== null && item.diasRestantes <= 1
+  );
+
+  const { fechaStr: hoyAsuncionStr, horaStr: horaActualStr } = getAsuncionNowDateTime();
+  const franjaLabel = (horaFranja && horaFranja.trim()) || `${horaActualStr} hs`;
+  const abogadoNombre = String(
+    userData?.nombreTitular ||
+      userData?.nombre ||
+      userData?.razonSocial ||
+      userData?.nombreInstitucion ||
+      currentUser?.displayName ||
+      currentUser?.email?.split('@')[0] ||
+      ''
+  ).trim();
+
+  const lines: string[] = [
+    `🚨 *FOCO URGENTE DEL DÍA — SECRETARÍA O.L.G.A.*`,
+    `*Fecha:* ${hoyAsuncionStr} · ${franjaLabel}${abogadoNombre ? ` · *${abogadoNombre}*` : ''}`,
+    `🔎 *Judisoft:* Revisá *Judisoft* antes del cierre de despacho por cédulas o providencias nuevas y cargalas en *O.L.G.A.*`,
+  ];
+
+  if (allPending.length === 0) {
+    lines.push(
+      ``,
+      `✅ No hay plazos vencidos ni actuaciones pendientes para hoy (${activeCauses.length} causa${activeCauses.length === 1 ? '' : 's'} activa${activeCauses.length === 1 ? '' : 's'}).`,
+      `🔗 Panel de Expedientes: https://olgatech.com.py/consola?tab=expedientes`
+    );
+    return lines.join('\n');
+  }
+
+  if (urgentOnly.length > 0) {
+    lines.push(
+      `*Prioridad inmediata:* ${urgentOnly.length} actuación(es) vencida(s) o con vencimiento hoy/mañana:`,
+      ``
+    );
+    urgentOnly.forEach((item, idx) => {
+      if (idx > 0) lines.push(``);
+      lines.push(...formatUrgentActionBlockLines(item));
+    });
+    return lines.join('\n');
+  }
+
+  const nearest = allPending[0];
+  lines.push(
+    `*Sin vencimientos hoy/mañana.* Próxima actuación prioritaria más cercana:`,
+    ``,
+    ...formatUrgentActionBlockLines(nearest)
+  );
+  return lines.join('\n');
 };
 
 export const buildSecretariaOlgaParteGeneral = ({
@@ -908,6 +1231,7 @@ export const buildSecretariaOlgaParteGeneral = ({
   userData,
   currentUser,
   horaFranja,
+  includeUrgentPrefix = true,
 }: BuildParteGeneralSecretariaParams): string => {
   const activeCauses = (Array.isArray(expedientes) ? expedientes : []).filter(
     (exp) =>
@@ -1007,13 +1331,22 @@ export const buildSecretariaOlgaParteGeneral = ({
     ];
   };
 
-  const lines: string[] = [
+  const urgentPrefixLines = includeUrgentPrefix
+    ? buildUrgentPrefixLinesForGeneral(expedientes)
+    : [];
+
+  const lines: string[] = [];
+  if (urgentPrefixLines.length > 0) {
+    lines.push(...urgentPrefixLines, ``);
+  }
+
+  lines.push(
     `📋 *PARTE GENERAL — SECRETARÍA O.L.G.A.*`,
     `*Fecha:* ${hoyAsuncionStr} · ${franjaLabel}${abogadoNombre ? ` · *${abogadoNombre}*` : ''}`,
     `*Resumen:* ${totalHoy} vencen hoy${totalVencidos > 0 ? ` (${totalVencidos} vencido${totalVencidos === 1 ? '' : 's'})` : ''} | ${totalCriticos} críticos (≤3d) | ${totalProximos} próximos (4–7d) · *${entries.length} causa${entries.length === 1 ? '' : 's'} con pendientes*`,
     `🔎 *Judisoft:* Revisá *Judisoft* por si entraron nuevas cédulas o providencias y cargalas en *O.L.G.A.*`,
     `📲 Ingresá al sistema desde cada enlace para ver el *plan de acción completo*.`,
-  ];
+  );
 
   if (entries.length === 0) {
     lines.push(

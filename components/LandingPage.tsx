@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  FileText, Search, ShieldCheck, ChevronDown, Check, Zap, Scale, 
-  ArrowRight, Users, MessageSquare, Activity, Settings, Building, 
-  Car, Briefcase, Home, Bot, Target, Stamp, Calculator, Sparkles, 
-  Printer, CheckCircle2, Star, Shield, HelpCircle, Layers, FileCheck,
-  ChevronRight, Landmark, ExternalLink, BookOpen
+import {
+  FileText, Search, ShieldCheck, ChevronDown, Check, Scale,
+  ArrowRight, Users, MessageSquare, Building2, Car, Briefcase,
+  Bot, Target, Stamp, Calculator, Sparkles, Printer,
+  HelpCircle, ChevronRight, BookOpen, AlertCircle, CheckCircle2,
+  Smartphone, FolderKanban, Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth } from '../services/auth';
@@ -13,23 +13,151 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { Testimonials } from './Testimonials';
 import { RECURSOS_ARTICLES } from '../data/recursosData';
 import { SocialShareBar } from './SocialShareBar';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { PWAInstallButton, PWAInstallGuideModal } from './PWAInstallBanner';
 
 const Logo: React.FC<{ darkTheme?: boolean }> = ({ darkTheme = false }) => (
-  <div className="flex items-center gap-4">
-    <div className="flex flex-col items-center justify-center gap-1">
-      <svg width="48" height="28" viewBox="0 0 115 65" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-xs shrink-0">
-        <path d="M2 55H21V28H35V55H49V2H63V55H77V13H91V55H113" stroke="#FF3131" strokeWidth="8" strokeLinejoin="miter" strokeLinecap="butt"/>
-      </svg>
-      <span className={`font-bold tracking-widest leading-none whitespace-nowrap text-lg ${darkTheme ? 'text-white' : 'text-slate-900'}`} style={{ fontFamily: '"Courier Prime", monospace' }}>
-        O.L.G.A
-      </span>
-    </div>
-    <div className={`h-10 w-px ${darkTheme ? 'bg-slate-800' : 'bg-slate-200'} hidden sm:block`}></div>
-    <span className={`font-semibold tracking-[0.06em] leading-tight text-xs uppercase hidden sm:block ${darkTheme ? 'text-slate-400' : 'text-slate-500'}`} style={{ fontFamily: '"Courier Prime", monospace' }}>
-      Organización • Legalización<br/>Gestión • Administración
+  <div className="flex items-center gap-3 shrink-0">
+    <svg width="44" height="26" viewBox="0 0 115 65" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <path d="M2 55H21V28H35V55H49V2H63V55H77V13H91V55H113" stroke="#FF3131" strokeWidth="8" strokeLinejoin="miter" strokeLinecap="butt"/>
+    </svg>
+    <span
+      className={`font-bold tracking-widest leading-none whitespace-nowrap text-lg ${darkTheme ? 'text-white' : 'text-slate-900'}`}
+      style={{ fontFamily: '"Courier Prime", monospace' }}
+    >
+      O.L.G.A.
     </span>
   </div>
 );
+
+type RubroId = 'escribanos' | 'abogados' | 'playas' | 'inmobiliarias' | 'contadores';
+
+interface RubroSolution {
+  id: RubroId;
+  tabLabel: string;
+  title: string;
+  dolor: string;
+  solucion: string;
+  highlights: string[];
+}
+
+const RUBRO_SOLUTIONS: RubroSolution[] = [
+  {
+    id: 'escribanos',
+    tabLabel: '⚖️ Escribanos',
+    title: 'Escribanías y Registros Notariales',
+    dolor:
+      'Perder tiempo calibrando hojas de seguridad CSJ, rehacer pagarés o armar escrituras y presupuestos desde cero.',
+    solucion:
+      'Impresión milimétrica calibrada para papel oficial (Certificación de Firmas, Concuerda, Legalización), Pagaré Fácil en 3 pasos, Constitución de S.A. con datos DNIT y presupuestos instantáneos con membrete propio.',
+    highlights: [
+      'Márgenes exactos 216 × 330 mm para fojas de seguridad CSJ sin desperdicio.',
+      'Cálculo automático de honorarios y tasas bajo Arancel Oficial Ley 879/81.',
+      'Actas, estatutos de S.A. y pagarés a la orden listos en minutos.',
+    ],
+  },
+  {
+    id: 'abogados',
+    tabLabel: '🏛️ Abogados Litigantes',
+    title: 'Abogados y Estudios Jurídicos',
+    dolor:
+      'Olvidar plazos cortos del CPC, revisar Judisoft manualmente sin seguimiento y redactar escritos desde cero.',
+    solucion:
+      'Análisis de cédulas y providencias con IA, control de plazos procesales, memoria acumulada del expediente (diferenciando parte adversa y propia) y Secretaría Privada por WhatsApp con avisos diarios, urgentes del día y enlaces directos a cada causa.',
+    highlights: [
+      'Lectura de PDFs y fotos de cédulas con cómputo de plazos según el CPC Paraguay.',
+      'Memoria continua del caso para redactar escritos coherentes sin repetir datos.',
+      'Parte diario por WhatsApp con lo urgente del día y acceso directo a la causa.',
+    ],
+  },
+  {
+    id: 'playas',
+    tabLabel: '🚗 Playas de Vehículos',
+    title: 'Playas de Vehículos y Concesionarias',
+    dolor:
+      'Errores de tipeo en pagarés, demoras al cerrar ventas financiadas y desorden en los vencimientos de cuotas.',
+    solucion:
+      'Emisión rápida y segura de pagarés a la orden en segundos, contratos claros y control ordenado de clientes y documentos listos para firmar.',
+    highlights: [
+      'Pagarés a la orden con montos en guaraníes en letras y sin protesto.',
+      'Fichero ordenado de compradores y codeudores por C.I. o RUC.',
+      'Contratos privados de compraventa listos para imprimir al cerrar la venta.',
+    ],
+  },
+  {
+    id: 'inmobiliarias',
+    tabLabel: '🏢 Inmobiliarias',
+    title: 'Inmobiliarias y Loteadoras',
+    dolor:
+      'Redacción lenta de contratos de alquiler o compraventa y papeleo disperso entre clientes y escribanías.',
+    solucion:
+      'Generación ágil de contratos, pagarés y presupuestos, con expediente digital ordenado por cliente para cerrar operaciones más rápido.',
+    highlights: [
+      'Contratos de alquiler, reserva y compraventa listos para personalizar.',
+      'Respaldo de cuotas con pagarés ejecutivos y vencimientos claros.',
+      'Carpeta digital por cliente y operación sin papeles perdidos.',
+    ],
+  },
+  {
+    id: 'contadores',
+    tabLabel: '📊 Contadores y Estudios',
+    title: 'Contadores y Estudios Contables',
+    dolor:
+      'Carga repetitiva de datos de socios, consultas manuales de RUC y seguimiento desordenado de trámites societarios.',
+    solucion:
+      'Autocompletado con consulta de RUC/DNIT, generación ágil de estatutos y actas para Constitución de S.A., y gestión centralizada de documentos y presupuestos de clientes.',
+    highlights: [
+      'Validación de RUC y dígito verificador conectada al fichero de socios.',
+      'Estatutos sociales y actas de constitución generados en minutos.',
+      'Presupuestos profesionales y seguimiento de trámites en un solo lugar.',
+    ],
+  },
+];
+
+const SIX_PILLARS = [
+  {
+    num: '01',
+    icon: FileText,
+    title: 'Pagaré Fácil en 3 pasos',
+    description:
+      'Carga rápida, validación de C.I./RUC y generación de pagarés a la orden listos para imprimir sin errores de montos ni fechas.',
+  },
+  {
+    num: '02',
+    icon: Stamp,
+    title: 'Impresión Milimétrica CSJ',
+    description:
+      'Calibración exacta para hojas de seguridad notariales (Certificación de Firmas, Concuerda y Legalización) con cero desperdicio.',
+  },
+  {
+    num: '03',
+    icon: MessageSquare,
+    title: 'Secretaría Privada IA por WhatsApp',
+    description:
+      'Partes diarios, foco urgente del día (qué hacer, conseguir y enviar) y recordatorios para no perder ningún plazo procesal.',
+  },
+  {
+    num: '04',
+    icon: FolderKanban,
+    title: 'Gestión de Escritos y Expedientes con IA',
+    description:
+      'Análisis de PDFs y fotos, cómputo de plazos CPC Paraguay y redacción asistida con memoria acumulada del caso.',
+  },
+  {
+    num: '05',
+    icon: Building2,
+    title: 'Constitución de S.A. y Datos DNIT',
+    description:
+      'Fichero inteligente de personas, consulta de RUC y generación de estatutos y actas societarias en minutos.',
+  },
+  {
+    num: '06',
+    icon: Smartphone,
+    title: 'Multiusuario y Marca Propia',
+    description:
+      'Personalización de membretes, Registro Notarial o Matrícula, RUC, timbrado y acceso desde PC o App móvil (PWA).',
+  },
+];
 
 const CarouselMockup: React.FC = () => {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -37,165 +165,153 @@ const CarouselMockup: React.FC = () => {
   const slides = [
     {
       id: 'lienzo',
-      title: 'Lienzo Notarial Milimétrico',
-      badge: 'CSJ Oficial',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      icon: <Stamp className="w-5 h-5 text-red-600" />,
+      title: 'Lienzo Notarial Milimétrico · CSJ Oficial',
+      icon: <Stamp className="w-4 h-4 text-red-600 shrink-0" />,
       content: (
-        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col shadow-inner text-left">
-          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <div className="font-bold text-slate-900 text-xs tracking-tight">Hoja de Seguridad Notarial CSJ - Calibración Activa</div>
+        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col text-left">
+          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center gap-2">
+            <div className="font-bold text-slate-900 text-xs tracking-tight truncate">
+              Hoja de Seguridad Notarial CSJ — Calibración Activa
             </div>
-            <div className="px-2.5 py-0.5 bg-slate-900 text-white rounded text-[10px] font-mono font-bold tracking-wide">
+            <div className="px-2 py-0.5 bg-slate-900 text-white rounded text-[10px] font-mono tabular-nums font-bold shrink-0">
               216 × 330 mm
             </div>
           </div>
-          <div className="p-3 flex-1 flex flex-col justify-between bg-slate-100/60 font-mono text-[11px] text-slate-600 space-y-2">
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-1.5">
-              <div className="flex justify-between text-[10px] text-slate-400 border-b border-slate-100 pb-1 font-sans">
-                <span>CERTIFICACIÓN DE FIRMAS (HOJA 0 / 1)</span>
-                <span className="text-emerald-600 font-bold">Márgenes exactos: Top 55mm • Left 45mm</span>
+          <div className="p-3.5 flex-1 flex flex-col justify-between bg-slate-100/60 text-slate-600 space-y-2.5">
+            <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1.5">
+              <div className="flex justify-between text-[10px] text-slate-500 border-b border-slate-100 pb-1">
+                <span>Certificación de Firmas (Hoja 0 / 1)</span>
+                <span className="text-emerald-700 font-semibold tabular-nums">Top 55mm · Left 45mm</span>
               </div>
-              <p className="text-slate-800 leading-relaxed font-sans text-xs">
-                &ldquo;CERTIFICO: Que la firma que antecede y dice <span className="font-bold text-slate-900">ALBERTO GONZÁLEZ BENÍTEZ</span> con C.I. N° <span className="font-bold text-slate-900">3.456.789</span> es auténtica y fue puesta en mi presencia...&rdquo;
+              <p className="text-slate-800 leading-relaxed text-xs">
+                &ldquo;CERTIFICO: Que la firma que antecede y dice <span className="font-bold text-slate-900">ALBERTO GONZÁLEZ BENÍTEZ</span> con C.I. N° <span className="font-bold text-slate-900 tabular-nums">3.456.789</span> es auténtica y fue puesta en mi presencia...&rdquo;
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-sans">
+            <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
               <div className="bg-white p-2 rounded border border-slate-200">
-                <span className="text-slate-400 block text-[9px]">DOCUMENTO</span>
-                <span className="font-bold text-slate-800">Concuerda (H.2)</span>
+                <span className="text-slate-400 block text-[10px]">Hoja 2</span>
+                <span className="font-bold text-slate-800">Concuerda</span>
               </div>
               <div className="bg-white p-2 rounded border border-slate-200">
-                <span className="text-slate-400 block text-[9px]">LEGALIZACIÓN</span>
-                <span className="font-bold text-slate-800">Protocolo (H.3)</span>
+                <span className="text-slate-400 block text-[10px]">Hoja 3</span>
+                <span className="font-bold text-slate-800">Legalización</span>
               </div>
-              <div className="bg-emerald-50 p-2 rounded border border-emerald-200 text-emerald-800 font-bold">
+              <div className="bg-emerald-50 p-2 rounded border border-emerald-200 text-emerald-800 font-bold flex items-center justify-center">
                 Cero Desperdicio
               </div>
             </div>
           </div>
         </div>
-      )
+      ),
+    },
+    {
+      id: 'secretaria',
+      title: 'Secretaría Privada IA · WhatsApp',
+      icon: <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />,
+      content: (
+        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col text-left">
+          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center gap-2">
+            <div className="font-bold text-slate-900 text-xs tracking-tight truncate">
+              Parte Diario de Causas y Plazos CPC
+            </div>
+            <span className="text-[10px] font-semibold text-emerald-700 shrink-0">07:00 AM · WhatsApp</span>
+          </div>
+          <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2.5">
+            <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
+              <div className="font-bold text-slate-900">Foco Urgente del Día</div>
+              <p className="text-slate-700 leading-relaxed">
+                <strong>Causa:</strong> López c/ Constructora Sur s/ Cobro de Guaraníes
+              </p>
+              <div className="text-[11px] text-slate-600 space-y-1">
+                <div>• <strong>Vence hoy:</strong> Contestar traslado (Art. 215 CPC)</div>
+                <div>• <strong>Conseguir:</strong> Liquidación actualizada firmada</div>
+                <div>• <strong>Enlace directo:</strong> olgatech.com.py/consola?exp=402</div>
+              </div>
+            </div>
+            <div className="bg-slate-900 text-white p-2.5 rounded-lg flex justify-between items-center text-[11px]">
+              <span className="text-slate-300">Recordatorio automático Judisoft incluido</span>
+              <span className="font-bold text-emerald-400">Listo para actuar</span>
+            </div>
+          </div>
+        </div>
+      ),
     },
     {
       id: 'presupuestos',
-      title: 'Presupuestos Ley 879/81',
-      badge: 'Exclusivo Full',
-      badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
-      icon: <Calculator className="w-5 h-5 text-amber-600" />,
+      title: 'Presupuestos Notariales · Ley 879/81',
+      icon: <Calculator className="w-4 h-4 text-amber-600 shrink-0" />,
       content: (
-        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col shadow-inner text-left">
-          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center">
-            <div className="font-bold text-slate-900 text-xs tracking-tight">Presupuesto Notarial Automático - Compraventa Inmueble</div>
-            <div className="px-2 py-0.5 bg-amber-500/10 text-amber-800 border border-amber-300 rounded text-[10px] font-bold">
-              Arancel Oficial
+        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col text-left">
+          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center gap-2">
+            <div className="font-bold text-slate-900 text-xs tracking-tight truncate">
+              Presupuesto Automático — Compraventa Inmueble
             </div>
+            <span className="text-[10px] font-semibold text-amber-800 shrink-0">Arancel Oficial</span>
           </div>
-          <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
-            <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs space-y-1.5 text-xs">
+          <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2">
+            <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1.5 text-xs">
               <div className="flex justify-between items-center text-[11px] pb-1 border-b border-slate-100">
-                <span className="text-slate-600">Valor Acto: <strong>Gs. 350.000.000</strong></span>
-                <span className="text-slate-500">RUC: 80045612-3</span>
+                <span className="text-slate-600">Valor Acto: <strong className="tabular-nums">Gs. 350.000.000</strong></span>
+                <span className="text-slate-500 font-mono tabular-nums">RUC 80045612-3</span>
               </div>
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between text-slate-600">
-                  <span>Honorarios Notariales (Escala Ley 879/81):</span>
-                  <span className="font-semibold text-slate-800">Gs. 5.250.000</span>
+                  <span>Honorarios Notariales (Ley 879/81)</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">Gs. 5.250.000</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Tasas Judiciales e Impuestos (IVA 10%):</span>
-                  <span className="font-semibold text-slate-800">Gs. 2.875.000</span>
+                  <span>Tasas Judiciales e IVA 10%</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">Gs. 2.875.000</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Certificados Registrales y Gastos Administrativos:</span>
-                  <span className="font-semibold text-slate-800">Gs. 650.000</span>
+                  <span>Certificados Registrales y Gastos</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">Gs. 650.000</span>
                 </div>
               </div>
             </div>
             <div className="bg-slate-900 text-white p-2.5 rounded-lg flex justify-between items-center">
               <div>
-                <span className="text-[10px] text-slate-400 block uppercase">Total Liquidación</span>
-                <span className="font-bold text-sm tracking-tight font-mono text-emerald-400">Gs. 8.775.000</span>
+                <span className="text-[10px] text-slate-400 block">Total Liquidación</span>
+                <span className="font-bold text-sm font-mono tabular-nums text-emerald-400">Gs. 8.775.000</span>
               </div>
-              <div className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-[10px] font-bold tracking-wider uppercase border border-white/10">
-                Imprimir 1-Clic
-              </div>
+              <span className="text-[11px] font-semibold text-slate-200">Con membrete propio</span>
             </div>
           </div>
         </div>
-      )
+      ),
     },
     {
       id: 'pagares',
-      title: 'Gestión de Pagarés a la Orden',
-      badge: 'Fuerza Ejecutiva',
-      badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-      icon: <FileText className="w-5 h-5 text-blue-600" />,
+      title: 'Pagaré Fácil en 3 Pasos · Fuerza Ejecutiva',
+      icon: <FileText className="w-4 h-4 text-blue-600 shrink-0" />,
       content: (
-        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col shadow-inner text-left">
-          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center">
-            <div className="font-bold text-slate-900 text-xs tracking-tight">Registro y Emisión de Pagarés</div>
-            <div className="px-2.5 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold shadow-xs">NUEVO PAGARÉ</div>
+        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col text-left">
+          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center gap-2">
+            <div className="font-bold text-slate-900 text-xs tracking-tight truncate">
+              Emisión y Control de Pagarés a la Orden
+            </div>
+            <span className="text-[10px] font-bold text-blue-700 shrink-0">3 pasos</span>
           </div>
-          <div className="p-3 flex-1 overflow-hidden space-y-2 bg-slate-50/50">
+          <div className="p-3.5 flex-1 overflow-hidden space-y-2">
             {[
-              { name: 'Juan Carlos López Benítez', amount: '15.000.000 Gs.', date: 'Vence 15 Mar 2026', status: 'VIGENTE', color: 'emerald' },
-              { name: 'María Fernanda Ruiz Díaz', amount: '8.500.000 Gs.', date: 'Vence 02 Abr 2026', status: 'VIGENTE', color: 'emerald' },
-              { name: 'Constructora del Este S.A.', amount: '45.000.000 Gs.', date: 'Venció 10 Feb 2026', status: 'NOTIFICADO', color: 'amber' }
+              { name: 'Juan Carlos López Benítez', amount: '15.000.000 Gs.', date: 'Vence 15 Mar 2026', status: 'Vigente' },
+              { name: 'María Fernanda Ruiz Díaz', amount: '8.500.000 Gs.', date: 'Vence 02 Abr 2026', status: 'Vigente' },
+              { name: 'Constructora del Este S.A.', amount: '45.000.000 Gs.', date: 'Venció 10 Feb 2026', status: 'Notificado' },
             ].map((item, i) => (
-              <div key={i} className="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between items-center shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4 text-slate-600" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 leading-tight">{item.name}</div>
-                    <div className="text-[10px] text-slate-500">{item.date} • <strong className="text-slate-700">{item.amount}</strong></div>
-                  </div>
-                </div>
-                <div className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[9px] font-bold">
-                  {item.status}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )
-    },
-    {
-      id: 'personas',
-      title: 'Fichero de Personas & RUC',
-      badge: 'Validación DV',
-      badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
-      icon: <Users className="w-5 h-5 text-purple-600" />,
-      content: (
-        <div className="w-full h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col shadow-inner">
-          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center">
-            <div className="font-bold text-slate-900 text-xs tracking-tight">Directorio Notarial y Tributario</div>
-            <div className="p-1 bg-slate-100 rounded text-slate-600"><Search className="w-3.5 h-3.5" /></div>
-          </div>
-          <div className="p-3 flex-1 grid grid-cols-2 gap-2 text-left">
-            {[
-              { name: 'Roberto Gómez', doc: 'C.I. 3.452.123', type: 'Persona Física', status: 'Activo' },
-              { name: 'Agroganadera Chaco S.A.', doc: 'RUC 80012345-1', type: 'Persona Jurídica', status: 'Validado' },
-              { name: 'Ana Isabel Martínez', doc: 'C.I. 4.123.987', type: 'Persona Física', status: 'Activo' },
-              { name: 'Distribuidora del Sur S.R.L.', doc: 'RUC 80098765-4', type: 'Persona Jurídica', status: 'Validado' }
-            ].map((item, i) => (
-              <div key={i} className="bg-white p-2.5 rounded-lg border border-slate-200 flex flex-col justify-between shadow-xs">
-                <div>
-                  <div className="text-[9px] font-semibold text-slate-400 uppercase">{item.type}</div>
+              <div key={i} className="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between items-center gap-2">
+                <div className="min-w-0">
                   <div className="text-xs font-bold text-slate-900 truncate">{item.name}</div>
-                  <div className="text-[10px] font-mono text-slate-600 mt-0.5">{item.doc}</div>
+                  <div className="text-[11px] text-slate-500 tabular-nums truncate">
+                    {item.date} · <strong className="text-slate-700">{item.amount}</strong>
+                  </div>
                 </div>
-                <div className="text-[9px] text-emerald-600 font-semibold mt-1">✓ {item.status}</div>
+                <span className="text-[10px] font-semibold text-slate-700 shrink-0">{item.status}</span>
               </div>
             ))}
           </div>
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   useEffect(() => {
@@ -206,19 +322,17 @@ const CarouselMockup: React.FC = () => {
   }, [slides.length]);
 
   return (
-    <div className="carousel-container w-full h-full flex flex-col relative z-10">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-3 shrink-0">
-        <div className="flex items-center gap-2">
+    <div className="w-full h-full flex flex-col relative z-10">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-3 gap-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
           {slides[activeIndex].icon}
-          <span className="font-bold text-slate-800 text-sm">{slides[activeIndex].title}</span>
-          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${slides[activeIndex].badgeColor}`}>
-            {slides[activeIndex].badge}
-          </span>
+          <span className="font-bold text-slate-800 text-xs sm:text-sm truncate">{slides[activeIndex].title}</span>
         </div>
-        <div className="flex gap-1.5" role="tablist">
+        <div className="flex gap-1.5 shrink-0" role="tablist" aria-label="Vistas del sistema">
           {slides.map((slide, i) => (
             <button
               key={slide.id}
+              type="button"
               role="tab"
               aria-selected={i === activeIndex}
               aria-label={`Ver ${slide.title}`}
@@ -228,7 +342,7 @@ const CarouselMockup: React.FC = () => {
           ))}
         </div>
       </div>
-      
+
       <div className="flex-1 w-full overflow-hidden relative" aria-live="polite">
         <AnimatePresence mode="wait">
           <motion.div
@@ -236,7 +350,7 @@ const CarouselMockup: React.FC = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="absolute inset-0"
             role="img"
             aria-label={`Vista previa de ${slides[activeIndex].title}`}
@@ -253,7 +367,9 @@ export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [isAnnual, setIsAnnual] = useState(false);
+  const [activeRubro, setActiveRubro] = useState<RubroId>('escribanos');
   const [currentUser, setCurrentUser] = useState<User | null>(auth?.currentUser || null);
+  const pwaInstall = usePWAInstall();
 
   useEffect(() => {
     // Garantizar que la Landing Page pública siempre tenga fondo blanco puro institucional
@@ -286,402 +402,292 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-800 flex flex-col selection:bg-red-500/10 selection:text-red-600 relative z-0">
-      
-      {/* 1. NAVBAR (WHITE / LIGHT THEME) */}
-      <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 shadow-xs safe-header-top min-h-[64px] flex items-center">
-        <nav className="w-full max-w-7xl mx-auto px-6 min-h-[64px] py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+      {/* 1. NAVBAR (3 ZONAS LIMPIAS) */}
+      <header className="sticky top-0 inset-x-0 bg-white/95 backdrop-blur-md border-b border-slate-200/80 z-50 safe-header-top min-h-[64px] flex items-center">
+        <nav className="w-full max-w-7xl mx-auto px-6 min-h-[64px] py-2 flex items-center justify-between gap-8">
+          <button
+            type="button"
+            className="flex items-center cursor-pointer shrink-0"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label="Ir al inicio de O.L.G.A."
+          >
             <Logo darkTheme={false} />
-          </div>
-          
-          <div className="hidden lg:flex items-center gap-8 text-sm font-semibold text-slate-600">
-            <a href="#modulos-notariales" className="hover:text-slate-900 transition-colors flex items-center gap-1.5">
-              <span>Herramientas Notariales</span>
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-100 text-red-700 rounded">Nuevo</span>
+          </button>
+
+          <div className="hidden lg:flex items-center gap-7 text-sm font-medium text-slate-600">
+            <a href="#soluciones-rubro" className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0">
+              Por Rubro
             </a>
-            <a href="#casos-de-uso" className="hover:text-slate-900 transition-colors">Casos de Uso</a>
-            <a href="#beneficios" className="hover:text-slate-900 transition-colors">Beneficios</a>
-            <a href="#planes" className="hover:text-slate-900 transition-colors">Planes</a>
-            <Link to="/recursos" className="hover:text-slate-900 transition-colors">Recursos</Link>
-            <a href="#faq" className="hover:text-slate-900 transition-colors">FAQ</a>
+            <a href="#pilares" className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0">
+              Los 6 Pilares
+            </a>
+            <a href="#planes" className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0">
+              Planes
+            </a>
+            <Link to="/recursos" className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0">
+              Recursos
+            </Link>
+            <a href="#faq" className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0">
+              FAQ
+            </a>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button 
+          <div className="flex items-center gap-2.5 shrink-0">
+            <PWAInstallButton pwa={pwaInstall} isDark={false} />
+            <button
+              type="button"
               onClick={() => navigate('/consola')}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center gap-2 cursor-pointer active:scale-98"
+              className="px-4 sm:px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <span>{currentUser ? 'Ir a mi Consola' : 'Acceso a Consola'}</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>{currentUser ? 'Entrar a mi Consola' : 'Entrar a mi Consola'}</span>
+              <ArrowRight className="w-4 h-4 shrink-0" />
             </button>
           </div>
         </nav>
       </header>
 
-      <main className="flex-1 flex flex-col bg-white">
-        
-        {/* 2. HERO SECTION (FONDO BLANCO PURO & INSTITUCIONAL) */}
-        <section className="pt-14 pb-20 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-14 w-full bg-white">
-          <div className="flex-1 space-y-7 text-center lg:text-left">
-            
-            {/* Insignia / Pill oficial en azul institucional */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider rounded-full border border-blue-200 shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-              <span>OLGA Legal Tech • Software Notarial Paraguay</span>
-            </div>
+      <PWAInstallGuideModal pwa={pwaInstall} />
 
-            {/* H1 Título Principal */}
-            <h1 className="text-4xl sm:text-5xl lg:text-[52px] font-black text-slate-900 leading-[1.12] tracking-tight">
-              Automatiza tus Pagarés, Escritos y Gestión Notarial con Inteligencia Artificial.
+      <main className="flex-1 flex flex-col bg-white">
+        {/* 2. HERO PRINCIPAL CLARO Y DIRECTO */}
+        <section className="pt-14 pb-20 lg:pt-20 lg:pb-24 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 lg:gap-16 w-full bg-white">
+          <div className="flex-1 space-y-7 text-center lg:text-left">
+            <p className="text-xs font-semibold text-blue-700 tracking-wide">
+              Software Legal-Tech en Paraguay · Gestión Notarial, Jurídica y Comercial
+            </p>
+
+            <h1 className="text-3xl sm:text-5xl lg:text-[48px] font-black text-slate-900 leading-[1.12] tracking-tight text-balance max-w-2xl mx-auto lg:mx-0">
+              Dejá atrás el desorden operativo. Automatizá tu estudio o empresa con Inteligencia Artificial.
             </h1>
 
-            {/* Subtítulo gris legible */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-              <strong className="text-slate-900 font-semibold">OLGA Legal Tech</strong> (O.L.G.A.) es el software Legal-Tech líder en Paraguay para Escribanías, Playas de Vehículos, Inmobiliarias y Estudios Contables. Emite pagarés a la orden, calibra hojas de seguridad notarial (Certificación de Firmas, Concuerda y Legalización) y genera presupuestos exactos en segundos.
+              Los documentos dispersos, los trámites lentos y los plazos olvidados te cuestan horas y clientes. <strong className="text-slate-900 font-semibold">O.L.G.A.</strong> resuelve tu <strong className="text-slate-900 font-semibold">Organización, Legalización, Gestión y Administración</strong> en un solo sistema diseñado para escribanías, abogados, inmobiliarias, playas de vehículos y estudios contables en Paraguay.
             </p>
-            
-            {/* Botones de Acción Hero */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-2">
-              <button 
+
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-1">
+              <button
+                type="button"
                 onClick={() => navigate('/consola')}
-                className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer gap-2 group transition-all"
+                className="w-full sm:w-auto px-7 py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-600/20 text-center flex items-center justify-center cursor-pointer gap-2 transition-all whitespace-nowrap shrink-0"
               >
-                <span>{currentUser ? 'Entrar a mi Consola' : 'Comenzar Ahora'}</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <span>Entrar a mi Consola</span>
+                <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
 
-              <a 
+              <a
                 href="#planes"
-                className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-sm font-bold uppercase tracking-wider rounded-xl shadow-sm text-center flex items-center justify-center gap-2 transition-all"
+                className="w-full sm:w-auto px-7 py-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-sm font-bold rounded-xl text-center flex items-center justify-center gap-2 transition-all whitespace-nowrap shrink-0"
               >
                 <span>Ver Planes y Tarifas</span>
-                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
               </a>
             </div>
-            
-            {/* Indicadores de confianza */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-semibold text-slate-600 pt-4 border-t border-slate-200">
-              <div className="flex items-center justify-center lg:justify-start gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Normativa paraguaya y Ley 879/81</span>
-              </div>
-              <div className="flex items-center justify-center lg:justify-start gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Calibración milimétrica CSJ</span>
-              </div>
-              <div className="flex items-center justify-center lg:justify-start gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Sin tarjeta de crédito requerida</span>
-              </div>
+
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-1.5 text-xs font-medium text-slate-500 pt-4 border-t border-slate-200">
+              <span>Normativa paraguaya y Ley 879/81</span>
+              <span aria-hidden="true">·</span>
+              <span>Hojas de seguridad CSJ (216 × 330 mm)</span>
+              <span aria-hidden="true">·</span>
+              <span>Acceso web y App móvil</span>
             </div>
           </div>
 
-          <div className="flex-1 w-full max-w-xl lg:max-w-2xl relative">
-            <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 via-slate-100 to-red-500/5 rounded-3xl blur-2xl -z-10" />
-            <div className="bg-white border border-slate-200 rounded-3xl shadow-xl p-2 relative overflow-hidden">
-              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 h-[380px] flex flex-col p-5 relative">
-                <CarouselMockup />
-              </div>
+          <div className="flex-1 w-full max-w-xl lg:max-w-xl relative">
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-4 sm:p-5 h-[360px] flex flex-col">
+              <CarouselMockup />
             </div>
           </div>
         </section>
 
-        {/* 3. NUEVA SECCIÓN DESTACADA: MÓDULOS NOTARIALES DE ALTA PRECISIÓN */}
-        <section id="modulos-notariales" className="py-24 bg-slate-50 border-y border-slate-200 scroll-mt-20">
+        {/* 3. SOLUCIONES DISEÑADAS PARA TU RUBRO (PESTAÑAS INTERACTIVAS DOLOR -> SOLUCIÓN) */}
+        <section id="soluciones-rubro" className="py-20 lg:py-24 bg-slate-50 border-y border-slate-200 scroll-mt-20">
           <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 text-xs font-bold uppercase tracking-widest rounded-full border border-red-200 mb-3">
-                <Sparkles className="w-3.5 h-3.5 text-red-600" />
-                <span>Tecnología Jurídica de Vanguardia</span>
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-                Nuevas Herramientas Notariales y Corporativas
+            <div className="max-w-3xl mx-auto text-center mb-12 space-y-3">
+              <p className="text-xs font-semibold text-blue-700 tracking-wide">
+                Adaptado al trabajo real en Paraguay
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-balance">
+                Soluciones diseñadas para tu rubro
               </h2>
-              <p className="text-slate-600 mt-4 text-base leading-relaxed">
-                Diseñadas específicamente para el ejercicio notarial en Paraguay. Imprime en fojas oficiales sin descalibración y cotiza actos con exactitud arancelaria.
+              <p className="text-slate-600 text-base leading-relaxed">
+                Elegí tu perfil y mirá en segundos qué problema operativo resuelve O.L.G.A. en tu día a día.
               </p>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-8 items-stretch">
-              
-              {/* MÓDULO 1: LIENZO NOTARIAL MILIMÉTRICO */}
-              <div className="bg-white border-2 border-slate-200 rounded-3xl p-8 sm:p-10 flex flex-col justify-between shadow-sm hover:border-slate-300 hover:shadow-md transition-all">
-                <div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                    <div className="w-12 h-12 bg-red-50 text-red-600 border border-red-200 rounded-2xl flex items-center justify-center">
-                      <Stamp className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold rounded-full uppercase tracking-wider">
-                      Disponible en Plan Empresa y Plan Full
-                    </span>
-                  </div>
-
-                  <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">
-                    Lienzo Notarial Milimétrico
-                  </h3>
-                  
-                  <p className="text-slate-600 leading-relaxed text-sm mb-6">
-                    Calibración milimétrica estricta adaptada a los estándares oficiales de la <strong>Corte Suprema de Justicia (CSJ)</strong>. Permite redactar e imprimir directamente sobre fojas de seguridad notarial físicas, erradicando los desfasajes de margen y la pérdida de papel valorado.
-                  </p>
-
-                  <div className="space-y-3.5 border-t border-slate-100 pt-5 mb-8">
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Certificación de Firmas (Hoja 0 y Hoja 1):</strong> Espacios exactos para comparecientes, fecha, sellos y rúbricas.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Concuerda Notarial (Hoja 2):</strong> Estructura canónica para testimonios por exhibición y copias fieles de matrices.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Legalización y Protocolo (Hoja 3):</strong> Foliación milimétrica para escrituras matrices sin tocar bordes de seguridad.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Previsualización 1:1 en Pantalla:</strong> Inspección interactiva que replica las dimensiones exactas de 216 mm × 330 mm.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Formatos CSJ Homologados
-                  </span>
-                  <button 
-                    onClick={() => navigate('/consola')}
-                    className="text-sm font-bold text-slate-900 hover:text-red-600 flex items-center gap-1.5 transition-colors cursor-pointer"
+            {/* Pestañas interactivas de rubros */}
+            <div
+              role="tablist"
+              aria-label="Seleccionar rubro profesional"
+              className="flex flex-wrap items-center justify-center gap-2 mb-10"
+            >
+              {RUBRO_SOLUTIONS.map((rubro) => {
+                const isActive = activeRubro === rubro.id;
+                return (
+                  <button
+                    key={rubro.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveRubro(rubro.id)}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 border ${
+                      isActive
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:text-slate-900'
+                    }`}
                   >
-                    <span>Abrir en Consola</span>
-                    <ArrowRight className="w-4 h-4" />
+                    {rubro.tabLabel}
                   </button>
-                </div>
-              </div>
+                );
+              })}
+            </div>
 
-              {/* MÓDULO 2: PRESUPUESTOS Y FACTURACIÓN NOTARIAL */}
-              <div className="bg-white border-2 border-amber-300 rounded-3xl p-8 sm:p-10 flex flex-col justify-between shadow-md relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-bl-full pointer-events-none -z-0"></div>
-                
-                <div className="relative z-10">
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-                    <div className="w-12 h-12 bg-amber-50 text-amber-700 border border-amber-200 rounded-2xl flex items-center justify-center">
-                      <Calculator className="w-6 h-6" />
+            {/* Panel Dolor -> Solución (todos en DOM con hidden para SEO + lectura instantánea sin recarga) */}
+            {RUBRO_SOLUTIONS.map((rubro) => {
+              const isSelected = activeRubro === rubro.id;
+              return (
+                <div
+                  key={rubro.id}
+                  role="tabpanel"
+                  hidden={!isSelected}
+                  className={isSelected ? 'block' : 'hidden'}
+                >
+                  <div className="bg-white border border-slate-200 rounded-3xl p-7 sm:p-10 shadow-xs">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-7 mb-7 border-b border-slate-100">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 mb-1">
+                          Perfil profesional
+                        </p>
+                        <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                          {rubro.title}
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/consola')}
+                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 self-start lg:self-auto"
+                      >
+                        <span>Entrar a mi Consola</span>
+                        <ArrowRight className="w-4 h-4 shrink-0" />
+                      </button>
                     </div>
-                    <span className="px-3 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs rounded-full uppercase tracking-wider shadow-2xs">
-                      Exclusivo Plan Full
-                    </span>
+
+                    <div className="grid lg:grid-cols-2 gap-8 items-stretch">
+                      {/* Dolor actual */}
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-6 sm:p-7 flex flex-col justify-between space-y-4">
+                        <div className="space-y-3">
+                          <div className="inline-flex items-center gap-2 text-xs font-bold text-red-700">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            <span>El problema habitual (Dolor)</span>
+                          </div>
+                          <p className="text-slate-800 text-base sm:text-lg font-semibold leading-relaxed">
+                            {rubro.dolor}
+                          </p>
+                        </div>
+                        <p className="text-xs text-slate-500 pt-3 border-t border-slate-200/80">
+                          Cada corrección manual o plazo pasado cuesta tiempo, papel valorado y confianza del cliente.
+                        </p>
+                      </div>
+
+                      {/* Solución O.L.G.A. */}
+                      <div className="rounded-2xl bg-emerald-50/40 border border-emerald-200 p-6 sm:p-7 flex flex-col justify-between space-y-5">
+                        <div className="space-y-3">
+                          <div className="inline-flex items-center gap-2 text-xs font-bold text-emerald-800">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <span>Cómo lo resuelve O.L.G.A. (Solución)</span>
+                          </div>
+                          <p className="text-slate-800 text-base leading-relaxed">
+                            {rubro.solucion}
+                          </p>
+                        </div>
+
+                        <ul className="space-y-2.5 pt-4 border-t border-emerald-200/70">
+                          {rubro.highlights.map((item, idx) => (
+                            <li key={idx} className="flex items-start gap-2.5 text-sm text-slate-700">
+                              <Check className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
-
-                  <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">
-                    Presupuestos y Facturación Notarial
-                  </h3>
-                  
-                  <p className="text-slate-600 leading-relaxed text-sm mb-6">
-                    Automatización integral de presupuestos de escribanía basados estrictamente en el <strong>Arancel Notarial Oficial (Ley 879/81)</strong>. Calcula honorarios mínimos, gastos administrativos, tasas registrales e IVA en segundos.
-                  </p>
-
-                  <div className="space-y-3.5 border-t border-slate-100 pt-5 mb-8">
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Arancel Notarial Ley 879/81:</strong> Algoritmo de escalas arancelarias para transferencias, hipotecas y contratos.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Plantillas Notariales Configurables:</strong> Inmuebles, Vehículos, Poderes, Constitución de S.A., S.R.L. y E.A.S.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Validación RUC/C.I. con Dígito Verificador:</strong> Comprobación instantánea de la cédula y RUC de los otorgantes.
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        <strong>Impresión Formal en 1 Clic:</strong> Liquidación limpia y desglosada con membrete notarial lista para el cliente.
-                      </div>
-                    </div>
-                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </section>
 
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between relative z-10">
-                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                    Conforme Código de Organización Judicial
-                  </span>
-                  <a 
-                    href="#planes"
-                    className="text-sm font-bold text-amber-800 hover:text-amber-950 flex items-center gap-1.5 transition-colors"
+        {/* 4. LOS 6 PILARES DE O.L.G.A. (GRILLA 3x2) */}
+        <section id="pilares" className="py-20 lg:py-24 bg-white border-b border-slate-200 scroll-mt-20">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="max-w-3xl mx-auto text-center mb-14 space-y-3">
+              <p className="text-xs font-semibold text-blue-700 tracking-wide">
+                Capacidades centrales de la plataforma
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-balance">
+                Los 6 Pilares de O.L.G.A.
+              </h2>
+              <p className="text-slate-600 text-base leading-relaxed">
+                Herramientas concretas para emitir pagarés a la orden, imprimir hojas de seguridad CSJ, controlar plazos CPC Paraguay y ordenar tu estudio o empresa sin complicaciones.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {SIX_PILLARS.map((pillar) => {
+                const Icon = pillar.icon;
+                return (
+                  <article
+                    key={pillar.num}
+                    className="bg-white border border-slate-200 rounded-2xl p-7 flex flex-col justify-between gap-5 hover:border-slate-300 transition-colors"
                   >
-                    <span>Ver en Plan Full</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center">
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-mono tabular-nums font-bold text-slate-400">
+                          {pillar.num}
+                        </span>
+                      </div>
 
-            </div>
-          </div>
-        </section>
+                      <h3 className="text-lg font-black text-slate-900 leading-snug">
+                        {pillar.title}
+                      </h3>
 
-        {/* 4. CASOS DE USO (SEO TARGETING PARAGUAY) */}
-        <section id="casos-de-uso" className="py-24 bg-white border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-                Software Especializado para el Mercado Paraguayo
-              </h2>
-              <p className="text-slate-600 mt-4 text-base">
-                OLGA Legal Tech (O.L.G.A.) centraliza la emisión de títulos ejecutivos, documentos notariales y cuentas por cobrar con estricto rigor jurídico.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <article className="bg-slate-50 border border-slate-200 p-6 rounded-3xl hover:shadow-lg transition-all hover:-translate-y-1">
-                <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-5">
-                  <FileText className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Escribanías y Notarías</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Impresión milimétrica en fojas de seguridad de la CSJ, cálculo de presupuestos bajo Ley 879/81 y actas sin errores de tipeo.
-                </p>
-              </article>
-
-              <article className="bg-slate-50 border border-slate-200 p-6 rounded-3xl hover:shadow-lg transition-all hover:-translate-y-1">
-                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-5">
-                  <Car className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Playas de Autos y Concesionarias</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Emisión instantánea de pagarés a la orden para venta financiada de vehículos. Respaldo ejecutivo sin vicios formales.
-                </p>
-              </article>
-
-              <article className="bg-slate-50 border border-slate-200 p-6 rounded-3xl hover:shadow-lg transition-all hover:-translate-y-1">
-                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-5">
-                  <Home className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Inmobiliarias y Loteadoras</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Compromisos de pago de cuotas de lotes y contratos de alquiler respaldados por títulos ejecutivos de cobro inmediato.
-                </p>
-              </article>
-
-              <article className="bg-slate-50 border border-slate-200 p-6 rounded-3xl hover:shadow-lg transition-all hover:-translate-y-1">
-                <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-5">
-                  <Briefcase className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Estudios Jurídicos y Contables</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Digitalización y consulta de deudores por C.I. y RUC, redacción de acuerdos extrajudiciales y auditoría con IA.
-                </p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        {/* 5. BENEFICIOS INSTITUCIONALES */}
-        <section id="beneficios" className="py-24 bg-slate-50 border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-                Garantía Operativa y Jurídica Integral
-              </h2>
-              <p className="text-slate-600 mt-4 text-base">
-                Protección documental estricta para que cada trámite y cobro tenga pleno valor probatorio y ejecutivo.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-8">
-              <article className="bg-white border border-slate-200 p-8 rounded-3xl shadow-xs hover:shadow-md transition-all">
-                <div className="w-12 h-12 bg-slate-100 text-slate-800 rounded-2xl flex items-center justify-center mb-6">
-                  <Scale className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-3">Títulos con Fuerza Ejecutiva</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Pagarés redactados con exactitud jurídica conforme a la legislación paraguaya, listos para juicio ejecutivo de cobro sin riesgo de excepciones formales.
-                </p>
-              </article>
-
-              <article className="bg-white border border-slate-200 p-8 rounded-3xl shadow-xs hover:shadow-md transition-all">
-                <div className="w-12 h-12 bg-slate-100 text-slate-800 rounded-2xl flex items-center justify-center mb-6">
-                  <Printer className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-3">Impresión Milimétrica CSJ</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Configurado para alimentar impresoras láser y de inyección directamente con las fojas de seguridad notarial físicas de la Corte Suprema de Justicia.
-                </p>
-              </article>
-
-              <article className="bg-white border border-slate-200 p-8 rounded-3xl shadow-xs hover:shadow-md transition-all">
-                <div className="w-12 h-12 bg-slate-100 text-slate-800 rounded-2xl flex items-center justify-center mb-6">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-3">Dígito Verificador & RUC</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Validación instantánea de la cédula tributaria de comparecientes y deudores, evitando errores de tipeo en escrituras públicas y pagarés.
-                </p>
-              </article>
+                      <p className="text-sm text-slate-600 leading-relaxed">
+                        {pillar.description}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
 
         {/* SIFEN & FACTURACIÓN ELECTRÓNICA PARAGUAY */}
-        <section className="py-16 bg-white border-b border-slate-200">
+        <section className="py-16 bg-slate-50 border-b border-slate-200">
           <div className="max-w-7xl mx-auto px-6">
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-3xl p-8 sm:p-12 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-8">
-              <div className="space-y-4 max-w-2xl text-center lg:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-400/20 text-amber-300 text-xs font-bold uppercase tracking-wider rounded-full border border-amber-400/30">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Compatibilidad Tributaria Nacional</span>
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-black tracking-tight">
-                  Preparado para Facturación Electrónica SIFEN y DNIT
-                </h3>
-                <p className="text-slate-300 text-sm leading-relaxed">
-                  O.L.G.A. integra validación tributaria y desglose arancelario automatizado para que cada presupuesto notarial, liquidación de honorarios (Ley 879/81) y gestión comercial esté listo para la tributación electrónica en Paraguay.
+            <div className="bg-slate-900 text-white rounded-3xl p-8 sm:p-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+              <div className="space-y-3 max-w-2xl text-center lg:text-left">
+                <p className="text-xs font-semibold text-amber-300">
+                  Compatibilidad Tributaria Nacional · SIFEN y DNIT
+                </p>
+                <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-balance">
+                  Presupuestos notariales y validación de RUC listos para Paraguay
+                </h2>
+                <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
+                  O.L.G.A. integra desglose arancelario bajo Ley 879/81, cálculo automático de IVA y comprobación de RUC y dígito verificador para que cada presupuesto y documento esté ordenado desde el primer clic.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4 shrink-0">
                 <div className="bg-white/10 border border-white/15 px-6 py-4 rounded-2xl text-center">
-                  <span className="block text-2xl font-black text-amber-400 font-mono">10% / 5%</span>
+                  <span className="block text-2xl font-black text-amber-400 font-mono tabular-nums">10% / 5%</span>
                   <span className="text-xs text-slate-300">Desglose IVA Oficial</span>
                 </div>
                 <div className="bg-white/10 border border-white/15 px-6 py-4 rounded-2xl text-center">
                   <span className="block text-2xl font-black text-emerald-400 font-mono">RUC / DV</span>
-                  <span className="text-xs text-slate-300">Validación Automática</span>
+                  <span className="text-xs text-slate-300">Validación DNIT</span>
                 </div>
               </div>
             </div>
@@ -1262,12 +1268,27 @@ export const LandingPage: React.FC = () => {
                   className="w-full px-6 py-5 flex items-center justify-between text-left font-bold text-slate-900 focus:outline-none cursor-pointer"
                   onClick={() => toggleFaq(4)}
                 >
-                  <span>¿Cómo se accede al sistema y qué seguridad tiene la información?</span>
+                  <span>¿Cómo funciona la Secretaría Privada IA por WhatsApp para abogados?</span>
                   <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${openFaq === 4 ? 'rotate-180 text-slate-900' : ''}`} />
                 </button>
                 {openFaq === 4 && (
                   <div className="px-6 pb-5 text-slate-600 text-sm leading-relaxed border-t border-slate-100 pt-3">
-                    El acceso se gestiona mediante autenticación segura y cifrada en la nube con Firebase. Cada escribanía o empresa cuenta con aislamiento de datos, respaldos automáticos continuos y registro de auditoría de trámites para prevenir accesos no autorizados.
+                    Al cargar tus causas o analizar cédulas y providencias en O.L.G.A., el sistema calcula los plazos del CPC Paraguay y te envía partes diarios por WhatsApp en el horario que elijas, detallando lo urgente del día (qué hacer, conseguir y enviar), enlaces directos a cada expediente y recordatorios para revisar Judisoft.
+                  </div>
+                )}
+              </article>
+
+              <article className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                <button 
+                  className="w-full px-6 py-5 flex items-center justify-between text-left font-bold text-slate-900 focus:outline-none cursor-pointer"
+                  onClick={() => toggleFaq(5)}
+                >
+                  <span>¿Cómo se accede al sistema y qué seguridad tiene la información?</span>
+                  <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${openFaq === 5 ? 'rotate-180 text-slate-900' : ''}`} />
+                </button>
+                {openFaq === 5 && (
+                  <div className="px-6 pb-5 text-slate-600 text-sm leading-relaxed border-t border-slate-100 pt-3">
+                    El acceso se gestiona mediante autenticación segura y cifrada en la nube con Firebase. Cada escribanía, estudio jurídico o empresa cuenta con aislamiento de datos, respaldos automáticos continuos y registro de auditoría de trámites para prevenir accesos no autorizados.
                   </div>
                 )}
               </article>
@@ -1284,19 +1305,19 @@ export const LandingPage: React.FC = () => {
           <div className="flex flex-col items-center md:items-start gap-3">
             <Logo darkTheme={true} />
             <p className="text-xs text-slate-400 max-w-md text-center md:text-left mt-1">
-              Plataforma Legal-Tech especializada en Escribanías, Pagarés a la Orden, Calibración de Fojas de Seguridad CSJ y Arancel Notarial Ley 879/81 en Paraguay.
+              Software legal-tech en Paraguay para gestión notarial, sistema para abogados CPC Paraguay, pagarés a la orden, hojas de seguridad CSJ y secretaría IA por WhatsApp.
             </p>
           </div>
 
           <div className="flex flex-wrap justify-center gap-6 text-xs text-slate-400 font-semibold">
-            <a href="#modulos-notariales" className="hover:text-white transition-colors">Herramientas Notariales</a>
-            <a href="#casos-de-uso" className="hover:text-white transition-colors">Casos de Uso</a>
+            <a href="#soluciones-rubro" className="hover:text-white transition-colors">Soluciones por Rubro</a>
+            <a href="#pilares" className="hover:text-white transition-colors">Los 6 Pilares</a>
             <a href="#planes" className="hover:text-white transition-colors">Planes y Precios</a>
             <Link to="/recursos" className="hover:text-white transition-colors">Guías y Recursos</Link>
             <a href="#faq" className="hover:text-white transition-colors">Preguntas Frecuentes</a>
             <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
             <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
-            <button onClick={() => navigate('/consola')} className="hover:text-white transition-colors cursor-pointer text-slate-300">Acceso Consola</button>
+            <button onClick={() => navigate('/consola')} className="hover:text-white transition-colors cursor-pointer text-slate-300">Entrar a mi Consola</button>
           </div>
         </div>
 

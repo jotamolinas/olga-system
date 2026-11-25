@@ -36,6 +36,8 @@ import {
   EstadoExpediente,
   Expediente,
   ExpedienteAnalisisIA,
+  ExpedienteDocumentoMemoria,
+  OrigenDocumentoExpediente,
   Persona,
   PlazoProcesal,
   RolParteExpediente,
@@ -46,22 +48,25 @@ import {
   analyzeExpedientePdf,
   ExpedientePdfAnalysisPayload,
   limpiarLatexJuridico,
+  MemoriaDocumentoEscritoPayload,
   redactarEscritoJudicialConIA,
 } from '../services/gemini';
 import { auth, db } from '../services/auth';
 import { incrementarUsoIA } from '../services/firestore';
-import { ParteSecretariaModal } from './ParteSecretariaModal';
+import { ParteSecretariaModal, ParteSecretariaMode } from './ParteSecretariaModal';
 import {
   DEFAULT_SECRETARIA_SCHEDULE,
+  fetchConnectedWorkspaceWhatsApp,
   findLinkedDocumentosForExpediente,
   formatAbogadoWhatsAppDisplay,
   formatSecretariaScheduleSummary,
   LinkedDocResumen,
+  loadAbogadoCustomWhatsappSecretaria,
   loadAbogadoSecretariaSchedule,
-  loadAbogadoWhatsappSecretaria,
   markSecretariaReminderPromptedSession,
   normalizeAbogadoWhatsAppPhone,
   normalizeSecretariaSchedule,
+  resolveEffectiveAbogadoWhatsapp,
   sanitizeFrecuenciaDias,
   sanitizeHoraEnvio,
   saveAbogadoSecretariaSchedule,
@@ -453,6 +458,99 @@ const suggestNextProceduralStep = (
   );
 };
 
+const inferOrigenDocumentoExpediente = (
+  analisis: Partial<ExpedienteAnalisisIA> | null | undefined,
+  rolParte?: string
+): OrigenDocumentoExpediente => {
+  const texto = `${analisis?.plazoPrincipal?.titulo || ''} ${analisis?.resumenHechos || ''}`.toLowerCase();
+  if (/(providencia|auto\s+interlocutorio|sentencia|resoluci[óo]n|oficio|c[eé]dula\s+de\s+notificaci[óo]n|despacho)/.test(texto)) {
+    return 'Juzgado';
+  }
+  const esDemandado = String(rolParte || '').toLowerCase().includes('demandad');
+  if (esDemandado && /(demanda|traslado|emplazamiento|intimaci[óo]n|reclamo|actora|demandante)/.test(texto)) {
+    return 'Adversa';
+  }
+  if (!esDemandado && /(contestaci[óo]n|excepci[óo]n|oposici[óo]n|reconvenci[óo]n|demandado)/.test(texto)) {
+    return 'Adversa';
+  }
+  if (/(nuestro|propio|impulso\s+presentado|alegato\s+nuestro)/.test(texto)) {
+    return 'Propia';
+  }
+  return 'General';
+};
+
+const sanitizeHistorialDocumentosList = (
+  rawList: unknown,
+  fallbackAnalisis?: ExpedienteAnalisisIA | null,
+  rolParte?: string
+): ExpedienteDocumentoMemoria[] => {
+  const list: ExpedienteDocumentoMemoria[] = Array.isArray(rawList)
+    ? rawList
+        .filter((d: any) => d && typeof d === 'object' && String(d.resumenHechos || '').trim())
+        .map((d: any, idx: number) => ({
+          id: String(d.id || `docmem-${idx}-${Date.now()}`).trim(),
+          archivoNombre: String(d.archivoNombre || `Documento ${idx + 1}`).trim(),
+          analizadoAt: String(d.analizadoAt || new Date().toISOString()),
+          parteOrigen: (['Adversa', 'Propia', 'Juzgado', 'General'].includes(String(d.parteOrigen))
+            ? d.parteOrigen
+            : inferOrigenDocumentoExpediente(d, rolParte)) as OrigenDocumentoExpediente,
+          resumenHechos: String(d.resumenHechos || '').trim(),
+          fundamentoCPC: d.fundamentoCPC ? String(d.fundamentoCPC).trim() : '',
+          tipoActo: d.tipoActo ? String(d.tipoActo).trim() : (d.tipoActuacion ? String(d.tipoActuacion).trim() : ''),
+        }))
+    : [];
+
+  if (list.length === 0 && fallbackAnalisis && String(fallbackAnalisis.resumenHechos || '').trim()) {
+    list.push({
+      id: `docmem-legacy-${String(fallbackAnalisis.analizadoAt || '1').replace(/[^a-z0-9]/gi, '').slice(0, 14)}`,
+      archivoNombre: String(fallbackAnalisis.archivoNombre || 'Documento analizado').trim(),
+      analizadoAt: String(fallbackAnalisis.analizadoAt || new Date().toISOString()),
+      parteOrigen: inferOrigenDocumentoExpediente(fallbackAnalisis, rolParte),
+      resumenHechos: String(fallbackAnalisis.resumenHechos || '').trim(),
+      fundamentoCPC: fallbackAnalisis.fundamentoCPC ? String(fallbackAnalisis.fundamentoCPC).trim() : '',
+      tipoActo: fallbackAnalisis.plazoPrincipal?.titulo ? String(fallbackAnalisis.plazoPrincipal.titulo).trim() : '',
+    });
+  }
+
+  return list.slice(-30);
+};
+
+const appendAnalisisToHistorial = (
+  existingHistorial: unknown,
+  fallbackAnalisis: ExpedienteAnalisisIA | null | undefined,
+  newAnalisis: ExpedienteAnalisisIA,
+  rolParte?: string
+): ExpedienteDocumentoMemoria[] => {
+  const base = sanitizeHistorialDocumentosList(existingHistorial, fallbackAnalisis, rolParte);
+  const newSummary = String(newAnalisis.resumenHechos || '').trim();
+  if (!newSummary) return base;
+
+  const newEntry: ExpedienteDocumentoMemoria = {
+    id: `docmem-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    archivoNombre: String(newAnalisis.archivoNombre || 'Documento analizado').trim(),
+    analizadoAt: String(newAnalisis.analizadoAt || new Date().toISOString()),
+    parteOrigen: inferOrigenDocumentoExpediente(newAnalisis, rolParte),
+    resumenHechos: newSummary,
+    fundamentoCPC: newAnalisis.fundamentoCPC ? String(newAnalisis.fundamentoCPC).trim() : '',
+    tipoActo: newAnalisis.plazoPrincipal?.titulo ? String(newAnalisis.plazoPrincipal.titulo).trim() : '',
+  };
+
+  const duplicateExists = base.some(
+    (item) =>
+      item.archivoNombre === newEntry.archivoNombre &&
+      item.resumenHechos.slice(0, 90) === newEntry.resumenHechos.slice(0, 90)
+  );
+  if (duplicateExists) {
+    return base.map((item) =>
+      item.archivoNombre === newEntry.archivoNombre &&
+      item.resumenHechos.slice(0, 90) === newEntry.resumenHechos.slice(0, 90)
+        ? { ...item, analizadoAt: newEntry.analizadoAt, fundamentoCPC: newEntry.fundamentoCPC || item.fundamentoCPC }
+        : item
+    );
+  }
+  return [...base, newEntry].slice(-30);
+};
+
 const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
   const src = raw && typeof raw === 'object' ? raw : {};
   const rawPlazos = Array.isArray(src.plazos) ? src.plazos : [];
@@ -485,6 +583,9 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
 
   const rawUserId = pickNonEmptyOwnerId(src.userId);
   const rawOwnedByWorkspace = pickNonEmptyOwnerId(src.ownedByWorkspace);
+  const ultimoAnalisisIA =
+    src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object' ? src.ultimoAnalisisIA : null;
+  const rolParte = src.rolParte ? normalizeRolParte(String(src.rolParte)) : 'Actor / Demandante';
 
   return {
     id: String(src.id || docId).trim() || docId,
@@ -495,11 +596,11 @@ const mapFirestoreDocToExpediente = (raw: any, docId: string): Expediente => {
     anio: String(src.anio || new Date().getFullYear()).trim(),
     juzgado: String(src.juzgado || '').trim(),
     tipoJuicio,
-    rolParte: src.rolParte ? normalizeRolParte(String(src.rolParte)) : 'Actor / Demandante',
+    rolParte,
     estado,
     plazos,
-    ultimoAnalisisIA:
-      src.ultimoAnalisisIA && typeof src.ultimoAnalisisIA === 'object' ? src.ultimoAnalisisIA : null,
+    ultimoAnalisisIA,
+    historialDocumentos: sanitizeHistorialDocumentosList(src.historialDocumentos, ultimoAnalisisIA, rolParte),
     notas: src.notas ? String(src.notas) : '',
     clienteNombre: src.clienteNombre ? String(src.clienteNombre) : '',
     clienteId: src.clienteId ? String(src.clienteId) : '',
@@ -838,6 +939,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [notas, setNotas] = useState('');
   const [draftPlazos, setDraftPlazos] = useState<PlazoProcesal[]>([]);
   const [draftAnalisisIA, setDraftAnalisisIA] = useState<ExpedienteAnalisisIA | null>(null);
+  const [draftHistorialDocumentos, setDraftHistorialDocumentos] = useState<ExpedienteDocumentoMemoria[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -922,12 +1024,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [isSavingNextStep, setIsSavingNextStep] = useState(false);
 
   // Secretaría O.L.G.A. — WhatsApp propio y modal de Parte (EXCLUSIVO ABOGADOS)
+  const [connectedWaPhone, setConnectedWaPhone] = useState<string>('');
   const [abogadoWaNumber, setAbogadoWaNumber] = useState<string>(() =>
-    esAbogado ? normalizeAbogadoWhatsAppPhone(loadAbogadoWhatsappSecretaria(uid, userData, wsId)) : ''
+    esAbogado ? loadAbogadoCustomWhatsappSecretaria(uid, userData, wsId) : ''
   );
-  const [abogadoWaDraft, setAbogadoWaDraft] = useState<string>(() =>
-    esAbogado ? loadAbogadoWhatsappSecretaria(uid, userData, wsId) : ''
-  );
+  const [abogadoWaDraft, setAbogadoWaDraft] = useState<string>(() => {
+    if (!esAbogado) return '';
+    const custom = loadAbogadoCustomWhatsappSecretaria(uid, userData, wsId);
+    return custom ? formatAbogadoWhatsAppDisplay(custom) : '';
+  });
   const [editingAbogadoWa, setEditingAbogadoWa] = useState(false);
   const [isSavingAbogadoWa, setIsSavingAbogadoWa] = useState(false);
   const [abogadoWaFeedback, setAbogadoWaFeedback] = useState<string | null>(null);
@@ -936,7 +1041,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     expediente: Expediente | null;
     plazo?: PlazoProcesal | null;
     isScheduledTrigger?: boolean;
-    mode?: 'general' | 'detallado';
+    mode?: ParteSecretariaMode;
   } | null>(null);
   const [secretariaSchedule, setSecretariaSchedule] = useState<SecretariaReminderSchedule>(() =>
     esAbogado ? loadAbogadoSecretariaSchedule(uid, userData, wsId) : { ...DEFAULT_SECRETARIA_SCHEDULE }
@@ -948,6 +1053,37 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
 
+  const waResolution = useMemo(
+    () =>
+      esAbogado
+        ? resolveEffectiveAbogadoWhatsapp({
+            uid,
+            workspaceId: wsId,
+            userData,
+            currentUser,
+            connectedWaPhone,
+            customPhoneOverride: abogadoWaNumber,
+          })
+        : { effectivePhone: '', defaultPhone: '', customPhone: '', source: 'none' as const },
+    [esAbogado, uid, wsId, userData, currentUser, connectedWaPhone, abogadoWaNumber]
+  );
+
+  useEffect(() => {
+    if (!esAbogado) {
+      setConnectedWaPhone('');
+      return;
+    }
+    const targetWs = wsId || uid;
+    if (!targetWs) return;
+    let active = true;
+    void fetchConnectedWorkspaceWhatsApp(targetWs).then((phone) => {
+      if (active) setConnectedWaPhone(phone);
+    });
+    return () => {
+      active = false;
+    };
+  }, [esAbogado, wsId, uid]);
+
   useEffect(() => {
     setDiscardedExpKeys(loadDiscardedExpKeys(storageUid));
     setLocalExpedienteOverrides(loadLocalExpedienteOverrides(storageUid));
@@ -956,11 +1092,10 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
   useEffect(() => {
     if (!esAbogado) return;
-    const loaded = loadAbogadoWhatsappSecretaria(uid, userData, wsId);
-    const norm = normalizeAbogadoWhatsAppPhone(loaded);
-    setAbogadoWaNumber(norm);
-    setAbogadoWaDraft(norm ? formatAbogadoWhatsAppDisplay(norm) : loaded);
-  }, [esAbogado, uid, wsId, userData?.whatsappSecretaria, userData?.telefono]);
+    const custom = loadAbogadoCustomWhatsappSecretaria(uid, userData, wsId);
+    setAbogadoWaNumber(custom);
+    setAbogadoWaDraft(custom ? formatAbogadoWhatsAppDisplay(custom) : '');
+  }, [esAbogado, uid, wsId, userData?.whatsappSecretaria]);
 
   useEffect(() => {
     if (!esAbogado) return;
@@ -1057,9 +1192,10 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     };
   }, [esAbogado, uid, wsId]);
 
-  const handleSaveAbogadoWaInline = async () => {
-    const norm = normalizeAbogadoWhatsAppPhone(abogadoWaDraft);
-    if (abogadoWaDraft.trim() && norm.length < 8) {
+  const handleSaveAbogadoWaInline = async (overridePhone?: string) => {
+    const rawVal = overridePhone !== undefined ? overridePhone : abogadoWaDraft;
+    const norm = rawVal.trim() ? normalizeAbogadoWhatsAppPhone(rawVal) : '';
+    if (rawVal.trim() && norm.length < 8) {
       setAbogadoWaFeedback('Ingresa un número válido (ej. 0981 123 456).');
       return;
     }
@@ -1075,13 +1211,42 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       setAbogadoWaDraft(res.savedPhone ? formatAbogadoWhatsAppDisplay(res.savedPhone) : '');
       setEditingAbogadoWa(false);
       setAbogadoWaFeedback(
-        res.savedPhone ? 'WhatsApp guardado para partes.' : 'Número quitado.'
+        res.savedPhone
+          ? 'Número alternativo guardado para avisos.'
+          : 'Se usará automáticamente tu número vinculado.'
       );
-      window.setTimeout(() => setAbogadoWaFeedback(null), 3000);
+      window.setTimeout(() => setAbogadoWaFeedback(null), 3500);
     } catch {
       setAbogadoWaFeedback('Error al guardar el número.');
     } finally {
       setIsSavingAbogadoWa(false);
+    }
+  };
+
+  const handleToggleSecretariaActivoInline = async () => {
+    const nextActivo = !secretariaSchedule.recordatorioActivo;
+    const normalized = normalizeSecretariaSchedule({
+      ...secretariaSchedule,
+      recordatorioActivo: nextActivo,
+    });
+    setSecretariaSchedule(normalized);
+    setScheduleDraft(normalized);
+    try {
+      const res = await saveAbogadoSecretariaSchedule({
+        uid,
+        workspaceId: wsId,
+        schedule: normalized,
+      });
+      setSecretariaSchedule(res.schedule);
+      setScheduleDraft(res.schedule);
+      setScheduleFeedback(
+        res.schedule.recordatorioActivo
+          ? 'Secretaría O.L.G.A. activada.'
+          : 'Secretaría O.L.G.A. pausada.'
+      );
+      window.setTimeout(() => setScheduleFeedback(null), 3000);
+    } catch {
+      setScheduleFeedback('No se pudo actualizar el estado.');
     }
   };
 
@@ -1574,6 +1739,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setNotas('');
     setDraftPlazos([]);
     setDraftAnalisisIA(null);
+    setDraftHistorialDocumentos([]);
     setPendingAnalysisPreview(null);
     setModalError(null);
   };
@@ -1601,6 +1767,13 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setNotas(freshExp.notas || '');
     setDraftPlazos(freshExp.plazos ? [...freshExp.plazos] : []);
     setDraftAnalisisIA(freshExp.ultimoAnalisisIA || null);
+    setDraftHistorialDocumentos(
+      sanitizeHistorialDocumentosList(
+        freshExp.historialDocumentos,
+        freshExp.ultimoAnalisisIA || null,
+        freshExp.rolParte
+      )
+    );
     setPendingAnalysisPreview(null);
     setModalOpen(true);
   };
@@ -1822,16 +1995,22 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       if (result.anio) setAnio(result.anio);
       if (result.juzgado) setJuzgado(result.juzgado);
       if (result.tipoJuicio) setTipoJuicio(normalizeTipoJuicio(result.tipoJuicio));
-      if (result.rolParteSugerido) setRolParte(normalizeRolParte(result.rolParteSugerido));
+      const effectiveRol = result.rolParteSugerido ? normalizeRolParte(result.rolParteSugerido) : rolParte;
+      if (result.rolParteSugerido) setRolParte(effectiveRol);
       if (normalizeRolParte(result.rolParteSugerido) === 'Demandado') {
         setEstado('Pendiente de contestación');
       }
       setDraftPlazos((prev) => [...prev, ...suggestedPlazos]);
+      if (esAbogado) {
+        setDraftHistorialDocumentos((prev) =>
+          appendAnalisisToHistorial(prev, draftAnalisisIA, analisisObj, effectiveRol)
+        );
+      }
       setDraftAnalisisIA(analisisObj);
       setPendingAnalysisPreview(null);
       showToastSuccess(
         esAbogado
-          ? 'Datos y plazos cargados al formulario. Revisa y guarda el expediente.'
+          ? 'Datos, memoria del caso y plazos cargados al formulario. Revisa y guarda el expediente.'
           : 'Análisis IA aplicado al formulario. Revisa los datos y guarda el expediente.'
       );
       return;
@@ -1862,6 +2041,15 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         resolvedWorkspaceId
       ) || resolvedWorkspaceId;
 
+    const nextHistorial = esAbogado
+      ? appendAnalisisToHistorial(
+          exp.historialDocumentos,
+          exp.ultimoAnalisisIA || null,
+          analisisObj,
+          exp.rolParte
+        )
+      : exp.historialDocumentos;
+
     const updatedExp: Expediente = {
       ...exp,
       userId: resolvedUserId,
@@ -1873,6 +2061,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       tipoJuicio: exp.tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
       plazos: [...(exp.plazos || []), ...suggestedPlazos],
       ultimoAnalisisIA: analisisObj,
+      ...(esAbogado ? { historialDocumentos: nextHistorial } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -1892,7 +2081,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
       showToastSuccess(
         esAbogado && suggestedPlazos.length === 0
-          ? `Resumen jurídico cargado al expediente desde "${fileName}" (sin plazos automáticos).`
+          ? `Resumen jurídico sumado a la memoria del expediente desde "${fileName}" (sin plazos automáticos).`
           : `Se cargaron ${suggestedPlazos.length} plazos/impulsos desde "${fileName}".`
       );
     } catch (err: any) {
@@ -1906,7 +2095,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         setExpandedAnalisisIds((prev) => ({ ...prev, [exp.id]: true }));
         showToastSuccess(
           suggestedPlazos.length === 0
-            ? `Resumen jurídico cargado localmente desde "${fileName}" (sin plazos automáticos).`
+            ? `Resumen jurídico sumado localmente desde "${fileName}" (sin plazos automáticos).`
             : `Datos y ${suggestedPlazos.length} plazos/impulsos cargados localmente desde "${fileName}".`
         );
       } else {
@@ -1944,6 +2133,10 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
 
     let expForDraft: Expediente;
     if (target === 'modal') {
+      const effRol = rolParte || normalizeRolParte(result.rolParteSugerido);
+      const modalHist = esAbogado
+        ? appendAnalisisToHistorial(draftHistorialDocumentos, draftAnalisisIA, analisisObj, effRol)
+        : undefined;
       expForDraft = {
         id: editingExpediente?.id || `draft-${Date.now()}`,
         userId: pickNonEmptyOwnerId(editingExpediente?.userId, resolvedUserId) || resolvedUserId,
@@ -1955,10 +2148,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         anio: (anio || '').trim() || result.anio || String(new Date().getFullYear()),
         juzgado: (juzgado || '').trim() || result.juzgado || '',
         tipoJuicio: tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
-        rolParte: rolParte || normalizeRolParte(result.rolParteSugerido),
+        rolParte: effRol,
         estado: estado || 'En trámite',
         plazos: [...draftPlazos, ...suggestedPlazos],
         ultimoAnalisisIA: analisisObj,
+        ...(esAbogado ? { historialDocumentos: modalHist } : {}),
         notas: (notas || '').trim(),
         clienteNombre: (clienteNombre || '').trim(),
         clienteId: (clienteId || '').trim(),
@@ -1981,6 +2175,16 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             tipoJuicio: existingExp.tipoJuicio || normalizeTipoJuicio(result.tipoJuicio),
             plazos: [...(existingExp.plazos || []), ...suggestedPlazos],
             ultimoAnalisisIA: analisisObj,
+            ...(esAbogado
+              ? {
+                  historialDocumentos: appendAnalisisToHistorial(
+                    existingExp.historialDocumentos,
+                    existingExp.ultimoAnalisisIA || null,
+                    analisisObj,
+                    existingExp.rolParte
+                  ),
+                }
+              : {}),
             updatedAt: nowIso,
           }
         : {
@@ -1996,6 +2200,16 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             estado: 'En trámite',
             plazos: suggestedPlazos,
             ultimoAnalisisIA: analisisObj,
+            ...(esAbogado
+              ? {
+                  historialDocumentos: appendAnalisisToHistorial(
+                    [],
+                    null,
+                    analisisObj,
+                    normalizeRolParte(result.rolParteSugerido)
+                  ),
+                }
+              : {}),
             createdAt: nowIso,
             updatedAt: nowIso,
           };
@@ -2122,6 +2336,17 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     const resolvedDocId = wasEditing && editingExpediente
       ? (docIdByExpIdRef.current.get(editingExpediente.id) || editingExpediente.id)
       : `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const sanitizedUltimoAnalisis = sanitizeAnalisisIA(draftAnalisisIA);
+    const sanitizedHistorial = esAbogado
+      ? sanitizeHistorialDocumentosList(
+          draftHistorialDocumentos.length > 0
+            ? draftHistorialDocumentos
+            : editingExpediente?.historialDocumentos,
+          sanitizedUltimoAnalisis,
+          rolParte
+        )
+      : editingExpediente?.historialDocumentos;
+
     const expToSave: Expediente = {
       id: resolvedDocId,
       userId: resolvedUserId,
@@ -2134,7 +2359,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       rolParte: rolParte || 'Demandado',
       estado: estado || 'En trámite',
       plazos: sanitizePlazosList(draftPlazos),
-      ultimoAnalisisIA: sanitizeAnalisisIA(draftAnalisisIA),
+      ultimoAnalisisIA: sanitizedUltimoAnalisis,
+      ...(esAbogado ? { historialDocumentos: sanitizedHistorial } : {}),
       notas: (notas || '').trim(),
       clienteNombre: (clienteNombre || '').trim(),
       clienteId: (clienteId || '').trim(),
@@ -2723,6 +2949,39 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
     setDraftingKey(key);
     setErrorBanner(null);
     try {
+      const memoriaDocumentos: MemoriaDocumentoEscritoPayload[] | undefined = esAbogado
+        ? (() => {
+            const memList: MemoriaDocumentoEscritoPayload[] = [];
+            const hist = sanitizeHistorialDocumentosList(
+              exp.historialDocumentos,
+              exp.ultimoAnalisisIA || null,
+              exp.rolParte
+            );
+            hist.forEach((docMem) => {
+              memList.push({
+                titulo: docMem.archivoNombre || docMem.tipoActo,
+                fecha: docMem.analizadoAt,
+                parteOrigen: docMem.parteOrigen,
+                resumen: docMem.resumenHechos,
+                fundamentoCPC: docMem.fundamentoCPC,
+              });
+            });
+            const linked = findLinkedDocumentosForExpediente(exp, workspaceDocs);
+            linked.forEach((ld) => {
+              const snippet = String(ld.texto || '').trim();
+              if (!snippet) return;
+              memList.push({
+                titulo: ld.tipo || ld.categoria || 'Escrito vinculado',
+                fecha: ld.createdAt,
+                parteOrigen: 'Propia',
+                resumen: `Escrito/documento previo de nuestra parte (${ld.categoria || 'Expedientes'})`,
+                extracto: snippet.slice(0, 500),
+              });
+            });
+            return memList.length > 0 ? memList : undefined;
+          })()
+        : undefined;
+
       const rawDraftText = await redactarEscritoJudicialConIA({
         expediente: exp,
         modo,
@@ -2738,6 +2997,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         instruccionesAdicionales:
           'Revisa la ortografía estricta en español (tildes, concordancia y puntuación jurídica impecable). Si el documento base o los datos del expediente contienen denominaciones de juzgados o términos procesales extranjeros, adáptalos obligatoriamente a la jurisdicción paraguaya (por ejemplo: Juzgado de Primera Instancia en lo Civil y Comercial, Juzgado de Primera Instancia en lo Laboral o Juzgado de Paz, según corresponda).',
         esAbogado,
+        memoriaDocumentos,
       });
       const draftText = esAbogado ? limpiarLatexJuridico(rawDraftText) : rawDraftText;
       const cleanCaratula = limpiarLatexJuridico(exp.caratula || '').trim();
@@ -2982,12 +3242,18 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
         </div>
       )}
 
-      {/* Barra Secretaría O.L.G.A. — Autoenvío WhatsApp propio + Programación (EXCLUSIVO ABOGADOS) */}
+      {/* Barra Secretaría O.L.G.A. — Llave ON/OFF + WhatsApp vinculado automático + Programación (EXCLUSIVO ABOGADOS) */}
       {esAbogado && (
         <div className={`rounded-2xl border p-3.5 md:px-5 space-y-3 ${cardSurfaceCls}`}>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  secretariaSchedule.recordatorioActivo
+                    ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}
+              >
                 <Smartphone className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -2995,13 +3261,42 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                   <span className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
                     Secretaría O.L.G.A. • WhatsApp propio
                   </span>
-                  {abogadoWaNumber ? (
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={secretariaSchedule.recordatorioActivo}
+                    onClick={() => void handleToggleSecretariaActivoInline()}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-colors cursor-pointer ${
+                      secretariaSchedule.recordatorioActivo
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}
+                    title={
+                      secretariaSchedule.recordatorioActivo
+                        ? 'Avisos automáticos activados (clic para pausar)'
+                        : 'Avisos automáticos pausados (clic para activar)'
+                    }
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        secretariaSchedule.recordatorioActivo ? 'bg-white' : 'bg-slate-400'
+                      }`}
+                    />
+                    <span>{secretariaSchedule.recordatorioActivo ? 'ON • Activa' : 'OFF • Inactiva'}</span>
+                  </button>
+
+                  {waResolution.effectivePhone ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      {formatAbogadoWhatsAppDisplay(abogadoWaNumber)}
+                      {waResolution.source === 'connected'
+                        ? `Vinculado: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`
+                        : waResolution.source === 'custom'
+                          ? `Otro número: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`
+                          : `Perfil: ${formatAbogadoWhatsAppDisplay(waResolution.effectivePhone)}`}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                      Sin número guardado
+                      Sin número vinculado
                     </span>
                   )}
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
@@ -3017,7 +3312,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {editingAbogadoWa || !abogadoWaNumber ? (
+              {editingAbogadoWa ? (
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <input
                     type="tel"
@@ -3026,8 +3321,8 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                       setAbogadoWaDraft(e.target.value);
                       setAbogadoWaFeedback(null);
                     }}
-                    placeholder="Ej. 0981 123 456"
-                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-xs font-bold text-slate-900 dark:text-white outline-none w-44"
+                    placeholder="Recibir avisos en otro número (opcional)"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-xs font-bold text-slate-900 dark:text-white outline-none w-56"
                   />
                   <button
                     type="button"
@@ -3042,18 +3337,28 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                     )}
                     <span>Guardar</span>
                   </button>
-                  {abogadoWaNumber && (
+                  {waResolution.customPhone && waResolution.defaultPhone && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingAbogadoWa(false);
-                        setAbogadoWaDraft(formatAbogadoWhatsAppDisplay(abogadoWaNumber));
-                      }}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold cursor-pointer"
+                      disabled={isSavingAbogadoWa}
+                      onClick={() => void handleSaveAbogadoWaInline('')}
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-bold cursor-pointer"
                     >
-                      Cancelar
+                      Usar vinculado
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingAbogadoWa(false);
+                      setAbogadoWaDraft(
+                        abogadoWaNumber ? formatAbogadoWhatsAppDisplay(abogadoWaNumber) : ''
+                      );
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
                 </div>
               ) : (
                 <button
@@ -3061,7 +3366,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                   onClick={() => setEditingAbogadoWa(true)}
                   className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer transition-colors"
                 >
-                  Cambiar WhatsApp
+                  {waResolution.effectivePhone ? 'Otro número (opcional)' : 'Configurar número'}
                 </button>
               )}
 
@@ -3072,6 +3377,23 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               >
                 <Calendar className="w-3.5 h-3.5" />
                 <span>{showScheduleEditor ? 'Ocultar horario' : 'Programar'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setParteModalTarget({
+                    expediente: upcomingDeadlines[0]?.expediente || activeExpedientes[0] || null,
+                    plazo: upcomingDeadlines[0]?.plazo || null,
+                    isScheduledTrigger: false,
+                    mode: 'urgente',
+                  })
+                }
+                className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black tracking-wide inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                title="Ver alerta Foco Urgente del Día (qué hacer, qué proveer y qué presentar)"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>🚨 Urgente del Día</span>
               </button>
 
               <button
@@ -3989,7 +4311,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                       )}
                     </div>
 
-                    {/* Último Análisis IA */}
+                    {/* Último Análisis IA + Memoria Acumulada del Expediente */}
                     {exp.ultimoAnalisisIA && (
                       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/30 p-4">
                         <div
@@ -3998,7 +4320,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                           }
                           className="flex items-center justify-between gap-2 cursor-pointer"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                             <span className="text-xs font-black uppercase tracking-wider text-indigo-950 dark:text-indigo-200">
                               Análisis Jurídico IA Guardado
@@ -4006,6 +4328,11 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                             {exp.ultimoAnalisisIA.archivoNombre && (
                               <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
                                 ({exp.ultimoAnalisisIA.archivoNombre})
+                              </span>
+                            )}
+                            {esAbogado && (exp.historialDocumentos?.length || 0) > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600/15 text-indigo-800 dark:text-indigo-200 border border-indigo-300/60 dark:border-indigo-700">
+                                Memoria acumulada: {exp.historialDocumentos?.length} doc(s)
                               </span>
                             )}
                           </div>
@@ -4016,12 +4343,42 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
                           )}
                         </div>
                         {analisisOpen && (
-                          <div className="mt-3 pt-3 border-t border-indigo-200/70 dark:border-indigo-800/50 space-y-2 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                          <div className="mt-3 pt-3 border-t border-indigo-200/70 dark:border-indigo-800/50 space-y-2.5 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
                             <p>{exp.ultimoAnalisisIA.resumenHechos}</p>
                             {exp.ultimoAnalisisIA.fundamentoCPC && (
                               <p className="text-[11px] font-bold text-indigo-800 dark:text-indigo-300">
                                 Fundamento CPC Paraguay: {exp.ultimoAnalisisIA.fundamentoCPC}
                               </p>
+                            )}
+                            {esAbogado && (exp.historialDocumentos?.length || 0) > 1 && (
+                              <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-800/40 space-y-1.5">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
+                                  Historial acumulado usado por la IA al redactar ({exp.historialDocumentos?.length})
+                                </p>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                  {(exp.historialDocumentos || []).map((docMem) => (
+                                    <div
+                                      key={docMem.id}
+                                      className="rounded-xl bg-white/80 dark:bg-slate-900/70 border border-indigo-100 dark:border-indigo-900/60 p-2.5 text-[11px]"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                                        <span className="font-bold text-slate-900 dark:text-white">
+                                          {docMem.archivoNombre}
+                                        </span>
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                                          {docMem.parteOrigen}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                          {formatDateShort(docMem.analizadoAt)}
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-600 dark:text-slate-300 line-clamp-2">
+                                        {docMem.resumenHechos}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             )}
                           </div>
                         )}
@@ -5115,6 +5472,7 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
           userData={userData}
           currentUser={currentUser}
           workspaceId={wsId}
+          connectedWaPhone={connectedWaPhone}
           isScheduledTrigger={Boolean(parteModalTarget.isScheduledTrigger)}
           linkedDocs={
             parteModalTarget.expediente

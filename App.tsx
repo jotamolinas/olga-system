@@ -48,6 +48,8 @@ import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 import { Sidebar } from './components/Sidebar';
 import { WhatsAppTab } from './components/WhatsAppTab';
 import { ExpedientesTab } from './components/ExpedientesTab';
+import { usePWAInstall } from './hooks/usePWAInstall';
+import { PWAInstallButton, PWAInstallGuideModal } from './components/PWAInstallBanner';
 
 export interface AdminTramiteRecord {
   id: string;
@@ -360,46 +362,8 @@ const imprimirDocumentoOficial = (htmlContent: string, usuario: any = null, isSo
 };
 
 const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) => {
-  // PWA Install Prompt State
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [installMessage, setInstallMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsStandalone(true);
-    }
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) {
-      setInstallMessage("Para instalar O.L.G.A., debes abrir la app en una NUEVA PESTAÑA (icono superior derecho) o desde el menú de tu navegador.");
-      setTimeout(() => setInstallMessage(null), 8000);
-      return;
-    }
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-      setDeferredPrompt(null);
-    } else {
-      console.log('User dismissed the install prompt');
-    }
-  };
+  // Smart Mobile PWA Installer (Android 1-clic + iOS Safari / In-App guide)
+  const pwaInstall = usePWAInstall();
 
   // Authentication & Roles state
   const [currentUser, setCurrentUser] = useState<(User & { role?: string; rol?: string; nombre?: string }) | null>(null);
@@ -2219,9 +2183,10 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           setSelectedExpedienteIdForNav(null);
           setCustomBranding({ nombreInstitucion: '', ruc: '', registroNotarial: '' });
         }}
-        isStandalone={isStandalone}
-        installMessage={installMessage}
-        handleInstallClick={handleInstallClick}
+        isStandalone={pwaInstall.isStandalone}
+        installMessage={null}
+        handleInstallClick={pwaInstall.triggerInstall}
+        pwaInstall={pwaInstall}
         isSoftBlocked={isSoftBlocked}
         hasUnreadChatResponse={hasUnreadChatResponse}
         isChatLoading={chatLoading}
@@ -2394,6 +2359,8 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 <span className="text-[10px] font-black uppercase tracking-wider whitespace-nowrap">Obtener Planes</span>
               </button>
             )}
+
+            <PWAInstallButton pwa={pwaInstall} isDark={isDarkLayout} />
 
             {/* Campana de Notificaciones Notariales y Judiciales Global */}
             <NotificationBell 
@@ -3445,6 +3412,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
           </div>
         </div>
       )}
+      <PWAInstallGuideModal pwa={pwaInstall} />
     </div>
   );
 };
