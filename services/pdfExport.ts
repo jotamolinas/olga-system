@@ -22,7 +22,7 @@ export interface GeneratedDocumentPdf {
 
 const decodeHtmlEntities = (input: string): string => {
   return input
-    .replace(/(?:&nbsp;|&#160;)+/gi, ' ')
+    .replace(/&nbsp;|&#160;|\u00A0/gi, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -42,28 +42,41 @@ const decodeHtmlEntities = (input: string): string => {
     .replace(/&Ntilde;/g, 'Ñ');
 };
 
-export const cleanDocumentContentForPdf = (rawText: string, esAbogado = false): string => {
+export const cleanDocumentContentForPdf = (
+  rawText: string,
+  esAbogado = false,
+  preserveWhitespace = false
+): string => {
   if (!rawText) return '';
 
   const withBreaks = rawText
     .replace(/\r\n/g, '\n')
+    .replace(/<(?:p|div)[^>]*>\s*<br\s*\/?>\s*<\/(?:p|div)>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '• ');
 
   const withoutTags = decodeHtmlEntities(withBreaks).replace(/<[^>]+>/g, '');
 
-  const cleaned = withoutTags
+  const normalizedMarkdown = withoutTags
     .replace(/```[\w-]*\n?/g, '')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*\*/g, '')
     .replace(/(^|[^\w*])\*([^*\n]+)\*(?=[^\w*]|$)/g, '$1$2')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{4,}/g, '\n\n\n')
-    .trim();
+    .replace(/`([^`]+)`/g, '$1');
+
+  const cleaned = preserveWhitespace
+    ? normalizedMarkdown
+        .replace(/\t/g, '    ')
+        .replace(/[ ]+$/gm, '')
+        .replace(/\n{4,}/g, '\n\n\n')
+        .replace(/^\n+|\n+$/g, '')
+    : normalizedMarkdown
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n{4,}/g, '\n\n\n')
+        .trim();
 
   return esAbogado ? limpiarLatexJuridico(cleaned) : cleaned;
 };
@@ -125,16 +138,35 @@ const normalizeTitleForComparison = (value: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const resolvePdfFontFamily = (fontFamily?: string): 'times' | 'helvetica' | 'courier' => {
+  const lower = String(fontFamily || '').toLowerCase();
+  if (lower.includes('courier') || lower.includes('mono')) return 'courier';
+  if (
+    lower.includes('arial') ||
+    lower.includes('calibri') ||
+    lower.includes('verdana') ||
+    lower.includes('helvetica') ||
+    lower.includes('sans')
+  ) {
+    return 'helvetica';
+  }
+  return 'times';
+};
+
 export const generateDocumentPdfBase64 = ({
   title,
   content,
   escribania,
   includeHeader = true,
+  fontFamily,
+  fontSizePt,
 }: {
   title?: string;
   content: string;
   escribania?: EscribaniaPdfMetadata;
   includeHeader?: boolean;
+  fontFamily?: string;
+  fontSizePt?: number;
 }): GeneratedDocumentPdf => {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -248,11 +280,16 @@ export const generateDocumentPdfBase64 = ({
 
   // 2. Título del Documento (evitando duplicarlo si el cuerpo ya inicia con el mismo título)
   const isAbogadoPdf = Boolean(escribania?.esAbogado);
+  const pdfFont = resolvePdfFontFamily(fontFamily);
+  const effectiveFontSize =
+    typeof fontSizePt === 'number' && Number.isFinite(fontSizePt)
+      ? Math.min(24, Math.max(8, fontSizePt))
+      : 11;
   const rawTitleClean = (title || 'Documento Notarial')
     .replace(/\s*\(Guardado Local\)\s*/gi, '')
     .trim();
   const cleanTitle = isAbogadoPdf ? limpiarLatexJuridico(rawTitleClean) : rawTitleClean;
-  const cleanBody = cleanDocumentContentForPdf(content, isAbogadoPdf);
+  const cleanBody = cleanDocumentContentForPdf(content, isAbogadoPdf, true);
 
   const firstNonEmptyLine = (cleanBody.split('\n').find((l) => l.trim().length > 0) || '').trim();
   const normalizedTitle = normalizeTitleForComparison(cleanTitle);
@@ -266,8 +303,8 @@ export const generateDocumentPdfBase64 = ({
   );
 
   if (cleanTitle && !bodyAlreadyStartsWithTitle) {
-    doc.setFont('times', 'bold');
-    doc.setFontSize(12.5);
+    doc.setFont(pdfFont, 'bold');
+    doc.setFontSize(Math.max(12, effectiveFontSize + 1));
     doc.setTextColor(15, 23, 42);
     const titleLines = doc.splitTextToSize(cleanTitle.toUpperCase(), maxWidth);
     titleLines.forEach((line: string) => {
@@ -278,12 +315,12 @@ export const generateDocumentPdfBase64 = ({
     cursorY += 3;
   }
 
-  // 3. Cuerpo del Documento con paginación automática y protección del bloque de cierre/firma
-  doc.setFont('times', 'normal');
-  doc.setFontSize(11);
+  // 3. Cuerpo del Documento con paginación automática, preservación de espacios/tabs y protección de firmas
+  doc.setFont(pdfFont, 'normal');
+  doc.setFontSize(effectiveFontSize);
   doc.setTextColor(25, 29, 36);
 
-  const lineHeight = 4.9;
+  const lineHeight = Math.max(4.0, Number(((effectiveFontSize / 11) * 4.9).toFixed(2)));
   const paragraphs = cleanBody ? cleanBody.split('\n') : [''];
   let signatureCaptionRemaining = 0;
   let closingProtected = false;
@@ -296,7 +333,7 @@ export const generateDocumentPdfBase64 = ({
       if (!t) {
         remainingSigCaptions = 0;
         totalH += lineHeight * 0.6;
-      } else if (/^_{6,}$/.test(t)) {
+      } else if (/^_{4,}(?:\s+_{4,})*$/.test(t)) {
         totalH += 9 + lineHeight;
         remainingSigCaptions = 4;
       } else {
@@ -314,7 +351,8 @@ export const generateDocumentPdfBase64 = ({
   };
 
   paragraphs.forEach((paragraph, idx) => {
-    const trimmed = paragraph.trim();
+    const linePreserved = paragraph.replace(/[ \t]+$/g, '').replace(/\t/g, '    ');
+    const trimmed = linePreserved.trim();
     if (!trimmed) {
       signatureCaptionRemaining = 0;
       cursorY += lineHeight * 0.6;
@@ -337,23 +375,58 @@ export const generateDocumentPdfBase64 = ({
       }
     }
 
-    if (/^_{6,}$/.test(trimmed)) {
+    if (/^_{4,}(?:\s+_{4,})*$/.test(trimmed)) {
       if (!closingProtected) {
         ensureSpace(26);
       }
       cursorY += 8;
-      doc.text(trimmed, sideMargin, cursorY);
+      if (doc.getTextWidth(linePreserved) <= maxWidth) {
+        doc.text(linePreserved, sideMargin, cursorY);
+      } else if (/\s{4,}/.test(trimmed)) {
+        const parts = trimmed.split(/\s{4,}/);
+        const colW = maxWidth / parts.length;
+        parts.forEach((part, pIdx) => {
+          const fitted = doc.splitTextToSize(part, colW - 4)[0] || part;
+          doc.text(fitted, sideMargin + pIdx * colW, cursorY);
+        });
+      } else {
+        doc.text(trimmed, sideMargin, cursorY);
+      }
       cursorY += lineHeight;
       signatureCaptionRemaining = 4;
       return;
     }
 
-    const wrappedLines: string[] = doc.splitTextToSize(trimmed, maxWidth);
-    wrappedLines.forEach((line) => {
+    if (doc.getTextWidth(linePreserved) <= maxWidth) {
       ensureSpace(lineHeight);
-      doc.text(line, sideMargin, cursorY);
+      doc.text(linePreserved, sideMargin, cursorY);
       cursorY += lineHeight;
-    });
+    } else if (linePreserved.length <= 140 && /\s{4,}/.test(trimmed)) {
+      const parts = trimmed.split(/\s{4,}/);
+      if (parts.length >= 2) {
+        ensureSpace(lineHeight);
+        const colW = maxWidth / parts.length;
+        parts.forEach((part, pIdx) => {
+          const fitted = doc.splitTextToSize(part, colW - 4)[0] || part;
+          doc.text(fitted, sideMargin + pIdx * colW, cursorY);
+        });
+        cursorY += lineHeight;
+      } else {
+        const wrappedLines: string[] = doc.splitTextToSize(trimmed, maxWidth);
+        wrappedLines.forEach((line) => {
+          ensureSpace(lineHeight);
+          doc.text(line, sideMargin, cursorY);
+          cursorY += lineHeight;
+        });
+      }
+    } else {
+      const wrappedLines: string[] = doc.splitTextToSize(trimmed, maxWidth);
+      wrappedLines.forEach((line) => {
+        ensureSpace(lineHeight);
+        doc.text(line, sideMargin, cursorY);
+        cursorY += lineHeight;
+      });
+    }
 
     if (signatureCaptionRemaining > 0) {
       signatureCaptionRemaining -= 1;

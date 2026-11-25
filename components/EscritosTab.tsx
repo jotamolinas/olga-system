@@ -13,11 +13,63 @@ import {
 } from 'lucide-react';
 import { limpiarLatexJuridico, redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
+import mammoth from 'mammoth';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
 import { EditorNotarialOficial } from './EditorNotarialOficial';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
 import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage, downloadPdfFromBase64 } from '../services/pdfExport';
 import { wrapSignatureBlocksForPrint } from './DocumentoModal';
+
+const EDITOR_FONT_FAMILIES = [
+  'Times New Roman',
+  'Arial',
+  'Georgia',
+  'Calibri',
+  'Verdana',
+  'Courier New',
+] as const;
+
+const EDITOR_FONT_SIZES_PT = [10, 11, 12, 13, 14, 16, 18] as const;
+
+const resolveEditorFontCss = (family?: string): string => {
+  switch (family) {
+    case 'Arial':
+      return 'Arial, Helvetica, sans-serif';
+    case 'Georgia':
+      return 'Georgia, "Times New Roman", serif';
+    case 'Calibri':
+      return 'Calibri, "Segoe UI", Arial, sans-serif';
+    case 'Verdana':
+      return 'Verdana, Geneva, sans-serif';
+    case 'Courier New':
+      return '"Courier New", Courier, monospace';
+    case 'Times New Roman':
+    default:
+      return '"Times New Roman", Times, serif';
+  }
+};
+
+const stripHtmlToPlainText = (raw?: string): string => {
+  if (!raw) return '';
+  return raw
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;|\u00A0/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const escapeHtmlText = (raw: string): string =>
+  raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
 interface Escrito {
   id: string;
@@ -27,6 +79,8 @@ interface Escrito {
   tipo: string;
   tipoHoja?: 'blanca' | 'protocolo';
   includeHeader?: boolean;
+  fontFamily?: string;
+  fontSizePt?: number;
   userId: string;
   categoria?: string;
   correlativo?: string | number;
@@ -438,6 +492,8 @@ const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
 const LOCAL_STORAGE_DRAFT_CATEGORIA = 'olga_escritos_redaccion_draft_categoria';
 const LOCAL_STORAGE_DRAFT_TIPO_HOJA = 'olga_escritos_redaccion_draft_tipo_hoja';
 const LOCAL_STORAGE_DRAFT_INCLUDE_HEADER = 'olga_escritos_redaccion_draft_include_header';
+const LOCAL_STORAGE_DRAFT_FONT_FAMILY = 'olga_escritos_redaccion_draft_font_family';
+const LOCAL_STORAGE_DRAFT_FONT_SIZE = 'olga_escritos_redaccion_draft_font_size';
 
 export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, onOpenDocument, esPlanFull, isSoftBlocked = false, canUseWhatsApp }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
@@ -620,11 +676,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleSendDocumentByWhatsApp = (
     rawTitle?: string,
     rawContent?: string,
-    overrideIncludeHeader?: boolean
+    overrideIncludeHeader?: boolean,
+    overrideFontFamily?: string,
+    overrideFontSizePt?: number
   ) => {
     const content = rawContent || '';
     if (!content.trim()) return;
-    const cleanTitle = (rawTitle || 'Documento Notarial').replace(/\s*\(Guardado Local\)\s*/gi, '').trim();
+    const cleanTitle = (rawTitle || 'Documento').replace(/\s*\(Guardado Local\)\s*/gi, '').trim();
     const effectiveIncludeHeader =
       overrideIncludeHeader !== undefined ? overrideIncludeHeader : includeHeader;
     const pdf = generateDocumentPdfBase64({
@@ -632,6 +690,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       content,
       escribania: buildEscribaniaPdfMeta(),
       includeHeader: effectiveIncludeHeader,
+      fontFamily: overrideFontFamily || editorFontFamily,
+      fontSizePt: overrideFontSizePt || editorFontSizePt,
     });
     setWaModalData({
       isOpen: true,
@@ -645,7 +705,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleDescargarPDF = (
     rawTitle?: string,
     rawContent?: string,
-    overrideIncludeHeader?: boolean
+    overrideIncludeHeader?: boolean,
+    overrideFontFamily?: string,
+    overrideFontSizePt?: number
   ) => {
     const content = rawContent !== undefined ? rawContent : (editorContentRef.current?.innerHTML || editorText);
     const cleanedSource = content.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
@@ -653,7 +715,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       alert('El documento está vacío. Escriba o seleccione una plantilla antes de exportar.');
       return;
     }
-    const cleanTitle = (rawTitle || documentTitle || 'Documento Notarial')
+    const cleanTitle = (rawTitle || documentTitle || 'Documento')
       .replace(/\s*\(Guardado Local\)\s*/gi, '')
       .trim();
     const effectiveIncludeHeader =
@@ -663,6 +725,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       content: cleanedSource,
       escribania: buildEscribaniaPdfMeta(),
       includeHeader: effectiveIncludeHeader,
+      fontFamily: overrideFontFamily || editorFontFamily,
+      fontSizePt: overrideFontSizePt || editorFontSizePt,
     });
     downloadPdfFromBase64(pdf.fileBase64, pdf.fileName);
   };
@@ -670,7 +734,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Modo de navegación: Redacción activa vs Archivo de Documentos
   const [activeSubTab, setActiveSubTab] = useState<'redaccion' | 'archivo'>('redaccion');
 
-  // Visibilidad condicional del Editor Notarial (Oculto por defecto según directriz UI/UX)
+  // Visibilidad condicional del Editor
   const [mostrarEditor, setMostrarEditor] = useState<boolean>(false);
 
   // Estado del Redactor de Escritos
@@ -683,6 +747,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [copiedFeedback, setCopiedFeedback] = useState<boolean>(false);
   const [previewMode, setPreviewMode] = useState<boolean>(false);
+  const [editorFontFamily, setEditorFontFamily] = useState<string>('Times New Roman');
+  const [editorFontSizePt, setEditorFontSizePt] = useState<number>(12);
 
   // Estados de formato activo en la barra de herramientas del editor (queryCommandState)
   const [activeFormats, setActiveFormats] = useState({
@@ -706,6 +772,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBannerCollapsed, setAiBannerCollapsed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docImportInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const editorTextareaRef = editorContentRef;
 
@@ -755,10 +822,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
     if (!text) return;
-    // Limpia y divide en párrafos reales para que la paginación funcione
-    const cleanHtml = text.split(/\r?\n/)
-      .filter(line => line.trim() !== '')
-      .map(line => `<p>${line.trim()}</p>`)
+    // Preserva párrafos, espacios iniciales/múltiples y tabulaciones
+    const cleanHtml = text
+      .split(/\r?\n/)
+      .map((line) => `<p>${line.length > 0 ? escapeHtmlText(line) : '<br>'}</p>`)
       .join('');
     document.execCommand('insertHTML', false, cleanHtml);
     debouncedVerificarPaginacion();
@@ -769,90 +836,86 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     if (!file) return;
 
     const fileName = file.name.toLowerCase();
-    const reader = new FileReader();
 
-    if (fileName.endsWith('.txt')) {
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
+    try {
+      if (fileName.endsWith('.docx')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml(
+          { arrayBuffer },
+          { styleMap: ['u => u'] }
+        );
+        let cleanHtml = (result?.value || '').trim();
+        if (!cleanHtml) {
+          const rawRes = await mammoth.extractRawText({ arrayBuffer });
+          const rawText = rawRes?.value || '';
+          cleanHtml = rawText
+            .split(/\r?\n/)
+            .map((line) => `<p>${line.length > 0 ? escapeHtmlText(line) : '<br>'}</p>`)
+            .join('');
+        }
+        if (cleanHtml) {
+          setEditorText(cleanHtml);
+          if (editorContentRef.current) {
+            editorContentRef.current.innerHTML = cleanHtml;
+          }
+          if (!documentTitle.trim() || documentTitle === 'Escrito en Blanco') {
+            setDocumentTitle(file.name.replace(/\.docx$/i, ''));
+          }
+          debouncedVerificarPaginacion();
+        } else {
+          alert('El archivo Word (.docx) no contiene texto visible para importar.');
+        }
+      } else if (fileName.endsWith('.txt')) {
+        const content = await file.text();
         if (content) {
-          const cleanHtml = content.split(/\r?\n/)
-            .map(line => `<p>${line.trim() ? line.trim() : '<br>'}</p>`)
+          const cleanHtml = content
+            .split(/\r?\n/)
+            .map((line) => `<p>${line.length > 0 ? escapeHtmlText(line) : '<br>'}</p>`)
             .join('');
           setEditorText(cleanHtml);
           if (editorContentRef.current) {
             editorContentRef.current.innerHTML = cleanHtml;
           }
+          if (!documentTitle.trim() || documentTitle === 'Escrito en Blanco') {
+            setDocumentTitle(file.name.replace(/\.txt$/i, ''));
+          }
           debouncedVerificarPaginacion();
         }
-      };
-      reader.readAsText(file, 'UTF-8');
-    } else if (fileName.endsWith('.pdf')) {
-      reader.onload = async (event) => {
-        try {
-          const arrayBuffer = event.target?.result as ArrayBuffer;
-          if (arrayBuffer) {
-            const pdfjsLib = await import('pdfjs-dist');
-            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let fullText = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const textContent = await page.getTextContent();
-              const pageText = textContent.items.map((item: any) => item.str).join(' ');
-              fullText += pageText + '\n\n';
-            }
-            const cleanHtml = fullText.split(/\r?\n/)
-              .filter(line => line.trim() !== '')
-              .map(line => `<p>${line.trim()}</p>`)
-              .join('');
-            setEditorText(cleanHtml);
-            if (editorContentRef.current) {
-              editorContentRef.current.innerHTML = cleanHtml;
-            }
-            debouncedVerificarPaginacion();
-          }
-        } catch (err) {
-          console.error("Error al importar PDF:", err);
-          alert("No se pudo extraer texto del archivo PDF.");
+      } else if (fileName.endsWith('.pdf')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n\n';
         }
-      };
-      reader.readAsArrayBuffer(file);
-    } else if (fileName.endsWith('.docx')) {
-      reader.onload = async (event) => {
-        try {
-          const arrayBuffer = event.target?.result as ArrayBuffer;
-          if (arrayBuffer) {
-            const uint8Array = new Uint8Array(arrayBuffer);
-            let binary = '';
-            for (let i = 0; i < uint8Array.byteLength; i++) {
-              binary += String.fromCharCode(uint8Array[i]);
-            }
-            const matches = binary.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
-            let text = '';
-            if (matches) {
-              text = matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ');
-            } else {
-              text = binary.replace(/[^\x20-\x7E\n]/g, ' ');
-            }
-            const cleanHtml = text.split(/\r?\n|\. /)
-              .filter(line => line.trim() !== '')
-              .map(line => `<p>${line.trim()}</p>`)
-              .join('');
-            setEditorText(cleanHtml);
-            if (editorContentRef.current) {
-              editorContentRef.current.innerHTML = cleanHtml;
-            }
-            debouncedVerificarPaginacion();
-          }
-        } catch (err) {
-          console.error("Error al importar Word (.docx):", err);
-          alert("No se pudo leer el archivo Word (.docx).");
+        const cleanHtml = fullText
+          .split(/\r?\n/)
+          .filter((line) => line.trim() !== '')
+          .map((line) => `<p>${escapeHtmlText(line)}</p>`)
+          .join('');
+        setEditorText(cleanHtml);
+        if (editorContentRef.current) {
+          editorContentRef.current.innerHTML = cleanHtml;
         }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+        if (!documentTitle.trim() || documentTitle === 'Escrito en Blanco') {
+          setDocumentTitle(file.name.replace(/\.pdf$/i, ''));
+        }
+        debouncedVerificarPaginacion();
+      } else {
+        alert('Formato no compatible. Selecciona un archivo .docx, .txt o .pdf.');
+      }
+    } catch (err) {
+      console.error('Error al importar documento:', err);
+      alert('No se pudo importar el archivo. Verifica que sea un documento .docx, .txt o .pdf válido.');
+    } finally {
+      if (docImportInputRef.current) {
+        docImportInputRef.current.value = '';
+      }
     }
   };
 
@@ -1035,6 +1098,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const savedCat = localStorage.getItem(LOCAL_STORAGE_DRAFT_CATEGORIA);
       const savedTipoHoja = localStorage.getItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA);
       const savedIncludeHeader = localStorage.getItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER);
+      const savedFontFamily = localStorage.getItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY);
+      const savedFontSize = localStorage.getItem(LOCAL_STORAGE_DRAFT_FONT_SIZE);
 
       if (savedPlantilla) {
         setSelectedPlantillaId(savedPlantilla);
@@ -1048,6 +1113,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setIncludeHeader(false);
       } else {
         setIncludeHeader(true);
+      }
+      if (savedFontFamily && (EDITOR_FONT_FAMILIES as readonly string[]).includes(savedFontFamily)) {
+        setEditorFontFamily(savedFontFamily);
+      }
+      if (savedFontSize) {
+        const parsedSize = parseInt(savedFontSize, 10);
+        if ((EDITOR_FONT_SIZES_PT as readonly number[]).includes(parsedSize)) {
+          setEditorFontSizePt(parsedSize);
+        }
       }
       if (savedTitle) {
         setDocumentTitle(savedTitle);
@@ -1079,6 +1153,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, selectedCategoryForSave);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, tipoHoja);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(includeHeader));
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY, editorFontFamily);
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_SIZE, String(editorFontSizePt));
       } catch (e) {
         console.warn('Error guardando borrador local:', e);
       }
@@ -1089,7 +1165,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader]);
+  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader, editorFontFamily, editorFontSizePt]);
 
   // Sincronización del contentEditable con el estado de React editorText
   useEffect(() => {
@@ -2626,7 +2702,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     setIsSavingDraft(true);
     try {
-      const tipoDoc = documentTitle.trim() || 'Escrito Notarial';
+      const tipoDoc = documentTitle.trim() || 'Escrito';
       const cat = selectedCategoryForSave || 'Contratos Privados';
 
       // Limpiar etiquetas temporales de resaltado antes de persistir
@@ -2657,6 +2733,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           tipoPapel: tipoPapelValue,
           modoImpresion: modoImpresionValue,
           includeHeader,
+          fontFamily: editorFontFamily,
+          fontSizePt: editorFontSizePt,
           categoria: cat,
           ultimaModificacion: serverTimestamp(),
           lastModifiedBy: user?.uid,
@@ -2675,6 +2753,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             tempDocs[idx].tipoPapel = tipoPapelValue;
             tempDocs[idx].modoImpresion = modoImpresionValue;
             tempDocs[idx].includeHeader = includeHeader;
+            tempDocs[idx].fontFamily = editorFontFamily;
+            tempDocs[idx].fontSizePt = editorFontSizePt;
             tempDocs[idx].categoria = cat;
             localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
           }
@@ -2688,6 +2768,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           tipoPapel: tipoPapelValue,
           modoImpresion: modoImpresionValue,
           includeHeader,
+          fontFamily: editorFontFamily,
+          fontSizePt: editorFontSizePt,
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
@@ -2726,7 +2808,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       console.error('Error al guardar documento:', err);
       // Guardado como respaldo local de emergencia únicamente en caso de fallo de conexión
       try {
-        const tipoDoc = documentTitle.trim() || 'Escrito Notarial';
+        const tipoDoc = documentTitle.trim() || 'Escrito';
         const cat = selectedCategoryForSave || 'Contratos Privados';
         const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
         const rawTemp = localStorage.getItem('escritos_temporales');
@@ -2736,6 +2818,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           tipo: tipoDoc,
           tipoHoja,
           includeHeader,
+          fontFamily: editorFontFamily,
+          fontSizePt: editorFontSizePt,
           userId: user.uid,
           categoria: cat,
           fechaCreacion: new Date().toISOString()
@@ -2759,7 +2843,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
-    const title = documentTitle.trim() || 'Escrito Notarial';
+    const title = documentTitle.trim() || 'Escrito';
 
     // 1. Limpieza y Normalización Lossless del árbol DOM (preserva nodos de texto sueltos, negritas, saltos y bloques)
     const tempDiv = document.createElement('div');
@@ -2901,7 +2985,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
         // Párrafo o DIV hoja: preservar saltos internos \n o <br> si los tuviera (contentEditable pre-wrap)
         const textVal = el.textContent || '';
-        const innerHtml = el.innerHTML.trim();
+        const innerHtml = el.innerHTML.replace(/^[\r\n]+|[\r\n]+$/g, '');
         const alignStyle = (el as HTMLElement).style?.textAlign
           ? ` style="text-align: ${(el as HTMLElement).style.textAlign}"`
           : '';
@@ -2980,6 +3064,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       `;
     }
 
+    const printFontCss = resolveEditorFontCss(editorFontFamily);
+    const printFontSize = `${editorFontSizePt}pt`;
+
     // 2. Arquitectura CSS Nativa de Impresión:
     // - Hoja en Blanco (Simple): A4 uniforme con márgenes estándar en TODAS las páginas (sin anverso/reverso ni cabecera sellada)
     // - Hoja de Protocolo Notarial: Oficio con alternancia @page :left y @page :right para papel preimpreso
@@ -3029,7 +3116,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       overflow: visible;
       background: #ffffff;
       color: #000000;
-      font-family: "Times New Roman", Times, serif;
+      font-family: ${printFontCss};
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -3064,11 +3151,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       width: 100%;
       height: auto;
       overflow: visible;
-      font-family: "Times New Roman", Times, serif;
-      font-size: ${esHojaEnBlancoImpresion ? '12pt' : '14pt'};
+      font-family: ${printFontCss};
+      font-size: ${printFontSize};
       line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'};
       text-align: justify;
       text-justify: inter-word;
+      white-space: pre-wrap !important;
+      tab-size: 4 !important;
+      -moz-tab-size: 4 !important;
       color: #000000;
     }
 
@@ -3076,11 +3166,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       margin: ${esHojaEnBlancoImpresion ? '0 0 8px 0' : '0'} !important;
       padding: 0 !important;
       ${esHojaEnBlancoImpresion ? 'min-height: 1.55em;' : 'min-height: 10.2mm !important;'}
-      font-family: "Times New Roman", Times, serif;
-      font-size: ${esHojaEnBlancoImpresion ? '12pt' : '14pt'};
+      font-family: ${printFontCss};
+      font-size: ${printFontSize};
       line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
       text-align: justify;
       text-justify: inter-word;
+      white-space: pre-wrap !important;
+      tab-size: 4 !important;
+      -moz-tab-size: 4 !important;
       color: #000000;
       orphans: 3;
       widows: 3;
@@ -3098,8 +3191,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     li {
       margin: 0 !important;
+      font-family: ${printFontCss};
+      font-size: ${printFontSize};
       line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
       text-align: justify;
+      white-space: pre-wrap !important;
+      tab-size: 4 !important;
+      -moz-tab-size: 4 !important;
       orphans: 3;
       widows: 3;
     }
@@ -3107,6 +3205,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     .signature-block, .signatures-group {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
+      white-space: pre-wrap !important;
+      tab-size: 4 !important;
+      -moz-tab-size: 4 !important;
     }
 
     .signature-block {
@@ -3116,8 +3217,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     .signature-block p {
       margin: 0 0 2px 0 !important;
       min-height: 0 !important;
-      text-align: left !important;
       line-height: 1.45 !important;
+      white-space: pre-wrap !important;
+      tab-size: 4 !important;
+      -moz-tab-size: 4 !important;
     }
     ` : ''}
 
@@ -3141,7 +3244,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       object-fit: contain;
     }
     .olga-doc-membrete-title {
-      font-family: "Times New Roman", Times, serif;
+      font-family: ${printFontCss};
       font-size: 14pt;
       font-weight: 700;
       letter-spacing: 0.04em;
@@ -3157,6 +3260,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       line-height: 1.35 !important;
       min-height: 0 !important;
       text-align: center !important;
+      white-space: normal !important;
       color: #475569 !important;
       margin: 3px 0 0 0 !important;
     }
@@ -3177,6 +3281,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         width: 100% !important;
         height: auto !important;
         overflow: visible !important;
+        white-space: pre-wrap !important;
+        tab-size: 4 !important;
+        -moz-tab-size: 4 !important;
+      }
+      .documento-notarial p,
+      .signature-block,
+      .signature-block p {
+        white-space: pre-wrap !important;
+        tab-size: 4 !important;
+        -moz-tab-size: 4 !important;
       }
     }
   </style>
@@ -3384,7 +3498,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
     }, 80);
 
-    setSaveSuccessBanner('¡Texto redactado por IA insertado con éxito en el Editor Notarial Activo!');
+    setSaveSuccessBanner('¡Texto redactado por IA insertado con éxito en el Editor de Escritos!');
     setTimeout(() => setSaveSuccessBanner(null), 4000);
 
     // Limpieza de propuesta tras inserción aprobada
@@ -3394,7 +3508,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setIsAiModalOpen(false);
   };
 
-  // Cargar documento seleccionado en el Editor Notarial Activo
+  // Cargar documento seleccionado en el Editor de Escritos
   const handleEditarDocumento = (escrito: Escrito) => {
     const docTexto = escrito.texto || '';
     const cleanTitle = escrito.tipo.replace(' (Guardado Local)', '');
@@ -3403,12 +3517,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         ? 'protocolo'
         : 'blanca';
     const restoredIncludeHeader = escrito.includeHeader !== false;
+    const restoredFontFamily =
+      escrito.fontFamily && (EDITOR_FONT_FAMILIES as readonly string[]).includes(escrito.fontFamily)
+        ? escrito.fontFamily
+        : 'Times New Roman';
+    const restoredFontSizePt =
+      typeof escrito.fontSizePt === 'number' &&
+      (EDITOR_FONT_SIZES_PT as readonly number[]).includes(escrito.fontSizePt)
+        ? escrito.fontSizePt
+        : 12;
 
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
     setActiveEditingDoc(escrito);
     setTipoHoja(restoredTipoHoja);
     setIncludeHeader(restoredIncludeHeader);
+    setEditorFontFamily(restoredFontFamily);
+    setEditorFontSizePt(restoredFontSizePt);
     setSelectedPlantillaId(restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     setEditorText(docTexto);
     setDocumentTitle(cleanTitle);
@@ -3422,6 +3547,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, escrito.categoria || 'Contratos Privados');
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, restoredTipoHoja);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(restoredIncludeHeader));
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY, restoredFontFamily);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_SIZE, String(restoredFontSizePt));
       localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     } catch (e) {
       console.warn('Error sincronizando borrador local:', e);
@@ -3432,7 +3559,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       editorContentRef.current.innerHTML = docTexto;
     }
 
-    // Foco Automático, inyección asegurada y scroll suave al Editor Notarial Activo
+    // Foco Automático, inyección asegurada y scroll suave al Editor de Escritos
     setTimeout(() => {
       const editorBloque = document.getElementById('editor-notarial-activo-bloque');
       if (editorBloque) {
@@ -3454,7 +3581,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       }
     }, 50);
 
-    setSaveSuccessBanner(`"${escrito.tipo}" cargado en el Editor Notarial Activo.`);
+    setSaveSuccessBanner(`"${cleanTitle}" cargado en el Editor de Escritos.`);
     setTimeout(() => setSaveSuccessBanner(null), 3500);
   };
 
@@ -3560,13 +3687,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Filtrado LOCAL sobre el estado de React (regla crítica: prohibido peticiones al escribir)
   const filteredEscritos = escritos.filter(escrito => {
     const matchCategory = activeCategory === 'Todos' || escrito.categoria === activeCategory;
-    const matchSearch = !searchFilter.trim() || 
-      escrito.tipo.toLowerCase().includes(searchFilter.toLowerCase()) || 
-      escrito.texto.toLowerCase().includes(searchFilter.toLowerCase());
+    const queryLower = searchFilter.toLowerCase();
+    const matchSearch = !searchFilter.trim() ||
+      escrito.tipo.toLowerCase().includes(queryLower) ||
+      stripHtmlToPlainText(escrito.texto).toLowerCase().includes(queryLower);
     return matchCategory && matchSearch;
   });
 
-  const cleanText = editorText.replace(/<[^>]+>/g, ' ').trim();
+  const cleanText = stripHtmlToPlainText(editorText);
   const wordCount = cleanText ? cleanText.split(/\s+/).filter(Boolean).length : 0;
   const charCount = cleanText.length;
 
@@ -3617,33 +3745,26 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {/* ========================================================================= */}
       {!mostrarEditor && (
         <>
-          {/* Cabecera Principal Unificada */}
-          <div className="bg-slate-900 border border-slate-800 shadow-xl rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden">
-            <div className="relative z-10 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 text-slate-300 border border-slate-700/80">
-                <FileText className="w-6 h-6 text-slate-300" />
+          {/* Cabecera Minimalista Unificada */}
+          <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-700">
+                <FileText className="w-5 h-5" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-white font-serif font-bold text-2xl tracking-tight">
-                    Gestión de Escritos y Notaría
-                  </h2>
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
-                    O.L.G.A.
-                  </span>
-                </div>
-                <p className="text-slate-400 text-sm mt-1 font-medium">
-                  Entorno ergonómico unificado: Redacción asistida con IA, Editor Notarial Activo y Gestión Documental.
+              <div className="min-w-0">
+                <h2 className="text-slate-900 font-semibold text-lg tracking-tight">
+                  Gestión de Escritos y Documentos
+                </h2>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  Redacción asistida con IA, editor de documentos y archivo organizado.
                 </p>
               </div>
             </div>
 
-            {/* Resumen de Estado y Acceso Directo a Drive */}
-            <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
-              <div className="bg-slate-800 text-slate-300 border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs font-semibold flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>{escritos.length} Documentos en Archivo</span>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+              <span className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 tabular-nums whitespace-nowrap shrink-0">
+                {escritos.length} en archivo
+              </span>
 
               <button
                 type="button"
@@ -3651,332 +3772,238 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   const el = document.getElementById('seccion-gestion-documental');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer border ${
-                  esFull 
-                    ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/80 hover:border-amber-300' 
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                }`}
+                className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
               >
-                <FolderInput className={`w-3.5 h-3.5 ${esFull ? 'text-amber-600' : 'text-slate-300'}`} />
-                <span>Ver Archivo Documental ↓</span>
+                <FolderInput className="w-3.5 h-3.5 text-slate-500" />
+                <span>Ver Archivo Documental</span>
               </button>
             </div>
           </div>
 
-          {/* 1. PANEL SUPERIOR: DOS COLUMNAS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 items-stretch">
-
-            {/* ----------------------------------------------------------------------- */}
-            {/* PANEL SUPERIOR - IZQUIERDA: BANNER COMPACTO IA                          */}
-            {/* ----------------------------------------------------------------------- */}
-            <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4 h-full">
+          {/* Panel Superior Minimalista: Dos Columnas */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+            {/* Tarjeta Izquierda: Redacción Asistida con IA */}
+            <div className="w-full bg-white rounded-xl p-5 border border-slate-200 flex flex-col justify-between space-y-4 h-full">
               <div className="space-y-3">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-inner shrink-0">
-                      <Sparkles className="w-5 h-5 text-[#FF3131]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
-                        REDACCIÓN ASISTIDA CON INTELIGENCIA ARTIFICIAL
-                      </h3>
-                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
-                        O.L.G.A. IA / ORÁCULO
-                      </span>
-                    </div>
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Redacción Asistida con IA
+                    </h3>
+                    <span className="text-[11px] text-slate-500">
+                      Borradores y cláusulas adaptadas con respaldo de antecedentes
+                    </span>
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                  Solicita contratos, estipulaciones o cláusulas conforme a las leyes paraguayas y adjunta antecedentes.
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Genera contratos, notas, escritos o cláusulas conforme a tus requerimientos y adjunta documentos de referencia.
                 </p>
 
-                {/* Aviso si ya hay un borrador generado esperando en memoria */}
                 {aiDraftProposal && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-2 text-xs font-bold text-amber-800 animate-in fade-in">
-                    <span className="flex items-center gap-1.5 truncate">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2 text-xs font-medium text-slate-700">
+                    <span className="flex items-center gap-2 truncate tabular-nums">
+                      <span className="w-2 h-2 rounded-full bg-slate-900 shrink-0"></span>
                       <span>Borrador listo para revisión ({aiDraftProposal.trim().split(/\s+/).filter(Boolean).length} pal.)</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => setIsAiModalOpen(true)}
-                      className="text-xs font-black text-slate-900 underline hover:text-[#FF3131] shrink-0 cursor-pointer"
+                      className="text-xs font-semibold text-slate-900 underline hover:text-slate-700 shrink-0 cursor-pointer"
                     >
-                      Abrir Borrador →
+                      Abrir Borrador
                     </button>
                   </div>
                 )}
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => setIsAiModalOpen(true)}
-                  className={`w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md font-semibold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group cursor-pointer active:scale-[0.99] ${
-                    esFull 
-                      ? 'text-amber-300 border border-amber-500/30 shadow-[0_4px_14px_rgba(245,158,11,0.15)]' 
-                      : 'text-white border border-slate-700'
-                  }`}
+                  className="w-full h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg font-medium text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Sparkles className={`w-4 h-4 group-hover:scale-110 transition-transform ${esFull ? 'text-amber-400' : 'text-white'}`} />
-                  <span>GENERAR BORRADOR CON IA</span>
+                  <Sparkles className="w-4 h-4 text-slate-600" />
+                  <span>Generar Borrador con IA</span>
                 </button>
               </div>
             </div>
 
-            {/* ----------------------------------------------------------------------- */}
-            {/* PANEL SUPERIOR - DERECHA: SELECTOR DE PLANTILLAS                        */}
-            {/* ----------------------------------------------------------------------- */}
-            <div className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4 h-full">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-800 border border-slate-200 shrink-0">
-                  <FileText className="w-5 h-5 text-[#FF3131]" />
+            {/* Tarjeta Derecha: Plantillas y Tipos de Escrito */}
+            <div className="w-full bg-white rounded-xl p-5 border border-slate-200 flex flex-col justify-between space-y-4 h-full">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Plantillas y Tipos de Escrito
+                      </h3>
+                      <span className="text-[11px] text-slate-500">
+                        Selecciona un modelo o comienza en hoja en blanco
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
                 <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">
-                    PLANTILLA NOTARIAL / TIPO DE ESCRITO
-                  </h3>
-                  <span className="text-[10px] text-slate-500 font-medium">
-                    Seleccione un modelo para abrir el editor notarial
-                  </span>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1.5">
+                    Modelo base
+                  </label>
+                  <select
+                    value={isMenuPlantillasBloqueado ? '' : selectedPlantillaId}
+                    disabled={isMenuPlantillasBloqueado}
+                    onChange={(e) => {
+                      if (isMenuPlantillasBloqueado) return;
+                      const val = e.target.value;
+                      setSelectedPlantillaId(val);
+                      if (val && val.trim() !== '') {
+                        setMostrarEditor(true);
+                        handleSelectPlantilla(val);
+                      }
+                    }}
+                    className={`w-full box-border border rounded-lg px-3 py-2.5 text-xs font-medium outline-none transition-colors ${
+                      isMenuPlantillasBloqueado
+                        ? 'bg-red-50/80 border-red-200 text-red-700 cursor-not-allowed'
+                        : 'bg-slate-50 border-slate-200 focus:border-slate-400 text-slate-900 cursor-pointer'
+                    }`}
+                  >
+                    <option value="" disabled>
+                      {isMenuPlantillasBloqueado
+                        ? 'Sesión de prueba expirada — Adquiere un plan para habilitar'
+                        : 'Seleccionar plantilla o hoja en blanco...'}
+                    </option>
+                    {!isMenuPlantillasBloqueado && (
+                      <>
+                        <option value="hoja_en_blanco">Hoja en Blanco (Redacción Libre)</option>
+                        {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
+                          <option key={plantilla.id} value={plantilla.id}>
+                            {plantilla.nombre}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
                 </div>
+
+                <p className={`text-[11px] leading-relaxed ${isMenuPlantillasBloqueado ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+                  {isMenuPlantillasBloqueado
+                    ? 'Sesión de prueba expirada. Adquiere un plan para habilitar el catálogo de plantillas.'
+                    : 'Al seleccionar una plantilla u Hoja en Blanco, se abrirá el editor listo para completar y exportar.'}
+                </p>
               </div>
 
-              {mostrarEditor && (
-                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase tracking-wider rounded-lg border border-emerald-200 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Editor Visible
-                </span>
-              )}
+              <div className="pt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleNuevoEscrito}
+                  className="flex-1 h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nuevo Escrito</span>
+                </button>
+              </div>
             </div>
-
-            {/* SELECTOR PRINCIPAL DE PLANTILLA */}
-            <div>
-              <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5">
-                Plantilla Notarial / Tipo de Escrito *
-              </label>
-              <select
-                value={isMenuPlantillasBloqueado ? '' : selectedPlantillaId}
-                disabled={isMenuPlantillasBloqueado}
-                onChange={(e) => {
-                  if (isMenuPlantillasBloqueado) return;
-                  const val = e.target.value;
-                  setSelectedPlantillaId(val);
-                  if (val && val.trim() !== '') {
-                    setMostrarEditor(true);
-                    handleSelectPlantilla(val);
-                  }
-                }}
-                className={`w-full box-border border rounded-2xl px-3.5 py-3 text-xs font-bold outline-none transition-colors shadow-inner ${
-                  isMenuPlantillasBloqueado
-                    ? 'bg-red-50/80 border-red-200 text-red-700 cursor-not-allowed'
-                    : 'bg-slate-50 border-slate-200 focus:border-[#FF3131] text-slate-900 cursor-pointer'
-                }`}
-              >
-                <option value="" disabled>
-                  {isMenuPlantillasBloqueado
-                    ? '🔒 Sesión de prueba expirada — Adquiera un plan para habilitar'
-                    : 'Seleccione un modelo para abrir el editor...'}
-                </option>
-                {!isMenuPlantillasBloqueado && (
-                  <>
-                    <option value="hoja_en_blanco">📄 Hoja en Blanco (Redacción Libre)</option>
-                    {PLANTILLAS_NOTARIALES.filter(p => p.id !== 'hoja_en_blanco').map((plantilla) => (
-                      <option key={plantilla.id} value={plantilla.id}>
-                        📜 {plantilla.nombre}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-
-            <p className={`text-[11px] font-medium leading-relaxed ${isMenuPlantillasBloqueado ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
-              {isMenuPlantillasBloqueado
-                ? '⚠️ Sesión de prueba expirada. Adquiera un plan para habilitar el menú de plantillas notariales.'
-                : 'Al seleccionar una plantilla u Hoja en Blanco, se abrirá el editor con autocompletado inteligente de datos.'}
-            </p>
           </div>
-
-          {/* BOTÓN DESTACADO DE '+ NUEVO ESCRITO' */}
-          <div className="pt-2 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleNuevoEscrito}
-              className={`flex-1 py-3.5 px-4 font-semibold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer ${
-                esFull
-                  ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)] border border-amber-400/30'
-                  : 'bg-[#FF3131] hover:bg-[#d62828] text-white shadow-md'
-              }`}
-            >
-              <Plus className="w-4 h-4 text-white" />
-              <span>+ Nuevo Escrito</span>
-            </button>
-
-            {mostrarEditor && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMostrarEditor(false);
-                  setSelectedPlantillaId('');
-                }}
-                className="py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-colors border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                title="Ocultar editor notarial"
-              >
-                <ChevronUp className="w-4 h-4 text-slate-500" />
-                <span>Ocultar</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  )}
+        </>
+      )}
 
       {/* ========================================================================= */}
-      {/* 2. CUERPO CENTRAL: EDITOR NOTARIAL ACTIVO (MODO DE ENFOQUE TOTAL)         */}
+      {/* 2. CUERPO CENTRAL: EDITOR DE ESCRITOS ACTIVO                              */}
       {/* ========================================================================= */}
       {mostrarEditor && (
-        <div id="editor-notarial-activo-bloque" className="min-h-screen bg-slate-100 dark:bg-[#0D0E12] relative -m-4 sm:-m-6 md:-m-8 p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
-          {/* CABECERA FLOTANTE FIJA PLEGABLE (MODO ENFOQUE PROLIJO) */}
-          <div className="fixed top-0 left-0 w-full z-50 bg-slate-50/95 dark:bg-[#16171E]/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 shadow-md group -translate-y-[70%] hover:translate-y-0 transition-transform duration-300">
-            {/* Fila superior: Botón '⬅ Volver (ESC)', Título del editor y estadísticas */}
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
-              <div className="flex items-center gap-3">
+        <div id="editor-notarial-activo-bloque" className="space-y-4 animate-in fade-in duration-300">
+          {/* CABECERA EJECUTIVA LIMPIA EN 3 FILAS */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+            {/* FILA 1: Navegación + Título del Editor + Acciones */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => {
                     setMostrarEditor(false);
                     setSelectedPlantillaId('');
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#242632] hover:bg-slate-100 dark:hover:bg-[#2D303E] text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold transition-all border border-slate-300 dark:border-white/10 shadow-xs cursor-pointer active:scale-95 shrink-0"
-                  title="Volver al dashboard principal de archivos (ESC)"
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Volver al archivo documental (ESC)"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5 text-slate-700" />
-                  <span>⬅ Volver (ESC)</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Volver</span>
                 </button>
 
-                  <span className="uppercase tracking-widest text-slate-700 dark:text-slate-300 flex items-center gap-2 border-l border-slate-200 dark:border-white/10 pl-3">
-                    <Edit3 className="w-4 h-4 text-[#FF3131]" />
-                    <span className="font-black text-slate-900 dark:text-slate-100 text-xs">
-                      {previewMode ? 'MODO LECTURA / PREVISUALIZACIÓN' : 'EDITOR NOTARIAL ACTIVO'}
+                <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+                <div className="flex items-center gap-2 min-w-0">
+                  <Edit3 className="w-4 h-4 text-slate-600 shrink-0" />
+                  <h2 className="text-sm font-semibold text-slate-900 truncate">
+                    {previewMode ? 'Vista Previa de Escrito' : 'Editor de Escritos'}
+                  </h2>
+                </div>
+
+                {activeEditingDoc && (
+                  <div className="hidden lg:flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg text-[11px] text-slate-500">
+                    <span className="font-mono tabular-nums">
+                      Ref: {activeEditingDoc.correlativo || String(activeEditingDoc.id || '').slice(0, 3)}-{String(activeEditingDoc.id || '').slice(-6)}
                     </span>
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 font-mono text-[10px]">
-                  <span>{wordCount} palabras</span>
-                  <span>•</span>
-                  <span>{charCount} caracteres</span>
-                  {activeEditingDoc && (
-                    <>
-                      <span>•</span>
-                      <div className="flex items-center gap-1.5 bg-white dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 px-2 py-0.5 rounded-lg text-slate-500 dark:text-slate-400 font-sans">
-                        <span className="font-mono text-[10px] text-slate-400">
-                          Ref. Soporte: {activeEditingDoc.correlativo || String(activeEditingDoc.id || '').slice(0, 3)} - {String(activeEditingDoc.id || '').slice(-6)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopiarCodigoSoporte(activeEditingDoc)}
-                          className="flex items-center gap-1 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-[#242632] hover:bg-slate-100 dark:hover:bg-[#2D303E] px-1.5 py-0.5 rounded transition-colors cursor-pointer"
-                          title="Copiar código estructurado para soporte técnico"
-                        >
-                          {copiedSupportId === activeEditingDoc.id ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-600" />
-                              <span className="text-emerald-700 text-[9px]">Copiado</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clipboard className="w-3 h-3 text-slate-400" />
-                              <span className="text-[9px]">Copiar</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopiarCodigoSoporte(activeEditingDoc)}
+                      className="flex items-center gap-1 text-[10px] font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+                      title="Copiar código de soporte"
+                    >
+                      {copiedSupportId === activeEditingDoc.id ? (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      ) : (
+                        <Clipboard className="w-3 h-3 text-slate-400" />
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
-            {/* CAMPOS: TÍTULO DEL ESCRITO Y CARPETA DE ARCHIVO */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-              <div className="sm:col-span-7">
-                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                  Título del Escrito *
-                </label>
-                <input
-                  type="text"
-                  value={documentTitle}
-                  onChange={(e) => setDocumentTitle(e.target.value)}
-                  placeholder="Ej. Contrato de Compraventa Inmueble..."
-                  className="w-full box-border bg-slate-50 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none"
-                />
-              </div>
-
-              <div className="sm:col-span-5">
-                <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">
-                  Carpeta de Archivo *
-                </label>
-                <select
-                  value={selectedCategoryForSave}
-                  onChange={(e) => setSelectedCategoryForSave(e.target.value)}
-                  className="w-full box-border bg-slate-50 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 focus:border-[#FF3131] rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none"
-                >
-                  {sortedCarpetas.map(c => (
-                    <option key={c.id} value={c.nombre}>{c.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* BOTONES DE ACCIÓN RÁPIDA */}
-            <div className="pt-1 flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleLimpiarEditor}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
-                  title="Limpiar completamente el área de redacción (Hoja en Blanco)"
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Limpiar el editor e iniciar hoja en blanco"
                 >
-                  <RotateCcw className="w-3 h-3 text-slate-500" />
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                   <span>Hoja en Blanco</span>
                 </button>
 
-                {esHojaEnBlanco && (
-                  <>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept=".docx, .pdf, .txt"
-                      className="hidden"
-                      onChange={handleFileImport}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-colors border border-emerald-200 cursor-pointer"
-                      title="Importar documento (.docx, .pdf, .txt)"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Importar Documento</span>
-                    </button>
-                  </>
-                )}
+                <input
+                  type="file"
+                  ref={docImportInputRef}
+                  accept=".docx,.pdf,.txt"
+                  className="hidden"
+                  onChange={handleFileImport}
+                />
+                <button
+                  type="button"
+                  onClick={() => docImportInputRef.current?.click()}
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Importar documento (.docx, .pdf, .txt)"
+                >
+                  <Upload className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Importar .docx</span>
+                </button>
 
                 <button
                   type="button"
                   onClick={() => setPreviewMode(!previewMode)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border cursor-pointer ${
+                  className={`h-9 px-3 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                     previewMode
                       ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                      : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                 >
-                  <Eye className="w-3 h-3 text-[#FF3131]" />
+                  <Eye className="w-3.5 h-3.5" />
                   <span>{previewMode ? 'Editar' : 'Vista Previa'}</span>
                 </button>
 
@@ -3984,62 +4011,135 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   type="button"
                   onClick={handleCopiarTexto}
                   disabled={!editorText}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
-                  title="Copiar texto al portapapeles"
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Copiar contenido al portapapeles"
                 >
                   {copiedFeedback ? (
                     <>
-                      <CheckCheck className="w-3 h-3 text-emerald-600" />
-                      <span className="text-emerald-700">¡Copiado!</span>
+                      <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700">Copiado</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3 h-3 text-slate-500" />
-                      <span>Copiar Texto</span>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Copiar</span>
                     </>
                   )}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onOpenDocument(editorText, activeEditingDoc?.id, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader)}
+                  onClick={() => handleDescargarPDF(documentTitle, undefined, includeHeader, editorFontFamily, editorFontSizePt)}
                   disabled={!editorText.trim()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors border border-slate-800 shadow-sm cursor-pointer"
-                  title="Abrir con membrete oficial e imprimir en PDF"
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Descargar archivo PDF"
                 >
-                  <Printer className="w-3 h-3 text-[#FF3131]" />
-                  <span>Membrete / Imprimir</span>
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>PDF</span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={handleImprimirPDF}
+                  disabled={!editorText.trim()}
+                  className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                  title="Imprimir documento respetando espacios y formato"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Imprimir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleGuardarEscrito}
+                  disabled={isSavingDraft || !editorText.trim()}
+                  className="h-9 px-3.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {isSavingDraft ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSavingDraft ? 'Guardando...' : 'Guardar Escrito'}</span>
+                </button>
+
+                {isWhatsAppEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSendDocumentByWhatsApp(documentTitle, editorText, includeHeader, editorFontFamily, editorFontSizePt)}
+                    disabled={!editorText.trim()}
+                    className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                    title="Generar PDF y enviar por WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* FILA 2: Título, Carpeta, Tipo de Hoja y Membrete */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-2 border-t border-slate-100">
+              <div className="sm:col-span-5">
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Título del Escrito
+                </label>
+                <input
+                  type="text"
+                  value={documentTitle}
+                  onChange={(e) => setDocumentTitle(e.target.value)}
+                  placeholder="Ej. Contrato de Compraventa Inmueble..."
+                  className="w-full box-border h-9 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-3 text-xs font-medium text-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Carpeta de Archivo
+                </label>
+                <select
+                  value={selectedCategoryForSave}
+                  onChange={(e) => setSelectedCategoryForSave(e.target.value)}
+                  className="w-full box-border h-9 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-3 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+                >
+                  {sortedCarpetas.map(c => (
+                    <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Formato de Hoja
+                </label>
                 <select
                   value={tipoHoja}
                   onChange={(e) => setTipoHoja(e.target.value as 'blanca' | 'protocolo')}
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-[#242632] text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#2D303E] rounded-xl text-xs font-bold border border-slate-200 dark:border-white/10 outline-none cursor-pointer transition-colors"
+                  className="w-full box-border h-9 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 text-xs font-medium text-slate-800 outline-none cursor-pointer"
                   title="Cambiar modo de papel e impresión"
                 >
-                  <option value="blanca">Hoja en Blanco (Impresión Simple)</option>
-                  <option value="protocolo">Hoja de Protocolo Notarial (Oficio)</option>
+                  <option value="blanca">Hoja en Blanco (A4)</option>
+                  <option value="protocolo">Protocolo (Oficio)</option>
                 </select>
+              </div>
 
+              <div className="sm:col-span-2">
                 <button
                   type="button"
                   role="switch"
                   aria-checked={includeHeader}
                   onClick={() => setIncludeHeader((prev) => !prev)}
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                  className={`w-full h-9 inline-flex items-center justify-between gap-2 px-3 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                     includeHeader
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                      : 'bg-slate-100 dark:bg-[#242632] border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      ? 'bg-slate-50 border-slate-300 text-slate-900'
+                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                   }`}
-                  title={
-                    tipoHoja === 'protocolo'
-                      ? 'Aplica al PDF descargado y envío por WhatsApp (la impresión en Protocolo Notarial respeta sus márgenes oficiales preimpresos)'
-                      : 'Activar o desactivar la cabecera / membrete institucional en vista previa, impresión, PDF y WhatsApp'
-                  }
+                  title="Activar o desactivar el membrete en vista previa, impresión, PDF y WhatsApp"
                 >
+                  <span>Membrete</span>
                   <span
                     className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-                      includeHeader ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+                      includeHeader ? 'bg-slate-900' : 'bg-slate-300'
                     }`}
                   >
                     <span
@@ -4048,75 +4148,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       }`}
                     />
                   </span>
-                  <span>Incluir cabecera / membrete</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 ml-auto">
-                {isWhatsAppEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => handleSendDocumentByWhatsApp(documentTitle, editorText, includeHeader)}
-                    disabled={!editorText.trim()}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
-                    title="Generar PDF y enviar por WhatsApp"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Enviar por WhatsApp</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => handleDescargarPDF(documentTitle, undefined, includeHeader)}
-                  disabled={!editorText.trim()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                  title="Descargar archivo PDF A4"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Exportar PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleImprimirPDF}
-                  disabled={!editorText.trim()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-[#242632] hover:bg-slate-200 dark:hover:bg-[#2D303E] disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-white/10 cursor-pointer shadow-xs active:scale-95"
-                  title="Imprimir con márgenes de hoja notarial"
-                >
-                  <Printer className="w-3.5 h-3.5 text-slate-600" />
-                  <span>🖨️ Imprimir / PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleGuardarEscrito}
-                  disabled={isSavingDraft || !editorText.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 cursor-pointer"
-                >
-                  {isSavingDraft ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Save className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isSavingDraft ? 'Guardando...' : 'GUARDAR ESCRITO'}</span>
                 </button>
               </div>
             </div>
 
-            {/* BARRA DE HERRAMIENTAS (TOOLBAR MINIMALISTA TIPO WORD) - CONDICIONAL INTELIGENTE */}
+            {/* FILA 3: Barra de Herramientas de Formato, Tipografía y Tamaño */}
             {mostrarBarraHerramientas && (
-              <div className="bg-slate-100 dark:bg-[#1C1E27] border border-slate-200 dark:border-white/10 rounded-2xl p-2.5 flex flex-wrap items-center gap-1.5 shadow-inner animate-in fade-in duration-200">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 flex flex-wrap items-center gap-1.5">
                 {/* Formato de Texto: Negrita, Cursiva, Subrayado */}
-                <div className="flex items-center gap-1 pr-2.5 border-r border-slate-200 dark:border-white/10">
+                <div className="flex items-center gap-1 pr-2 border-r border-slate-200">
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => executeCommand('bold')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.bold
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Negrita"
                   >
@@ -4126,10 +4174,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => executeCommand('italic')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.italic
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Cursiva"
                   >
@@ -4139,10 +4187,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => executeCommand('underline')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.underline
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Subrayado"
                   >
@@ -4150,18 +4198,80 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   </button>
                 </div>
 
+                {/* Tipografía y Tamaño en Puntos */}
+                <div className="flex items-center gap-1.5 px-2 border-r border-slate-200">
+                  <select
+                    value={editorFontFamily}
+                    onChange={(e) => setEditorFontFamily(e.target.value)}
+                    className="h-8 bg-white border border-slate-200 focus:border-slate-400 rounded-md px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+                    title="Tipo de letra del documento"
+                    aria-label="Tipo de letra"
+                  >
+                    {EDITOR_FONT_FAMILIES.map((font) => (
+                      <option key={font} value={font}>
+                        {font}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center bg-white border border-slate-200 rounded-md overflow-hidden">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const idx = EDITOR_FONT_SIZES_PT.indexOf(editorFontSizePt as (typeof EDITOR_FONT_SIZES_PT)[number]);
+                        const nextIdx = idx > 0 ? idx - 1 : 0;
+                        setEditorFontSizePt(EDITOR_FONT_SIZES_PT[nextIdx]);
+                      }}
+                      disabled={editorFontSizePt <= EDITOR_FONT_SIZES_PT[0]}
+                      className="h-8 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer border-r border-slate-200"
+                      title="Disminuir tamaño de letra"
+                    >
+                      A-
+                    </button>
+                    <select
+                      value={editorFontSizePt}
+                      onChange={(e) => setEditorFontSizePt(Number(e.target.value))}
+                      className="h-8 bg-white px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer tabular-nums"
+                      title="Tamaño de letra en puntos"
+                      aria-label="Tamaño de letra"
+                    >
+                      {EDITOR_FONT_SIZES_PT.map((pt) => (
+                        <option key={pt} value={pt}>
+                          {pt}pt
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const idx = EDITOR_FONT_SIZES_PT.indexOf(editorFontSizePt as (typeof EDITOR_FONT_SIZES_PT)[number]);
+                        const maxIdx = EDITOR_FONT_SIZES_PT.length - 1;
+                        const nextIdx = idx >= 0 && idx < maxIdx ? idx + 1 : maxIdx;
+                        setEditorFontSizePt(EDITOR_FONT_SIZES_PT[nextIdx]);
+                      }}
+                      disabled={editorFontSizePt >= EDITOR_FONT_SIZES_PT[EDITOR_FONT_SIZES_PT.length - 1]}
+                      className="h-8 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer border-l border-slate-200"
+                      title="Aumentar tamaño de letra"
+                    >
+                      A+
+                    </button>
+                  </div>
+                </div>
+
                 {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
-                <div className="flex items-center gap-1 px-2.5 border-r border-slate-200 dark:border-white/10">
+                <div className="flex items-center gap-1 px-2 border-r border-slate-200">
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleAlign('left')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.justifyLeft
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
-                    title="Alinear a la Izquierda"
+                    title="Alinear a la izquierda"
                   >
                     <AlignLeft className="w-4 h-4" />
                   </button>
@@ -4169,10 +4279,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleAlign('center')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.justifyCenter
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Centrar"
                   >
@@ -4182,12 +4292,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleAlign('right')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.justifyRight
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
-                    title="Alinear a la Derecha"
+                    title="Alinear a la derecha"
                   >
                     <AlignRight className="w-4 h-4" />
                   </button>
@@ -4195,10 +4305,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleAlign('justify')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.justifyFull
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Justificar"
                   >
@@ -4212,10 +4322,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => executeCommand('insertUnorderedList')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.insertUnorderedList
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Lista con viñetas"
                   >
@@ -4225,10 +4335,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => executeCommand('insertOrderedList')}
-                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                       activeFormats.insertOrderedList
-                        ? 'bg-slate-200 text-indigo-600 shadow-inner font-bold'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-white dark:hover:bg-[#252836] hover:shadow-xs'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-white hover:text-slate-900'
                     }`}
                     title="Lista numerada"
                   >
@@ -4236,260 +4346,257 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   </button>
                 </div>
 
-                {/* Botón de Salto de Página manual eliminado para modo de enfoque total y cero glitch */}
-
-                <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider pr-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>{esHojaEnBlanco ? 'Hoja en Blanco (Simple A4)' : 'Hoja de Protocolo Notarial (Oficio)'} • {totalPaginasVisuales > 1 ? `${totalPaginasVisuales} Páginas` : '1 Página'}</span>
+                <div className="ml-auto hidden sm:flex items-center gap-2 text-[11px] text-slate-500 font-medium tabular-nums pr-1">
+                  <span>
+                    {totalPaginasVisuales} {totalPaginasVisuales === 1 ? 'pág.' : 'págs.'} · {wordCount} palabras
+                  </span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* SIMULACIÓN DE HOJA DE PROTOCOLO NOTARIAL (MESA DE TRABAJO / ESCRITORIO NOTARIAL) */}
-          <div className={`relative z-10 px-4 md:px-8 pb-8 transition-all ${mostrarBarraHerramientas ? 'pt-52 sm:pt-48' : 'pt-36 sm:pt-32'}`}>
-            <div className="flex flex-col gap-6 items-start">
-              
-              {/* LADO IZQUIERDO: Hoja Notarial de Protocolo con Flujo Fluido Continuo */}
-              <div className="w-full bg-slate-200/60 dark:bg-[#111217] py-10 sm:py-14 px-4 sm:px-8 rounded-3xl border border-slate-300/80 dark:border-white/10 overflow-x-auto flex flex-col items-center shadow-inner">
-                <style>{`
-                  #editor-notarial-activo,
-                  .editor-notarial-papel {
-                    width: 100% !important;
-                    max-width: 850px !important;
-                    min-height: 1056px !important;
-                    background-color: #ffffff !important;
-                    box-shadow: ${esHojaEnBlanco && includeHeader ? 'none' : '0 25px 50px -12px rgba(0, 0, 0, 0.25)'} !important;
-                    border-radius: ${esHojaEnBlanco && includeHeader ? '0 0 4px 4px' : '4px'} !important;
-                    color: #000000 !important;
-                    padding-top: ${esHojaEnBlanco ? (includeHeader ? '28px' : '60px') : '180px'} !important;
-                    padding-bottom: 60px !important;
-                    padding-left: ${esHojaEnBlanco ? '60px' : '140px'} !important;
-                    padding-right: 60px !important;
-                    font-family: "Times New Roman", Times, serif !important;
-                    font-size: 18px !important;
-                    line-height: 10.4mm !important;
-                    text-align: justify;
-                    text-justify: inter-word !important;
-                    white-space: pre-wrap !important;
-                    word-break: break-word !important;
-                    box-sizing: border-box !important;
-                    position: relative !important;
-                    outline: none !important;
-                  }
+          {/* MESA DE TRABAJO Y HOJA DEL DOCUMENTO */}
+          <div className="bg-slate-100/80 py-8 px-4 sm:px-8 rounded-xl border border-slate-200 overflow-x-auto flex flex-col items-center">
+            <style>{`
+              #editor-notarial-activo,
+              .editor-notarial-papel {
+                width: 100% !important;
+                max-width: 850px !important;
+                min-height: 1056px !important;
+                background-color: #ffffff !important;
+                box-shadow: ${esHojaEnBlanco && includeHeader ? 'none' : '0 10px 30px -10px rgba(15, 23, 42, 0.12)'} !important;
+                border-radius: ${esHojaEnBlanco && includeHeader ? '0 0 4px 4px' : '4px'} !important;
+                color: #000000 !important;
+                padding-top: ${esHojaEnBlanco ? (includeHeader ? '28px' : '60px') : '180px'} !important;
+                padding-bottom: 60px !important;
+                padding-left: ${esHojaEnBlanco ? '60px' : '140px'} !important;
+                padding-right: 60px !important;
+                font-family: ${resolveEditorFontCss(editorFontFamily)} !important;
+                font-size: ${editorFontSizePt}pt !important;
+                line-height: ${esHojaEnBlanco ? '1.6' : '10.4mm'} !important;
+                text-align: justify;
+                text-justify: inter-word !important;
+                white-space: pre-wrap !important;
+                tab-size: 4 !important;
+                -moz-tab-size: 4 !important;
+                word-break: break-word !important;
+                box-sizing: border-box !important;
+                position: relative !important;
+                outline: none !important;
+              }
 
-                  /* Salto de Página Visual Limpio y Discreto */
-                  .salto-de-pagina,
-                  .salto-automatico {
-                    display: block !important;
-                    width: 100% !important;
-                    margin-left: 0 !important;
-                    margin-right: 0 !important;
-                    margin-top: 24px !important;
-                    margin-bottom: 24px !important;
-                    height: 32px !important;
-                    background-color: #e2e8f0 !important;
-                    border-radius: 4px !important;
-                    position: relative !important;
-                    user-select: none !important;
-                    cursor: default !important;
-                    box-shadow: none !important;
-                    break-after: page !important;
-                    page-break-after: always !important;
-                  }
+              /* Salto de Página Visual Limpio y Discreto */
+              .salto-de-pagina,
+              .salto-automatico {
+                display: block !important;
+                width: 100% !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                margin-top: 24px !important;
+                margin-bottom: 24px !important;
+                height: 32px !important;
+                background-color: #e2e8f0 !important;
+                border-radius: 4px !important;
+                position: relative !important;
+                user-select: none !important;
+                cursor: default !important;
+                box-shadow: none !important;
+                break-after: page !important;
+                page-break-after: always !important;
+              }
 
-                  .dark .salto-de-pagina,
-                  .dark .salto-automatico {
-                    background-color: #1e293b !important;
-                  }
+              .salto-de-pagina-badge {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 3px 10px;
+                border-radius: 9999px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                background-color: #ffffff;
+                color: #475569;
+                border: 1px solid #cbd5e1;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+              }
 
-                  .salto-de-pagina-badge {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 3px 10px;
-                    border-radius: 9999px;
-                    font-size: 10px;
-                    font-weight: 700;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    background-color: #ffffff;
-                    color: #475569;
-                    border: 1px solid #cbd5e1;
-                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-                  }
+              #editor-notarial-activo *,
+              .editor-notarial-papel * {
+                color: #000000 !important;
+                font-family: inherit;
+              }
+              #editor-notarial-activo p,
+              #editor-notarial-activo div:not(.salto-de-pagina):not(.salto-de-pagina-badge),
+              .editor-notarial-papel p,
+              .editor-notarial-papel div:not(.salto-de-pagina):not(.salto-de-pagina-badge) {
+                color: #000000 !important;
+                margin-top: 0 !important;
+                margin-bottom: ${esHojaEnBlanco ? '4px' : '0'} !important;
+                min-height: ${esHojaEnBlanco ? '1.6em' : '10.4mm'} !important;
+                text-align: justify;
+                text-justify: inter-word !important;
+                line-height: ${esHojaEnBlanco ? '1.6' : '10.4mm'} !important;
+                white-space: pre-wrap !important;
+                tab-size: 4 !important;
+                -moz-tab-size: 4 !important;
+              }
+              #editor-notarial-activo span,
+              .editor-notarial-papel span {
+                color: #000000 !important;
+              }
+              #editor-notarial-activo strong,
+              .editor-notarial-papel strong,
+              #editor-notarial-activo b,
+              .editor-notarial-papel b {
+                color: #000000 !important;
+                font-weight: 700 !important;
+              }
+              #editor-notarial-activo ul,
+              .editor-notarial-papel ul {
+                list-style-type: disc !important;
+                padding-left: 2rem !important;
+                margin-top: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+              }
+              #editor-notarial-activo ol,
+              .editor-notarial-papel ol {
+                list-style-type: decimal !important;
+                padding-left: 2rem !important;
+                margin-top: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+              }
+              #editor-notarial-activo li,
+              .editor-notarial-papel li {
+                color: #000000 !important;
+                display: list-item !important;
+                margin-bottom: 0.25rem !important;
+                text-align: justify;
+                white-space: pre-wrap !important;
+                tab-size: 4 !important;
+                -moz-tab-size: 4 !important;
+              }
 
-                  .dark .salto-de-pagina-badge {
-                    background-color: #1e293b;
-                    color: #94a3b8;
-                    border-color: #334155;
-                  }
+              /* Reglas estrictas para impresión */
+              @media print {
+                #editor-notarial-activo,
+                .editor-notarial-papel {
+                  box-shadow: none !important;
+                  border-radius: 0 !important;
+                  min-height: auto !important;
+                  height: auto !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  background: transparent !important;
+                  color: #000000 !important;
+                  white-space: pre-wrap !important;
+                  tab-size: 4 !important;
+                  -moz-tab-size: 4 !important;
+                }
 
-                  #editor-notarial-activo *,
-                  .editor-notarial-papel * {
-                    color: #000000 !important;
-                    font-family: inherit;
-                  }
-                  #editor-notarial-activo p,
-                  #editor-notarial-activo div:not(.salto-de-pagina):not(.salto-de-pagina-badge),
-                  .editor-notarial-papel p,
-                  .editor-notarial-papel div:not(.salto-de-pagina):not(.salto-de-pagina-badge) {
-                    color: #000000 !important;
-                    margin-top: 0 !important;
-                    margin-bottom: 0 !important;
-                    min-height: 10.4mm !important;
-                    text-align: justify;
-                    text-justify: inter-word !important;
-                    line-height: 10.4mm !important;
-                  }
-                  #editor-notarial-activo span,
-                  .editor-notarial-papel span {
-                    color: #000000 !important;
-                  }
-                  #editor-notarial-activo strong,
-                  .editor-notarial-papel strong,
-                  #editor-notarial-activo b,
-                  .editor-notarial-papel b {
-                    color: #000000 !important;
-                    font-weight: 700 !important;
-                  }
-                  #editor-notarial-activo ul,
-                  .editor-notarial-papel ul {
-                    list-style-type: disc !important;
-                    padding-left: 2rem !important;
-                    margin-top: 0.5rem !important;
-                    margin-bottom: 0.5rem !important;
-                  }
-                  #editor-notarial-activo ol,
-                  .editor-notarial-papel ol {
-                    list-style-type: decimal !important;
-                    padding-left: 2rem !important;
-                    margin-top: 0.5rem !important;
-                    margin-bottom: 0.5rem !important;
-                  }
-                  #editor-notarial-activo li,
-                  .editor-notarial-papel li {
-                    color: #000000 !important;
-                    display: list-item !important;
-                    margin-bottom: 0.25rem !important;
-                    text-align: justify;
-                  }
+                .salto-de-pagina,
+                .salto-automatico {
+                  display: block !important;
+                  height: 0 !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: none !important;
+                  background: transparent !important;
+                  break-after: page !important;
+                  page-break-after: always !important;
+                }
 
-                  /* Reglas estrictas para impresión */
-                  @media print {
-                    #editor-notarial-activo,
-                    .editor-notarial-papel {
-                      box-shadow: none !important;
-                      border-radius: 0 !important;
-                      min-height: auto !important;
-                      height: auto !important;
-                      padding: 0 !important;
-                      margin: 0 !important;
-                      background: transparent !important;
-                      color: #000000 !important;
-                      white-space: pre-wrap !important;
-                    }
-
-                    .salto-de-pagina,
-                    .salto-automatico {
-                      display: block !important;
-                      height: 0 !important;
-                      margin: 0 !important;
-                      padding: 0 !important;
-                      border: none !important;
-                      background: transparent !important;
-                      break-after: page !important;
-                      page-break-after: always !important;
-                    }
-
-                    .salto-de-pagina *,
-                    .salto-automatico * {
-                      display: none !important;
-                    }
-                  }
-                `}</style>
-                <div className={esHojaEnBlanco && includeHeader ? 'w-full max-w-[850px] mx-auto shadow-2xl rounded-[4px] bg-white' : 'w-full max-w-[850px] mx-auto'}>
-                  {esHojaEnBlanco && includeHeader && (
-                    <div className="w-full bg-white px-[60px] pt-10 pb-4 border-b border-slate-300 text-center rounded-t-[4px] select-none print:hidden">
-                      {rawLogoInstitucional && (
-                        <img
-                          src={rawLogoInstitucional}
-                          alt={nombreEscHeader}
-                          className="mx-auto mb-2.5 max-h-14 max-w-[140px] object-contain"
-                        />
-                      )}
-                      <div className="font-serif font-bold text-lg uppercase tracking-wider text-slate-900">
-                        {nombreEscHeader}
-                      </div>
-                      {(registroEscHeader && registroEscHeader !== '---') || (rucEscHeader && rucEscHeader !== '---') || telefonoEscHeader ? (
-                        <div className="text-[11px] font-sans text-slate-600 mt-1">
-                          {[
-                            registroEscHeader && registroEscHeader !== '---'
-                              ? (esAbogadoEsc
-                                  ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
-                                  : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`))
-                              : null,
-                            rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
-                            telefonoEscHeader ? `Tel.: ${telefonoEscHeader}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join('  •  ')}
-                        </div>
-                      ) : null}
-                      {direccionEscHeader && (
-                        <div className="text-[10px] font-sans text-slate-500 mt-0.5">
-                          {direccionEscHeader}
-                        </div>
-                      )}
+                .salto-de-pagina *,
+                .salto-automatico * {
+                  display: none !important;
+                }
+              }
+            `}</style>
+            <div className={esHojaEnBlanco && includeHeader ? 'w-full max-w-[850px] mx-auto shadow-md rounded-[4px] bg-white border border-slate-200/80' : 'w-full max-w-[850px] mx-auto'}>
+              {esHojaEnBlanco && includeHeader && (
+                <div className="w-full bg-white px-[60px] pt-10 pb-4 border-b border-slate-300 text-center rounded-t-[4px] select-none print:hidden">
+                  {rawLogoInstitucional && (
+                    <img
+                      src={rawLogoInstitucional}
+                      alt={nombreEscHeader}
+                      className="mx-auto mb-2.5 max-h-14 max-w-[140px] object-contain"
+                    />
+                  )}
+                  <div className="font-serif font-bold text-lg uppercase tracking-wider text-slate-900">
+                    {nombreEscHeader}
+                  </div>
+                  {(registroEscHeader && registroEscHeader !== '---') || (rucEscHeader && rucEscHeader !== '---') || telefonoEscHeader ? (
+                    <div className="text-[11px] font-sans text-slate-600 mt-1">
+                      {[
+                        registroEscHeader && registroEscHeader !== '---'
+                          ? (esAbogadoEsc
+                              ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
+                              : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`))
+                          : null,
+                        rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
+                        telefonoEscHeader ? `Tel.: ${telefonoEscHeader}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join('  •  ')}
+                    </div>
+                  ) : null}
+                  {direccionEscHeader && (
+                    <div className="text-[10px] font-sans text-slate-500 mt-0.5">
+                      {direccionEscHeader}
                     </div>
                   )}
-                  <div
-                    ref={setEditorRef}
-                    id="editor-notarial-activo"
-                    contentEditable={!previewMode}
-                    suppressContentEditableWarning={true}
-                    onInput={(e) => {
-                      setEditorText(e.currentTarget.innerHTML);
-                      debouncedVerificarPaginacion();
-                    }}
-                    onPaste={handlePaste}
-                    onKeyUp={(e) => {
-                      checkFormatStates();
-                      if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
-                        debouncedVerificarPaginacion();
-                      }
-                    }}
-                    onMouseUp={checkFormatStates}
-                    onFocus={() => {
-                      checkFormatStates();
-                      try {
-                        document.execCommand('defaultParagraphSeparator', false, 'p');
-                      } catch (err) {}
-                    }}
-                    className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible font-serif text-[18px] leading-relaxed text-justify text-black font-medium selection:bg-red-100 selection:text-red-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
-                      previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
-                    }`}
-                  />
                 </div>
-              </div>
-
-
-
+              )}
+              <div
+                ref={setEditorRef}
+                id="editor-notarial-activo"
+                contentEditable={!previewMode}
+                suppressContentEditableWarning={true}
+                onInput={(e) => {
+                  setEditorText(e.currentTarget.innerHTML);
+                  debouncedVerificarPaginacion();
+                }}
+                onPaste={handlePaste}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab' && !previewMode) {
+                    e.preventDefault();
+                    document.execCommand('insertText', false, '\t');
+                    if (editorContentRef.current) {
+                      setEditorText(editorContentRef.current.innerHTML);
+                    }
+                    debouncedVerificarPaginacion();
+                  }
+                }}
+                onKeyUp={(e) => {
+                  checkFormatStates();
+                  if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+                    debouncedVerificarPaginacion();
+                  }
+                }}
+                onMouseUp={checkFormatStates}
+                onFocus={() => {
+                  checkFormatStates();
+                  try {
+                    document.execCommand('defaultParagraphSeparator', false, 'p');
+                  } catch (err) {}
+                }}
+                className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible text-justify text-black selection:bg-slate-200 selection:text-slate-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                  previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
+                }`}
+              />
             </div>
           </div>
 
-          {/* Aviso Notarial Mandatorio */}
-          <div className="px-4 md:px-8 pb-6">
-            <div className="p-3 bg-white dark:bg-[#16171E] rounded-xl border border-slate-200 dark:border-white/10 flex items-center gap-2.5 text-[11px] text-slate-600 dark:text-slate-300 font-medium shadow-xs">
-              <AlertCircle className="w-4 h-4 text-[#FF3131] shrink-0" />
-              <span>
-                <strong>Aviso Legal Notarial:</strong> Todo documento generado en este sistema es un borrador avanzado que requiere la revisión, autorización y sello del Escribano Titular para poseer validez legal administrativa.
-              </span>
-            </div>
+          {/* Aviso Profesional */}
+          <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5 text-xs text-slate-600">
+            <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
+            <span>
+              <strong className="text-slate-800">Aviso:</strong> Todo documento generado en este sistema es un borrador editable que requiere revisión y firma profesional antes de su emisión.
+            </span>
           </div>
         </div>
       )}
@@ -4498,16 +4605,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       {/* 3. SECCIÓN INFERIOR DE ARCHIVOS Y CARPETAS (DASHBOARD DOCUMENTAL)         */}
       {/* ========================================================================= */}
       {!mostrarEditor && (
-        <div id="seccion-gestion-documental" className="space-y-6 pt-4 border-t border-slate-200">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col gap-5">
+        <div id="seccion-gestion-documental" className="space-y-5 pt-4 border-t border-slate-200">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <FolderInput className="w-5 h-5 text-[#FF3131]" />
-                <h3 className="text-base font-black text-slate-900 tracking-tight">Archivo y Gestión Documental</h3>
+                <FolderInput className="w-4 h-4 text-slate-700" />
+                <h3 className="text-base font-semibold text-slate-900 tracking-tight">Archivo Documental</h3>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                Expedientes, minutas, pagarés y contratos notariales clasificados por carpetas preestablecidas y personalizadas.
+              <p className="text-xs text-slate-500 mt-0.5">
+                Escritos, contratos, notas y documentos clasificados por carpeta.
               </p>
             </div>
 
@@ -4515,15 +4622,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               <button 
                 type="button"
                 onClick={() => setIsAdminModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200 shrink-0 cursor-pointer"
+                className="h-9 px-3 flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200 shrink-0 cursor-pointer whitespace-nowrap"
               >
-                <Settings className="w-3.5 h-3.5" />
+                <Settings className="w-3.5 h-3.5 text-slate-500" />
                 <span>Administrar Carpetas</span>
               </button>
               <button
                 type="button"
                 onClick={handleNuevoEscrito}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#FF3131] hover:bg-red-600 rounded-xl transition-colors shadow-sm shrink-0 cursor-pointer"
+                className="h-9 px-3.5 flex items-center gap-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer whitespace-nowrap"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Nuevo Escrito</span>
@@ -4531,10 +4638,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             </div>
           </div>
 
-          {/* Búsqueda y Selector de Carpetas estilo Google Drive */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 border-t border-slate-100">
-            {/* Pestañas de carpetas preestablecidas y personalizadas */}
-            <div className="flex flex-wrap items-center gap-2">
+          {/* Búsqueda y Selector de Carpetas */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-4 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-1.5">
               {categorias.map(cat => {
                 const count = cat === 'Todos' 
                   ? escritos.length 
@@ -4544,15 +4650,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     key={cat}
                     type="button"
                     onClick={() => setActiveCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer tabular-nums ${
                       activeCategory === cat
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
                     }`}
                   >
                     <span>{cat}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${
-                      activeCategory === cat ? 'bg-slate-800 text-slate-200' : 'bg-slate-200/80 text-slate-500'
+                    <span className={`text-[10px] px-1.5 rounded ${
+                      activeCategory === cat ? 'bg-slate-800 text-slate-200' : 'bg-slate-200/80 text-slate-600'
                     }`}>
                       {count}
                     </span>
@@ -4561,23 +4667,22 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               })}
             </div>
 
-            {/* Búsqueda local con .filter() */}
             <div className="relative w-full md:w-72">
-              <Search className="w-3.5 h-3.5 absolute left-3.5 top-3 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
                 placeholder="Buscar por título o contenido..."
-                className="w-full box-border pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-xl text-xs font-bold outline-none text-slate-800 transition-colors shadow-inner"
+                className="w-full box-border h-9 pl-9 pr-7 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg text-xs font-medium outline-none text-slate-800 transition-colors"
               />
               {searchFilter && (
                 <button
                   type="button"
                   onClick={() => setSearchFilter('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                  className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -4586,37 +4691,37 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
         {/* Grilla de documentos en la carpeta activa */}
         {loading ? (
-          <div className="flex flex-col justify-center items-center h-48 bg-white rounded-3xl border border-slate-200 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-[#FF3131]" />
-            <span className="text-xs text-slate-500 font-bold">Cargando archivo notarial...</span>
+          <div className="flex flex-col justify-center items-center h-48 bg-white rounded-xl border border-slate-200 gap-3">
+            <Loader2 className="w-7 h-7 animate-spin text-slate-600" />
+            <span className="text-xs text-slate-500 font-medium">Cargando archivo documental...</span>
           </div>
         ) : error ? (
-          <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-xs font-bold flex items-center justify-center border border-red-200">
+          <div className="bg-red-50 text-red-600 p-4 rounded-xl text-xs font-medium flex items-center justify-center border border-red-200">
             <span>{error}</span>
           </div>
         ) : filteredEscritos.length === 0 ? (
-          <div className="text-center bg-white p-12 rounded-3xl border border-slate-200 border-dashed">
-            <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-bold text-slate-700">
+          <div className="text-center bg-white p-12 rounded-xl border border-slate-200 border-dashed">
+            <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-slate-700">
               {searchFilter 
                 ? `No se encontraron escritos que coincidan con "${searchFilter}".`
                 : activeCategory === 'Todos' 
-                  ? 'No hay escritos guardados en el archivo notarial.' 
+                  ? 'No hay escritos guardados en el archivo.' 
                   : `No hay escritos guardados en la carpeta "${activeCategory}".`}
             </p>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Redacta con IA o usa una plantilla en el Editor Superior y pulsa &quot;Guardar Escrito&quot; para archivarlo.
+              Redacta con IA o usa una plantilla arriba y pulsa &quot;Guardar Escrito&quot; para archivarlo.
             </p>
             <button
               type="button"
               onClick={handleNuevoEscrito}
-              className="mt-4 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm cursor-pointer"
+              className="mt-4 h-9 px-4 bg-slate-900 text-white rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Comenzar a Redactar
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredEscritos.map((escrito) => {
               let dateStr = 'Fecha reciente';
               if (escrito.createdAt) {
@@ -4625,29 +4730,32 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 dateStr = new Date(escrito.fechaCreacion.toMillis()).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
               }
 
+              const plainExcerpt = stripHtmlToPlainText(escrito.texto);
+              const cardWordCount = plainExcerpt ? plainExcerpt.split(/\s+/).filter(Boolean).length : 0;
+
               return (
                 <div 
                   key={escrito.id} 
                   onClick={() => handleEditarDocumento(escrito)}
-                  className={`bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all flex flex-col justify-between p-6 relative group cursor-pointer ${
+                  className={`bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all flex flex-col justify-between p-5 relative group cursor-pointer ${
                     activeMenuId === escrito.id ? 'z-30' : 'z-0 hover:z-10'
                   }`}
                 >
                   <div>
-                    {/* Cabecera de la Tarjeta con Kebab Menu */}
+                    {/* Cabecera de la Tarjeta con Menú */}
                     <div className="flex items-start justify-between gap-2.5">
                       <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                        <div className="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-inner shrink-0 group-hover:scale-105 transition-transform">
-                          <FileText className="w-5 h-5 text-[#FF3131]" />
+                        <div className="w-9 h-9 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
                         </div>
                         <div className="flex-1 overflow-hidden min-w-0">
                           <h4
-                            className={`font-bold text-slate-900 text-sm ${esAbogadoEsc ? 'line-clamp-2 break-words leading-snug' : 'truncate'}`}
+                            className={`font-semibold text-slate-900 text-sm ${esAbogadoEsc ? 'line-clamp-2 break-words leading-snug' : 'truncate'}`}
                             title={escrito.tipo || 'Escrito'}
                           >
                             {escrito.tipo || 'Escrito'}
                           </h4>
-                          <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                          <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
                             <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
                             <span className="truncate">{dateStr}</span>
                           </p>
@@ -4655,7 +4763,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="px-2.5 py-1 bg-slate-50 text-slate-600 text-[9px] font-bold uppercase tracking-wider rounded-lg border border-slate-200/70 shrink-0">
+                        <span className="px-2 py-0.5 bg-slate-50 text-slate-600 text-[10px] font-medium rounded-md border border-slate-200 shrink-0">
                           {escrito.categoria || 'Sin Categoría'}
                         </span>
 
@@ -4667,7 +4775,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                               e.stopPropagation();
                               setActiveMenuId(activeMenuId === escrito.id ? null : escrito.id);
                             }}
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
                             title="Opciones del documento"
                           >
                             <MoreVertical className="w-4 h-4" />
@@ -4684,7 +4792,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                 }} 
                               />
                               <div 
-                                className="absolute right-0 top-10 z-50 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 animate-in fade-in zoom-in-95 duration-150 text-xs font-bold"
+                                className="absolute right-0 top-9 z-50 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 animate-in fade-in zoom-in-95 duration-150 text-xs font-medium"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
@@ -4754,7 +4862,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setActiveMenuId(null);
-                                    handleDescargarPDF(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                                    handleDescargarPDF(
+                                      escrito.tipo,
+                                      escrito.texto,
+                                      escrito.includeHeader !== false,
+                                      escrito.fontFamily,
+                                      escrito.fontSizePt
+                                    );
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
                                 >
@@ -4768,7 +4882,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setActiveMenuId(null);
-                                      handleSendDocumentByWhatsApp(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                                      handleSendDocumentByWhatsApp(
+                                        escrito.tipo,
+                                        escrito.texto,
+                                        escrito.includeHeader !== false,
+                                        escrito.fontFamily,
+                                        escrito.fontSizePt
+                                      );
                                     }}
                                     className="w-full px-3 py-1.5 text-left text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
                                   >
@@ -4786,7 +4906,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 text-[#FF3131]" />
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
                                   <span>Eliminar</span>
                                 </button>
                               </div>
@@ -4796,43 +4916,43 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       </div>
                     </div>
 
-                    {/* Fragmento de Texto en Gris Claro (no compite con la interfaz) */}
-                    <div className="mt-3.5 mb-2">
-                      <p className="text-xs text-slate-400 font-normal leading-relaxed line-clamp-3 select-none">
-                        {escrito.texto}
+                    {/* Fragmento de Texto Limpio (sin etiquetas HTML) */}
+                    <div className="mt-3 mb-2">
+                      <p className="text-xs text-slate-500 font-normal leading-relaxed line-clamp-3 select-none">
+                        {plainExcerpt || 'Sin contenido textual.'}
                       </p>
                     </div>
                   </div>
 
                   {/* Pie de Tarjeta con Responsable / Creador */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <span className="text-[10px] text-slate-400 font-medium shrink-0">
-                        {escrito.texto.trim().split(/\s+/).filter(Boolean).length} palabras
+                      <span className="text-[11px] text-slate-500 font-medium shrink-0 tabular-nums">
+                        {cardWordCount} palabras
                       </span>
                       <span className="text-slate-300">•</span>
-                      <div className="flex items-center gap-1.5 overflow-hidden text-[10px]">
-                        <span className="text-slate-400 font-normal shrink-0">Responsable:</span>
-                        <span className="font-bold text-slate-700 truncate max-w-[110px]" title={escrito.creator_name || 'Titular'}>
+                      <div className="flex items-center gap-1.5 overflow-hidden text-[11px]">
+                        <span className="text-slate-400 shrink-0">Responsable:</span>
+                        <span className="font-medium text-slate-700 truncate max-w-[110px]" title={escrito.creator_name || 'Titular'}>
                           {escrito.creator_name || 'Titular'}
                         </span>
                         {escrito.creator_role === 'operador' && (
-                          <span className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                          <span className="px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider rounded bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
                             Operador
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <span className="text-[#FF3131] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[11px] shrink-0">
-                      <span>Abrir en Editor &rarr;</span>
+                    <span className="text-slate-900 font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[11px] shrink-0">
+                      <span>Abrir &rarr;</span>
                     </span>
                   </div>
 
-                  {/* Código de Soporte Técnico (Fase 8) */}
+                  {/* Código de Soporte Técnico */}
                   <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                    <span className="font-mono text-slate-400 text-[10px] truncate">
-                      Ref. Soporte: {escrito.correlativo || String(escrito.id || '').slice(0, 3)} - {String(escrito.id || '').slice(-6)}
+                    <span className="font-mono text-slate-400 text-[10px] truncate tabular-nums">
+                      Ref: {escrito.correlativo || String(escrito.id || '').slice(0, 3)}-{String(escrito.id || '').slice(-6)}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -4842,18 +4962,18 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                           e.stopPropagation();
                           handleCopiarCodigoSoporte(escrito);
                         }}
-                        className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 transition-colors cursor-pointer"
+                        className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 transition-colors cursor-pointer"
                         title="Copiar código estructurado para soporte técnico"
                       >
                         {copiedSupportId === escrito.id ? (
                           <>
                             <Check className="w-3 h-3 text-emerald-600" />
-                            <span className="text-emerald-700 font-bold text-[9px]">Copiado</span>
+                            <span className="text-emerald-700 text-[10px]">Copiado</span>
                           </>
                         ) : (
                           <>
                             <Clipboard className="w-3 h-3" />
-                            <span className="text-[9px]">Copiar</span>
+                            <span className="text-[10px]">Copiar</span>
                           </>
                         )}
                       </button>
@@ -4863,13 +4983,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            handleSendDocumentByWhatsApp(escrito.tipo, escrito.texto, escrito.includeHeader !== false);
+                            handleSendDocumentByWhatsApp(
+                              escrito.tipo,
+                              escrito.texto,
+                              escrito.includeHeader !== false,
+                              escrito.fontFamily,
+                              escrito.fontSizePt
+                            );
                           }}
-                          className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/80 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 text-[10px] font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200 transition-colors cursor-pointer"
                           title="Enviar PDF por WhatsApp"
                         >
                           <MessageCircle className="w-3 h-3 text-emerald-600" />
-                          <span className="text-[9px]">WhatsApp</span>
+                          <span className="text-[10px]">WhatsApp</span>
                         </button>
                       )}
                     </div>
