@@ -24,7 +24,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDocs, query, where, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, deleteDoc, getDoc, getDocs, query, where, setDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../services/auth';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Pagare } from '../types';
@@ -260,7 +260,12 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 }) => {
   const planNormalizado = String(userPlan || userData?.planActual || userData?.plan || '').toLowerCase();
   const isFull = esPlanFull !== undefined ? esPlanFull : planNormalizado.includes('full');
-  const esAbogado = String(userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+  const tipoPerfilNorm = String(userData?.tipoPerfil || '').trim().toLowerCase();
+  const esAbogado = tipoPerfilNorm === 'abogado';
+  const esPlayero = tipoPerfilNorm === 'playero';
+  const esInmobiliario = tipoPerfilNorm === 'inmobiliario';
+  const esContador = tipoPerfilNorm === 'contador';
+  const esRubroComercial = esPlayero || esInmobiliario || esContador;
   // FASE 3: Identificación de Workspace para persistencia en la nube
   const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
   const effectiveWorkspaceId = workspaceId || userData?.tenant_id || userData?.uid || currentUser?.uid;
@@ -312,40 +317,146 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const initialValues = loadStoredConfig();
   const membreteUsuario = cargarMembreteUsuario(userKey);
   const tieneMembreteGuardado = Boolean(membreteUsuario.membreteConfigurado || userData?.membreteConfigurado);
+  const authEmailFallback = currentUser?.email || auth?.currentUser?.email || '';
 
-  // Estados Perfil Institucional y Membrete Notarial (Campos limpios por defecto para cuentas nuevas)
+  const resolveComercialFields = (source: any, m: MembreteEscribaniaConfig) => {
+    const safeSource = source || {};
+    const nombreInstFallback =
+      safeSource.nombreInstitucion && safeSource.nombreInstitucion !== 'Mi Escribanía'
+        ? safeSource.nombreInstitucion
+        : '';
+    return {
+      titular: String(
+        m.nombreNotario ||
+          safeSource.titular ||
+          safeSource.nombreTitular ||
+          safeSource.nombre ||
+          ''
+      ).trim(),
+      nombreComercial: String(
+        m.nombreEscribania ||
+          safeSource.nombreComercial ||
+          safeSource.razonSocial ||
+          safeSource.nombreEscribania ||
+          nombreInstFallback ||
+          safeSource.nombre ||
+          ''
+      ).trim(),
+      ruc: String(m.ruc || safeSource.ruc || '').trim(),
+      matriculaProfesional: esContador
+        ? String(
+            m.registroNotarial ||
+              safeSource.matriculaProfesional ||
+              safeSource.matricula ||
+              safeSource.registroNotarial ||
+              ''
+          ).trim()
+        : '',
+      direccion: String(
+        m.direccion || safeSource.direccion || safeSource.domicilio || ''
+      ).trim(),
+      ciudad: String(m.ciudad || safeSource.ciudad || '').trim(),
+      telefono: String(
+        m.telefono ||
+          safeSource.telefono ||
+          safeSource.whatsapp ||
+          safeSource.phoneNumber ||
+          ''
+      ).trim(),
+      email: String(
+        m.email || safeSource.email || safeSource.correo || authEmailFallback || ''
+      ).trim(),
+      timbradoNumero: String(m.timbradoNumero || safeSource.timbradoNumero || '').trim(),
+      timbradoVigenciaInicio: String(
+        m.timbradoVigenciaInicio || safeSource.timbradoVigenciaInicio || ''
+      ).trim(),
+      timbradoVigenciaFin: String(
+        m.timbradoVigenciaFin || safeSource.timbradoVigenciaFin || ''
+      ).trim(),
+    };
+  };
+
+  const comercialInicial = esRubroComercial
+    ? resolveComercialFields(userData, membreteUsuario)
+    : null;
+
+  // Estados Perfil Institucional y Membrete (Escribanía/Abogado mantienen comportamiento intacto; rubros comerciales precargan registro)
   const [nombreNotario, setNombreNotario] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.nombreNotario || userData?.nombreTitular) : ''
+    esRubroComercial
+      ? comercialInicial!.titular
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.nombreNotario || userData?.nombreTitular)
+        : ''
   );
   const [nombreInstitucion, setNombreInstitucion] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.nombreEscribania || initialValues.nombreInstitucion) : ''
+    esRubroComercial
+      ? comercialInicial!.nombreComercial
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.nombreEscribania || initialValues.nombreInstitucion)
+        : ''
   );
   const [ruc, setRuc] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.ruc || initialValues.ruc) : ''
+    esRubroComercial
+      ? comercialInicial!.ruc
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.ruc || initialValues.ruc)
+        : ''
   );
   const [registroNotarial, setRegistroNotarial] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.registroNotarial || initialValues.registroNotarial) : ''
+    esRubroComercial
+      ? comercialInicial!.matriculaProfesional
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.registroNotarial || initialValues.registroNotarial)
+        : ''
   );
   const [direccion, setDireccion] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.direccion || userData?.direccion) : ''
+    esRubroComercial
+      ? comercialInicial!.direccion
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.direccion || userData?.direccion)
+        : ''
   );
   const [ciudad, setCiudad] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.ciudad || userData?.ciudad || (initialData as any)?.ciudad) : ''
+    esRubroComercial
+      ? comercialInicial!.ciudad
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.ciudad || userData?.ciudad || (initialData as any)?.ciudad)
+        : ''
   );
   const [telefono, setTelefono] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.telefono || userData?.telefono) : ''
+    esRubroComercial
+      ? comercialInicial!.telefono
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.telefono || userData?.telefono)
+        : ''
   );
   const [email, setEmail] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.email || userData?.correo) : ''
+    esRubroComercial
+      ? comercialInicial!.email
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.email || userData?.correo)
+        : ''
   );
   const [timbradoNumero, setTimbradoNumero] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoNumero || userData?.timbradoNumero) : ''
+    esRubroComercial
+      ? comercialInicial!.timbradoNumero
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.timbradoNumero || userData?.timbradoNumero)
+        : ''
   );
   const [timbradoVigenciaInicio, setTimbradoVigenciaInicio] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaInicio || userData?.timbradoVigenciaInicio) : ''
+    esRubroComercial
+      ? comercialInicial!.timbradoVigenciaInicio
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaInicio || userData?.timbradoVigenciaInicio)
+        : ''
   );
   const [timbradoVigenciaFin, setTimbradoVigenciaFin] = useState(
-    tieneMembreteGuardado ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaFin || userData?.timbradoVigenciaFin) : ''
+    esRubroComercial
+      ? comercialInicial!.timbradoVigenciaFin
+      : tieneMembreteGuardado
+        ? limpiarValorEjemplo(membreteUsuario.timbradoVigenciaFin || userData?.timbradoVigenciaFin)
+        : ''
   );
   const [connectedWaPhone, setConnectedWaPhone] = useState<string>('');
   const [whatsappSecretaria, setWhatsappSecretaria] = useState(() =>
@@ -395,9 +506,50 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
     };
   }, [esAbogado, effectiveWorkspaceId, userData?.uid]);
 
-  // Sincronizar campos cuando cambia la cuenta activa (userKey)
+  const uidParaFirestore = auth?.currentUser?.uid || currentUser?.uid || userData?.uid || effectiveWorkspaceId;
+
+  // Sincronizar campos cuando cambia la cuenta activa (userKey) e hidratar desde Firestore para nuevos rubros
   useEffect(() => {
+    let isMounted = true;
     const m = cargarMembreteUsuario(userKey);
+
+    if (esRubroComercial) {
+      const aplicarHidratacionComercial = (sourceData: any) => {
+        if (!isMounted) return;
+        const fields = resolveComercialFields(sourceData, m);
+        setNombreNotario(fields.titular);
+        setNombreInstitucion(fields.nombreComercial);
+        setRuc(fields.ruc);
+        setRegistroNotarial(fields.matriculaProfesional);
+        setDireccion(fields.direccion);
+        setCiudad(fields.ciudad);
+        setTelefono(fields.telefono);
+        setEmail(fields.email);
+        setTimbradoNumero(fields.timbradoNumero);
+        setTimbradoVigenciaInicio(fields.timbradoVigenciaInicio);
+        setTimbradoVigenciaFin(fields.timbradoVigenciaFin);
+      };
+
+      aplicarHidratacionComercial(userData);
+
+      if (uidParaFirestore) {
+        getDoc(doc(db, 'users', uidParaFirestore))
+          .then((snap) => {
+            if (!isMounted) return;
+            if (snap.exists()) {
+              aplicarHidratacionComercial({ ...(userData || {}), ...snap.data() });
+            }
+          })
+          .catch((err) => {
+            console.warn('No se pudo leer perfil desde Firestore en Configuración:', err);
+          });
+      }
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const configurado = Boolean(m.membreteConfigurado || userData?.membreteConfigurado);
     setNombreNotario(configurado ? limpiarValorEjemplo(m.nombreNotario || userData?.nombreTitular) : '');
     setNombreInstitucion(configurado ? limpiarValorEjemplo(m.nombreEscribania || userData?.nombreInstitucion) : '');
@@ -422,7 +574,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
         loadAbogadoSecretariaSchedule(auth?.currentUser?.uid || userData?.uid || userKey, userData, effectiveWorkspaceId)
       );
     }
-  }, [userKey, esAbogado]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userKey, esAbogado, esRubroComercial, esContador, uidParaFirestore]);
 
   useEffect(() => {
     if (!esAbogado) return;
@@ -770,9 +926,20 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               recordatorioActivo: normalizedScheduleForSave.recordatorioActivo,
             }
           : {};
+      const comercialPayload = esRubroComercial
+        ? {
+            titular: nombreNotario,
+            nombreComercial: nombreInstitucion,
+            nombreEscribania: nombreInstitucion,
+            nombre: nombreInstitucion || nombreNotario,
+            domicilio: direccion,
+            whatsapp: telefono,
+            ...(esContador ? { matriculaProfesional: registroNotarial } : {}),
+          }
+        : {};
       try {
 
-        // Mutación Parcial Exclusiva: solo las propiedades correspondientes al membrete
+        // Mutación Parcial Exclusiva: solo las propiedades correspondientes al membrete (y campos estándar en rubros comerciales)
         await updateDoc(userRef, {
           razonSocial: nombreInstitucion,
           nombreInstitucion,
@@ -789,6 +956,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           timbradoVigenciaFin,
           logo_institucional: logoPreview || null,
           membreteConfigurado: true,
+          ...comercialPayload,
           ...waPayload,
         });
       } catch (err: any) {
@@ -810,6 +978,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             timbradoVigenciaFin,
             logo_institucional: logoPreview || null,
             membreteConfigurado: true,
+            ...comercialPayload,
             ...waPayload,
           }, { merge: true });
         } else {
@@ -980,12 +1149,22 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
         </div>
       </div>
 
-      {/* Cartel de Advertencia Notarial Reglamentaria */}
+      {/* Cartel de Advertencia Reglamentaria */}
       <div className="p-4 bg-white dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl border border-slate-200 rounded-xl flex items-start gap-3 shadow-sm">
         <AlertCircle className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
         <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          <strong className="text-slate-900 dark:text-slate-100 block mb-0.5">Aviso Notarial de Resguardo y Validación:</strong>
-          Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico avanzado. Su validez legal y administrativa plena requiere la revisión, autorización y sello protocolar del <strong className="dark:text-slate-200">Escribano Titular</strong>.
+          <strong className="text-slate-900 dark:text-slate-100 block mb-0.5">
+            {esRubroComercial ? 'Aviso de Resguardo y Validación:' : 'Aviso Notarial de Resguardo y Validación:'}
+          </strong>
+          {esRubroComercial ? (
+            <>
+              Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico editable. Su validez comercial y administrativa requiere la revisión y autorización del <strong className="dark:text-slate-200">Titular o Responsable autorizado</strong>.
+            </>
+          ) : (
+            <>
+              Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico avanzado. Su validez legal y administrativa plena requiere la revisión, autorización y sello protocolar del <strong className="dark:text-slate-200">Escribano Titular</strong>.
+            </>
+          )}
         </div>
       </div>
 
@@ -1052,7 +1231,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 break-words">Perfil Institucional</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 break-words">Datos públicos, membrete protocolar e identidad visual para todo el sistema</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
+                {esRubroComercial
+                  ? 'Datos públicos, membrete comercial e identidad visual para todo el sistema'
+                  : 'Datos públicos, membrete protocolar e identidad visual para todo el sistema'}
+              </p>
             </div>
           </div>
         </div>
@@ -1115,48 +1298,106 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
           {/* Campos de Membrete Notarial y Datos Fiscales */}
           <div className="space-y-5">
-            {/* Grupo 1: Datos Notariales Principales */}
+            {/* Grupo 1: Datos Principales */}
             <div className="min-w-0">
               <h5 className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-[#FF3131] shrink-0" />
-                <span>{esAbogado ? 'Identificación Profesional y Estudio Jurídico' : 'Identificación Notarial e Institucional'}</span>
+                <span>
+                  {esAbogado
+                    ? 'Identificación Profesional y Estudio Jurídico'
+                    : esPlayero
+                      ? 'Identificación Comercial de la Playa de Vehículos'
+                      : esInmobiliario
+                        ? 'Identificación Comercial de la Inmobiliaria'
+                        : esContador
+                          ? 'Identificación Profesional del Estudio Contable'
+                          : 'Identificación Notarial e Institucional'}
+                </span>
               </h5>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${esPlayero || esInmobiliario ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4 min-w-0`}>
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado ? 'Abogado Titular *' : 'Notario / Escribano Titular *'}
+                    {esAbogado
+                      ? 'Abogado Titular *'
+                      : esPlayero
+                        ? 'Titular / Responsable Comercial *'
+                        : esInmobiliario
+                          ? 'Broker / Titular Responsable *'
+                          : esContador
+                            ? 'Contador Público / Titular *'
+                            : 'Notario / Escribano Titular *'}
                   </label>
                   <input
                     type="text"
                     value={nombreNotario}
                     onChange={(e) => setNombreNotario(e.target.value)}
-                    placeholder={esAbogado ? 'Ej. Abg. Juan Pérez' : 'Ej. Esc. Sandra Molinas'}
+                    placeholder={
+                      esAbogado
+                        ? 'Ej. Abg. Juan Pérez'
+                        : esPlayero
+                          ? 'Ej. Carlos Gómez'
+                          : esInmobiliario
+                            ? 'Ej. María López'
+                            : esContador
+                              ? 'Ej. Lic. Roberto Ramírez'
+                              : 'Ej. Esc. Sandra Molinas'
+                    }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
 
-                <div className="min-w-0">
-                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado ? 'Matrícula CSJ de Abogado *' : 'N° de Registro Notarial *'}
-                  </label>
-                  <input
-                    type="text"
-                    value={registroNotarial}
-                    onChange={(e) => setRegistroNotarial(e.target.value)}
-                    placeholder={esAbogado ? 'Ej. Mat. CSJ Nº 14.520' : 'Ej. Reg. Nº 1.292'}
-                    className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
-                  />
-                </div>
+                {!esPlayero && !esInmobiliario && (
+                  <div className="min-w-0">
+                    <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
+                      {esAbogado
+                        ? 'Matrícula CSJ de Abogado *'
+                        : esContador
+                          ? 'Matrícula Profesional (Opcional)'
+                          : 'N° de Registro Notarial *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={registroNotarial}
+                      onChange={(e) => setRegistroNotarial(e.target.value)}
+                      placeholder={
+                        esAbogado
+                          ? 'Ej. Mat. CSJ Nº 14.520'
+                          : esContador
+                            ? 'Ej. Mat. CCP Nº 4.520'
+                            : 'Ej. Reg. Nº 1.292'
+                      }
+                      className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
+                    />
+                  </div>
+                )}
 
-                <div className="min-w-0 md:col-span-2 lg:col-span-1">
+                <div className={`min-w-0 ${esPlayero || esInmobiliario ? '' : 'md:col-span-2 lg:col-span-1'}`}>
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado ? 'Nombre del Estudio Jurídico *' : 'Firma / Nombre de Escribanía *'}
+                    {esAbogado
+                      ? 'Nombre del Estudio Jurídico *'
+                      : esPlayero
+                        ? 'Nombre de la Playa / Razón Social *'
+                        : esInmobiliario
+                          ? 'Nombre de la Inmobiliaria / Broker *'
+                          : esContador
+                            ? 'Nombre del Estudio Contable *'
+                            : 'Firma / Nombre de Escribanía *'}
                   </label>
                   <input
                     type="text"
                     value={nombreInstitucion}
                     onChange={(e) => setNombreInstitucion(e.target.value)}
-                    placeholder={esAbogado ? 'Ej. Estudio Jurídico Pérez & Asociados' : 'Ej. Escribanía Molinas & Asociados'}
+                    placeholder={
+                      esAbogado
+                        ? 'Ej. Estudio Jurídico Pérez & Asociados'
+                        : esPlayero
+                          ? 'Ej. Automotores del Este S.A.'
+                          : esInmobiliario
+                            ? 'Ej. Inmobiliaria Horizonte'
+                            : esContador
+                              ? 'Ej. Estudio Contable Ramírez & Asociados'
+                              : 'Ej. Escribanía Molinas & Asociados'
+                    }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -1211,13 +1452,29 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado ? 'Correo Electrónico Profesional *' : 'Correo Electrónico Notarial *'}
+                    {esAbogado
+                      ? 'Correo Electrónico Profesional *'
+                      : esPlayero || esInmobiliario
+                        ? 'Correo Electrónico Comercial *'
+                        : esContador
+                          ? 'Correo Electrónico Profesional *'
+                          : 'Correo Electrónico Notarial *'}
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={esAbogado ? 'Ej. estudio@abogados.com.py' : 'Ej. notaria@olgatech.com.py'}
+                    placeholder={
+                      esAbogado
+                        ? 'Ej. estudio@abogados.com.py'
+                        : esPlayero
+                          ? 'Ej. ventas@automotores.com.py'
+                          : esInmobiliario
+                            ? 'Ej. contacto@inmobiliaria.com.py'
+                            : esContador
+                              ? 'Ej. estudio@contadores.com.py'
+                              : 'Ej. notaria@olgatech.com.py'
+                    }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -1404,12 +1661,22 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="bg-slate-50 dark:bg-[#0B0F17]/80 p-3.5 md:p-4 rounded-xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
               <h5 className="text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>{esAbogado ? 'RUC y Timbrado Fiscal SET/DNIT' : 'RUC de la Escribanía y Timbrado Fiscal SET/DNIT'}</span>
+                <span>
+                  {esAbogado
+                    ? 'RUC y Timbrado Fiscal SET/DNIT'
+                    : esRubroComercial
+                      ? 'RUC Comercial y Timbrado Fiscal SET/DNIT'
+                      : 'RUC de la Escribanía y Timbrado Fiscal SET/DNIT'}
+                </span>
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado ? 'RUC del Estudio / Profesional' : 'RUC de la Escribanía *'}
+                    {esAbogado
+                      ? 'RUC del Estudio / Profesional'
+                      : esRubroComercial
+                        ? 'RUC de la Empresa / Profesional'
+                        : 'RUC de la Escribanía *'}
                   </label>
                   <input
                     type="text"
@@ -1467,7 +1734,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               className="w-full sm:w-auto px-6 py-2.5 bg-[#FF3131] hover:bg-red-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>Guardar Membrete Institucional</span>
+              <span>{esRubroComercial ? 'Guardar Membrete Comercial' : 'Guardar Membrete Institucional'}</span>
             </button>
           </div>
         </form>
@@ -1482,7 +1749,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 break-words">Preferencias y Notificaciones</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 break-words">Automatizaciones operativas y alertas del flujo notarial</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
+              {esRubroComercial
+                ? 'Automatizaciones operativas y alertas del flujo comercial'
+                : 'Automatizaciones operativas y alertas del flujo notarial'}
+            </p>
           </div>
         </div>
 
@@ -1678,10 +1949,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <Users className="w-5 h-5 text-slate-700 dark:text-slate-300 shrink-0 mt-0.5 sm:mt-0" />
                 <div className="min-w-0">
                   <span className="text-sm font-bold text-slate-900 dark:text-slate-100 block">
-                    Gestión de Operadores Notariales
+                    {esRubroComercial ? 'Gestión de Operadores del Equipo' : 'Gestión de Operadores Notariales'}
                   </span>
                   <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                    Slots utilizados: {operadores.length + 1} de {limiteActual} ({slotsLibres} libres) • <span className="italic">Incluye al Escribano Titular</span>
+                    Slots utilizados: {operadores.length + 1} de {limiteActual} ({slotsLibres} libres) •{' '}
+                    <span className="italic">
+                      {esRubroComercial ? 'Incluye al Titular' : 'Incluye al Escribano Titular'}
+                    </span>
                   </p>
                 </div>
               </div>

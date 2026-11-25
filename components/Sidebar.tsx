@@ -24,7 +24,8 @@ import {
   KeyRound,
   Lock as LockIcon,
   MessageCircle,
-  Briefcase
+  Briefcase,
+  Calculator
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 import { UsePWAInstallResult } from '../hooks/usePWAInstall';
@@ -46,7 +47,8 @@ export type SidebarTabId =
   | 'facturacion'
   | 'onboarding-sifen'
   | 'whatsapp'
-  | 'expedientes';
+  | 'expedientes'
+  | 'cotizador';
 
 export interface SidebarProps {
   activeTab: SidebarTabId | string;
@@ -131,32 +133,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const esAbogado = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+  const tipoPerfilNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
+  const esAbogado = tipoPerfilNorm === 'abogado';
+  const esPlayero = tipoPerfilNorm === 'playero';
+  const esInmobiliario = tipoPerfilNorm === 'inmobiliario';
+  const esContador = tipoPerfilNorm === 'contador';
+  const esRubroComercial = esPlayero || esInmobiliario || esContador;
 
   const resolvedWorkspaceDisplay =
-    workspaceName && (!esAbogado || workspaceName !== 'Mi Escribanía')
+    workspaceName && (!(esAbogado || esRubroComercial) || workspaceName !== 'Mi Escribanía')
       ? workspaceName
       : '';
 
-  // Nombre visible del usuario, escribanía o estudio jurídico
+  // Nombre visible del usuario, escribanía, estudio o comercio
   const displayName = isOperador
     ? (currentUser?.displayName || currentUser?.email || 'Operador Notarial')
     : (
         userProfile?.razonSocial ||
         userData?.razonSocial ||
+        userProfile?.nombreComercial ||
+        userData?.nombreComercial ||
         customBranding?.nombreInstitucion ||
         resolvedWorkspaceDisplay ||
         userProfile?.nombre ||
         userData?.nombre ||
         currentUser?.phoneNumber ||
-        (esAbogado ? 'Estudio Jurídico' : 'Escribanía Titular')
+        (esAbogado
+          ? 'Estudio Jurídico'
+          : esPlayero
+            ? 'Playa de Vehículos'
+            : esInmobiliario
+              ? 'Inmobiliaria'
+              : esContador
+                ? 'Estudio Contable'
+                : 'Escribanía Titular')
       );
 
+  const rucSidebar = String(
+    userProfile?.ruc || userData?.ruc || customBranding?.ruc || ''
+  ).trim();
+  const rubroSidebarFallback = esPlayero
+    ? 'Playa de Vehículos'
+    : esInmobiliario
+      ? 'Inmobiliaria / Broker'
+      : 'Estudio Contable';
+
   const sublineText = isOperador
-    ? (workspaceName ? `${esAbogado ? 'Estudio' : 'Escribanía'} ${workspaceName}` : 'Operador Notarial')
+    ? (workspaceName ? `${esAbogado ? 'Estudio' : esRubroComercial ? 'Equipo' : 'Escribanía'} ${workspaceName}` : 'Operador Notarial')
     : esAbogado
       ? (role === 'admin' ? 'Administrador' : 'Estudio Jurídico • Panel Legal')
-      : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
+      : esRubroComercial
+        ? (role === 'admin'
+            ? 'Administrador'
+            : rucSidebar
+              ? `RUC: ${rucSidebar}`
+              : rubroSidebarFallback)
+        : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
 
   // Insignia dinámica de plan
   const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || activePlan || 'basico';
@@ -274,6 +306,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: NavItem[] = [
     { id: 'tablero', label: 'Dashboard', icon: Activity },
     ...(esAbogado ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
+    ...(esPlayero ? [{ id: 'cotizador', label: 'Cotizador / Financiación', icon: Calculator }] : []),
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
     { id: 'personas', label: esAbogado ? 'Clientes / Partes' : 'Fichero Personas', icon: Users },
     { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
@@ -297,7 +330,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte'
     },
     // Configuración de Escribanía / Estudio / Cuenta
-    { id: 'cuenta', label: esAbogado ? 'Configuración Estudio' : 'Configuración Escribanía', icon: Sliders },
+    {
+      id: 'cuenta',
+      label: esAbogado
+        ? 'Configuración Estudio'
+        : esRubroComercial
+          ? 'Configuración'
+          : 'Configuración Escribanía',
+      icon: Sliders
+    },
     // Opciones administrativas
     { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
     { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },

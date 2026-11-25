@@ -554,6 +554,47 @@ export const PLANTILLAS_ABOGADOS_META: PlantillaAbogadoMeta[] = [
   },
 ];
 
+export interface PlayeroPerfilDatos {
+  nombrePlaya: string;
+  rucPlaya: string;
+  direccionPlaya: string;
+  telefonoPlaya: string;
+  ciudadPlaya: string;
+}
+
+export const PLANTILLAS_PLAYERO_META: PlantillaAbogadoMeta[] = [
+  {
+    id: 'playero_compraventa_reserva',
+    nombre: 'Contrato Privado de Compraventa de Vehículo (Reserva de Dominio)',
+    categoriaSugerida: 'Compraventa',
+    descripcion: 'Compraventa de automotor con entrega inicial, cuotas y pacto expreso de reserva de dominio (Art. 780 CCP).',
+  },
+  {
+    id: 'playero_acta_entrega',
+    nombre: 'Acta de Entrega de Posesión y Responsabilidad Civil/Penal',
+    categoriaSugerida: 'Traspasos',
+    descripcion: 'Constancia de entrega de rodado y asunción integral de responsabilidad civil, penal y de tránsito.',
+  },
+  {
+    id: 'playero_recibo_sena',
+    nombre: 'Recibo de Seña de Trato',
+    categoriaSugerida: 'Contratos Privados',
+    descripcion: 'Recibo formal de seña de trato con reserva temporal del vehículo y plazo para formalizar la compra.',
+  },
+  {
+    id: 'playero_autorizacion_circulacion',
+    nombre: 'Autorización de Circulación Provisoria',
+    categoriaSugerida: 'Traspasos',
+    descripcion: 'Autorización temporal para circular dentro de la República del Paraguay mientras se tramita la transferencia.',
+  },
+  {
+    id: 'hoja_en_blanco',
+    nombre: 'Hoja en Blanco',
+    categoriaSugerida: 'Contratos Privados',
+    descripcion: 'Modo de redacción libre con membrete comercial de la playa.',
+  },
+];
+
 export interface CampoJudicialMeta {
   label: string;
   placeholder: string;
@@ -736,6 +777,168 @@ export const CAMPOS_META: Record<string, CampoJudicialMeta> = {
     placeholder: 'Ej: estudio@martinezabogados.com.py',
     help: 'Email profesional del estudio jurídico',
   },
+  // Campos exclusivos de Playas de Vehículos
+  NOMBRE_VENDEDOR_PLAYA: {
+    label: 'Nombre de la Playa / Vendedor',
+    placeholder: 'Ej: Automotores del Este S.A.',
+    help: 'Razón social o nombre comercial de la playa vendedora (se guarda en Configuración)',
+  },
+  RUC_PLAYA: {
+    label: 'RUC / C.I. del Vendedor',
+    placeholder: 'Ej: 80045123-4',
+    help: 'Número de RUC o Cédula de Identidad de la playa o vendedor',
+  },
+  DOMICILIO_PLAYA: {
+    label: 'Dirección de la Playa',
+    placeholder: 'Ej: Avda. Eusebio Ayala Km 4.5, Asunción',
+    help: 'Domicilio comercial donde se celebra el acto',
+  },
+  TELEFONO_PLAYA: {
+    label: 'Teléfono / WhatsApp de la Playa',
+    placeholder: 'Ej: 0981 450 320',
+    help: 'Número de contacto comercial de la playa',
+  },
+  CIUDAD: {
+    label: 'Ciudad',
+    placeholder: 'Ej: Asunción',
+    help: 'Ciudad donde se firma el documento',
+  },
+  COMPRADOR: {
+    label: 'Nombre del Comprador / Adquirente',
+    placeholder: 'Ej: Carlos Alberto Giménez Paredes',
+    help: 'Nombre y apellido completo según Cédula de Identidad o Razón Social',
+  },
+  CI_COMPRADOR: {
+    label: 'C.I. / RUC del Comprador',
+    placeholder: 'Ej: 4.567.890',
+    help: 'Número de Cédula de Identidad Civil o RUC del comprador',
+  },
+  DOMICILIO_COMPRADOR: {
+    label: 'Domicilio del Comprador',
+    placeholder: 'Ej: Calle Boquerón 342, San Lorenzo',
+    help: 'Dirección particular declarada por el comprador',
+  },
+  TELEFONO_COMPRADOR: {
+    label: 'Teléfono / WhatsApp del Comprador',
+    placeholder: 'Ej: 0982 334 556',
+    help: 'Número de contacto del comprador',
+  },
+  MARCA_MODELO: {
+    label: 'Marca y Modelo del Vehículo',
+    placeholder: 'Ej: Toyota Hilux SRV 4x4',
+    help: 'Marca, modelo y versión del automotor objeto del documento',
+  },
+  ANO: {
+    label: 'Año de Fabricación / Modelo',
+    placeholder: 'Ej: 2022',
+    help: 'Año del vehículo según título o cédula verde',
+  },
+  COLOR: {
+    label: 'Color del Vehículo',
+    placeholder: 'Ej: Blanco Perlado',
+    help: 'Color principal que figura en la documentación del rodado',
+  },
+  CHASIS: {
+    label: 'Número de Chasis (VIN)',
+    placeholder: 'Ej: 8AJKA3CD601234567',
+    help: 'Código alfanumérico de chasis completo del vehículo',
+  },
+  CHAPA: {
+    label: 'Número de Chapa / Matrícula',
+    placeholder: 'Ej: AABC 123 (o En Trámite)',
+    help: 'Chapa actual o indicar "En trámite" si es recién importado',
+  },
+  PRECIO_TOTAL: {
+    label: 'Precio Total del Vehículo (Gs.)',
+    placeholder: 'Ej: 120.000.000',
+    help: 'Precio total pactado en guaraníes; convierte automáticamente a letras',
+  },
+  PRECIO_LETRAS: {
+    label: 'Precio Total en Letras',
+    placeholder: 'Ej: Ciento veinte millones',
+    help: 'Se sugiere automáticamente al ingresar el precio total (editable)',
+  },
+  ENTREGA: {
+    label: 'Entrega Inicial (Gs.)',
+    placeholder: 'Ej: 40.000.000',
+    help: 'Monto abonado al contado en concepto de entrega inicial',
+  },
+  CANTIDAD_CUOTAS: {
+    label: 'Cantidad de Cuotas',
+    placeholder: 'Ej: 24',
+    help: 'Número total de cuotas mensuales pactadas por el saldo',
+  },
+  MONTO_CUOTA: {
+    label: 'Monto por Cuota (Gs.)',
+    placeholder: 'Ej: 3.500.000',
+    help: 'Importe de cada cuota mensual',
+  },
+  FECHA_PRIMERA_CUOTA: {
+    label: 'Vencimiento de la 1.ª Cuota',
+    placeholder: 'Ej: 10 de diciembre de 2026',
+    help: 'Fecha de vencimiento de la primera cuota mensual',
+  },
+  RESPONSABLE_GASTOS_ESCRITURA: {
+    label: 'Responsable de Gastos de Transferencia',
+    placeholder: 'Ej: la PARTE COMPRADORA en su totalidad',
+    help: 'Indica quién abona los gastos notariales y registrales de escritura pública',
+  },
+  HORA_ENTREGA: {
+    label: 'Hora Exacta de Entrega',
+    placeholder: 'Ej: 15:30 horas',
+    help: 'Hora precisa desde la cual el adquirente asume toda responsabilidad',
+  },
+  KILOMETRAJE: {
+    label: 'Kilometraje Actual',
+    placeholder: 'Ej: 68.400 km',
+    help: 'Lectura del odómetro al momento de la entrega',
+  },
+  ESTADO_ACCESORIOS: {
+    label: 'Accesorios y Documentación Entregada',
+    placeholder: 'Ej: 2 llaves, auxilio, gato, triángulo y copia de cédula verde',
+    help: 'Detalle de llaves, herramientas y documentos entregados con el vehículo',
+    multiline: true,
+  },
+  MONTO_SENA: {
+    label: 'Monto de la Seña de Trato (Gs.)',
+    placeholder: 'Ej: 5.000.000',
+    help: 'Importe recibido como seña de trato en guaraníes',
+  },
+  MONTO_SENA_LETRAS: {
+    label: 'Monto de la Seña en Letras',
+    placeholder: 'Ej: Cinco millones',
+    help: 'Se sugiere automáticamente al ingresar el monto de la seña (editable)',
+  },
+  PLAZO_VALIDEZ_SENA: {
+    label: 'Plazo de Validez de la Seña',
+    placeholder: 'Ej: 5 días hábiles (hasta el 30 de noviembre de 2026)',
+    help: 'Término máximo para completar la entrega inicial o firmar el contrato definitivo',
+  },
+  CONDUCTOR_AUTORIZADO: {
+    label: 'Nombre del Conductor Autorizado',
+    placeholder: 'Ej: Diego Armando Benítez',
+    help: 'Persona habilitada para circular provisoriamente con el vehículo',
+  },
+  CI_CONDUCTOR: {
+    label: 'C.I. del Conductor Autorizado',
+    placeholder: 'Ej: 5.112.334',
+    help: 'Cédula de Identidad Civil del conductor autorizado',
+  },
+  DOMICILIO_CONDUCTOR: {
+    label: 'Domicilio del Conductor',
+    placeholder: 'Ej: Avda. Mariscal López 1890, Fernando de la Mora',
+    help: 'Dirección declarada por el conductor autorizado',
+  },
+  FECHA_VENCIMIENTO_AUTORIZACION: {
+    label: 'Vigencia de la Autorización Hasta',
+    placeholder: 'Ej: 15 de diciembre de 2026',
+    help: 'Fecha límite de validez de la autorización provisoria',
+  },
+  MOTIVO_AUTORIZACION: {
+    label: 'Motivo de la Autorización Provisoria',
+    placeholder: 'Ej: tramitación de transferencia definitiva ante Escribanía Pública',
+    help: 'Razón por la cual se emite el permiso provisorio de circulación',
+  },
 };
 
 export const getCampoMeta = (key: string): CampoJudicialMeta => {
@@ -767,12 +970,17 @@ export function extraerMarcadoresJudiciales(html: string): string[] {
       result.push(key);
     }
   }
-  const idxLetras = result.indexOf('MONTO_LETRAS');
-  const idxMonto = result.indexOf('MONTO_RECLAMADO');
-  if (idxLetras !== -1 && idxMonto !== -1 && idxLetras < idxMonto) {
-    result.splice(idxMonto, 1);
-    result.splice(idxLetras, 0, 'MONTO_RECLAMADO');
-  }
+  const ordenarParMontoLetras = (montoKey: string, letrasKey: string) => {
+    const idxLetras = result.indexOf(letrasKey);
+    const idxMonto = result.indexOf(montoKey);
+    if (idxLetras !== -1 && idxMonto !== -1 && idxLetras < idxMonto) {
+      result.splice(idxMonto, 1);
+      result.splice(idxLetras, 0, montoKey);
+    }
+  };
+  ordenarParMontoLetras('MONTO_RECLAMADO', 'MONTO_LETRAS');
+  ordenarParMontoLetras('PRECIO_TOTAL', 'PRECIO_LETRAS');
+  ordenarParMontoLetras('MONTO_SENA', 'MONTO_SENA_LETRAS');
   return result;
 }
 
@@ -999,6 +1207,105 @@ export function construirPlantillaJudicial(
   }
 }
 
+export function construirPlantillaPlayero(
+  plantillaId: string,
+  playero: PlayeroPerfilDatos
+): string {
+  const now = new Date();
+  const dia = String(now.getDate());
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  const mes = meses[now.getMonth()];
+  const anio = String(now.getFullYear());
+
+  const esc = escapeHtmlText;
+  const nombreVendedor = esc(playero.nombrePlaya);
+  const rucVendedor = esc(playero.rucPlaya);
+  const domVendedor = esc(playero.direccionPlaya);
+  const telVendedor = esc(playero.telefonoPlaya);
+  const ciudad = esc(playero.ciudadPlaya);
+
+  const firmaDoble = (labelLeft: string, labelRight: string, docRight: string) =>
+    `<p><br></p>` +
+    `<p style="text-align: center;">_______________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; _______________________________</p>` +
+    `<p style="text-align: center;"><strong>${labelLeft}</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>${labelRight}</strong></p>` +
+    `<p style="text-align: center;">RUC/C.I.: ${rucVendedor} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; C.I./RUC: ${docRight}</p>`;
+
+  switch (plantillaId) {
+    case 'playero_compraventa_reserva':
+      return (
+        `<p style="text-align: center;"><strong>CONTRATO PRIVADO DE COMPRAVENTA DE VEHÍCULO CON RESERVA DE DOMINIO</strong></p>` +
+        `<p><br></p>` +
+        `<p>En la ciudad de <strong>${ciudad}</strong>, República del Paraguay, a los ${dia} días del mes de ${mes} del año ${anio}, entre <strong>${nombreVendedor}</strong>, con RUC/C.I. N.º <strong>${rucVendedor}</strong>, con domicilio comercial en <strong>${domVendedor}</strong> y teléfono <strong>${telVendedor}</strong>, en adelante denominado <strong>LA PARTE VENDEDORA</strong>, por una parte; y por la otra, el/la Sr./Sra. <strong>[COMPRADOR]</strong>, mayor de edad, titular de la Cédula de Identidad Civil / RUC N.º <strong>[CI_COMPRADOR]</strong>, con domicilio en <strong>[DOMICILIO_COMPRADOR]</strong> y teléfono <strong>[TELEFONO_COMPRADOR]</strong>, en adelante denominado <strong>LA PARTE COMPRADORA</strong>, convienen celebrar el presente Contrato Privado de Compraventa con Reserva de Dominio, sujeto a las siguientes cláusulas:</p>` +
+        `<p><br></p>` +
+        `<p><strong>PRIMERA — OBJETO:</strong> LA PARTE VENDEDORA vende y entrega la tenencia precaria a LA PARTE COMPRADORA de un vehículo automotor con las siguientes características: Marca y Modelo: <strong>[MARCA_MODELO]</strong>; Año: <strong>[ANO]</strong>; Color: <strong>[COLOR]</strong>; Chasis N.º: <strong>[CHASIS]</strong>; Chapa / Matrícula N.º: <strong>[CHAPA]</strong>, en el estado de uso y conservación en que se encuentra y que LA PARTE COMPRADORA declara conocer y aceptar a su entera satisfacción.</p>` +
+        `<p><strong>SEGUNDA — PRECIO Y FINANCIACIÓN:</strong> El precio total de la operación se fija de común acuerdo en la suma de GUARANÍES <strong>[PRECIO_LETRAS]</strong> (<strong>Gs. [PRECIO_TOTAL]</strong>), que LA PARTE COMPRADORA abona de la siguiente manera: a) La suma de <strong>Gs. [ENTREGA]</strong> en concepto de entrega inicial en este acto, sirviendo el presente documento de suficiente recibo; y b) El saldo restante financiado en <strong>[CANTIDAD_CUOTAS]</strong> cuotas mensuales y consecutivas de <strong>Gs. [MONTO_CUOTA]</strong> cada una, venciendo la primera de ellas el día <strong>[FECHA_PRIMERA_CUOTA]</strong>.</p>` +
+        `<p><strong>TERCERA — PACTO DE RESERVA DE DOMINIO:</strong> Conforme a lo dispuesto en el artículo 780 y concordantes del Código Civil Paraguayo, LA PARTE VENDEDORA se reserva expresamente la propiedad y titularidad registral del vehículo descripto hasta tanto LA PARTE COMPRADORA abone íntegramente el precio total pactado, cuotas e intereses aplicables. Mientras subsista el saldo impago, LA PARTE COMPRADORA no podrá enajenar, gravar, ceder ni sacar el vehículo del territorio de la República del Paraguay sin autorización previa y por escrito de LA PARTE VENDEDORA.</p>` +
+        `<p><strong>CUARTA — RESPONSABILIDAD CIVIL, PENAL Y ADMINISTRATIVA:</strong> A partir del día de la fecha y hora de entrega del automotor, LA PARTE COMPRADORA asume exclusiva e íntegramente toda responsabilidad civil, penal, contravencional y administrativa emergente de la circulación, guarda, accidentes de tránsito, multas o daños a terceros ocasionados con el rodado, liberando totalmente a LA PARTE VENDEDORA.</p>` +
+        `<p><strong>QUINTA — MORA Y CADUCIDAD DE PLAZOS:</strong> La falta de pago puntual de cualquiera de las cuotas en su fecha de vencimiento producirá la mora automática de pleno derecho sin necesidad de interpelación judicial o extrajudicial previa, produciéndose la caducidad de todos los plazos y facultando a LA PARTE VENDEDORA a exigir ejecutivamente el saldo total adeudado o resolver el contrato con restitución inmediata del vehículo.</p>` +
+        `<p><strong>SEXTA — ESCRITURACIÓN Y JURISDICCIÓN:</strong> Cancelada la totalidad del precio, LA PARTE VENDEDORA otorgará la correspondiente Escritura Pública de Transferencia ante Escribanía Pública, siendo los gastos de transferencia asumidos por <strong>[RESPONSABLE_GASTOS_ESCRITURA]</strong>. Para cualquier divergencia, las partes se someten a la jurisdicción de los Juzgados y Tribunales ordinarios de la ciudad de <strong>${ciudad}</strong>.</p>` +
+        `<p><br></p>` +
+        `<p>En prueba de conformidad, se firman dos (2) ejemplares de un mismo tenor y a un solo efecto en el lugar y fecha indicados.</p>` +
+        firmaDoble(nombreVendedor, '[COMPRADOR]', '[CI_COMPRADOR]')
+      );
+
+    case 'playero_acta_entrega':
+      return (
+        `<p style="text-align: center;"><strong>ACTA DE ENTREGA DE POSESIÓN Y RESPONSABILIDAD CIVIL Y PENAL</strong></p>` +
+        `<p><br></p>` +
+        `<p>En la ciudad de <strong>${ciudad}</strong>, República del Paraguay, a los ${dia} días del mes de ${mes} del año ${anio}, siendo las <strong>[HORA_ENTREGA]</strong>, comparecen por una parte <strong>${nombreVendedor}</strong>, con RUC/C.I. N.º <strong>${rucVendedor}</strong>, domicilio en <strong>${domVendedor}</strong> y teléfono <strong>${telVendedor}</strong> (en adelante, <strong>LA PLAYA / ENTREGANTE</strong>); y por la otra, el/la Sr./Sra. <strong>[COMPRADOR]</strong>, con C.I./RUC N.º <strong>[CI_COMPRADOR]</strong>, domiciliado/a en <strong>[DOMICILIO_COMPRADOR]</strong> y teléfono <strong>[TELEFONO_COMPRADOR]</strong> (en adelante, <strong>EL ADQUIRENTE / RECEPTOR</strong>), dejando constancia de lo siguiente:</p>` +
+        `<p><br></p>` +
+        `<p><strong>PRIMERO — ENTREGA DEL AUTOMOTOR:</strong> En este acto, LA PLAYA hace entrega material de la posesión del vehículo Marca y Modelo: <strong>[MARCA_MODELO]</strong>; Año: <strong>[ANO]</strong>; Color: <strong>[COLOR]</strong>; Chasis N.º: <strong>[CHASIS]</strong>; Chapa / Matrícula N.º: <strong>[CHAPA]</strong>; Kilometraje actual: <strong>[KILOMETRAJE]</strong>.</p>` +
+        `<p><strong>SEGUNDO — INSPECCIÓN Y ACCESORIOS:</strong> EL RECEPTOR declara haber revisado mecánica y documentalmente el vehículo, recibiéndolo a su entera conformidad conjuntamente con: <strong>[ESTADO_ACCESORIOS]</strong>.</p>` +
+        `<p><strong>TERCERO — ASUNCIÓN INTEGRAL DE RESPONSABILIDAD CIVIL, PENAL Y DE TRÁNSITO:</strong> Desde la fecha y hora indicadas en la presente Acta (<strong>${dia} de ${mes} de ${anio} a las [HORA_ENTREGA]</strong>), EL RECEPTOR asume en forma absoluta, exclusiva e irrevocable toda responsabilidad civil, penal, administrativa, tributaria y municipal derivada de la tenencia, uso o conducción del rodado, incluyendo siniestros viales, lesiones, daños materiales a terceros, infracciones de tránsito, multas de Patrulla Caminera o PMT y eventuales hechos punibles, deslindando total y expresamente a LA PLAYA y/o al titular registral de cualquier reclamo presente o futuro.</p>` +
+        `<p><strong>CUARTO — PROHIBICIÓN DE SALIDA DEL PAÍS:</strong> Hasta tanto se perfeccione la transferencia registral definitiva a nombre de EL RECEPTOR, queda prohibido trasladar el vehículo fuera del territorio de la República del Paraguay sin autorización escrita de LA PLAYA.</p>` +
+        `<p><br></p>` +
+        `<p>Leída y ratificada íntegramente la presente Acta, la suscriben las partes en dos ejemplares de igual tenor en fecha y hora ut supra.</p>` +
+        firmaDoble(nombreVendedor, '[COMPRADOR]', '[CI_COMPRADOR]')
+      );
+
+    case 'playero_recibo_sena':
+      return (
+        `<p style="text-align: center;"><strong>RECIBO DE SEÑA DE TRATO Y RESERVA DE VEHÍCULO</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>POR: Gs. [MONTO_SENA]</strong></p>` +
+        `<p><br></p>` +
+        `<p>Recibimos de el/la Sr./Sra. <strong>[COMPRADOR]</strong>, titular de la Cédula de Identidad Civil / RUC N.º <strong>[CI_COMPRADOR]</strong>, con domicilio en <strong>[DOMICILIO_COMPRADOR]</strong> y teléfono <strong>[TELEFONO_COMPRADOR]</strong>, la suma de GUARANÍES <strong>[MONTO_SENA_LETRAS]</strong> (<strong>Gs. [MONTO_SENA]</strong>), en concepto de <strong>SEÑA DE TRATO</strong> (Art. 724 del Código Civil Paraguayo) por la reserva del vehículo con las siguientes especificaciones:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Marca y Modelo:</strong> [MARCA_MODELO]<br>• <strong>Año:</strong> [ANO] &nbsp;|&nbsp; <strong>Color:</strong> [COLOR]<br>• <strong>Chasis N.º:</strong> [CHASIS] &nbsp;|&nbsp; <strong>Chapa N.º:</strong> [CHAPA]</p>` +
+        `<p><br></p>` +
+        `<p><strong>CONDICIONES DE LA RESERVA:</strong></p>` +
+        `<p>1. El precio total convenido por el rodado asciende a la suma de GUARANÍES <strong>[PRECIO_LETRAS]</strong> (<strong>Gs. [PRECIO_TOTAL]</strong>).</p>` +
+        `<p>2. La presente reserva tendrá vigencia por el plazo de <strong>[PLAZO_VALIDEZ_SENA]</strong>, término dentro del cual el/la interesado/a deberá integrar el saldo de entrega inicial y suscribir la documentación definitiva en el local de <strong>${nombreVendedor}</strong> (${domVendedor} — Tel.: ${telVendedor}).</p>` +
+        `<p>3. Concretada la compraventa dentro del plazo pactado, el monto entregado en concepto de seña será imputado íntegramente a cuenta del precio total. En caso de desistimiento unilateral o vencimiento del plazo sin integración por causa imputable al/a la interesado/a, quedará sin efecto la reserva perdiendo la seña entregada conforme a derecho.</p>` +
+        firmaDoble(nombreVendedor, '[COMPRADOR]', '[CI_COMPRADOR]')
+      );
+
+    case 'playero_autorizacion_circulacion':
+      return (
+        `<p style="text-align: center;"><strong>AUTORIZACIÓN PROVISORIA DE CIRCULACIÓN DE VEHÍCULO</strong></p>` +
+        `<p><br></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p><br></p>` +
+        `<p>Por medio de la presente, <strong>${nombreVendedor}</strong>, con RUC/C.I. N.º <strong>${rucVendedor}</strong>, con domicilio comercial en <strong>${domVendedor}</strong> y teléfono <strong>${telVendedor}</strong>, <strong>AUTORIZA PROVISORIAMENTE</strong> al/a la Sr./Sra. <strong>[CONDUCTOR_AUTORIZADO]</strong>, mayor de edad, titular de la Cédula de Identidad Civil N.º <strong>[CI_CONDUCTOR]</strong>, con domicilio en <strong>[DOMICILIO_CONDUCTOR]</strong>, a conducir y circular dentro del territorio de la República del Paraguay con el vehículo automotor cuyos datos se detallan:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Marca y Modelo:</strong> [MARCA_MODELO]<br>• <strong>Año:</strong> [ANO] &nbsp;|&nbsp; <strong>Color:</strong> [COLOR]<br>• <strong>Chasis N.º:</strong> [CHASIS] &nbsp;|&nbsp; <strong>Chapa / Matrícula N.º:</strong> [CHAPA]</p>` +
+        `<p><br></p>` +
+        `<p><strong>VIGENCIA Y MOTIVO:</strong> La presente autorización se expide con carácter estrictamente provisorio con vigencia hasta el día <strong>[FECHA_VENCIMIENTO_AUTORIZACION]</strong>, en razón de encontrarse en curso el trámite de <strong>[MOTIVO_AUTORIZACION]</strong>.</p>` +
+        `<p><strong>ALCANCE Y RESPONSABILIDAD:</strong> Durante el período autorizado, <strong>[CONDUCTOR_AUTORIZADO]</strong> asume plena y exclusiva responsabilidad civil, penal y administrativa por cualquier infracción de tránsito, multa o siniestro que pudiera producirse en la conducción del rodado. La presente autorización es personal e intransferible y <strong>NO habilita la salida del vehículo del territorio nacional</strong>.</p>` +
+        `<p><br></p>` +
+        `<p>Se expide el presente documento para su exhibición ante las autoridades policiales, municipales y de tránsito que así lo requieran.</p>` +
+        firmaDoble(nombreVendedor, '[CONDUCTOR_AUTORIZADO]', '[CI_CONDUCTOR]')
+      );
+
+    default:
+      return '';
+  }
+}
+
 const LOCAL_STORAGE_DRAFT_TEXT = 'olga_escritos_redaccion_draft_texto';
 const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
@@ -1096,9 +1403,18 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     };
   }, [rawLogoInstitucional]);
 
-  const esAbogadoEsc =
-    String(workspaceData?.tipoPerfil || activeUserData?.tipoPerfil || userProfile?.tipoPerfil || '').toLowerCase() ===
-    'abogado';
+  const tipoPerfilEscNorm = String(
+    workspaceData?.tipoPerfil || activeUserData?.tipoPerfil || userProfile?.tipoPerfil || ''
+  )
+    .trim()
+    .toLowerCase();
+  const esAbogadoEsc = tipoPerfilEscNorm === 'abogado';
+  const esPlayeroEsc = tipoPerfilEscNorm === 'playero';
+  const esRubroNoNotarialEsc =
+    esAbogadoEsc ||
+    esPlayeroEsc ||
+    tipoPerfilEscNorm === 'inmobiliario' ||
+    tipoPerfilEscNorm === 'contador';
 
   const pickRealEscHeader = (...candidates: unknown[]): string => {
     for (const candidate of candidates) {
@@ -1112,7 +1428,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         lower === 'mi escribanía' ||
         lower === 'escribanía titular' ||
         lower === 'escribanía pública' ||
-        lower === 'estudio jurídico'
+        lower === 'estudio jurídico' ||
+        lower === 'playa de vehículos'
       ) {
         continue;
       }
@@ -1132,15 +1449,29 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         activeUserData?.nombre,
         userProfile?.nombre
       )
-    : (workspaceData?.razonSocial ||
-        workspaceData?.nombreInstitucion ||
-        activeUserData?.razonSocial ||
-        activeUserData?.nombreInstitucion ||
-        userProfile?.razonSocial ||
-        activeUserData?.nombre ||
-        userProfile?.nombre ||
-        'Escribanía Pública');
-  const rucEscHeader = esAbogadoEsc
+    : esPlayeroEsc
+      ? (pickRealEscHeader(
+          workspaceData?.razonSocial,
+          workspaceData?.nombreComercial,
+          workspaceData?.nombreInstitucion,
+          activeUserData?.razonSocial,
+          activeUserData?.nombreComercial,
+          activeUserData?.nombreInstitucion,
+          userProfile?.razonSocial,
+          userProfile?.nombreComercial,
+          workspaceData?.nombre,
+          activeUserData?.nombre,
+          userProfile?.nombre
+        ) || 'Playa de Vehículos')
+      : (workspaceData?.razonSocial ||
+          workspaceData?.nombreInstitucion ||
+          activeUserData?.razonSocial ||
+          activeUserData?.nombreInstitucion ||
+          userProfile?.razonSocial ||
+          activeUserData?.nombre ||
+          userProfile?.nombre ||
+          'Escribanía Pública');
+  const rucEscHeader = esRubroNoNotarialEsc
     ? pickRealEscHeader(workspaceData?.ruc, activeUserData?.ruc, userProfile?.ruc)
     : (workspaceData?.ruc || activeUserData?.ruc || userProfile?.ruc || '');
   const registroEscHeader = esAbogadoEsc
@@ -1155,17 +1486,19 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         activeUserData?.registroNotarial,
         userProfile?.registroNotarial
       )
-    : (workspaceData?.registroNotarial ||
-        workspaceData?.matricula ||
-        activeUserData?.registroNotarial ||
-        activeUserData?.matricula ||
-        userProfile?.registroNotarial ||
-        userProfile?.matricula ||
-        '');
-  const telefonoEscHeader = esAbogadoEsc
+    : esRubroNoNotarialEsc
+      ? ''
+      : (workspaceData?.registroNotarial ||
+          workspaceData?.matricula ||
+          activeUserData?.registroNotarial ||
+          activeUserData?.matricula ||
+          userProfile?.registroNotarial ||
+          userProfile?.matricula ||
+          '');
+  const telefonoEscHeader = esRubroNoNotarialEsc
     ? pickRealEscHeader(workspaceData?.telefono, activeUserData?.telefono, userProfile?.telefono)
     : (workspaceData?.telefono || activeUserData?.telefono || userProfile?.telefono || '');
-  const direccionEscHeader = esAbogadoEsc
+  const direccionEscHeader = esRubroNoNotarialEsc
     ? pickRealEscHeader(
         workspaceData?.direccion,
         activeUserData?.direccion,
@@ -1185,6 +1518,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     logo: pdfLogoDataUrl,
     esAbogado: esAbogadoEsc,
   });
+
+  const playeroPerfilDatos: PlayeroPerfilDatos = React.useMemo(() => {
+    const rawNombre = pickRealEscHeader(
+      workspaceData?.razonSocial,
+      workspaceData?.nombreComercial,
+      workspaceData?.nombreInstitucion,
+      activeUserData?.razonSocial,
+      activeUserData?.nombreComercial,
+      activeUserData?.nombreInstitucion,
+      userProfile?.razonSocial,
+      userProfile?.nombreComercial,
+      workspaceData?.nombre,
+      activeUserData?.nombre,
+      userProfile?.nombre
+    );
+    const rawCiudad = pickRealEscHeader(
+      workspaceData?.ciudad,
+      activeUserData?.ciudad,
+      userProfile?.ciudad
+    );
+    return {
+      nombrePlaya: rawNombre || '[NOMBRE_VENDEDOR_PLAYA]',
+      rucPlaya: rucEscHeader || '[RUC_PLAYA]',
+      direccionPlaya: direccionEscHeader || '[DOMICILIO_PLAYA]',
+      telefonoPlaya: telefonoEscHeader || '[TELEFONO_PLAYA]',
+      ciudadPlaya: rawCiudad || 'Asunción',
+    };
+  }, [workspaceData, activeUserData, userProfile, rucEscHeader, direccionEscHeader, telefonoEscHeader]);
 
   // Datos reales del perfil del Abogado para autocompletado automático en escritos judiciales
   const abogadoPerfilDatos: AbogadoPerfilDatos = React.useMemo(() => {
@@ -1906,23 +2267,28 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Contar espacios en blanco totales y pendientes
   const blankMatches = React.useMemo(() => {
+    if (esPlayeroEsc && selectedPlantillaId.startsWith('playero_')) {
+      return [];
+    }
     const regex = /_{3,}/g;
     const matches: { index: number; length: number }[] = [];
     let match;
     while ((match = regex.exec(currentPlainText)) !== null) {
+      if (esPlayeroEsc && match[0].length >= 15) continue;
       matches.push({ index: match.index, length: match[0].length });
     }
     return matches;
-  }, [currentPlainText]);
+  }, [currentPlainText, esPlayeroEsc, selectedPlantillaId]);
 
+  const usaMarcadoresCorchete = esAbogadoEsc || esPlayeroEsc;
   const marcadoresAbogadoPendientes = React.useMemo(() => {
-    if (!esAbogadoEsc) return [];
+    if (!usaMarcadoresCorchete) return [];
     return extraerMarcadoresJudiciales(editorText).filter(
       (k) => !skippedJudicialMarkers.includes(k)
     );
-  }, [esAbogadoEsc, editorText, skippedJudicialMarkers]);
+  }, [usaMarcadoresCorchete, editorText, skippedJudicialMarkers]);
 
-  const isJudicialMarkersActive = esAbogadoEsc && marcadoresAbogadoPendientes.length > 0;
+  const isJudicialMarkersActive = usaMarcadoresCorchete && marcadoresAbogadoPendientes.length > 0;
   const totalBlanks = isJudicialMarkersActive ? marcadoresAbogadoPendientes.length : blankMatches.length;
 
   // =========================================================================
@@ -1949,6 +2315,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         placeholder: meta.placeholder,
         isJudicialMarker: true,
         markerKey,
+      };
+    }
+
+    if (esPlayeroEsc) {
+      return {
+        instruccion: 'Dato complementario',
+        ayuda: 'Complete este espacio con el dato requerido para el documento comercial.',
+        placeholder: 'Ingrese el dato...',
       };
     }
 
@@ -2716,6 +3090,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
+    if (esPlayeroEsc) {
+      if (blankMatches.length > 0 && !editorText.includes('id="espacio-activo"')) {
+        const re = /_{3,}/g;
+        let matchBlank: RegExpExecArray | null = null;
+        while ((matchBlank = re.exec(editorText)) !== null) {
+          if (matchBlank[0].length < 15) break;
+        }
+        if (matchBlank && matchBlank.index !== undefined) {
+          const textoConEspacioActivo =
+            editorText.slice(0, matchBlank.index) +
+            `<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">${matchBlank[0]}</span>` +
+            editorText.slice(matchBlank.index + matchBlank[0].length);
+          setEditorText(textoConEspacioActivo);
+          if (editorContentRef.current) {
+            editorContentRef.current.innerHTML = textoConEspacioActivo;
+          }
+        }
+      }
+      return;
+    }
+
     // Si hay espacios en blanco pendientes, verificar si alguno se puede resolver silenciosamente
     if (/_{3,}/.test(editorText)) {
       const res = intentarResolverEspacioSilencioso(editorText, memoria);
@@ -2760,7 +3155,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes]);
+  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes, esPlayeroEsc, blankMatches.length]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
@@ -2844,13 +3239,46 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
+  const PLAYERO_UPPER_BOLD_KEYS = new Set<string>([
+    'COMPRADOR',
+    'ADQUIRENTE',
+    'RECEPTOR',
+    'TITULAR',
+    'CLIENTE',
+    'CONDUCTOR_AUTORIZADO',
+    'NOMBRE_VENDEDOR_PLAYA',
+    'CI_COMPRADOR',
+    'CI_CONDUCTOR',
+    'RUC_PLAYA',
+    'MARCA_MODELO',
+    'MARCA',
+    'MODELO',
+    'COLOR',
+    'CHASIS',
+    'CHAPA',
+    'MATRICULA',
+    'MOTOR',
+    'ANO',
+    'MONTO_LETRAS',
+    'PRECIO_LETRAS',
+    'MONTO_SENA_LETRAS',
+    'CIUDAD',
+    'DOMICILIO_COMPRADOR',
+    'DOMICILIO_CONDUCTOR',
+    'DOMICILIO_PLAYA',
+  ]);
+
   const reemplazarMarcadorJudicial = (rawHtml: string, markerKey: string, value: string): string => {
     const escapedKey = markerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const markerRegex = new RegExp(
       `\\[(?:\\s|<[^>]+>|&nbsp;)*${escapedKey}(?:\\s|<[^>]+>|&nbsp;)*\\]`,
       'g'
     );
-    return rawHtml.replace(markerRegex, escapeHtmlText(value));
+    const shouldUpperBold = esPlayeroEsc && PLAYERO_UPPER_BOLD_KEYS.has(markerKey);
+    const formattedHtml = shouldUpperBold
+      ? `<strong>${escapeHtmlText(value.toUpperCase())}</strong>`
+      : escapeHtmlText(value);
+    return rawHtml.replace(markerRegex, formattedHtml);
   };
 
   const handleOmitirMarcador = () => {
@@ -2942,7 +3370,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setMostrarTooltipAyuda(false);
 
       let nextSuggestedInput = '';
-      if (markerKey === 'MONTO_RECLAMADO' && nextMarkers[0] === 'MONTO_LETRAS') {
+      const montoALetrasPairs: Record<string, string> = {
+        MONTO_RECLAMADO: 'MONTO_LETRAS',
+        PRECIO_TOTAL: 'PRECIO_LETRAS',
+        MONTO_SENA: 'MONTO_SENA_LETRAS',
+      };
+      if (montoALetrasPairs[markerKey] && nextMarkers[0] === montoALetrasPairs[markerKey]) {
         const soloDigitosAbg = valorOriginal.replace(/\./g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
         if (/^\d+$/.test(soloDigitosAbg) && soloDigitosAbg.length > 0) {
           const numAbg = parseInt(soloDigitosAbg, 10);
@@ -3091,22 +3524,41 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // el valor nominal / montos suscriptos sin volver a solicitar datos redundantes.
     let iterHtml = nuevoHtml;
     let iterMemoria = nuevaMemoria;
-    let continueResolving = true;
-    let maxIterations = 20;
+    if (!esPlayeroEsc) {
+      let continueResolving = true;
+      let maxIterations = 20;
 
-    while (continueResolving && maxIterations > 0) {
-      maxIterations--;
-      const res = intentarResolverEspacioSilencioso(iterHtml, iterMemoria);
-      if (res.resolved) {
-        iterHtml = res.newHtml;
-        iterMemoria = res.newMemoria;
-      } else {
-        continueResolving = false;
+      while (continueResolving && maxIterations > 0) {
+        maxIterations--;
+        const res = intentarResolverEspacioSilencioso(iterHtml, iterMemoria);
+        if (res.resolved) {
+          iterHtml = res.newHtml;
+          iterMemoria = res.newMemoria;
+        } else {
+          continueResolving = false;
+        }
       }
     }
 
     // 5. RESALTAR EL SIGUIENTE ESPACIO VACÍO PENDIENTE (SI QUEDAN MÁS)
-    if (/_{3,}/.test(iterHtml)) {
+    let hasMoreBlanks = false;
+    if (esPlayeroEsc) {
+      if (!selectedPlantillaId.startsWith('playero_')) {
+        const reNext = /_{3,}/g;
+        let matchNext: RegExpExecArray | null = null;
+        while ((matchNext = reNext.exec(iterHtml)) !== null) {
+          if (matchNext[0].length < 15) break;
+        }
+        if (matchNext && matchNext.index !== undefined) {
+          hasMoreBlanks = true;
+          iterHtml =
+            iterHtml.slice(0, matchNext.index) +
+            `<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">${matchNext[0]}</span>` +
+            iterHtml.slice(matchNext.index + matchNext[0].length);
+        }
+      }
+    } else if (/_{3,}/.test(iterHtml)) {
+      hasMoreBlanks = true;
       iterHtml = iterHtml.replace(
         /_{3,}/,
         '<span id="espacio-activo" class="bg-yellow-300/50 animate-pulse rounded px-1">$&</span>'
@@ -3122,7 +3574,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setMostrarTooltipAyuda(false);
 
     // Si ya no quedan espacios en blanco, scroll suave al inicio
-    if (!/_{3,}/.test(iterHtml)) {
+    if (!hasMoreBlanks) {
       setTimeout(() => {
         const bloque = document.getElementById('editor-notarial-activo-bloque');
         bloque?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3339,6 +3791,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setEditorText(textoParaEditor);
         setDocumentTitle(foundAbg.nombre);
         setSelectedCategoryForSave(foundAbg.categoriaSugerida);
+      }
+    } else if (esPlayeroEsc) {
+      const foundPlayero = PLANTILLAS_PLAYERO_META.find((p) => p.id === plantillaId);
+      if (!foundPlayero || plantillaId === 'hoja_en_blanco') {
+        textoParaEditor = '';
+        setTipoHoja('blanca');
+        setEditorText('');
+        setDocumentTitle('Documento en Blanco');
+        setSelectedCategoryForSave('Contratos Privados');
+      } else {
+        setTipoHoja('blanca');
+        textoParaEditor = construirPlantillaPlayero(plantillaId, playeroPerfilDatos);
+        setEditorText(textoParaEditor);
+        setDocumentTitle(foundPlayero.nombre);
+        setSelectedCategoryForSave(foundPlayero.categoriaSugerida);
       }
     } else {
       const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
@@ -4643,9 +5110,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     value={
                       isMenuPlantillasBloqueado
                         ? ''
-                        : (esAbogadoEsc ? PLANTILLAS_ABOGADOS_META : PLANTILLAS_NOTARIALES).some(
-                              (p) => p.id === selectedPlantillaId
-                            )
+                        : (esAbogadoEsc
+                            ? PLANTILLAS_ABOGADOS_META
+                            : esPlayeroEsc
+                              ? PLANTILLAS_PLAYERO_META
+                              : PLANTILLAS_NOTARIALES
+                          ).some((p) => p.id === selectedPlantillaId)
                           ? selectedPlantillaId
                           : ''
                     }
@@ -4674,6 +5144,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       esAbogadoEsc ? (
                         <>
                           {PLANTILLAS_ABOGADOS_META.map((plantilla) => (
+                            <option key={plantilla.id} value={plantilla.id}>
+                              {plantilla.nombre}
+                            </option>
+                          ))}
+                        </>
+                      ) : esPlayeroEsc ? (
+                        <>
+                          {PLANTILLAS_PLAYERO_META.map((plantilla) => (
                             <option key={plantilla.id} value={plantilla.id}>
                               {plantilla.nombre}
                             </option>
@@ -6246,7 +6724,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 {mostrarTooltipAyuda && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
                     <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
-                      {currentBlankContext.isJudicialMarker ? 'Guía de Llenado Judicial' : 'Guía Notarial de Llenado'}
+                      {currentBlankContext.isJudicialMarker
+                        ? (esPlayeroEsc ? 'Guía de Llenado Comercial' : 'Guía de Llenado Judicial')
+                        : 'Guía Notarial de Llenado'}
                     </p>
                     <p className="text-slate-200 leading-relaxed font-normal">
                       {currentBlankContext.ayuda}
@@ -6300,8 +6780,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               value={autofillInput}
               onChange={(e) => {
                 const val = e.target.value;
-                // Formateo de miles con puntos exclusivamente cuando el campo actual es MONTO_RECLAMADO
-                if (currentBlankContext.markerKey === 'MONTO_RECLAMADO') {
+                // Formateo de miles con puntos exclusivamente cuando el campo actual es un monto numérico en Gs.
+                const isCampoMontoNumerico =
+                  currentBlankContext.markerKey === 'MONTO_RECLAMADO' ||
+                  (esPlayeroEsc &&
+                    (currentBlankContext.markerKey === 'PRECIO_TOTAL' ||
+                      currentBlankContext.markerKey === 'ENTREGA' ||
+                      currentBlankContext.markerKey === 'MONTO_CUOTA' ||
+                      currentBlankContext.markerKey === 'MONTO_SENA'));
+                if (isCampoMontoNumerico) {
                   const soloNums = val.replace(/\./g, '');
                   if (/^\d+$/.test(soloNums)) {
                     const numParsed = parseInt(soloNums, 10);

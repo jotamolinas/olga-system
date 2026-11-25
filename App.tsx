@@ -48,6 +48,7 @@ import { ModuloPresupuestos } from './components/ModuloPresupuestos';
 import { Sidebar } from './components/Sidebar';
 import { WhatsAppTab } from './components/WhatsAppTab';
 import { ExpedientesTab } from './components/ExpedientesTab';
+import { CotizadorPlayero } from './components/CotizadorPlayero';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { PWAInstallButton, PWAInstallGuideModal } from './components/PWAInstallBanner';
 
@@ -663,7 +664,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const isAdmin = forceAdmin && isActualAdminUser;
 
   const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || 'basico').toLowerCase().trim();
-  const esAbogado = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
+  const tipoPerfilNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
+  const esAbogado = tipoPerfilNorm === 'abogado';
+  const esPlayero = tipoPerfilNorm === 'playero';
   const canUseExpedientes = esAbogado;
   // El skin dorado y efecto Glassmorphism es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
@@ -833,7 +836,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes' | 'cotizador'>(forceAdmin ? 'monitor' : 'tablero');
 
   useEffect(() => {
     if (isCheckingProfile || !currentUser) return;
@@ -841,11 +844,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       (activeTab === 'whatsapp' && !canUseWhatsApp) ||
       (activeTab === 'lienzo' && (!canUseLienzo || esAbogado)) ||
       (activeTab === 'facturacion' && !canUsePresupuesto) ||
-      (activeTab === 'expedientes' && !esAbogado)
+      (activeTab === 'expedientes' && !esAbogado) ||
+      (activeTab === 'cotizador' && !esPlayero)
     ) {
       setActiveTab('tablero');
     }
-  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, isCheckingProfile, currentUser]);
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, esPlayero, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -1208,8 +1212,9 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               user.phoneNumber ||
               'Mi Escribanía';
           }
-          const isAbogadoDoc = String(data.tipoPerfil || '').toLowerCase() === 'abogado';
-          if (!data.escribania && !isAbogadoDoc) {
+          const tipoDocNorm = String(data.tipoPerfil || '').toLowerCase();
+          const isPerfilNoNotarial = ['abogado', 'playero', 'inmobiliario', 'contador'].includes(tipoDocNorm);
+          if (!data.escribania && !isPerfilNoNotarial) {
             updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
           }
           if (!data.fecha_creacion) {
@@ -2244,16 +2249,39 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                         currentUser?.phoneNumber?.trim() ||
                         'Estudio Jurídico'
                       )
-                    : (
-                        customBranding.nombreInstitucion?.trim() ||
-                        userData?.razonSocial?.trim() ||
-                        workspaceName?.trim() ||
-                        config.escribania.nombre?.trim() ||
-                        userData?.nombre?.trim() ||
-                        currentUser?.displayName?.trim() ||
-                        currentUser?.phoneNumber?.trim() ||
-                        'Mi Escribanía'
-                      )
+                    : (() => {
+                        const tipoNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
+                        const esComercial = tipoNorm === 'playero' || tipoNorm === 'inmobiliario' || tipoNorm === 'contador';
+                        if (esComercial) {
+                          const comercialFallback =
+                            tipoNorm === 'playero'
+                              ? 'Playa de Vehículos'
+                              : tipoNorm === 'inmobiliario'
+                                ? 'Inmobiliaria'
+                                : 'Estudio Contable';
+                          return (
+                            userProfile?.razonSocial?.trim() ||
+                            userData?.razonSocial?.trim() ||
+                            customBranding.nombreInstitucion?.trim() ||
+                            (workspaceName && workspaceName !== 'Mi Escribanía' ? workspaceName.trim() : '') ||
+                            userProfile?.nombre?.trim() ||
+                            userData?.nombre?.trim() ||
+                            currentUser?.displayName?.trim() ||
+                            currentUser?.phoneNumber?.trim() ||
+                            comercialFallback
+                          );
+                        }
+                        return (
+                          customBranding.nombreInstitucion?.trim() ||
+                          userData?.razonSocial?.trim() ||
+                          workspaceName?.trim() ||
+                          config.escribania.nombre?.trim() ||
+                          userData?.nombre?.trim() ||
+                          currentUser?.displayName?.trim() ||
+                          currentUser?.phoneNumber?.trim() ||
+                          'Mi Escribanía'
+                        );
+                      })()
                 }
               </h1>
               <p className="text-[8px] md:text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 truncate">
@@ -2264,8 +2292,12 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                     : (() => {
                         const regText = String(customBranding.registroNotarial || '').trim();
                         const matText = String(userData?.matricula || config.escribania.nro_registro || '').trim();
-                        const rawTipo = String(userData?.tipoPerfil || '').trim();
-                        const tipoLabel = !rawTipo || rawTipo.toLowerCase() === 'escribania' ? 'Escribanía' : rawTipo;
+                        const rawTipo = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim();
+                        const tipoNorm = rawTipo.toLowerCase();
+                        if (tipoNorm === 'playero') return 'Playa de Vehículos • Panel Comercial';
+                        if (tipoNorm === 'inmobiliario') return 'Inmobiliaria / Broker • Panel Comercial';
+                        if (tipoNorm === 'contador') return 'Estudio Contable • Panel de Gestión';
+                        const tipoLabel = !rawTipo || tipoNorm === 'escribania' ? 'Escribanía' : rawTipo;
                         if (regText) return `${regText}${matText ? ` • ${matText}` : ''}`;
                         if (matText) return `${tipoLabel} Titular • Reg. ${matText}`;
                         return `${tipoLabel} • Panel Notarial`;
@@ -2681,6 +2713,17 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                   setExpedientes((prev) => prev.filter((item) => item.id !== expedienteId));
                 }}
                 onOpenDocument={handleOpenDocumentModal}
+              />
+            )}
+
+            {activeTab === 'cotizador' && esPlayero && (
+              <CotizadorPlayero
+                currentUser={currentUser}
+                userData={userProfile || userData}
+                customBranding={customBranding}
+                personas={personas}
+                logoInstitucional={logoInstitucional}
+                canUseWhatsApp={canUseWhatsApp}
               />
             )}
 
@@ -3154,7 +3197,15 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         {/* Dynamic bottom bar info */}
         {role !== 'admin' && activeTab !== 'monitor' && (
         <footer className={`${isDarkLayout ? 'bg-[#16171E] border-white/10 text-slate-400' : 'bg-white/90 border-slate-200/80 text-slate-500'} border-t p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
-          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — {esAbogado ? 'GESTIÓN JURÍDICA Y PROCESAL' : 'PROTOCOLO NOTARIAL'}
+          SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — {esAbogado
+            ? 'GESTIÓN JURÍDICA Y PROCESAL'
+            : tipoPerfilNorm === 'playero'
+              ? 'PANEL COMERCIAL'
+              : tipoPerfilNorm === 'inmobiliario'
+                ? 'GESTIÓN INMOBILIARIA'
+                : tipoPerfilNorm === 'contador'
+                  ? 'PANEL TRIBUTARIO'
+                  : 'PROTOCOLO NOTARIAL'}
         </footer>
       )}
       </main>

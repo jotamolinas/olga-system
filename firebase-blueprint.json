@@ -267,6 +267,40 @@
           "type": "string"
         }
       }
+    },
+    {
+      "name": "cotizaciones_playero",
+      "description": "Cotizaciones y planes de financiación automotor del perfil playero.",
+      "security_rules": {
+        "read": "request.auth != null && request.auth.uid == resource.data.userId",
+        "write": "request.auth != null && request.auth.uid == request.resource.data.userId"
+      },
+      "schema": {
+        "userId": {
+          "type": "string"
+        },
+        "numeroCotizacion": {
+          "type": "string"
+        },
+        "correlativo": {
+          "type": "number"
+        },
+        "fecha": {
+          "type": "string"
+        },
+        "moneda": {
+          "type": "string"
+        },
+        "vehiculo": {
+          "type": "object"
+        },
+        "cliente": {
+          "type": "object"
+        },
+        "financiacion": {
+          "type": "object"
+        }
+      }
     }
   ]
 }
