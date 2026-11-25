@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Banknote,
   Printer,
   Plus,
   Trash2,
@@ -28,7 +27,6 @@ import {
   Loader2,
   UserCheck,
   Users,
-  ChevronDown,
   FolderOpen,
   MessageCircle,
   Mic,
@@ -44,12 +42,16 @@ import {
   CondicionVenta,
   TipoIvaNotarial,
   CategoriaTasaReembolso,
+  CategoriaServicioNotarial,
+  TipoDescuentoHonorarios,
   MembreteEscribaniaConfig,
   ENCABEZADO_INICIAL,
   ITEMS_TASAS_REEMBOLSO_BASE,
   ITEMS_SERVICIOS_HONORARIOS_BASE,
   ITEMS_TASAS_ABOGADO_BASE,
   ITEMS_SERVICIOS_ABOGADO_BASE,
+  esItemHonorarioProfesional,
+  calcularSiguienteNumeroPresupuesto,
   calcularLiquidacionPresupuesto,
   cargarMembreteUsuario,
   guardarMembreteUsuario,
@@ -496,8 +498,35 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     } catch {}
     return esAbogado
       ? 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los montos correspondientes a Tasas Judiciales CSJ y diligenciamientos quedan sujetos a aranceles oficiales vigentes.'
-      : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.';
+      : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles del RUN e Impuestos Municipales se basan en las liquidaciones oficiales vigentes (Normativa 2026) y están sujetos a variaciones tributarias.';
   });
+
+  // Descuento aplicable ÚNICAMENTE sobre Honorarios Profesionales (exclusivo Escribanía)
+  const [descuentoTipo, setDescuentoTipo] = useState<TipoDescuentoHonorarios>(() => {
+    if (esAbogado) return 'porcentaje';
+    try {
+      const guardado = localStorage.getItem('olga_presupuesto_descuento');
+      if (guardado) {
+        const parsed = JSON.parse(guardado);
+        return parsed?.tipo === 'monto' ? 'monto' : 'porcentaje';
+      }
+    } catch {}
+    return 'porcentaje';
+  });
+  const [descuentoValor, setDescuentoValor] = useState<number>(() => {
+    if (esAbogado) return 0;
+    try {
+      const guardado = localStorage.getItem('olga_presupuesto_descuento');
+      if (guardado) {
+        const parsed = JSON.parse(guardado);
+        return Math.max(0, Number(parsed?.valor) || 0);
+      }
+    } catch {}
+    return 0;
+  });
+
+  // Control de edición manual de número de comprobante (para correlativo automático PRES-XXXX en Escribanía)
+  const [numeroEditadoManual, setNumeroEditadoManual] = useState<boolean>(false);
 
   useEffect(() => {
     if (!esAbogado) return;
@@ -509,6 +538,77 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         setServicios((prev) => (prev === ITEMS_SERVICIOS_HONORARIOS_BASE ? ITEMS_SERVICIOS_ABOGADO_BASE : prev));
       }
     } catch {}
+  }, [esAbogado]);
+
+  // Migración segura de ítems 2025 -> Normativa 2026 solo para Escribanía (!esAbogado) cuando estén inactivos/en cero
+  useEffect(() => {
+    if (esAbogado) return;
+
+    const legacyTasaMap: Record<string, string> = {
+      'tasa-jud-1': 'Tasa de Inscripción en el RUN / Tasa Judicial (0,85%)',
+      'tasa-hip-1': 'Arancel de Inscripción de Hipoteca / Garantía Real (RUN)',
+      'tasa-aut-1': 'Tasa Registro Automotores y Cédula del Automotor (RUN)',
+    };
+
+    setTasas((prev) => {
+      const existingIds = new Set(prev.map((t) => t.id));
+      let changed = false;
+      const updated = prev.map((t) => {
+        if (
+          !t.activo &&
+          Number(t.monto) === 0 &&
+          legacyTasaMap[t.id] &&
+          t.descripcion !== legacyTasaMap[t.id]
+        ) {
+          changed = true;
+          return { ...t, descripcion: legacyTasaMap[t.id] };
+        }
+        return t;
+      });
+      const faltantes = ITEMS_TASAS_REEMBOLSO_BASE.filter((base) => !existingIds.has(base.id));
+      if (faltantes.length > 0) changed = true;
+      return changed ? [...updated, ...faltantes] : prev;
+    });
+
+    const baseServiciosById = new Map(ITEMS_SERVICIOS_HONORARIOS_BASE.map((b) => [b.id, b]));
+    setServicios((prev) => {
+      const existingIds = new Set(prev.map((s) => s.id));
+      let changed = false;
+      const migrated: ItemServicioHonorario[] = [];
+
+      prev.forEach((s) => {
+        if (s.id === 'srv-catastral') {
+          if (s.activo || Number(s.precioUnitario) > 0) {
+            migrated.push(s);
+          } else {
+            changed = true;
+          }
+          return;
+        }
+        const base = baseServiciosById.get(s.id);
+        if (base) {
+          const necesitaCategoria = !s.categoriaServicio;
+          const esInactivoEnCero = !s.activo && Number(s.precioUnitario) === 0;
+          if (esInactivoEnCero && (s.descripcion !== base.descripcion || Number(s.precioUnitario) !== base.precioUnitario || necesitaCategoria)) {
+            changed = true;
+            migrated.push({ ...base, activo: false });
+            return;
+          }
+          if (necesitaCategoria) {
+            changed = true;
+            migrated.push({ ...s, categoriaServicio: base.categoriaServicio });
+            return;
+          }
+        }
+        migrated.push(s);
+      });
+
+      const migratedIds = new Set(migrated.map((s) => s.id));
+      const faltantes = ITEMS_SERVICIOS_HONORARIOS_BASE.filter((b) => !migratedIds.has(b.id));
+      if (faltantes.length > 0) changed = true;
+
+      return changed ? [...migrated, ...faltantes] : prev;
+    });
   }, [esAbogado]);
 
   useEffect(() => {
@@ -850,11 +950,18 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     }
   };
 
-  // Liquidación tributaria en tiempo real
-  const liquidacion = calcularLiquidacionPresupuesto(tasas, servicios);
+  // Liquidación tributaria en tiempo real (descuento aplica exclusivamente en Escribanía sobre Honorarios)
+  const liquidacion = calcularLiquidacionPresupuesto(
+    tasas,
+    servicios,
+    !esAbogado ? { tipo: descuentoTipo, valor: descuentoValor } : undefined
+  );
 
   // Manejadores de Encabezado
   const handleActualizarEncabezado = (campo: keyof EncabezadoFacturaPresupuesto, valor: any) => {
+    if (campo === 'numeroComprobante' && !esAbogado) {
+      setNumeroEditadoManual(true);
+    }
     setEncabezado((prev) => ({ ...prev, [campo]: valor }));
   };
 
@@ -876,7 +983,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     const nuevaTasa: ItemTasaReembolso = {
       id: nuevoId,
       categoria: 'otro',
-      descripcion: 'Nueva tasa o arancel judicial/administrativo',
+      descripcion: !esAbogado ? 'Nueva tasa o arancel oficial (RUN / CSJ / Municipal)' : 'Nueva tasa o arancel judicial/administrativo',
       monto: 0,
       tipoIva: 'exenta',
       activo: true,
@@ -924,7 +1031,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     const nuevoId = `srv-dinamico-${Date.now()}`;
     const nuevoServicio: ItemServicioHonorario = {
       id: nuevoId,
-      codigoConcepto: 'SERV-EXTRA',
+      codigoConcepto: !esAbogado ? 'HON-EXTRA' : 'SERV-EXTRA',
+      categoriaServicio: !esAbogado ? 'honorario' : undefined,
       descripcion: 'Nuevo concepto de servicio o diligencia notarial',
       cantidad: 1,
       precioUnitario: 0,
@@ -979,6 +1087,24 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
     return () => unsubscribe();
   }, [authUid, effectiveWorkspaceId, userId]);
+
+  // Contador correlativo automático (PRES-0001, PRES-0002...) exclusivo Escribanía cuando se inicia un presupuesto nuevo
+  useEffect(() => {
+    if (esAbogado || presupuestoIdActivo || numeroEditadoManual) return;
+    const siguiente = calcularSiguienteNumeroPresupuesto(presupuestosGuardados);
+    setEncabezado((prev) => {
+      const actual = String(prev.numeroComprobante || '').trim();
+      const yaExisteEnGuardados = presupuestosGuardados.some(
+        (p) => String(p?.numeroComprobante || '').trim().toUpperCase() === actual.toUpperCase()
+      );
+      if (!actual || actual.toUpperCase() === 'PRES-0001' || yaExisteEnGuardados) {
+        if (actual !== siguiente) {
+          return { ...prev, numeroComprobante: siguiente };
+        }
+      }
+      return prev;
+    });
+  }, [esAbogado, presupuestoIdActivo, numeroEditadoManual, presupuestosGuardados]);
 
   // Cargar historial de presupuestos guardados desde Firestore
   const fetchPresupuestosGuardados = async () => {
@@ -1048,6 +1174,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     if (typeof p.observaciones === 'string') {
       setObservaciones(p.observaciones);
     }
+    if (!esAbogado) {
+      setDescuentoTipo(p.descuentoTipo === 'monto' ? 'monto' : 'porcentaje');
+      setDescuentoValor(Math.max(0, Number(p.descuentoValor) || 0));
+      setNumeroEditadoManual(false);
+    }
 
     setSaveError(null);
     setPresupuestoIdActivo(p.id);
@@ -1107,11 +1238,35 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
     setGuardandoFirestore(true);
     try {
+      let numeroComprobanteFinal = encabezado.numeroComprobante || '';
+      if (!esAbogado && !sobrescribir) {
+        const actualTrim = numeroComprobanteFinal.trim();
+        const colisiona = presupuestosGuardados.some(
+          (p) => String(p?.numeroComprobante || '').trim().toUpperCase() === actualTrim.toUpperCase()
+        );
+        if (presupuestoIdActivo || !actualTrim || (!numeroEditadoManual && colisiona) || colisiona) {
+          numeroComprobanteFinal = calcularSiguienteNumeroPresupuesto(presupuestosGuardados);
+          setEncabezado((prev) => ({ ...prev, numeroComprobante: numeroComprobanteFinal }));
+          setNumeroEditadoManual(false);
+        }
+      }
+
+      const encabezadoPersistido = {
+        ...encabezado,
+        numeroComprobante: numeroComprobanteFinal,
+      };
+
       try {
-        localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezado));
+        localStorage.setItem('olga_presupuesto_encabezado', JSON.stringify(encabezadoPersistido));
         localStorage.setItem(storageKeyTasas, JSON.stringify(tasas));
         localStorage.setItem(storageKeyServicios, JSON.stringify(servicios));
         localStorage.setItem('olga_presupuesto_observaciones', observaciones ?? '');
+        if (!esAbogado) {
+          localStorage.setItem(
+            'olga_presupuesto_descuento',
+            JSON.stringify({ tipo: descuentoTipo, valor: Number(descuentoValor) || 0 })
+          );
+        }
         autoguardarClienteSilencioso();
       } catch (localErr) {
         console.warn('No se pudo actualizar respaldo localStorage de presupuesto:', localErr);
@@ -1122,19 +1277,19 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         uid: authenticatedUser.uid,
         userId: ownerWorkspaceId,
         workspaceId: ownerWorkspaceId,
-        tipoComprobante: encabezado.tipoComprobante || 'Presupuesto',
-        numeroComprobante: encabezado.numeroComprobante || '',
-        timbrado: encabezado.timbrado || '',
-        fechaEmision: encabezado.fechaEmision || new Date().toISOString().slice(0, 10),
-        fechaVencimientoValidez: encabezado.fechaVencimientoValidez || '',
-        condicionVenta: encabezado.condicionVenta || 'Contado',
-        clienteNombre: encabezado.clienteNombre || '',
-        clienteRucCI: encabezado.clienteRucCI || '',
-        clienteTelefono: encabezado.clienteTelefono || '',
-        clienteDireccion: encabezado.clienteDireccion || '',
-        clienteEmail: encabezado.clienteEmail || '',
-        conceptoGeneral: encabezado.conceptoGeneral || '',
-        localidad: encabezado.localidad || 'Asunción',
+        tipoComprobante: encabezadoPersistido.tipoComprobante || 'Presupuesto',
+        numeroComprobante: numeroComprobanteFinal,
+        timbrado: encabezadoPersistido.timbrado || '',
+        fechaEmision: encabezadoPersistido.fechaEmision || new Date().toISOString().slice(0, 10),
+        fechaVencimientoValidez: encabezadoPersistido.fechaVencimientoValidez || '',
+        condicionVenta: encabezadoPersistido.condicionVenta || 'Contado',
+        clienteNombre: encabezadoPersistido.clienteNombre || '',
+        clienteRucCI: encabezadoPersistido.clienteRucCI || '',
+        clienteTelefono: encabezadoPersistido.clienteTelefono || '',
+        clienteDireccion: encabezadoPersistido.clienteDireccion || '',
+        clienteEmail: encabezadoPersistido.clienteEmail || '',
+        conceptoGeneral: encabezadoPersistido.conceptoGeneral || '',
+        localidad: encabezadoPersistido.localidad || 'Asunción',
         tasas: tasas.map((t) => ({
           id: t.id || `tasa-${Date.now()}`,
           categoria: t.categoria || 'otro',
@@ -1148,6 +1303,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         servicios: servicios.map((s) => ({
           id: s.id || `srv-${Date.now()}`,
           codigoConcepto: s.codigoConcepto || '',
+          ...(s.categoriaServicio ? { categoriaServicio: s.categoriaServicio } : {}),
           descripcion: s.descripcion || '',
           cantidad: Number(s.cantidad) || 1,
           precioUnitario: Number(s.precioUnitario) || 0,
@@ -1159,10 +1315,25 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           activo: Boolean(s.activo),
           esPersonalizado: Boolean(s.esPersonalizado),
         })),
+        ...(!esAbogado
+          ? {
+              descuentoTipo,
+              descuentoValor: Math.max(0, Number(descuentoValor) || 0),
+            }
+          : {}),
         observaciones: observaciones ?? '',
         liquidacion: {
           subtotalTasasReembolso: Number(liquidacion.subtotalTasasReembolso) || 0,
           totalVentaServicios: Number(liquidacion.totalVentaServicios) || 0,
+          ...(!esAbogado
+            ? {
+                subtotalHonorariosBruto: Number(liquidacion.subtotalHonorariosBruto) || 0,
+                descuentoAplicado: Number(liquidacion.descuentoAplicado) || 0,
+                honorariosNetos: Number(liquidacion.honorariosNetos) || 0,
+                subtotalGastosMaterialesServicios: Number(liquidacion.subtotalGastosMaterialesServicios) || 0,
+                subtotalGastosMaterialesTasas: Number(liquidacion.subtotalGastosMaterialesTasas) || 0,
+              }
+            : {}),
           iva5: Number(liquidacion.iva5) || 0,
           iva10: Number(liquidacion.iva10) || 0,
           totalIvaLiquidado: Number(liquidacion.totalIvaLiquidado) || 0,
@@ -1219,7 +1390,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           const sinDuplicado = prev.filter((item) => item.id !== docRef.id);
           return [nuevoRegistro, ...sinDuplicado];
         });
-        setSaveToastMessage('¡Presupuesto guardado correctamente en la base de datos!');
+        setSaveToastMessage(
+          !esAbogado && numeroComprobanteFinal
+            ? `¡Presupuesto ${numeroComprobanteFinal} guardado correctamente!`
+            : '¡Presupuesto guardado correctamente en la base de datos!'
+        );
       }
 
       setGuardadoExito(true);
@@ -1251,11 +1426,54 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     }
   };
 
+  // Iniciar un presupuesto nuevo con el siguiente número correlativo (exclusivo Escribanía)
+  const handleNuevoPresupuesto = () => {
+    const siguienteNumero = calcularSiguienteNumeroPresupuesto(presupuestosGuardados);
+    setPresupuestoIdActivo(null);
+    setNumeroEditadoManual(false);
+    setDescuentoTipo('porcentaje');
+    setDescuentoValor(0);
+    setEncabezado({
+      ...ENCABEZADO_INICIAL,
+      fechaEmision: new Date().toISOString().slice(0, 10),
+      numeroComprobante: siguienteNumero,
+      timbrado: membrete.timbradoNumero || ENCABEZADO_INICIAL.timbrado,
+      fechaVencimientoValidez: membrete.timbradoVigenciaFin || ENCABEZADO_INICIAL.fechaVencimientoValidez,
+    });
+    setTasas(defaultTasasBase);
+    setServicios(defaultServiciosBase);
+    setObservaciones(
+      'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles del RUN e Impuestos Municipales se basan en las liquidaciones oficiales vigentes (Normativa 2026) y están sujetos a variaciones tributarias.'
+    );
+    try {
+      localStorage.removeItem('olga_presupuesto_encabezado');
+      localStorage.removeItem(storageKeyTasas);
+      localStorage.removeItem(storageKeyServicios);
+      localStorage.removeItem('olga_presupuesto_descuento');
+    } catch {}
+    setSaveToastMessage(`Listo para nuevo presupuesto correlativo: ${siguienteNumero}`);
+    setTimeout(() => setSaveToastMessage(null), 3000);
+  };
+
   // Restaurar valores por defecto
   const handleRestaurarDefecto = () => {
     if (window.confirm('¿Desea restablecer todos los campos a los valores iniciales por defecto?')) {
+      const numeroRestaurado = !esAbogado
+        ? calcularSiguienteNumeroPresupuesto(presupuestosGuardados)
+        : ENCABEZADO_INICIAL.numeroComprobante;
+      setPresupuestoIdActivo(null);
+      setNumeroEditadoManual(false);
+      if (!esAbogado) {
+        setDescuentoTipo('porcentaje');
+        setDescuentoValor(0);
+        try {
+          localStorage.removeItem('olga_presupuesto_descuento');
+        } catch {}
+      }
       setEncabezado({
         ...ENCABEZADO_INICIAL,
+        fechaEmision: new Date().toISOString().slice(0, 10),
+        numeroComprobante: numeroRestaurado,
         timbrado: membrete.timbradoNumero || ENCABEZADO_INICIAL.timbrado,
         fechaVencimientoValidez: membrete.timbradoVigenciaFin || ENCABEZADO_INICIAL.fechaVencimientoValidez,
       });
@@ -1264,7 +1482,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       setObservaciones(
         esAbogado
           ? 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los montos correspondientes a Tasas Judiciales CSJ y diligenciamientos quedan sujetos a aranceles oficiales vigentes.'
-          : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles de Registro e Impuestos Municipales se basan en las liquidaciones oficiales y están sujetos a variaciones tributarias.'
+          : 'Validez del presupuesto: 30 días a partir de la fecha de emisión. Los importes correspondientes a Tasas Judiciales, Aranceles del RUN e Impuestos Municipales se basan en las liquidaciones oficiales vigentes (Normativa 2026) y están sujetos a variaciones tributarias.'
       );
     }
   };
@@ -1558,6 +1776,16 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         })),
       subtotalTasas: Number(liquidacion.subtotalTasasReembolso) || 0,
       subtotalServicios: Number(liquidacion.totalVentaServicios) || 0,
+      ...(!esAbogado
+        ? {
+            subtotalHonorarios: Number(liquidacion.subtotalHonorariosBruto) || 0,
+            descuentoTipo,
+            descuentoValor: Math.max(0, Number(descuentoValor) || 0),
+            descuentoMonto: Number(liquidacion.descuentoAplicado) || 0,
+            honorariosNetos: Number(liquidacion.honorariosNetos) || 0,
+            subtotalGastosMaterialesTasas: Number(liquidacion.subtotalGastosMaterialesTasas) || 0,
+          }
+        : {}),
       totalIva: Number(liquidacion.totalIvaLiquidado) || 0,
       totalGeneral: Number(liquidacion.totalGeneralOperacion) || 0,
       totalLetras: liquidacion.totalLetras,
@@ -1675,15 +1903,29 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         encabezado.clienteDireccion ? `• Domicilio: ${encabezado.clienteDireccion}` : '',
         `• ${esAbogado ? 'Causa / Concepto Jurídico' : 'Acto / Concepto Notarial'}: ${concepto}`,
         '',
-        'I. TASAS JUDICIALES, ARANCELES Y REEMBOLSOS OFICIALES (EXENTAS DE IVA):',
+        esAbogado
+          ? 'I. TASAS JUDICIALES, ARANCELES Y REEMBOLSOS OFICIALES (EXENTAS DE IVA):'
+          : 'I. TASAS JUDICIALES, ARANCELES (RUN / CSJ) Y REEMBOLSOS OFICIALES (EXENTAS DE IVA):',
         ...lineasTasas,
         `Subtotal Tasas y Reembolsos: Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}`,
         '',
-        `II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'SERVICIOS NOTARIALES Y HONORARIOS PROFESIONALES'}:`,
+        `II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'SERVICIOS NOTARIALES, HONORARIOS Y MATERIALES'}:`,
         ...lineasServicios,
         `Subtotal Servicios y Honorarios: Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}`,
         '',
         'LIQUIDACIÓN TRIBUTARIA Y TOTAL GENERAL:',
+        ...(!esAbogado
+          ? [
+              `• Subtotal Honorarios Profesionales: Gs. ${liquidacion.subtotalHonorariosBruto.toLocaleString('es-PY')}`,
+              ...(liquidacion.descuentoAplicado > 0
+                ? [
+                    `• Descuento aplicado sobre Honorarios${descuentoTipo === 'porcentaje' ? ` (${descuentoValor}%)` : ''}: - Gs. ${liquidacion.descuentoAplicado.toLocaleString('es-PY')}`,
+                  ]
+                : []),
+              `• Honorarios Netos: Gs. ${liquidacion.honorariosNetos.toLocaleString('es-PY')}`,
+              `• Gastos, Materiales y Tasas (RUN / SIJ): Gs. ${liquidacion.subtotalGastosMaterialesTasas.toLocaleString('es-PY')}`,
+            ]
+          : []),
         `• Liquidación IVA 5%: Gs. ${liquidacion.iva5.toLocaleString('es-PY')}`,
         `• Liquidación IVA 10%: Gs. ${liquidacion.iva10.toLocaleString('es-PY')}`,
         `• Total IVA Liquidado: Gs. ${liquidacion.totalIvaLiquidado.toLocaleString('es-PY')}`,
@@ -1996,7 +2238,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     </div>
 
     <div class="seccion-title">
-      <span>I. Tasas Judiciales, Aranceles de Registro e Impuestos (Reembolsos Oficiales)</span>
+      <span>${esAbogado ? 'I. Tasas Judiciales, Aranceles de Registro e Impuestos (Reembolsos Oficiales)' : 'I. Tasas Judiciales, RUN, Registros e Impuestos (Reembolsos Oficiales)'}</span>
       <span>Subtotal: Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
     </div>
     <table>
@@ -2016,7 +2258,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </tr>
         `).join('') : `
           <tr>
-            <td colspan="3" style="text-align: center; color: #94a3b8; font-style: italic; padding: 6px;">Sin tasas judiciales o registrales adicionales asignadas a este presupuesto.</td>
+            <td colspan="3" style="text-align: center; color: #94a3b8; font-style: italic; padding: 6px;">Sin tasas judiciales o aranceles RUN adicionales asignados a este presupuesto.</td>
           </tr>
         `}
         <tr class="subtotal-row">
@@ -2027,7 +2269,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
     </table>
 
     <div class="seccion-title">
-      <span>II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios Profesionales y Gestiones'}</span>
+      <span>II. ${esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios, Materiales y Gestiones'}</span>
       <span>Subtotal: Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
     </div>
     <table>
@@ -2055,7 +2297,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </tr>
         `}
         <tr class="subtotal-row">
-          <td colspan="4">TOTAL SERVICIOS Y HONORARIOS PROFESIONALES (IVA INCLUIDO)</td>
+          <td colspan="4">TOTAL SERVICIOS Y HONORARIOS PROFESIONALES (NETO)</td>
           <td class="text-right mono">Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</td>
         </tr>
       </tbody>
@@ -2074,14 +2316,35 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       </div>
       <div class="liquidacion-totales">
-        <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between;">
-          <span>Subtotal Tasas y Reembolsos:</span>
-          <span class="mono font-bold">Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
-        </div>
-        <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between; margin-top: 2px;">
-          <span>Subtotal Servicios y Honorarios:</span>
-          <span class="mono font-bold">Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
-        </div>
+        ${!esAbogado ? `
+          <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between;">
+            <span>Subtotal Honorarios:</span>
+            <span class="mono font-bold">Gs. ${liquidacion.subtotalHonorariosBruto.toLocaleString('es-PY')}</span>
+          </div>
+          ${liquidacion.descuentoAplicado > 0 ? `
+            <div style="font-size: 8pt; color: #b45309; display: flex; justify-content: space-between; margin-top: 2px;">
+              <span>Descuento aplicado${descuentoTipo === 'porcentaje' ? ` (${descuentoValor}%)` : ''}:</span>
+              <span class="mono font-bold">- Gs. ${liquidacion.descuentoAplicado.toLocaleString('es-PY')}</span>
+            </div>
+          ` : ''}
+          <div style="font-size: 8pt; color: #0f172a; display: flex; justify-content: space-between; margin-top: 2px;">
+            <span style="font-weight: 700;">Honorarios Netos:</span>
+            <span class="mono font-bold">Gs. ${liquidacion.honorariosNetos.toLocaleString('es-PY')}</span>
+          </div>
+          <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between; margin-top: 2px;">
+            <span>Gastos, Materiales y Tasas (RUN / SIJ):</span>
+            <span class="mono font-bold">Gs. ${liquidacion.subtotalGastosMaterialesTasas.toLocaleString('es-PY')}</span>
+          </div>
+        ` : `
+          <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between;">
+            <span>Subtotal Tasas y Reembolsos:</span>
+            <span class="mono font-bold">Gs. ${liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+          </div>
+          <div style="font-size: 8pt; color: #475569; display: flex; justify-content: space-between; margin-top: 2px;">
+            <span>Subtotal Servicios y Honorarios:</span>
+            <span class="mono font-bold">Gs. ${liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+          </div>
+        `}
         <div class="total-general" style="display: flex; justify-content: space-between; align-items: baseline;">
           <span style="font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px;">TOTAL GENERAL A PAGAR:</span>
           <span class="mono" style="font-size: 13pt; color: #0f172a;">Gs. ${liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}</span>
@@ -2147,156 +2410,198 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   };
 
   return (
-    <div className="w-full space-y-6 font-sans transition-colors duration-200 print:space-y-4 print:p-0 print:m-0 print:bg-white print:text-black" id="modulo-presupuestos-root">
-      {/* Cabecera Principal del Módulo (oculta al imprimir) */}
-      <header className="bg-slate-900 border border-slate-800 shadow-xl rounded-3xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
-        <div className="relative z-10 flex items-center gap-4">
+    <div
+      className={`w-full space-y-5 font-sans transition-colors duration-200 rounded-2xl p-3 sm:p-5 print:space-y-4 print:p-0 print:m-0 print:bg-white print:text-black ${
+        modoFondoBlanco ? 'bg-slate-50/60 text-slate-900' : 'bg-slate-950 text-slate-100'
+      }`}
+      id="modulo-presupuestos-root"
+    >
+      {/* Cabecera Principal Limpia y Compacta (oculta al imprimir) */}
+      <header
+        className={`border rounded-xl px-5 py-4 flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-4 print:hidden ${
+          modoFondoBlanco
+            ? 'bg-white border-slate-200 border-b-slate-200'
+            : 'bg-slate-900 border-slate-800'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
           {onVolver && (
             <button
               onClick={onVolver}
               type="button"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border flex items-center gap-2 cursor-pointer shadow-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+              className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
               <span>Volver</span>
             </button>
           )}
 
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 text-slate-300 border border-slate-700/80">
-            <Banknote className="w-6 h-6" />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-white font-serif font-bold text-2xl tracking-tight">
-                {esAbogado ? 'Presupuestos y Honorarios Jurídicos' : 'Presupuestos y Facturación Notarial'}
-              </h1>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
-                O.L.G.A.
-              </span>
-            </div>
-            <p className="text-slate-400 text-sm mt-1 font-medium">
+          <div className="min-w-0 flex-1">
+            <h1
+              className={`text-xl font-semibold tracking-tight truncate ${
+                modoFondoBlanco ? 'text-slate-900' : 'text-white'
+              }`}
+            >
+              {esAbogado ? 'Presupuestos y Honorarios Jurídicos' : 'Presupuestos y Facturación Notarial'}
+            </h1>
+            <p className={`text-xs mt-0.5 truncate ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
               {esAbogado
-                ? 'Gestión modular de tasas judiciales CSJ, diligenciamientos y honorarios profesionales de estudio jurídico.'
-                : 'Gestión modular de reembolsos de tasas judiciales, aranceles registrales y honorarios de escribanía.'}
+                ? 'Tasas judiciales CSJ, diligenciamientos y honorarios profesionales.'
+                : 'Tasas RUN, aranceles registrales y honorarios de escribanía.'}
             </p>
           </div>
         </div>
 
-        {/* Botones de Acción Global */}
-        <div className="flex flex-wrap items-center gap-2.5 relative z-10 print:hidden">
+        {/* Botones de Acción Global con jerarquía limpia */}
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          {/* Acciones secundarias */}
           <button
             type="button"
             onClick={() => {
               setModalHistorialAbierto(true);
               fetchPresupuestosGuardados();
             }}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer ${
-              esFull 
-                ? 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200' 
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
-            title="Ver presupuestos guardados"
+            title={presupuestoIdActivo ? 'Ver presupuestos guardados (editando uno existente)' : 'Ver presupuestos guardados'}
           >
-            <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Ver Guardados{presupuestosGuardados.length > 0 ? ` (${presupuestosGuardados.length})` : ''}</span>
-            {presupuestoIdActivo && (
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse ml-0.5" title="Editando presupuesto existente"></span>
-            )}
+            <FolderOpen className="w-3.5 h-3.5 text-slate-500" />
+            <span>Guardados ({presupuestosGuardados.length})</span>
           </button>
+
+          {!esAbogado && (
+            <button
+              type="button"
+              onClick={handleNuevoPresupuesto}
+              className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
+              title="Iniciar un nuevo presupuesto correlativo limpio"
+            >
+              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <span>Nuevo</span>
+            </button>
+          )}
 
           <button
             type="button"
             onClick={handleRestaurarDefecto}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer ${
-              esFull 
-                ? 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200' 
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
             title="Restablecer valores"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
             <span className="hidden sm:inline">Restablecer</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handleGuardarPresupuesto}
-            disabled={guardandoFirestore}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer shadow-[0_4px_14px_rgba(0,0,0,0.1)] disabled:opacity-60 ${
-              guardadoExito
-                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/30'
-                : esFull
-                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/30'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-            title="Guardar en base de datos Firestore y respaldo local"
-          >
-            {guardandoFirestore ? (
-              <Loader2 className={`w-4 h-4 animate-spin ${esFull ? 'text-amber-300' : 'text-slate-200'}`} />
-            ) : guardadoExito ? (
-              <Check className="w-4 h-4 text-white" />
-            ) : (
-              <Save className={`w-4 h-4 ${esFull ? 'text-amber-400' : 'text-slate-300'}`} />
-            )}
-            <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
-          </button>
+          {/* Divisor vertical fino */}
+          <div
+            className={`hidden sm:block h-5 w-px mx-0.5 ${modoFondoBlanco ? 'bg-slate-200' : 'bg-slate-700'}`}
+            aria-hidden="true"
+          />
 
+          {/* Acciones de salida (outline sobrio) */}
           <button
             type="button"
             onClick={() => void handleGuardarEnDocumentos()}
             disabled={guardandoEnDocumentos}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-60 ${
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${
               guardadoEnDocumentosExito
-                ? 'bg-emerald-600 text-white border-emerald-500'
-                : esFull
-                  ? 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-500/30'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
             title="Guardar copia formateada en Documentos de O.L.G.A."
           >
             {guardandoEnDocumentos ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
             ) : guardadoEnDocumentosExito ? (
-              <Check className="w-4 h-4 text-white" />
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
             ) : (
-              <FilePlus2 className="w-4 h-4 text-indigo-400" />
+              <FilePlus2 className="w-3.5 h-3.5 text-slate-500" />
             )}
-            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'En Documentos' : 'Guardar en Documentos'}</span>
+            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'En Docs' : 'Guardar en Docs'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleDescargarPdfPresupuesto}
             disabled={descargandoPdf}
-            className="px-4 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md disabled:opacity-60"
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+            }`}
             title="Descargar archivo PDF directamente"
           >
-            {descargandoPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-white" />}
-            <span>Descargar PDF</span>
+            {descargandoPdf ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            <span>PDF</span>
           </button>
 
           <button
             type="button"
             onClick={handleImprimir}
-            className={`px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
-              esFull 
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)]' 
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md'
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
           >
-            <Printer className="w-4 h-4 text-white" />
-            <span>IMPRIMIR PRESUPUESTO</span>
+            <Printer className="w-3.5 h-3.5 text-slate-500" />
+            <span>Imprimir</span>
+          </button>
+
+          {/* Única acción principal sólida */}
+          <button
+            type="button"
+            onClick={handleGuardarPresupuesto}
+            disabled={guardandoFirestore}
+            className={`h-9 px-3.5 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${
+              guardadoExito
+                ? 'bg-emerald-700 text-white border-emerald-700 hover:bg-emerald-800'
+                : 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800'
+            }`}
+            title="Guardar en base de datos Firestore y respaldo local"
+          >
+            {guardandoFirestore ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : guardadoExito ? (
+              <Check className="w-3.5 h-3.5 text-white" />
+            ) : (
+              <Save className="w-3.5 h-3.5 text-white" />
+            )}
+            <span>{guardandoFirestore ? 'Guardando...' : guardadoExito ? 'Presupuesto Guardado' : 'Guardar Presupuesto'}</span>
           </button>
 
           {isWhatsAppEnabled && (
             <button
               type="button"
               onClick={() => setModalWhatsAppAbierto(true)}
-              className="px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+              className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              <MessageCircle className="w-4 h-4 text-white" />
-              <span>Enviar por WhatsApp</span>
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp</span>
             </button>
           )}
         </div>
@@ -2304,15 +2609,22 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
       {/* Alertas visibles de guardado / error en Firestore */}
       {saveError && (
-        <div className="bg-red-500/15 border border-red-500/40 text-red-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-medium shadow-md print:hidden" role="alert">
-          <div className="flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <span className="text-red-700 dark:text-red-200 font-semibold">{saveError}</span>
+        <div
+          className={`px-4 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-medium print:hidden ${
+            modoFondoBlanco
+              ? 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-red-500/15 border-red-500/30 text-red-200'
+          }`}
+          role="alert"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{saveError}</span>
           </div>
           <button
             type="button"
             onClick={() => setSaveError(null)}
-            className="text-red-400 hover:text-red-200 p-1 rounded-lg cursor-pointer"
+            className="text-red-500 hover:text-red-700 p-1 rounded-lg cursor-pointer"
             aria-label="Cerrar error"
           >
             <X className="w-4 h-4" />
@@ -2321,15 +2633,22 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
       )}
 
       {saveToastMessage && (
-        <div className="bg-emerald-500/15 border border-emerald-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-semibold shadow-md print:hidden" role="status">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span className="text-emerald-700 dark:text-emerald-200">{saveToastMessage}</span>
+        <div
+          className={`px-4 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-medium print:hidden ${
+            modoFondoBlanco
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+          }`}
+          role="status"
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{saveToastMessage}</span>
           </div>
           <button
             type="button"
             onClick={() => setSaveToastMessage(null)}
-            className="text-emerald-500 hover:text-emerald-300 p-1 rounded-lg cursor-pointer"
+            className="text-emerald-600 hover:text-emerald-800 p-1 rounded-lg cursor-pointer"
             aria-label="Cerrar notificación"
           >
             <X className="w-4 h-4" />
@@ -2337,18 +2656,26 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </div>
       )}
 
-      {/* Barra de Filtros y Totales Sticky (oculta al imprimir) */}
-      <div className="sticky top-2 z-20 px-6 py-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg flex items-center justify-between gap-4 flex-wrap transition-all print:hidden">
-        <div className="flex items-center gap-2">
+      {/* Barra Unificada de Pestañas y Resumen en Vivo (oculta al imprimir) */}
+      <div
+        className={`sticky top-2 z-20 rounded-xl border px-4 py-2 flex flex-wrap items-center justify-between gap-3 transition-colors print:hidden ${
+          modoFondoBlanco
+            ? 'bg-white/95 backdrop-blur-sm border-slate-200'
+            : 'bg-slate-900/95 backdrop-blur-sm border-slate-800'
+        }`}
+      >
+        <div className="flex items-center gap-1 flex-wrap">
           {(['todo', 'tasas', 'servicios', 'resumen'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setPestañaActiva(tab)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 pestañaActiva === tab
-                  ? 'bg-amber-50 text-amber-900 border border-amber-300/80 shadow-[0_2px_12px_rgba(245,158,11,0.15)] font-semibold'
-                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-xs font-medium'
+                  ? 'bg-slate-900 text-white'
+                  : modoFondoBlanco
+                    ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/80'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
               {tab === 'todo' && 'Vista Completa'}
@@ -2359,89 +2686,103 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           ))}
         </div>
 
-        {/* Totales rápidos en la barra */}
-        <div className="flex items-center gap-4 text-xs font-mono">
-          <div className="text-slate-500 hidden sm:block">
-            Tasas: <strong className="text-slate-800">Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</strong>
+        {/* Totales en vivo en tipografía tabular */}
+        <div className="flex items-center gap-4 text-xs tabular-nums">
+          <div className={`hidden sm:block ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+            Tasas:{' '}
+            <strong className={`font-semibold ${modoFondoBlanco ? 'text-slate-800' : 'text-slate-200'}`}>
+              Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}
+            </strong>
           </div>
-          <div className="text-slate-500 hidden sm:block">
-            Servicios: <strong className="text-slate-800">Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</strong>
+          <div className={`hidden sm:block ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+            Servicios:{' '}
+            <strong className={`font-semibold ${modoFondoBlanco ? 'text-slate-800' : 'text-slate-200'}`}>
+              Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}
+            </strong>
           </div>
-          <div className="bg-amber-50 border border-amber-300/70 px-3 py-1 rounded-xl text-amber-900 font-bold shadow-xs">
+          <div
+            className={`font-semibold px-3 py-1 rounded-md tabular-nums ${
+              modoFondoBlanco ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-white'
+            }`}
+          >
             Total: Gs. {liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}
           </div>
         </div>
       </div>
 
       {/* Contenido Modular con Scroll Único Fluido */}
-      <div className="space-y-6 md:space-y-8 print:p-0 print:m-0 print:space-y-4">
-        {/* Banner de Membrete Notarial Dinámico (Configuración Multi-usuario) */}
-        <div className={`border rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black print:rounded-xl ${
-          modoFondoBlanco
-            ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50'
-            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
-        }`}>
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 shadow-inner text-amber-500 print:hidden">
-              <Building className="w-6 h-6" />
+      <div className="space-y-5 print:p-0 print:m-0 print:space-y-4">
+        {/* Banner de Membrete Notarial Compacto (Configuración Multi-usuario) */}
+        <div
+          className={`border rounded-xl px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-colors print:border print:border-slate-800 print:shadow-none print:p-4 print:bg-white print:text-black ${
+            modoFondoBlanco
+              ? 'bg-white border-slate-200 text-slate-900'
+              : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}
+        >
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div
+              className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 print:hidden ${
+                modoFondoBlanco
+                  ? 'bg-slate-50 border-slate-200 text-slate-500'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              <Building className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-x-2.5 gap-y-0.5 flex-wrap">
                 {membrete.nombreNotario || membrete.nombreEscribania ? (
-                  <h3 className={`text-base font-bold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
+                  <h3 className={`text-sm font-semibold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
                     {membrete.nombreNotario || membrete.nombreEscribania}
                   </h3>
                 ) : (
-                  <h3 className={`text-sm font-semibold italic ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                  <h3 className={`text-xs font-medium italic ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
                     Membrete sin configurar — Complete sus datos desde "Editar Membrete"
                   </h3>
                 )}
                 {membrete.registroNotarial && (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold print:border-slate-400 print:text-black">
-                    {membrete.registroNotarial}
+                  <span className={`text-xs font-medium tabular-nums ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'} print:text-black`}>
+                    · {membrete.registroNotarial}
                   </span>
                 )}
                 {membrete.ruc && (
-                  <span className={`text-xs font-mono ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'}`}>
-                    RUC: <strong className={modoFondoBlanco ? 'text-slate-900' : 'text-slate-200'}>{membrete.ruc}</strong>
+                  <span className={`text-xs tabular-nums ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                    · RUC: <strong className={`font-medium ${modoFondoBlanco ? 'text-slate-800' : 'text-slate-200'}`}>{membrete.ruc}</strong>
+                  </span>
+                )}
+                {membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario && (
+                  <span className={`text-xs ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                    · {membrete.nombreEscribania}
                   </span>
                 )}
               </div>
-              {membrete.nombreEscribania && membrete.nombreEscribania !== membrete.nombreNotario && (
-                <p className={`text-xs mt-1 font-medium ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'}`}>
-                  {membrete.nombreEscribania}
-                </p>
-              )}
-              {(membrete.direccion || membrete.telefono || membrete.email) && (
-                <div className={`flex items-center gap-4 text-[11px] mt-1.5 flex-wrap ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+
+              {(membrete.direccion || membrete.telefono || membrete.email || membrete.timbradoNumero) && (
+                <div className={`flex items-center gap-x-3 gap-y-1 text-[11px] mt-1 flex-wrap ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
                   {membrete.direccion && (
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-slate-400" />
-                      {membrete.direccion}
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{membrete.direccion}</span>
                     </span>
                   )}
                   {membrete.telefono && (
-                    <span className="flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      {membrete.telefono}
+                    <span className="flex items-center gap-1 tabular-nums">
+                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{membrete.telefono}</span>
                     </span>
                   )}
                   {membrete.email && (
                     <span className="flex items-center gap-1">
-                      <Mail className="w-3 h-3 text-slate-400" />
-                      {membrete.email}
+                      <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{membrete.email}</span>
                     </span>
                   )}
-                </div>
-              )}
-              {membrete.timbradoNumero && (
-                <div className={`mt-2 text-[10px] font-mono flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
-                  <span className={`px-2 py-0.5 rounded border ${modoFondoBlanco ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-slate-800 text-slate-300 border-slate-700'} print:border-slate-400 print:text-black`}>
-                    Timbrado Nº: {membrete.timbradoNumero}
-                  </span>
-                  {(membrete.timbradoVigenciaInicio || membrete.timbradoVigenciaFin) && (
-                    <span>
-                      Vigencia: {membrete.timbradoVigenciaInicio} al {membrete.timbradoVigenciaFin}
+                  {membrete.timbradoNumero && (
+                    <span className="tabular-nums print:text-black">
+                      Timbrado Nº {membrete.timbradoNumero}
+                      {(membrete.timbradoVigenciaInicio || membrete.timbradoVigenciaFin) &&
+                        ` (${membrete.timbradoVigenciaInicio} al ${membrete.timbradoVigenciaFin})`}
                     </span>
                   )}
                 </div>
@@ -2458,28 +2799,28 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 setMembreteDraft(actualizado);
                 setModalMembreteAbierto(true);
               }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer shadow-sm ${
+              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 modoFondoBlanco
-                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border-slate-700'
+                  ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
               }`}
               title="Ajustar o completar datos del membrete para esta sesión"
             >
-              <Edit3 className="w-3.5 h-3.5" />
+              <Edit3 className="w-3.5 h-3.5 text-slate-400" />
               <span>Editar Membrete</span>
             </button>
             {onIrAConfiguracion && (
               <button
                 type="button"
                 onClick={onIrAConfiguracion}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   modoFondoBlanco
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border-slate-300'
-                    : 'bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/80'
+                    ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
                 }`}
                 title="Ir a Configuración Global de Escribanía"
               >
-                <Settings className="w-3.5 h-3.5" />
+                <Settings className="w-3.5 h-3.5 text-slate-400" />
                 <span className="hidden sm:inline">Ajustes</span>
               </button>
             )}
@@ -2564,57 +2905,68 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* ================================================================= */}
-        {/* SECCIÓN 1: ENCABEZADO Y DATOS FISCALES / DEL CLIENTE (PARTE 2)    */}
-        {/* ================================================================= */}
+        {/* SECCIÓN 1: ENCABEZADO Y DATOS FISCALES / DEL CLIENTE (PARTE 2) */}
         <section
-          className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-5 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+          className={`rounded-xl p-5 space-y-4 border shadow-xs transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
             modoFondoBlanco
-              ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-              : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
+              ? 'bg-white border-slate-200 text-slate-900'
+              : 'bg-slate-900 border-slate-800 text-slate-100'
           }`}
         >
-          <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-3 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 print:hidden">
-                <User className="w-5 h-5" />
+          <div
+            className={`flex items-center justify-between border-b pb-3 flex-wrap gap-3 ${
+              modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'
+            } print:border-slate-300`}
+          >
+            <div className="flex items-center gap-3 flex-wrap">
+              <div
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 print:hidden ${
+                  modoFondoBlanco
+                    ? 'bg-slate-50 border-slate-200 text-slate-500'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                <User className="w-4 h-4" />
               </div>
               <div>
-                <h2 className={`text-sm md:text-base font-bold uppercase tracking-wider ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                <h2 className={`text-sm font-semibold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
                   Datos del Comprobante y del Cliente
                 </h2>
-                <p className={`text-[11px] ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
-                  Búsqueda en Fichero Notarial, consulta al padrón DNIT y vinculación automática al comprobante.
+                <p className={`text-xs ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
+                  Búsqueda en Fichero Notarial, consulta al padrón DNIT y vinculación al comprobante.
                 </p>
               </div>
 
-              {/* Indicadores de procedencia y autoguardado */}
-              <div className="flex items-center gap-1.5 ml-1 print:hidden">
+              {/* Indicadores discretos de procedencia y autoguardado */}
+              <div className="flex items-center gap-2 text-[11px] font-medium print:hidden">
                 {origenCliente === 'FICHERO' && (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20 text-[10px] font-bold flex items-center gap-1">
-                    <Users className="w-3 h-3 text-blue-500" />
+                  <span className="text-slate-600 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-slate-500" />
                     <span>Fichero Notarial</span>
                   </span>
                 )}
                 {origenCliente === 'DNIT' && (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>DNIT Verificado</span>
                   </span>
                 )}
                 {clienteAutoguardado && (
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-sm animate-pulse">
-                    <Check className="w-3 h-3" />
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Vinculado al Fichero</span>
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Selector de Tipo de Comprobante */}
-            <div className={`flex items-center gap-1.5 p-1 rounded-xl border ${modoFondoBlanco ? 'bg-slate-100 border-slate-300' : 'bg-slate-900 border-slate-800'} print:border-none print:bg-transparent`}>
-              <span className="hidden print:inline-block font-black text-sm uppercase text-black font-mono">
+            {/* Selector de Tipo de Comprobante (Segmented Control sobrio) */}
+            <div
+              className={`inline-flex items-center gap-0.5 p-0.5 rounded-lg border ${
+                modoFondoBlanco ? 'bg-slate-100 border-slate-200/80' : 'bg-slate-800 border-slate-700'
+              } print:border-none print:bg-transparent`}
+            >
+              <span className="hidden print:inline-block font-bold text-sm uppercase text-black font-mono">
                 {encabezado.tipoComprobante}: {encabezado.numeroComprobante}
               </span>
               {(['Presupuesto', 'Factura'] as TipoComprobante[]).map((tipo) => (
@@ -2622,12 +2974,14 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   key={tipo}
                   type="button"
                   onClick={() => handleActualizarEncabezado('tipoComprobante', tipo)}
-                  className={`px-3 py-1 text-xs font-black rounded-lg uppercase tracking-wider transition-colors cursor-pointer print:hidden ${
+                  className={`px-3 py-1 text-xs rounded-md transition-all cursor-pointer print:hidden whitespace-nowrap ${
                     encabezado.tipoComprobante === tipo
-                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      ? modoFondoBlanco
+                        ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                        : 'bg-slate-950 text-white shadow-xs font-semibold'
                       : modoFondoBlanco
-                      ? 'text-slate-600 hover:text-slate-900'
-                      : 'text-slate-400 hover:text-white'
+                        ? 'text-slate-500 hover:text-slate-900 font-medium'
+                        : 'text-slate-400 hover:text-white font-medium'
                   }`}
                 >
                   {tipo}
@@ -2639,26 +2993,26 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           {/* Banner de retroalimentación DNIT o Fichero */}
           {feedbackDnit && (
             <div
-              className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs animate-fade-in print:hidden ${
+              className={`px-3.5 py-2.5 rounded-lg border flex items-center justify-between gap-3 text-xs print:hidden ${
                 feedbackDnit.tipo === 'success'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                   : feedbackDnit.tipo === 'warning'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
-                  : 'bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-300'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}
             >
               <div className="flex items-center gap-2">
                 {feedbackDnit.tipo === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
                 )}
                 <span className="font-medium">{feedbackDnit.mensaje}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setFeedbackDnit(null)}
-                className="p-1 hover:bg-black/10 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                className="p-1 hover:bg-black/5 rounded-md text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2666,70 +3020,70 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
           )}
 
           {/* Grilla de campos del comprobante */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs print:grid-cols-4 print:gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4 print:gap-2">
             {/* Nº Comprobante */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Nº Comprobante
               </label>
               <input
                 type="text"
                 value={encabezado.numeroComprobante}
                 onChange={(e) => handleActualizarEncabezado('numeroComprobante', e.target.value)}
-                className={`w-full rounded-xl px-3 py-2 font-mono font-bold focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm font-medium tabular-nums focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Timbrado SET / DNIT */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Timbrado SET / DNIT
               </label>
               <input
                 type="text"
                 value={encabezado.timbrado}
                 onChange={(e) => handleActualizarEncabezado('timbrado', e.target.value)}
-                className={`w-full rounded-xl px-3 py-2 font-mono font-bold focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm font-medium tabular-nums focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Fecha de Emisión */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Fecha Emisión
               </label>
               <input
                 type="date"
                 value={encabezado.fechaEmision}
                 onChange={(e) => handleActualizarEncabezado('fechaEmision', e.target.value)}
-                className={`w-full rounded-xl px-3 py-2 font-medium focus:outline-none cursor-pointer transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm font-normal focus:outline-none cursor-pointer transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Condición de Venta */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Condición de Venta
               </label>
               <select
                 value={encabezado.condicionVenta}
                 onChange={(e) => handleActualizarEncabezado('condicionVenta', e.target.value as CondicionVenta)}
-                className={`w-full rounded-xl px-3 py-2 font-bold focus:outline-none cursor-pointer transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:appearance-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm font-medium focus:outline-none cursor-pointer transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:appearance-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                 }`}
               >
                 <option value="Contado">Contado</option>
@@ -2739,11 +3093,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
             {/* Nombre / Razón Social del Cliente (con Autocompletado del Fichero) */}
             <div className="lg:col-span-2 relative print:col-span-2" ref={refBuscadorCliente}>
-              <div className="flex items-center justify-between mb-1">
-                <label className={`font-bold flex items-center gap-1.5 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`text-xs font-medium flex items-center gap-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                   <span>Nombre / Razón Social del Cliente *</span>
                 </label>
-                <span className={`text-[10px] ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
+                <span className={`text-[11px] tabular-nums ${modoFondoBlanco ? 'text-slate-400' : 'text-slate-500'} print:hidden`}>
                   {ficheroPersonas.length} en Fichero
                 </span>
               </div>
@@ -2758,17 +3112,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     setMostrarSugerenciasFichero(true);
                   }}
                   placeholder="Escriba o busque en el Fichero (Ej: JUAN CARLOS PÉREZ GÓMEZ)"
-                  className={`w-full rounded-xl pl-3 pr-10 py-2 font-bold focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                  className={`w-full h-9 rounded-lg pl-3 pr-9 text-sm font-medium focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                     modoFondoBlanco
-                      ? 'bg-slate-50 border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-amber-600'
-                      : 'bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-500 focus:border-amber-500'
+                      ? 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                      : 'bg-slate-950 border border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500'
                   }`}
                 />
 
                 <button
                   type="button"
                   onClick={() => setMostrarSugerenciasFichero((prev) => !prev)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-amber-500 transition-colors cursor-pointer print:hidden"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer print:hidden"
                   title="Ver clientes del Fichero Notarial"
                 >
                   <Users className="w-4 h-4" />
@@ -2778,13 +3132,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
               {/* Menú desplegable de sugerencias del Fichero Notarial */}
               {mostrarSugerenciasFichero && personasSugeridas.length > 0 && (
                 <div
-                  className={`absolute left-0 right-0 top-full mt-1.5 rounded-2xl border shadow-2xl z-30 max-h-60 overflow-y-auto divide-y transition-all print:hidden ${
+                  className={`absolute left-0 right-0 top-full mt-1.5 rounded-xl border shadow-lg z-30 max-h-60 overflow-y-auto divide-y transition-all print:hidden ${
                     modoFondoBlanco
-                      ? 'bg-white border-slate-200 divide-slate-100 text-slate-900 shadow-slate-300/60'
-                      : 'bg-slate-900 border-slate-700 divide-slate-800 text-slate-100 shadow-black/80'
+                      ? 'bg-white border-slate-200 divide-slate-100 text-slate-900'
+                      : 'bg-slate-900 border-slate-700 divide-slate-800 text-slate-100'
                   }`}
                 >
-                  <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${modoFondoBlanco ? 'bg-slate-50 text-slate-500' : 'bg-slate-950 text-slate-400'}`}>
+                  <div className={`px-3 py-1.5 text-[11px] font-medium ${modoFondoBlanco ? 'bg-slate-50 text-slate-500' : 'bg-slate-950 text-slate-400'}`}>
                     Clientes en Fichero Notarial (clic para seleccionar)
                   </div>
                   {personasSugeridas.map((persona) => {
@@ -2797,29 +3151,23 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         key={persona.id}
                         type="button"
                         onClick={() => handleSeleccionarPersonaFichero(persona)}
-                        className={`w-full text-left px-3.5 py-2.5 transition-colors flex items-center justify-between gap-3 cursor-pointer ${
+                        className={`w-full text-left px-3.5 py-2 transition-colors flex items-center justify-between gap-3 cursor-pointer ${
                           modoFondoBlanco
-                            ? 'hover:bg-amber-50/80 text-slate-800'
-                            : 'hover:bg-slate-800/80 text-slate-200'
+                            ? 'hover:bg-slate-50 text-slate-800'
+                            : 'hover:bg-slate-800 text-slate-200'
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-xs truncate">{nombreMostrar}</div>
-                          <div className={`text-[10px] truncate ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <div className="font-medium text-xs truncate">{nombreMostrar}</div>
+                          <div className={`text-[11px] truncate ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
                             {persona.domicilio || 'Sin dirección registrada'}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="font-mono font-bold text-[11px] text-amber-600 dark:text-amber-400">
+                          <div className="font-mono font-medium text-[11px] text-slate-700 dark:text-slate-300 tabular-nums">
                             {persona.nro_documento}
                           </div>
-                          <span
-                            className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold ${
-                              persona.origen === 'DNIT'
-                                ? 'bg-emerald-500/10 text-emerald-600'
-                                : 'bg-slate-500/10 text-slate-500'
-                            }`}
-                          >
+                          <span className="text-[10px] text-slate-400">
                             {persona.origen || 'Manual'}
                           </span>
                         </div>
@@ -2832,7 +3180,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
             {/* RUC o C.I. del Cliente con Integración DNIT */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 RUC o C.I. del Cliente *
               </label>
               <div className="flex items-center gap-1.5">
@@ -2850,10 +3198,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     }
                   }}
                   placeholder="Ej: 1234567-8"
-                  className={`w-full rounded-xl px-3 py-2 font-mono font-bold focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                  className={`w-full h-9 rounded-lg px-3 text-sm font-medium tabular-nums focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                     modoFondoBlanco
-                      ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                      : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                      ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                      : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                   }`}
                 />
 
@@ -2861,13 +3209,13 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                   type="button"
                   onClick={handleConsultarDNIT}
                   disabled={cargandoDnit}
-                  className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer disabled:opacity-50 print:hidden"
+                  className="h-9 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer disabled:opacity-50 print:hidden"
                   title="Consultar padrón SET / DNIT para autocompletar nombre y dirección"
                 >
                   {cargandoDnit ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                    <Search className="w-3.5 h-3.5" />
                   )}
                   <span className="hidden sm:inline">{cargandoDnit ? '...' : 'DNIT'}</span>
                 </button>
@@ -2876,7 +3224,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
             {/* Teléfono / Móvil */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Teléfono / Móvil
               </label>
               <input
@@ -2884,17 +3232,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 value={encabezado.clienteTelefono}
                 onChange={(e) => handleActualizarEncabezado('clienteTelefono', e.target.value)}
                 placeholder="Ej: +595 981 123456"
-                className={`w-full rounded-xl px-3 py-2 focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Dirección del Cliente */}
             <div className="lg:col-span-2 print:col-span-2">
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Dirección / Domicilio del Cliente
               </label>
               <input
@@ -2902,17 +3250,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 value={encabezado.clienteDireccion}
                 onChange={(e) => handleActualizarEncabezado('clienteDireccion', e.target.value)}
                 placeholder="Ej: Avda. Mcal. López c/ San Martín, Asunción"
-                className={`w-full rounded-xl px-3 py-2 focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Correo Electrónico del Cliente */}
             <div>
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Correo Electrónico (Opcional)
               </label>
               <input
@@ -2920,17 +3268,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 value={encabezado.clienteEmail || ''}
                 onChange={(e) => handleActualizarEncabezado('clienteEmail', e.target.value)}
                 placeholder="cliente@ejemplo.com.py"
-                className={`w-full rounded-xl px-3 py-2 focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500'
                 }`}
               />
             </div>
 
             {/* Concepto General del Acto Notarial */}
             <div className="lg:col-span-1 print:col-span-1">
-              <label className={`block font-bold mb-1 ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
+              <label className={`block text-xs font-medium mb-1.5 ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-slate-700 print:text-[10px]`}>
                 Concepto General del Acto
               </label>
               <input
@@ -2938,10 +3286,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 value={encabezado.conceptoGeneral}
                 onChange={(e) => handleActualizarEncabezado('conceptoGeneral', e.target.value)}
                 placeholder="Ej: Escritura de Compraventa e Hipoteca"
-                className={`w-full rounded-xl px-3 py-2 focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
+                className={`w-full h-9 rounded-lg px-3 text-sm focus:outline-none transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:text-xs ${
                   modoFondoBlanco
-                    ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-amber-600'
-                    : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
+                    ? 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-400'
+                    : 'bg-slate-950 border border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-500'
                 }`}
               />
             </div>
@@ -2952,56 +3300,89 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         {/* ================================================================= */}
         {/* SECCIÓN 2: REEMBOLSO DE IMPUESTOS Y TASAS                         */}
         {/* ================================================================= */}
-        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
-          pestañaActiva !== 'todo' && pestañaActiva !== 'tasas' ? 'hidden print:block' : 'block'
-        } ${
-          modoFondoBlanco
-            ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
-        }`}>
-          <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
-            <div>
-              <h2 className={`text-sm md:text-base font-bold uppercase tracking-wider flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
-                <CreditCard className="w-5 h-5 text-emerald-500 print:hidden" />
-                <span>1. Reembolso de Impuestos y Tasas Oficiales</span>
-              </h2>
-              <p className={`text-xs mt-0.5 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
-                Aranceles no computables / exentos pagados ante la CSJ, Registros Públicos y Municipios.
-              </p>
+        {/* SECCIÓN 2: REEMBOLSO DE IMPUESTOS Y TASAS */}
+        <section
+          className={`rounded-xl p-5 space-y-4 border shadow-xs transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+            pestañaActiva !== 'todo' && pestañaActiva !== 'tasas' ? 'hidden print:block' : 'block'
+          } ${
+            modoFondoBlanco
+              ? 'bg-white border-slate-200 text-slate-900'
+              : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}
+        >
+          <div
+            className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${
+              modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'
+            } print:border-slate-300`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 print:hidden ${
+                  modoFondoBlanco
+                    ? 'bg-slate-50 border-slate-200 text-slate-500'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                <CreditCard className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className={`text-sm font-semibold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                  1. Reembolso de Impuestos y Tasas Oficiales
+                </h2>
+                <p className={`text-xs ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
+                  {esAbogado
+                    ? 'Aranceles no computables / exentos pagados ante la CSJ, Registros Públicos y Municipios.'
+                    : 'Aranceles exentos ante el RUN (Ley 7424/2025), CSJ y Municipios.'}
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={handleAgregarTasa}
-              className="px-3.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer print:hidden"
+              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer print:hidden whitespace-nowrap ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>+ Agregar Tasa</span>
+              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <span>Agregar Tasa</span>
             </button>
           </div>
 
           <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-xs text-left print:border-collapse print:text-black">
               <thead>
-                <tr className={`border-b uppercase tracking-wider text-[10px] print:border-slate-300 print:text-slate-800 ${modoFondoBlanco ? 'border-slate-200 text-slate-500 bg-slate-50' : 'border-slate-800 text-slate-400'}`}>
+                <tr
+                  className={`border-y text-[11px] font-medium print:border-slate-300 print:text-slate-800 ${
+                    modoFondoBlanco
+                      ? 'border-slate-200 text-slate-500 bg-slate-50/80'
+                      : 'border-slate-800 text-slate-400 bg-slate-950/50'
+                  }`}
+                >
                   <th className="py-2.5 px-3 w-12 text-center print:hidden">Activo</th>
                   <th className="py-2.5 px-3">Descripción de la Tasa / Arancel</th>
-                  <th className="py-2.5 px-3 w-36">Categoría</th>
-                  <th className="py-2.5 px-3 w-44">Nº Comprobante</th>
+                  <th className="py-2.5 px-3 w-44">Categoría</th>
+                  <th className="py-2.5 px-3 w-40">Nº Comprobante</th>
                   <th className="py-2.5 px-3 w-40 text-right">Monto (Gs.)</th>
-                  <th className="py-2.5 px-3 w-12 text-center print:hidden">Acción</th>
+                  <th className="py-2.5 px-3 w-12 text-center print:hidden"></th>
                 </tr>
               </thead>
-              <tbody className={`divide-y print:divide-slate-200 ${modoFondoBlanco ? 'divide-slate-200' : 'divide-slate-800/60'}`}>
+              <tbody className={`divide-y print:divide-slate-200 ${modoFondoBlanco ? 'divide-slate-100' : 'divide-slate-800/60'}`}>
                 {tasas.map((tasa) => (
                   <tr
                     key={tasa.id}
                     className={`transition-colors print:border-b print:border-slate-200 ${
                       !tasa.activo ? 'print:hidden' : ''
                     } ${
-                      tasa.activo 
-                        ? (modoFondoBlanco ? 'bg-white hover:bg-slate-50' : 'bg-slate-900/40 hover:bg-slate-900/80')
-                        : (modoFondoBlanco ? 'opacity-40 bg-slate-100/50' : 'opacity-40 bg-slate-950/40')
+                      tasa.activo
+                        ? modoFondoBlanco
+                          ? 'bg-white hover:bg-slate-50/70'
+                          : 'bg-slate-900/40 hover:bg-slate-900/80'
+                        : modoFondoBlanco
+                          ? 'opacity-45 bg-slate-50/50'
+                          : 'opacity-45 bg-slate-950/40'
                     }`}
                   >
                     <td className="py-2 px-3 text-center print:hidden">
@@ -3009,7 +3390,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         type="checkbox"
                         checked={tasa.activo}
                         onChange={() => handleToggleTasa(tasa.id)}
-                        className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                        className="w-4 h-4 accent-slate-900 rounded cursor-pointer"
                       />
                     </td>
                     <td className="py-2 px-3">
@@ -3018,8 +3399,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         value={tasa.descripcion}
                         onChange={(e) => handleEditarTasa(tasa.id, 'descripcion', e.target.value)}
                         disabled={!tasa.activo}
-                        className={`w-full bg-transparent border-b border-transparent focus:outline-none font-medium py-1 print:border-none print:p-0 print:text-black ${
-                          modoFondoBlanco ? 'text-slate-900 focus:border-emerald-600' : 'text-white focus:border-emerald-500'
+                        className={`w-full h-8 bg-transparent border-b border-transparent focus:outline-none font-medium px-1 print:border-none print:p-0 print:text-black ${
+                          modoFondoBlanco ? 'text-slate-900 focus:border-slate-400' : 'text-white focus:border-slate-500'
                         }`}
                       />
                     </td>
@@ -3028,17 +3409,17 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         value={tasa.categoria}
                         onChange={(e) => handleEditarTasa(tasa.id, 'categoria', e.target.value as CategoriaTasaReembolso)}
                         disabled={!tasa.activo}
-                        className={`w-full rounded-lg px-2 py-1 text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black print:appearance-none ${
-                          modoFondoBlanco 
-                            ? 'bg-slate-50 border border-slate-300 text-slate-800 focus:border-emerald-600' 
-                            : 'bg-slate-900 border border-slate-700/80 text-slate-300 focus:border-emerald-500'
+                        className={`w-full h-8 rounded-lg px-2 text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black print:appearance-none ${
+                          modoFondoBlanco
+                            ? 'bg-white border border-slate-200 text-slate-700 focus:border-slate-400'
+                            : 'bg-slate-950 border border-slate-700 text-slate-300 focus:border-slate-500'
                         }`}
                       >
-                        <option value="judicial">Judicial (CSJ)</option>
-                        <option value="hipoteca">Hipoteca (DGRP)</option>
+                        <option value="judicial">Judicial (CSJ / RUN)</option>
+                        <option value="hipoteca">Hipoteca / Garantía (RUN)</option>
                         <option value="municipal">Municipal</option>
-                        <option value="especial">Especial / Apostilla</option>
-                        <option value="automotor">Automotores</option>
+                        <option value="especial">RUN / Especial / Apostilla</option>
+                        <option value="automotor">Automotores (RUN)</option>
                         <option value="otro">Otro Arancel</option>
                       </select>
                     </td>
@@ -3049,10 +3430,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         onChange={(e) => handleEditarTasa(tasa.id, 'numeroComprobantePago', e.target.value)}
                         disabled={!tasa.activo}
                         placeholder="Nº Liquidación"
-                        className={`w-full rounded-lg px-2 py-1 font-mono text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
-                          modoFondoBlanco 
-                            ? 'bg-slate-50 border border-slate-200 text-slate-700 focus:border-emerald-600' 
-                            : 'bg-slate-900/80 border border-slate-800 text-slate-300 focus:border-emerald-500'
+                        className={`w-full h-8 rounded-lg px-2.5 text-xs tabular-nums focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
+                          modoFondoBlanco
+                            ? 'bg-white border border-slate-200 text-slate-700 placeholder:text-slate-400 focus:border-slate-400'
+                            : 'bg-slate-950 border border-slate-700 text-slate-300 focus:border-slate-500'
                         }`}
                       />
                     </td>
@@ -3062,10 +3443,10 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                         value={tasa.monto}
                         onChange={(e) => handleEditarTasa(tasa.id, 'monto', Number(e.target.value) || 0)}
                         disabled={!tasa.activo}
-                        className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
+                        className={`w-full h-8 rounded-lg px-2.5 text-right font-medium text-xs tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
                           modoFondoBlanco
-                            ? 'bg-slate-50 border border-slate-300 text-emerald-700 focus:border-emerald-600'
-                            : 'bg-slate-900 border border-slate-700/80 text-emerald-400 focus:border-emerald-500'
+                            ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                            : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
                         }`}
                       />
                     </td>
@@ -3073,7 +3454,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                       <button
                         type="button"
                         onClick={() => handleEliminarTasa(tasa.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
                         title="Eliminar tasa"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -3085,247 +3466,450 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             </table>
           </div>
 
-          <div className={`p-3 rounded-xl flex items-center justify-between text-xs font-bold border print:border print:border-slate-300 print:bg-slate-50 print:text-black print:rounded-lg ${
-            modoFondoBlanco 
-              ? 'bg-slate-50 border-slate-200 text-slate-700' 
-              : 'bg-slate-900 border-slate-800 text-slate-400'
-          }`}>
+          <div
+            className={`px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs font-medium border print:border print:border-slate-300 print:bg-slate-50 print:text-black ${
+              modoFondoBlanco
+                ? 'bg-slate-50/80 border-slate-200 text-slate-600'
+                : 'bg-slate-950 border-slate-800 text-slate-400'
+            }`}
+          >
             <span>
-              Subtotal de Reembolsos Oficiales ({tasas.filter((t) => t.activo).length} ítems):
+              Subtotal de Reembolsos Oficiales ({tasas.filter((t) => t.activo).length} ítems)
             </span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-mono text-sm print:text-black print:font-bold">
+            <span className={`text-sm font-semibold tabular-nums print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
               Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}
             </span>
           </div>
         </section>
 
-        {/* ================================================================= */}
-        {/* ================================================================= */}
-        {/* SECCIÓN 3: SERVICIOS Y HONORARIOS NOTARIALES                      */}
-        {/* ================================================================= */}
-        <section className={`rounded-2xl p-5 md:p-6 shadow-xl space-y-4 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
-          pestañaActiva !== 'todo' && pestañaActiva !== 'servicios' ? 'hidden print:block' : 'block'
-        } ${
-          modoFondoBlanco
-            ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-            : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
-        }`}>
-          <div className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
-            <div>
-              <h2 className={`text-sm md:text-base font-bold uppercase tracking-wider flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
-                <FileText className="w-5 h-5 text-amber-500 print:hidden" />
-                <span>{esAbogado ? '2. SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : '2. Ventas y Servicios Notariales (Honorarios y Gestiones)'}</span>
-              </h2>
-              <p className={`text-xs mt-0.5 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
-                {esAbogado
-                  ? 'Honorarios profesionales, patrocinio procesal y gestiones gravadas por IVA (10% / 5% / Exenta).'
-                  : 'Honorarios arancelarios y servicios propios gravados por IVA (10% / 5% / Exenta).'}
-              </p>
+        {/* SECCIÓN 3: SERVICIOS Y HONORARIOS NOTARIALES */}
+        <section
+          className={`rounded-xl p-5 space-y-4 border shadow-xs transition-colors print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+            pestañaActiva !== 'todo' && pestañaActiva !== 'servicios' ? 'hidden print:block' : 'block'
+          } ${
+            modoFondoBlanco
+              ? 'bg-white border-slate-200 text-slate-900'
+              : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}
+        >
+          <div
+            className={`flex items-center justify-between border-b pb-3 flex-wrap gap-2 ${
+              modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'
+            } print:border-slate-300`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 print:hidden ${
+                  modoFondoBlanco
+                    ? 'bg-slate-50 border-slate-200 text-slate-500'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className={`text-sm font-semibold tracking-tight ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                  {esAbogado ? '2. Servicios Jurídicos y Honorarios Profesionales' : '2. Ventas y Servicios Notariales (Honorarios y Gestiones)'}
+                </h2>
+                <p className={`text-xs ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:hidden`}>
+                  {esAbogado
+                    ? 'Honorarios profesionales, patrocinio procesal y gestiones gravadas por IVA (10% / 5% / Exenta).'
+                    : 'Honorarios arancelarios, gastos administrativos y materiales gravados por IVA (10% / 5% / Exenta).'}
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={handleAgregarServicio}
-              className="px-3.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer print:hidden"
+              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer print:hidden whitespace-nowrap ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>+ Agregar Servicio</span>
+              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <span>Agregar Servicio</span>
             </button>
           </div>
 
           <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-xs text-left print:border-collapse print:text-black">
               <thead>
-                <tr className={`border-b uppercase tracking-wider text-[10px] print:border-slate-300 print:text-slate-800 ${modoFondoBlanco ? 'border-slate-200 text-slate-500 bg-slate-50' : 'border-slate-800 text-slate-400'}`}>
+                <tr
+                  className={`border-y text-[11px] font-medium print:border-slate-300 print:text-slate-800 ${
+                    modoFondoBlanco
+                      ? 'border-slate-200 text-slate-500 bg-slate-50/80'
+                      : 'border-slate-800 text-slate-400 bg-slate-950/50'
+                  }`}
+                >
                   <th className="py-2.5 px-3 w-12 text-center print:hidden">Activo</th>
                   <th className="py-2.5 px-3">Descripción del Concepto / Diligencia</th>
+                  {!esAbogado && (
+                    <th className="py-2.5 px-2.5 w-32 text-center print:hidden">Clasificación</th>
+                  )}
                   <th className="py-2.5 px-3 w-20 text-center">Cant.</th>
                   <th className="py-2.5 px-3 w-36 text-right">Unitario (Gs.)</th>
                   <th className="py-2.5 px-3 w-28 text-center">Tipo IVA</th>
                   <th className="py-2.5 px-3 w-36 text-right">Total (Gs.)</th>
-                  <th className="py-2.5 px-3 w-12 text-center print:hidden">Acción</th>
+                  <th className="py-2.5 px-3 w-12 text-center print:hidden"></th>
                 </tr>
               </thead>
-              <tbody className={`divide-y print:divide-slate-200 ${modoFondoBlanco ? 'divide-slate-200' : 'divide-slate-800/60'}`}>
-                {servicios.map((srv) => (
-                  <tr
-                    key={srv.id}
-                    className={`transition-colors print:border-b print:border-slate-200 ${
-                      !srv.activo ? 'print:hidden' : ''
-                    } ${
-                      srv.activo 
-                        ? (modoFondoBlanco ? 'bg-white hover:bg-slate-50' : 'bg-slate-900/40 hover:bg-slate-900/80')
-                        : (modoFondoBlanco ? 'opacity-40 bg-slate-100/50' : 'opacity-40 bg-slate-950/40')
-                    }`}
-                  >
-                    <td className="py-2 px-3 text-center print:hidden">
-                      <input
-                        type="checkbox"
-                        checked={srv.activo}
-                        onChange={() => handleToggleServicio(srv.id)}
-                        className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                      />
-                    </td>
-                    <td className="py-2 px-3">
-                      <input
-                        type="text"
-                        value={srv.descripcion}
-                        onChange={(e) => handleEditarServicio(srv.id, 'descripcion', e.target.value)}
-                        disabled={!srv.activo}
-                        className={`w-full bg-transparent border-b border-transparent focus:outline-none font-medium py-1 print:border-none print:p-0 print:text-black ${
-                          modoFondoBlanco ? 'text-slate-900 focus:border-amber-600' : 'text-white focus:border-amber-500'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <input
-                        type="number"
-                        min="1"
-                        value={srv.cantidad}
-                        onChange={(e) => handleEditarServicio(srv.id, 'cantidad', Number(e.target.value) || 1)}
-                        disabled={!srv.activo}
-                        className={`w-16 rounded-lg px-2 py-1 text-center font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none mx-auto print:border-none print:p-0 print:bg-transparent print:text-black ${
-                          modoFondoBlanco 
-                            ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-amber-600' 
-                            : 'bg-slate-900 border border-slate-700/80 text-white focus:border-amber-500'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <input
-                        type="number"
-                        value={srv.precioUnitario}
-                        onChange={(e) => handleEditarServicio(srv.id, 'precioUnitario', Number(e.target.value) || 0)}
-                        disabled={!srv.activo}
-                        className={`w-full rounded-lg px-2.5 py-1 text-right font-mono font-bold text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
-                          modoFondoBlanco
-                            ? 'bg-slate-50 border border-slate-300 text-amber-700 focus:border-amber-600'
-                            : 'bg-slate-900 border border-slate-700/80 text-amber-300 focus:border-amber-500'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      <select
-                        value={srv.tipoIva}
-                        onChange={(e) => handleEditarServicio(srv.id, 'tipoIva', e.target.value as TipoIvaNotarial)}
-                        disabled={!srv.activo}
-                        className={`rounded-lg px-2 py-1 text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black print:appearance-none ${
-                          modoFondoBlanco 
-                            ? 'bg-slate-50 border border-slate-300 text-slate-800 focus:border-amber-600' 
-                            : 'bg-slate-900 border border-slate-700/80 text-slate-300 focus:border-amber-500'
-                        }`}
-                      >
-                        <option value="10">IVA 10%</option>
-                        <option value="5">IVA 5%</option>
-                        <option value="exenta">Exenta</option>
-                      </select>
-                    </td>
-                    <td className={`py-2 px-3 text-right font-mono font-bold text-xs print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
-                      Gs. {Number(srv.total).toLocaleString('es-PY')}
-                    </td>
-                    <td className="py-2 px-3 text-center print:hidden">
-                      <button
-                        type="button"
-                        onClick={() => handleEliminarServicio(srv.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
-                        title="Eliminar servicio"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className={`divide-y print:divide-slate-200 ${modoFondoBlanco ? 'divide-slate-100' : 'divide-slate-800/60'}`}>
+                {servicios.map((srv) => {
+                  const esHonorarioActual = esItemHonorarioProfesional(srv);
+                  return (
+                    <tr
+                      key={srv.id}
+                      className={`transition-colors print:border-b print:border-slate-200 ${
+                        !srv.activo ? 'print:hidden' : ''
+                      } ${
+                        srv.activo
+                          ? modoFondoBlanco
+                            ? 'bg-white hover:bg-slate-50/70'
+                            : 'bg-slate-900/40 hover:bg-slate-900/80'
+                          : modoFondoBlanco
+                            ? 'opacity-45 bg-slate-50/50'
+                            : 'opacity-45 bg-slate-950/40'
+                      }`}
+                    >
+                      <td className="py-2 px-3 text-center print:hidden">
+                        <input
+                          type="checkbox"
+                          checked={srv.activo}
+                          onChange={() => handleToggleServicio(srv.id)}
+                          className="w-4 h-4 accent-slate-900 rounded cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="text"
+                          value={srv.descripcion}
+                          onChange={(e) => handleEditarServicio(srv.id, 'descripcion', e.target.value)}
+                          disabled={!srv.activo}
+                          className={`w-full h-8 bg-transparent border-b border-transparent focus:outline-none font-medium px-1 print:border-none print:p-0 print:text-black ${
+                            modoFondoBlanco ? 'text-slate-900 focus:border-slate-400' : 'text-white focus:border-slate-500'
+                          }`}
+                        />
+                      </td>
+                      {!esAbogado && (
+                        <td className="py-2 px-2.5 text-center print:hidden">
+                          <select
+                            value={esHonorarioActual ? 'honorario' : 'gasto'}
+                            onChange={(e) =>
+                              handleEditarServicio(srv.id, 'categoriaServicio', e.target.value as CategoriaServicioNotarial)
+                            }
+                            disabled={!srv.activo}
+                            title="Define si aplica el descuento sobre Honorarios Profesionales"
+                            className={`h-8 rounded-lg px-2 text-xs focus:outline-none cursor-pointer ${
+                              esHonorarioActual
+                                ? modoFondoBlanco
+                                  ? 'bg-slate-100 border border-slate-300 text-slate-900 font-medium'
+                                  : 'bg-slate-800 border border-slate-600 text-white font-medium'
+                                : modoFondoBlanco
+                                  ? 'bg-white border border-slate-200 text-slate-600'
+                                  : 'bg-slate-950 border border-slate-700 text-slate-300'
+                            }`}
+                          >
+                            <option value="honorario">Honorario</option>
+                            <option value="gasto">Gasto / Mat.</option>
+                          </select>
+                        </td>
+                      )}
+                      <td className="py-2 px-3 text-center">
+                        <input
+                          type="number"
+                          min="1"
+                          value={srv.cantidad}
+                          onChange={(e) => handleEditarServicio(srv.id, 'cantidad', Number(e.target.value) || 1)}
+                          disabled={!srv.activo}
+                          className={`w-16 h-8 rounded-lg px-2 text-center text-xs tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none mx-auto print:border-none print:p-0 print:bg-transparent print:text-black ${
+                            modoFondoBlanco
+                              ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                              : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <input
+                          type="number"
+                          value={srv.precioUnitario}
+                          onChange={(e) => handleEditarServicio(srv.id, 'precioUnitario', Number(e.target.value) || 0)}
+                          disabled={!srv.activo}
+                          className={`w-full h-8 rounded-lg px-2.5 text-right font-medium text-xs tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black ${
+                            modoFondoBlanco
+                              ? 'bg-white border border-slate-200 text-slate-900 focus:border-slate-400'
+                              : 'bg-slate-950 border border-slate-700 text-white focus:border-slate-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <select
+                          value={srv.tipoIva}
+                          onChange={(e) => handleEditarServicio(srv.id, 'tipoIva', e.target.value as TipoIvaNotarial)}
+                          disabled={!srv.activo}
+                          className={`h-8 rounded-lg px-2 text-xs focus:outline-none print:border-none print:p-0 print:bg-transparent print:text-black print:appearance-none ${
+                            modoFondoBlanco
+                              ? 'bg-white border border-slate-200 text-slate-700 focus:border-slate-400'
+                              : 'bg-slate-950 border border-slate-700 text-slate-300 focus:border-slate-500'
+                          }`}
+                        >
+                          <option value="10">IVA 10%</option>
+                          <option value="5">IVA 5%</option>
+                          <option value="exenta">Exenta</option>
+                        </select>
+                      </td>
+                      <td className={`py-2 px-3 text-right font-semibold text-xs tabular-nums print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
+                        Gs. {Number(srv.total).toLocaleString('es-PY')}
+                      </td>
+                      <td className="py-2 px-3 text-center print:hidden">
+                        <button
+                          type="button"
+                          onClick={() => handleEliminarServicio(srv.id)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                          title="Eliminar servicio"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className={`p-3 rounded-xl flex items-center justify-between text-xs font-bold border print:border print:border-slate-300 print:bg-slate-50 print:text-black print:rounded-lg ${
-            modoFondoBlanco 
-              ? 'bg-slate-50 border-slate-200 text-slate-700' 
-              : 'bg-slate-900 border-slate-800 text-slate-400'
-          }`}>
+          {/* Apartado de Descuento sobre Honorarios Profesionales (Exclusivo Escribanía) */}
+          {!esAbogado && (
+            <div
+              className={`px-4 py-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden ${
+                modoFondoBlanco
+                  ? 'bg-slate-50/80 border-slate-200 text-slate-800'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-200'
+              }`}
+            >
+              <div>
+                <div className="text-xs font-semibold flex items-center gap-2">
+                  <span>Descuento sobre Honorarios Profesionales</span>
+                  {liquidacion.descuentoAplicado > 0 && (
+                    <span className={`font-medium tabular-nums text-xs ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
+                      · - Gs. {liquidacion.descuentoAplicado.toLocaleString('es-PY')}
+                    </span>
+                  )}
+                </div>
+                <p className={`text-[11px] mt-0.5 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Se aplica únicamente sobre ítems clasificados como Honorario (no descuenta tasas RUN, gastos ni materiales).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <div
+                  className={`inline-flex items-center p-0.5 rounded-lg border ${
+                    modoFondoBlanco ? 'bg-slate-100 border-slate-200' : 'bg-slate-900 border-slate-700'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDescuentoTipo('porcentaje');
+                      setDescuentoValor((prev) => (prev > 100 ? 0 : prev));
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer ${
+                      descuentoTipo === 'porcentaje'
+                        ? modoFondoBlanco
+                          ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                          : 'bg-slate-800 text-white font-semibold'
+                        : modoFondoBlanco
+                          ? 'text-slate-500 hover:text-slate-900 font-medium'
+                          : 'text-slate-400 hover:text-white font-medium'
+                    }`}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDescuentoTipo('monto')}
+                    className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer ${
+                      descuentoTipo === 'monto'
+                        ? modoFondoBlanco
+                          ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                          : 'bg-slate-800 text-white font-semibold'
+                        : modoFondoBlanco
+                          ? 'text-slate-500 hover:text-slate-900 font-medium'
+                          : 'text-slate-400 hover:text-white font-medium'
+                    }`}
+                  >
+                    Gs.
+                  </button>
+                </div>
+
+                <input
+                  type="number"
+                  min="0"
+                  max={descuentoTipo === 'porcentaje' ? 100 : undefined}
+                  value={descuentoValor || ''}
+                  onChange={(e) => {
+                    const raw = Math.max(0, Number(e.target.value) || 0);
+                    setDescuentoValor(descuentoTipo === 'porcentaje' ? Math.min(100, raw) : raw);
+                  }}
+                  placeholder={descuentoTipo === 'porcentaje' ? '0 %' : '0 Gs.'}
+                  className={`w-28 h-9 rounded-lg px-3 text-right font-medium text-sm tabular-nums focus:outline-none border ${
+                    modoFondoBlanco
+                      ? 'bg-white border-slate-200 text-slate-900 focus:border-slate-400'
+                      : 'bg-slate-900 border-slate-700 text-white focus:border-slate-500'
+                  }`}
+                />
+                {descuentoValor > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setDescuentoValor(0)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer"
+                    title="Quitar descuento"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs font-medium border print:border print:border-slate-300 print:bg-slate-50 print:text-black ${
+              modoFondoBlanco
+                ? 'bg-slate-50/80 border-slate-200 text-slate-600'
+                : 'bg-slate-950 border-slate-800 text-slate-400'
+            }`}
+          >
             <span>
-              Subtotal Ventas / Honorarios ({servicios.filter((s) => s.activo).length} activos):
+              Subtotal Ventas / Honorarios ({servicios.filter((s) => s.activo).length} activos)
             </span>
-            <span className="text-amber-600 dark:text-amber-400 font-mono text-sm print:text-black print:font-bold">
+            <span className={`text-sm font-semibold tabular-nums print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
               Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}
             </span>
           </div>
         </section>
 
-        {/* ================================================================= */}
-        {/* SECCIÓN 4: OBSERVACIONES Y LIQUIDACIÓN TRIBUTARIA RESUMEN          */}
-        {/* ================================================================= */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:grid-cols-3 print:gap-4">
+        {/* SECCIÓN 4: OBSERVACIONES Y LIQUIDACIÓN TRIBUTARIA RESUMEN */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5 print:grid-cols-3 print:gap-4">
           {/* Columna Izquierda: Observaciones y Validez */}
-          <div className={`lg:col-span-2 rounded-2xl p-5 md:p-6 shadow-xl space-y-3 border transition-colors dark:bg-[#121824]/90 dark:backdrop-blur-xl dark:border dark:border-slate-800/80 dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] dark:rounded-2xl print:col-span-2 print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
-            modoFondoBlanco
-              ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/60'
-              : 'bg-[#121824]/90 backdrop-blur-xl border-slate-800/80 text-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.4)]'
-          }`}>
-            <h3 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-800' : 'text-slate-300'} print:text-black`}>
-              <AlertCircle className="w-4 h-4 text-amber-500 print:hidden" />
+          <div
+            className={`lg:col-span-2 rounded-xl p-5 space-y-3 border shadow-xs transition-colors print:col-span-2 print:rounded-none print:border print:border-slate-300 print:shadow-none print:p-4 print:bg-white print:text-black ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-900'
+                : 'bg-slate-900 border-slate-800 text-slate-100'
+            }`}
+          >
+            <h3 className={`text-sm font-semibold flex items-center gap-2 ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+              <AlertCircle className="w-4 h-4 text-slate-400 print:hidden" />
               <span>Condiciones Generales y Cláusulas del Presupuesto</span>
             </h3>
             <textarea
               rows={4}
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
-              className={`w-full rounded-xl p-3 text-xs focus:outline-none resize-none leading-relaxed transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:resize-none ${
+              className={`w-full rounded-lg p-3 text-xs focus:outline-none resize-none leading-relaxed transition-colors print:border-none print:p-0 print:bg-transparent print:text-black print:shadow-none print:resize-none ${
                 modoFondoBlanco
-                  ? 'bg-slate-50 border border-slate-300 text-slate-800 focus:bg-white focus:border-amber-600'
-                  : 'bg-slate-900 border border-slate-700/80 text-slate-300 focus:border-amber-500'
+                  ? 'bg-white border border-slate-200 text-slate-700 focus:border-slate-400'
+                  : 'bg-slate-950 border border-slate-700 text-slate-300 focus:border-slate-500'
               }`}
               placeholder="Indique las condiciones de pago, cuentas bancarias para transferencias (SIPAP) y advertencias arancelarias..."
             />
-            <p className="text-[10px] text-slate-500 print:hidden">
+            <p className="text-[11px] text-slate-400 print:hidden">
               * Este texto se incluirá al pie del comprobante impreso entregado al cliente.
             </p>
           </div>
 
           {/* Columna Derecha: Tarjeta de Liquidación de Totales */}
-          <div className={`rounded-2xl p-5 md:p-6 shadow-2xl flex flex-col justify-between space-y-4 border-2 transition-colors print:col-span-1 print:rounded-none print:border print:border-slate-400 print:shadow-none print:p-4 print:bg-white print:text-black ${
-            modoFondoBlanco
-              ? 'bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white border-amber-500/40 text-slate-900'
-              : 'bg-gradient-to-br from-slate-950 to-slate-900 border-amber-500/30 text-white'
-          }`}>
+          <div
+            className={`rounded-xl p-5 flex flex-col justify-between space-y-4 border shadow-xs transition-colors print:col-span-1 print:rounded-none print:border print:border-slate-400 print:shadow-none print:p-4 print:bg-white print:text-black ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-900'
+                : 'bg-slate-900 border-slate-800 text-white'
+            }`}
+          >
             <div>
-              <div className={`flex items-center justify-between border-b pb-2 mb-3 ${modoFondoBlanco ? 'border-amber-500/20' : 'border-slate-800'} print:border-slate-300`}>
-                <span className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5 print:text-black">
-                  <Calculator className="w-4 h-4 print:hidden" />
-                  {esAbogado ? 'LIQUIDACIÓN DE HONORARIOS Y GASTOS' : 'Liquidación Notarial'}
+              <div
+                className={`flex items-center justify-between border-b pb-2.5 mb-3 ${
+                  modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'
+                } print:border-slate-300`}
+              >
+                <span className={`text-sm font-semibold flex items-center gap-1.5 print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
+                  <Calculator className="w-4 h-4 text-slate-400 print:hidden" />
+                  <span>{esAbogado ? 'Liquidación de Honorarios y Gastos' : 'Liquidación Notarial'}</span>
                 </span>
-                <span className={`text-[10px] font-mono ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-black font-bold`}>{encabezado.condicionVenta}</span>
+                <span className={`text-xs font-medium ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:text-black`}>
+                  {encabezado.condicionVenta}
+                </span>
               </div>
 
               <div className="space-y-2 text-xs">
-                <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-300'} print:text-black`}>
-                  <span>Reembolso Tasas (Exentas):</span>
-                  <span className={`font-mono font-bold ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
-                    Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}
-                  </span>
-                </div>
+                {!esAbogado ? (
+                  <>
+                    <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'} print:text-black`}>
+                      <span>Subtotal Honorarios:</span>
+                      <span className={`font-medium tabular-nums ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                        Gs. {liquidacion.subtotalHonorariosBruto.toLocaleString('es-PY')}
+                      </span>
+                    </div>
 
-                <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-300'} print:text-black`}>
-                  <span>Honorarios Gravados:</span>
-                  <span className={`font-mono font-bold ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
-                    Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}
-                  </span>
-                </div>
+                    {liquidacion.descuentoAplicado > 0 && (
+                      <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-300'} print:text-black`}>
+                        <span>
+                          Descuento aplicado{descuentoTipo === 'porcentaje' ? ` (${descuentoValor}%)` : ''}:
+                        </span>
+                        <span className="font-medium tabular-nums">
+                          - Gs. {liquidacion.descuentoAplicado.toLocaleString('es-PY')}
+                        </span>
+                      </div>
+                    )}
 
-                <div className={`flex justify-between text-[11px] pt-1 border-t ${
-                  modoFondoBlanco ? 'text-slate-600 border-slate-200' : 'text-slate-400 border-slate-800/80'
-                } print:border-slate-200 print:text-black`}>
+                    <div className={`flex justify-between font-semibold ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                      <span>Honorarios Netos:</span>
+                      <span className="tabular-nums">
+                        Gs. {liquidacion.honorariosNetos.toLocaleString('es-PY')}
+                      </span>
+                    </div>
+
+                    <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'} print:text-black`}>
+                      <span>Gastos, Materiales y Tasas (RUN / SIJ):</span>
+                      <span className={`font-medium tabular-nums ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                        Gs. {liquidacion.subtotalGastosMaterialesTasas.toLocaleString('es-PY')}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'} print:text-black`}>
+                      <span>Reembolso Tasas (Exentas):</span>
+                      <span className={`font-medium tabular-nums ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                        Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}
+                      </span>
+                    </div>
+
+                    <div className={`flex justify-between ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-300'} print:text-black`}>
+                      <span>Honorarios Gravados:</span>
+                      <span className={`font-medium tabular-nums ${modoFondoBlanco ? 'text-slate-900' : 'text-white'} print:text-black`}>
+                        Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                <div
+                  className={`flex justify-between text-[11px] pt-2 border-t ${
+                    modoFondoBlanco ? 'text-slate-500 border-slate-100' : 'text-slate-400 border-slate-800/80'
+                  } print:border-slate-200 print:text-black`}
+                >
                   <span>Liquidación IVA 10%:</span>
-                  <span className={`font-mono ${modoFondoBlanco ? 'text-slate-800 font-semibold' : 'text-slate-300'} print:text-black font-semibold`}>
+                  <span className={`tabular-nums font-medium ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-300'} print:text-black`}>
                     Gs. {liquidacion.iva10.toLocaleString('es-PY')}
                   </span>
                 </div>
 
                 {liquidacion.iva5 > 0 && (
-                  <div className={`flex justify-between text-[11px] ${modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'} print:text-black`}>
+                  <div className={`flex justify-between text-[11px] ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:text-black`}>
                     <span>Liquidación IVA 5%:</span>
-                    <span className={`font-mono ${modoFondoBlanco ? 'text-slate-800 font-semibold' : 'text-slate-300'} print:text-black font-semibold`}>
+                    <span className={`tabular-nums font-medium ${modoFondoBlanco ? 'text-slate-700' : 'text-slate-300'} print:text-black`}>
                       Gs. {liquidacion.iva5.toLocaleString('es-PY')}
                     </span>
                   </div>
@@ -3334,13 +3918,11 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
             </div>
 
             {/* Gran Total */}
-            <div className={`pt-3 border-t ${modoFondoBlanco ? 'border-amber-500/30' : 'border-amber-500/20'} print:border-slate-300`}>
-              <span className={`text-[10px] uppercase font-black tracking-widest block mb-0.5 ${
-                modoFondoBlanco ? 'text-slate-600' : 'text-slate-400'
-              } print:text-slate-700`}>
+            <div className={`pt-3 border-t ${modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'} print:border-slate-300`}>
+              <span className={`text-xs font-medium block mb-0.5 ${modoFondoBlanco ? 'text-slate-500' : 'text-slate-400'} print:text-slate-700`}>
                 Total General de la Operación
               </span>
-              <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight print:text-black">
+              <div className={`text-2xl font-semibold tabular-nums tracking-tight print:text-black ${modoFondoBlanco ? 'text-slate-900' : 'text-white'}`}>
                 Gs. {liquidacion.totalGeneralOperacion.toLocaleString('es-PY')}
               </div>
             </div>
@@ -3348,15 +3930,22 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         </section>
 
         {saveError && (
-          <div className="mt-4 bg-red-500/15 border border-red-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-medium shadow-md print:hidden" role="alert">
-            <div className="flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-              <span className="text-red-700 dark:text-red-200 font-semibold">{saveError}</span>
+          <div
+            className={`px-4 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-medium print:hidden ${
+              modoFondoBlanco
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-red-500/15 border-red-500/30 text-red-200'
+            }`}
+            role="alert"
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{saveError}</span>
             </div>
             <button
               type="button"
               onClick={() => setSaveError(null)}
-              className="text-red-400 hover:text-red-200 p-1 rounded-lg cursor-pointer"
+              className="text-red-500 hover:text-red-700 p-1 rounded-lg cursor-pointer"
               aria-label="Cerrar error"
             >
               <X className="w-4 h-4" />
@@ -3365,15 +3954,22 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         )}
 
         {saveToastMessage && (
-          <div className="mt-4 bg-emerald-500/15 border border-emerald-500/40 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-semibold shadow-md print:hidden" role="status">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span className="text-emerald-700 dark:text-emerald-200">{saveToastMessage}</span>
+          <div
+            className={`px-4 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs font-medium print:hidden ${
+              modoFondoBlanco
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+            }`}
+            role="status"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{saveToastMessage}</span>
             </div>
             <button
               type="button"
               onClick={() => setSaveToastMessage(null)}
-              className="text-emerald-500 hover:text-emerald-300 p-1 rounded-lg cursor-pointer"
+              className="text-emerald-600 hover:text-emerald-800 p-1 rounded-lg cursor-pointer"
               aria-label="Cerrar notificación"
             >
               <X className="w-4 h-4" />
@@ -3382,83 +3978,99 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
         )}
 
         {/* Botones de Acción Global Inferior (para evitar scroll hacia arriba) */}
-        <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-end gap-3 print:hidden">
-          <button
-            type="button"
-            onClick={handleGuardarPresupuesto}
-            disabled={guardandoFirestore}
-            className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-60 ${
-              guardadoExito
-                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/30'
-                : esFull
-                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/30'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-            title="Guardar en base de datos Firestore y respaldo local"
-          >
-            {guardandoFirestore ? (
-              <Loader2 className={`w-4 h-4 animate-spin ${esFull ? 'text-amber-300' : 'text-slate-200'}`} />
-            ) : guardadoExito ? (
-              <Check className="w-4 h-4 text-white" />
-            ) : (
-              <Save className={`w-4 h-4 ${esFull ? 'text-amber-400' : 'text-slate-300'}`} />
-            )}
-            <span>{guardandoFirestore ? 'Guardando en BD...' : guardadoExito ? '¡Presupuesto Guardado!' : 'Guardar Presupuesto'}</span>
-          </button>
-
+        <div
+          className={`pt-4 border-t flex flex-wrap items-center justify-end gap-2 print:hidden ${
+            modoFondoBlanco ? 'border-slate-200' : 'border-slate-800'
+          }`}
+        >
           <button
             type="button"
             onClick={() => void handleGuardarEnDocumentos()}
             disabled={guardandoEnDocumentos}
-            className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-60 ${
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60 ${
               guardadoEnDocumentosExito
-                ? 'bg-emerald-600 text-white border-emerald-500'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
             title="Guardar copia formateada en Documentos de O.L.G.A."
           >
             {guardandoEnDocumentos ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
             ) : guardadoEnDocumentosExito ? (
-              <Check className="w-4 h-4 text-white" />
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
             ) : (
-              <FilePlus2 className="w-4 h-4 text-indigo-400" />
+              <FilePlus2 className="w-3.5 h-3.5 text-slate-500" />
             )}
-            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'Guardado en Documentos' : 'Guardar en Documentos'}</span>
+            <span>{guardandoEnDocumentos ? 'Guardando...' : guardadoEnDocumentosExito ? 'En Docs' : 'Guardar en Docs'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleDescargarPdfPresupuesto}
             disabled={descargandoPdf}
-            className="px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60 ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+            }`}
             title="Descargar archivo PDF directamente"
           >
-            {descargandoPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span>Descargar PDF</span>
+            {descargandoPdf ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            <span>PDF</span>
           </button>
 
           <button
             type="button"
             onClick={handleImprimir}
-            className={`px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
-              esFull 
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)]' 
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md'
+            className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              modoFondoBlanco
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
             }`}
           >
-            <Printer className="w-4 h-4" />
-            <span>Imprimir Presupuesto</span>
+            <Printer className="w-3.5 h-3.5 text-slate-500" />
+            <span>Imprimir</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGuardarPresupuesto}
+            disabled={guardandoFirestore}
+            className={`h-9 px-3.5 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${
+              guardadoExito
+                ? 'bg-emerald-700 text-white border-emerald-700 hover:bg-emerald-800'
+                : 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800'
+            }`}
+            title="Guardar en base de datos Firestore y respaldo local"
+          >
+            {guardandoFirestore ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : guardadoExito ? (
+              <Check className="w-3.5 h-3.5 text-white" />
+            ) : (
+              <Save className="w-3.5 h-3.5 text-white" />
+            )}
+            <span>{guardandoFirestore ? 'Guardando...' : guardadoExito ? 'Presupuesto Guardado' : 'Guardar Presupuesto'}</span>
           </button>
 
           {isWhatsAppEnabled && (
             <button
               type="button"
               onClick={() => setModalWhatsAppAbierto(true)}
-              className="px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+              className={`h-9 px-3 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                modoFondoBlanco
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>Enviar por WhatsApp</span>
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp</span>
             </button>
           )}
         </div>
@@ -3871,7 +4483,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 {/* TABLA 1: TASAS Y REEMBOLSOS */}
                 <div className="mb-3">
                   <div style={{ backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }} className="px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-900 tracking-wide mb-1 border">
-                    <span>I. Tasas Judiciales, Registros e Impuestos (Reembolsos Oficiales)</span>
+                    <span>{esAbogado ? 'I. Tasas Judiciales, Registros e Impuestos (Reembolsos Oficiales)' : 'I. Tasas Judiciales, RUN, Registros e Impuestos (Reembolsos Oficiales)'}</span>
                     <span className="font-mono text-emerald-800">Subtotal: Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
                   </div>
                   <table className="w-full text-xs border-collapse">
@@ -3903,7 +4515,7 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                 {/* TABLA 2: SERVICIOS Y HONORARIOS */}
                 <div className="mb-3">
                   <div style={{ backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }} className="px-3 py-1.5 rounded-lg flex justify-between items-center text-xs font-black uppercase text-slate-900 tracking-wide mb-1 border">
-                    <span>II. {esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios y Gestiones'}</span>
+                    <span>II. {esAbogado ? 'SERVICIOS JURÍDICOS Y HONORARIOS PROFESIONALES' : 'Servicios Notariales, Honorarios, Materiales y Gestiones'}</span>
                     <span className="font-mono text-amber-800">Subtotal: Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
                   </div>
                   <table className="w-full text-xs border-collapse">
@@ -3951,14 +4563,39 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
 
                   <div className="flex flex-col justify-between text-right">
                     <div className="space-y-0.5 text-xs">
-                      <div className="flex justify-between text-slate-600">
-                        <span>Subtotal Tasas:</span>
-                        <span className="font-mono font-semibold">Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Subtotal Honorarios:</span>
-                        <span className="font-mono font-semibold">Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
-                      </div>
+                      {!esAbogado ? (
+                        <>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Subtotal Honorarios:</span>
+                            <span className="font-mono font-semibold">Gs. {liquidacion.subtotalHonorariosBruto.toLocaleString('es-PY')}</span>
+                          </div>
+                          {liquidacion.descuentoAplicado > 0 && (
+                            <div className="flex justify-between text-amber-700 font-semibold">
+                              <span>Descuento aplicado{descuentoTipo === 'porcentaje' ? ` (${descuentoValor}%)` : ''}:</span>
+                              <span className="font-mono">- Gs. {liquidacion.descuentoAplicado.toLocaleString('es-PY')}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-slate-900 font-bold">
+                            <span>Honorarios Netos:</span>
+                            <span className="font-mono">Gs. {liquidacion.honorariosNetos.toLocaleString('es-PY')}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Gastos, Materiales y Tasas (RUN / SIJ):</span>
+                            <span className="font-mono font-semibold">Gs. {liquidacion.subtotalGastosMaterialesTasas.toLocaleString('es-PY')}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Subtotal Tasas:</span>
+                            <span className="font-mono font-semibold">Gs. {liquidacion.subtotalTasasReembolso.toLocaleString('es-PY')}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Subtotal Honorarios:</span>
+                            <span className="font-mono font-semibold">Gs. {liquidacion.totalVentaServicios.toLocaleString('es-PY')}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="pt-1.5 border-t border-slate-200 mt-2 flex justify-between items-baseline">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-900">Total a Pagar:</span>
@@ -4028,35 +4665,46 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
                     return (
                       <div
                         key={p.id}
-                        className="p-3 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded-xl flex items-center justify-between gap-3 transition-colors group"
+                        className="p-3.5 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors group"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white font-mono">{p.numeroComprobante || 'S/N'}</span>
-                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-medium border border-blue-500/20">{p.tipoComprobante || 'Presupuesto'}</span>
-                            <span className="text-[10px] text-gray-400">{fechaFmt}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-white font-mono whitespace-nowrap shrink-0">
+                              {p.numeroComprobante || 'S/N'}
+                            </span>
+                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-medium border border-blue-500/20 whitespace-nowrap shrink-0">
+                              {p.tipoComprobante || 'Presupuesto'}
+                            </span>
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0 font-mono">
+                              {fechaFmt}
+                            </span>
                           </div>
-                          <p className="text-xs text-gray-200 font-medium truncate mt-1">
-                            {p.clienteNombre || 'Cliente sin nombre'} <span className="text-gray-500 font-mono">({p.clienteRucCI || 'Sin RUC/CI'})</span>
+                          <p className="text-xs text-gray-200 font-medium truncate mt-1.5">
+                            {p.clienteNombre || 'Cliente sin nombre'}{' '}
+                            <span className="text-gray-500 font-mono">({p.clienteRucCI || 'Sin RUC/CI'})</span>
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-bold text-emerald-400 font-mono">{montoFmt}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCargarPresupuesto(p)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
-                          >
-                            <FileText className="w-3.5 h-3.5" /> Abrir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => handleEliminarPresupuestoGuardado(p.id, e)}
-                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors cursor-pointer"
-                            title="Eliminar presupuesto"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0">
+                          <span className="text-xs font-bold text-emerald-400 font-mono whitespace-nowrap">
+                            {montoFmt}
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleCargarPresupuesto(p)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer shadow-sm whitespace-nowrap"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> Abrir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleEliminarPresupuestoGuardado(p.id, e)}
+                              className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="Eliminar presupuesto"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

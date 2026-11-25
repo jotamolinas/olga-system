@@ -431,6 +431,12 @@ export interface PresupuestoPdfInput {
   servicios: PresupuestoPdfServicioItem[];
   subtotalTasas: number;
   subtotalServicios: number;
+  subtotalHonorarios?: number;
+  descuentoTipo?: 'porcentaje' | 'monto';
+  descuentoValor?: number;
+  descuentoMonto?: number;
+  honorariosNetos?: number;
+  subtotalGastosMaterialesTasas?: number;
   totalIva?: number;
   totalGeneral: number;
   totalLetras?: string;
@@ -1123,7 +1129,20 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   cursorY += 5;
 
   // Bloque de totales
-  const totalBoxH = input.totalIva && input.totalIva > 0 ? 31 : 25;
+  const useEscribaniaDesglose = !isLawyer && typeof input.subtotalHonorarios === 'number';
+  const descuentoMontoPdf = Math.max(0, Math.round(Number(input.descuentoMonto) || 0));
+  const tieneDescuentoPdf = useEscribaniaDesglose && descuentoMontoPdf > 0;
+  const hasIvaPdf = Boolean(input.totalIva && input.totalIva > 0);
+
+  let totalBoxH = hasIvaPdf ? 31 : 25;
+  if (useEscribaniaDesglose) {
+    // Filas: Subtotal Honorarios, (Descuento?), Honorarios Netos, Gastos/Materiales/Tasas, (IVA?), Total General
+    let extraRows = 3; // Subtotal Honorarios + Honorarios Netos + Gastos/Materiales/Tasas
+    if (tieneDescuentoPdf) extraRows += 1;
+    if (hasIvaPdf) extraRows += 1;
+    totalBoxH = 15 + extraRows * 5.2;
+  }
+
   ensureSpace(totalBoxH + 14);
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(15, 23, 42);
@@ -1134,14 +1153,50 @@ export const generatePresupuestoPdfBase64 = (input: PresupuestoPdfInput): Genera
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.8);
   doc.setTextColor(71, 85, 105);
-  doc.text('Subtotal Tasas y Reembolsos:', margin + 5, totY);
-  doc.text(formatMontoPdf(input.subtotalTasas, 'PYG'), colTotalX, totY, { align: 'right' });
 
-  totY += 5.2;
-  doc.text('Subtotal Honorarios y Servicios:', margin + 5, totY);
-  doc.text(formatMontoPdf(input.subtotalServicios, 'PYG'), colTotalX, totY, { align: 'right' });
+  if (useEscribaniaDesglose) {
+    const subHon = Math.round(Number(input.subtotalHonorarios) || 0);
+    const honNetos = Math.round(Number(input.honorariosNetos ?? subHon) || 0);
+    const gastosMatTasas = Math.round(
+      Number(input.subtotalGastosMaterialesTasas ?? input.subtotalTasas) || 0
+    );
 
-  if (input.totalIva && input.totalIva > 0) {
+    doc.text('Subtotal Honorarios Profesionales:', margin + 5, totY);
+    doc.text(formatMontoPdf(subHon, 'PYG'), colTotalX, totY, { align: 'right' });
+
+    if (tieneDescuentoPdf) {
+      totY += 5.2;
+      const pctTag =
+        input.descuentoTipo === 'porcentaje' && input.descuentoValor
+          ? ` (${input.descuentoValor}%)`
+          : '';
+      doc.setTextColor(180, 83, 9);
+      doc.text(`Descuento aplicado sobre Honorarios${pctTag}:`, margin + 5, totY);
+      doc.text(`- ${formatMontoPdf(descuentoMontoPdf, 'PYG')}`, colTotalX, totY, { align: 'right' });
+      doc.setTextColor(71, 85, 105);
+    }
+
+    totY += 5.2;
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Honorarios Netos:', margin + 5, totY);
+    doc.text(formatMontoPdf(honNetos, 'PYG'), colTotalX, totY, { align: 'right' });
+
+    totY += 5.2;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Gastos, Materiales y Tasas (RUN / SIJ):', margin + 5, totY);
+    doc.text(formatMontoPdf(gastosMatTasas, 'PYG'), colTotalX, totY, { align: 'right' });
+  } else {
+    doc.text('Subtotal Tasas y Reembolsos:', margin + 5, totY);
+    doc.text(formatMontoPdf(input.subtotalTasas, 'PYG'), colTotalX, totY, { align: 'right' });
+
+    totY += 5.2;
+    doc.text('Subtotal Honorarios y Servicios:', margin + 5, totY);
+    doc.text(formatMontoPdf(input.subtotalServicios, 'PYG'), colTotalX, totY, { align: 'right' });
+  }
+
+  if (hasIvaPdf && input.totalIva) {
     totY += 5.2;
     doc.text('Total IVA Incluido / Liquidado:', margin + 5, totY);
     doc.text(formatMontoPdf(input.totalIva, 'PYG'), colTotalX, totY, { align: 'right' });

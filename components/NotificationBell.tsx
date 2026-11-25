@@ -170,6 +170,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   // Cálculo Dinámico en Tiempo Real de Plazos Judiciales (<= 5 días o vencidos) aislados estrictamente por cuenta/workspace activo
   const alertasJudiciales = useMemo<AlertaJudicial[]>(() => {
+    if (!esAbogado) {
+      return [];
+    }
     const sessionUid = String(currentUser?.uid || activeUid || '').trim();
     if (!sessionUid || allowedOwnerIds.size === 0 || !Array.isArray(expedientes) || expedientes.length === 0) {
       return [];
@@ -299,6 +302,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   };
 
   const alternarLeidaJudicial = (alerta: AlertaJudicial) => {
+    if (!esAbogado) return;
     const id = alerta.id;
     const updated = alertasLeidasIds.includes(id)
       ? alertasLeidasIds

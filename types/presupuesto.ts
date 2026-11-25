@@ -184,6 +184,14 @@ export interface ItemTasaReembolso {
   observacion?: string;
 }
 
+export type CategoriaServicioNotarial = 'honorario' | 'gasto';
+export type TipoDescuentoHonorarios = 'porcentaje' | 'monto';
+
+export interface ConfigDescuentoHonorarios {
+  tipo: TipoDescuentoHonorarios;
+  valor: number;
+}
+
 /**
  * 3. ESTRUCTURA PARA VENTAS, SERVICIOS Y HONORARIOS PROFESIONALES
  * Servicios arancelarios y gestiones propias de la escribanía con desglose impositivo.
@@ -191,6 +199,7 @@ export interface ItemTasaReembolso {
 export interface ItemServicioHonorario {
   id: string;
   codigoConcepto?: string;           // Código de referencia (ej: 'HON-ESC', 'CERT-DOM')
+  categoriaServicio?: CategoriaServicioNotarial; // 'honorario' (descontable) vs 'gasto' (no descontable)
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
@@ -212,10 +221,15 @@ export interface LiquidacionPresupuestoFactura {
   subtotalServicios5: number;
   subtotalServicios10: number;
   totalVentaServicios: number;
+  subtotalHonorariosBruto: number;
+  descuentoAplicado: number;
+  honorariosNetos: number;
+  subtotalGastosMaterialesServicios: number;
+  subtotalGastosMaterialesTasas: number;
   iva5: number;
   iva10: number;
   totalIvaLiquidado: number;
-  totalGeneralOperacion: number;     // Reembolsos + Servicios + Impuestos
+  totalGeneralOperacion: number;     // Reembolsos + Servicios Netos (incluye IVA)
   totalLetras: string;
 }
 
@@ -230,14 +244,161 @@ export interface EstadoModuloPresupuestoFactura {
 }
 
 // ============================================================================
-// VALORES INICIALES POR DEFECTO PARA ESCRIBANÍA (PARAGUAY)
+// CONSTANTES OFICIALES DE REFERENCIA 2026 — ESCRIBANÍA (PARAGUAY)
+// ============================================================================
+
+/** Jornal Mínimo 2026 (Decreto P.E. N.º 6225/2026) */
+export const JORNAL_MINIMO_2026 = 117077;
+
+/** Ley 1307/87 — Base de cálculo sobre Jornal Mínimo 2026 */
+export const LEY_1307_87_VALORES_2026 = {
+  gastosAdminCapital: JORNAL_MINIMO_2026 * 5,  // 585.385 Gs. (5 jornales)
+  gastosAdminInterior: JORNAL_MINIMO_2026 * 6, // 702.462 Gs. (6 jornales)
+  certificacionFirma: JORNAL_MINIMO_2026 * 3,  // 351.231 Gs. (3 jornales)
+  tramiteInscripcion: JORNAL_MINIMO_2026 * 2,  // 234.154 Gs. (2 jornales)
+} as const;
+
+/** Registro Unificado Nacional (RUN — Ley N.º 7424/2025 y Guía SIJ Oct/2026) */
+export const TASA_INSCRIPCION_RUN_ALICUOTA = 0.0085; // 0,85% sobre max(operación, valor fiscal)
+
+/** Materiales Notariales CSJ (Res. CSJ 381/2026) */
+export const MATERIALES_NOTARIALES_CSJ_2026 = {
+  hojaProtocoloUnitario: 2100,
+  hojaProtocoloCuadernillo10: 21000,
+  hojaSeguridadUnitario: 3900,
+  hojaSeguridadCuadernillo10: 39000,
+  libroRegistroFirmas: 70000,
+} as const;
+
+/**
+ * Clasifica si un ítem de Sección 2 corresponde a Honorarios Profesionales (sujeto a descuento)
+ * o a Gastos Administrativos / Materiales / Tasas (nunca descontable).
+ */
+export const esItemHonorarioProfesional = (item: ItemServicioHonorario): boolean => {
+  if (item.categoriaServicio === 'honorario') return true;
+  if (item.categoriaServicio === 'gasto') return false;
+
+  const id = String(item.id || '').toLowerCase();
+  const cod = String(item.codigoConcepto || '').toUpperCase();
+  const desc = String(item.descripcion || '').toLowerCase();
+
+  if (
+    id === 'srv-honorarios-prof' ||
+    id === 'srv-cert-firmas' ||
+    cod === 'HON-PROF' ||
+    cod === 'HON-CERT' ||
+    cod === 'HON-IA'
+  ) {
+    return true;
+  }
+
+  if (
+    id.startsWith('srv-gastos') ||
+    id.startsWith('srv-mat-') ||
+    id.startsWith('srv-cert-dom') ||
+    id.startsWith('srv-cert-anot') ||
+    id.startsWith('srv-cert-vig') ||
+    id.startsWith('srv-fiscalizacion') ||
+    id.startsWith('srv-catastral') ||
+    id.startsWith('srv-registro') ||
+    id.startsWith('srv-inscripcion') ||
+    id.startsWith('srv-gestion') ||
+    id.startsWith('srv-ande') ||
+    id.startsWith('srv-expedicion') ||
+    cod.startsWith('GAST') ||
+    cod.startsWith('MAT-') ||
+    cod.startsWith('RUN-') ||
+    cod.startsWith('SNC') ||
+    cod.startsWith('DGRP') ||
+    cod.startsWith('INSC') ||
+    cod.startsWith('CERT-') ||
+    cod.startsWith('GEST') ||
+    cod.startsWith('SERV-PUB') ||
+    cod.startsWith('EXP-')
+  ) {
+    return false;
+  }
+
+  if (
+    desc.includes('gasto') ||
+    desc.includes('hoja de protocolo') ||
+    desc.includes('hoja de seguridad') ||
+    desc.includes('libro de registro') ||
+    desc.includes('sellado notarial') ||
+    desc.includes('formulario') ||
+    desc.includes('fiscalización') ||
+    desc.includes('fiscalizacion') ||
+    desc.includes('trámite de inscripción') ||
+    desc.includes('tramite de inscripcion') ||
+    desc.includes('certificado único') ||
+    desc.includes('certificado unico') ||
+    desc.includes('certificado catastral') ||
+    desc.includes('certificado de') ||
+    desc.includes('diligenciamiento') ||
+    desc.includes('tasa ') ||
+    desc.includes('tasas ') ||
+    desc.includes('impuesto') ||
+    desc.includes('constancia') ||
+    desc.includes('expedición') ||
+    desc.includes('expedicion')
+  ) {
+    return false;
+  }
+
+  if (desc.includes('honorario') || desc.includes('certificación de firma') || desc.includes('certificacion de firma')) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Calcula el siguiente número correlativo PRES-XXXX a partir de presupuestos guardados.
+ */
+export const calcularSiguienteNumeroPresupuesto = (
+  presupuestos: Array<{ numeroComprobante?: string | null }>
+): string => {
+  let maxNum = 0;
+  if (Array.isArray(presupuestos)) {
+    presupuestos.forEach((p) => {
+      const raw = String(p?.numeroComprobante || '').trim();
+      const match = /^PRES-(\d+)$/i.exec(raw);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (Number.isFinite(parsed) && parsed > maxNum) {
+          maxNum = parsed;
+        }
+      }
+    });
+  }
+  return `PRES-${String(maxNum + 1).padStart(4, '0')}`;
+};
+
+// ============================================================================
+// VALORES INICIALES POR DEFECTO PARA ESCRIBANÍA (PARAGUAY 2026)
 // ============================================================================
 
 export const ITEMS_TASAS_REEMBOLSO_BASE: ItemTasaReembolso[] = [
   {
     id: 'tasa-jud-1',
     categoria: 'judicial',
-    descripcion: 'Tasas Judiciales (Corte Suprema de Justicia - DGRP)',
+    descripcion: 'Tasa de Inscripción en el RUN / Tasa Judicial (0,85%)',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+  {
+    id: 'tasa-run-cert',
+    categoria: 'especial',
+    descripcion: 'Certificado Único Catastro-Registral (RUN)',
+    monto: 0,
+    tipoIva: 'exenta',
+    activo: false,
+  },
+  {
+    id: 'tasa-run-form',
+    categoria: 'especial',
+    descripcion: 'Formularios de Fiscalización Electrónica (RUN)',
     monto: 0,
     tipoIva: 'exenta',
     activo: false,
@@ -245,7 +406,7 @@ export const ITEMS_TASAS_REEMBOLSO_BASE: ItemTasaReembolso[] = [
   {
     id: 'tasa-hip-1',
     categoria: 'hipoteca',
-    descripcion: 'Arancel de Inscripción de Hipoteca / Garantía Real',
+    descripcion: 'Arancel de Inscripción de Hipoteca / Garantía Real (RUN)',
     monto: 0,
     tipoIva: 'exenta',
     activo: false,
@@ -269,7 +430,7 @@ export const ITEMS_TASAS_REEMBOLSO_BASE: ItemTasaReembolso[] = [
   {
     id: 'tasa-aut-1',
     categoria: 'automotor',
-    descripcion: 'Tasa Registro Automotores y Cédula del Automotor',
+    descripcion: 'Tasa Registro Automotores y Cédula del Automotor (RUN)',
     monto: 0,
     tipoIva: 'exenta',
     activo: false,
@@ -278,9 +439,10 @@ export const ITEMS_TASAS_REEMBOLSO_BASE: ItemTasaReembolso[] = [
 
 export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   {
-    id: 'srv-gastos-adm',
-    codigoConcepto: 'GAST-ADM',
-    descripcion: 'Gastos administrativos de secretaría y papelería notarial',
+    id: 'srv-honorarios-prof',
+    codigoConcepto: 'HON-PROF',
+    categoriaServicio: 'honorario',
+    descripcion: 'Honorarios Profesionales del Notario Público (Arancel Ley 879/81)',
     cantidad: 1,
     precioUnitario: 0,
     tipoIva: '10',
@@ -291,12 +453,69 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
     activo: false,
   },
   {
+    id: 'srv-cert-firmas',
+    codigoConcepto: 'HON-CERT',
+    categoriaServicio: 'honorario',
+    descripcion: 'Certificación de firma (Ley 1307/87 - 3 jornales 2026)',
+    cantidad: 1,
+    precioUnitario: LEY_1307_87_VALORES_2026.certificacionFirma,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: LEY_1307_87_VALORES_2026.certificacionFirma,
+    total: LEY_1307_87_VALORES_2026.certificacionFirma,
+    activo: false,
+  },
+  {
+    id: 'srv-gastos-adm',
+    codigoConcepto: 'GAST-ADM',
+    categoriaServicio: 'gasto',
+    descripcion: 'Gastos administrativos (Ley 1307/87 - 5 jornales 2026)',
+    cantidad: 1,
+    precioUnitario: LEY_1307_87_VALORES_2026.gastosAdminCapital,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: LEY_1307_87_VALORES_2026.gastosAdminCapital,
+    total: LEY_1307_87_VALORES_2026.gastosAdminCapital,
+    activo: false,
+  },
+  {
+    id: 'srv-inscripcion-tasa',
+    codigoConcepto: 'INSC-REG',
+    categoriaServicio: 'gasto',
+    descripcion: 'Trámite de inscripción en el RUN (Ley 1307/87 - 2 jornales 2026)',
+    cantidad: 1,
+    precioUnitario: LEY_1307_87_VALORES_2026.tramiteInscripcion,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: LEY_1307_87_VALORES_2026.tramiteInscripcion,
+    total: LEY_1307_87_VALORES_2026.tramiteInscripcion,
+    activo: false,
+  },
+  {
     id: 'srv-cert-dominio',
-    codigoConcepto: 'CERT-DOM',
-    descripcion: 'Certificado de Condiciones de Dominio (DGRP)',
+    codigoConcepto: 'RUN-CERT',
+    categoriaServicio: 'gasto',
+    descripcion: 'Certificado Único Catastro-Registral (RUN)',
     cantidad: 1,
     precioUnitario: 0,
     tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-fiscalizacion-run',
+    codigoConcepto: 'RUN-FISC',
+    categoriaServicio: 'gasto',
+    descripcion: 'Formularios de Fiscalización Electrónica (RUN)',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: 'exenta',
     montoExento: 0,
     montoIva5: 0,
     montoIva10: 0,
@@ -305,8 +524,9 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   },
   {
     id: 'srv-cert-anotaciones',
-    codigoConcepto: 'CERT-ANOT',
-    descripcion: 'Certificado de Anotaciones Personales / No Interdicción',
+    codigoConcepto: 'RUN-ANOT',
+    categoriaServicio: 'gasto',
+    descripcion: 'Certificado de Anotaciones Personales / No Interdicción (RUN)',
     cantidad: 1,
     precioUnitario: 0,
     tipoIva: '10',
@@ -318,8 +538,9 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   },
   {
     id: 'srv-cert-vigencia',
-    codigoConcepto: 'CERT-VIG',
-    descripcion: 'Certificado de Vigencia de Poder / Personería Jurídica',
+    codigoConcepto: 'RUN-VIG',
+    categoriaServicio: 'gasto',
+    descripcion: 'Certificado de Vigencia de Poder / Personería Jurídica (RUN)',
     cantidad: 1,
     precioUnitario: 0,
     tipoIva: '10',
@@ -330,8 +551,65 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
     activo: false,
   },
   {
+    id: 'srv-registro-publico',
+    codigoConcepto: 'RUN-DIL',
+    categoriaServicio: 'gasto',
+    descripcion: 'Diligenciamiento e ingreso ante el Registro Unificado Nacional (RUN)',
+    cantidad: 1,
+    precioUnitario: 0,
+    tipoIva: '10',
+    montoExento: 0,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: 0,
+    activo: false,
+  },
+  {
+    id: 'srv-mat-protocolo',
+    codigoConcepto: 'MAT-PROT',
+    categoriaServicio: 'gasto',
+    descripcion: 'Hoja de Protocolo / Sellado Notarial (Res. CSJ 381/2026)',
+    cantidad: 1,
+    precioUnitario: MATERIALES_NOTARIALES_CSJ_2026.hojaProtocoloUnitario,
+    tipoIva: 'exenta',
+    montoExento: MATERIALES_NOTARIALES_CSJ_2026.hojaProtocoloUnitario,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: MATERIALES_NOTARIALES_CSJ_2026.hojaProtocoloUnitario,
+    activo: false,
+  },
+  {
+    id: 'srv-mat-seguridad',
+    codigoConcepto: 'MAT-SEG',
+    categoriaServicio: 'gasto',
+    descripcion: 'Hoja de Seguridad – Actuación Notarial / Certificación de Firmas / Legalización (Res. CSJ 381/2026)',
+    cantidad: 1,
+    precioUnitario: MATERIALES_NOTARIALES_CSJ_2026.hojaSeguridadUnitario,
+    tipoIva: 'exenta',
+    montoExento: MATERIALES_NOTARIALES_CSJ_2026.hojaSeguridadUnitario,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: MATERIALES_NOTARIALES_CSJ_2026.hojaSeguridadUnitario,
+    activo: false,
+  },
+  {
+    id: 'srv-mat-libro',
+    codigoConcepto: 'MAT-LIBRO',
+    categoriaServicio: 'gasto',
+    descripcion: 'Libro de Registro de Firmas (Res. CSJ 381/2026)',
+    cantidad: 1,
+    precioUnitario: MATERIALES_NOTARIALES_CSJ_2026.libroRegistroFirmas,
+    tipoIva: 'exenta',
+    montoExento: MATERIALES_NOTARIALES_CSJ_2026.libroRegistroFirmas,
+    montoIva5: 0,
+    montoIva10: 0,
+    total: MATERIALES_NOTARIALES_CSJ_2026.libroRegistroFirmas,
+    activo: false,
+  },
+  {
     id: 'srv-expedicion-copias',
     codigoConcepto: 'EXP-COP',
+    categoriaServicio: 'gasto',
     descripcion: 'Expedición de Primer y Segundo Testimonio Notarial',
     cantidad: 1,
     precioUnitario: 0,
@@ -345,6 +623,7 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   {
     id: 'srv-gestion-municipal',
     codigoConcepto: 'GEST-MUN',
+    categoriaServicio: 'gasto',
     descripcion: 'Gestión de Impuesto Inmobiliario y Catastro Municipal',
     cantidad: 1,
     precioUnitario: 0,
@@ -358,59 +637,8 @@ export const ITEMS_SERVICIOS_HONORARIOS_BASE: ItemServicioHonorario[] = [
   {
     id: 'srv-ande-essap',
     codigoConcepto: 'SERV-PUB',
+    categoriaServicio: 'gasto',
     descripcion: 'Constancia de no adeudar servicios (ANDE / ESSAP / COPACO)',
-    cantidad: 1,
-    precioUnitario: 0,
-    tipoIva: '10',
-    montoExento: 0,
-    montoIva5: 0,
-    montoIva10: 0,
-    total: 0,
-    activo: false,
-  },
-  {
-    id: 'srv-catastral',
-    codigoConcepto: 'SNC-CAT',
-    descripcion: 'Certificado Catastral del Servicio Nacional de Catastro (SNC)',
-    cantidad: 1,
-    precioUnitario: 0,
-    tipoIva: '10',
-    montoExento: 0,
-    montoIva5: 0,
-    montoIva10: 0,
-    total: 0,
-    activo: false,
-  },
-  {
-    id: 'srv-registro-publico',
-    codigoConcepto: 'DGRP-REG',
-    descripcion: 'Diligenciamiento e ingreso ante la Dirección General de Registros Públicos',
-    cantidad: 1,
-    precioUnitario: 0,
-    tipoIva: '10',
-    montoExento: 0,
-    montoIva5: 0,
-    montoIva10: 0,
-    total: 0,
-    activo: false,
-  },
-  {
-    id: 'srv-inscripcion-tasa',
-    codigoConcepto: 'INSC-REG',
-    descripcion: 'Trámite de Retiro e Inscripción Definitiva con Matrícula',
-    cantidad: 1,
-    precioUnitario: 0,
-    tipoIva: '10',
-    montoExento: 0,
-    montoIva5: 0,
-    montoIva10: 0,
-    total: 0,
-    activo: false,
-  },
-  {
-    id: 'srv-honorarios-prof',
-    codigoConcepto: 'HON-PROF',
-    descripcion: 'Honorarios Profesionales del Notario Público (Arancel Notarial)',
     cantidad: 1,
     precioUnitario: 0,
     tipoIva: '10',
@@ -553,36 +781,79 @@ export const ESTADO_INICIAL_PRESUPUESTO_FACTURA: EstadoModuloPresupuestoFactura 
 };
 
 /**
- * Función utilitaria de cálculo de totales y liquidación de IVA
+ * Función utilitaria de cálculo de totales y liquidación de IVA.
+ * El parámetro opcional `descuentoHonorarios` aplica EXCLUSIVAMENTE sobre ítems de Honorarios Profesionales.
  */
 export function calcularLiquidacionPresupuesto(
   tasas: ItemTasaReembolso[],
-  servicios: ItemServicioHonorario[]
+  servicios: ItemServicioHonorario[],
+  descuentoHonorarios?: ConfigDescuentoHonorarios
 ): LiquidacionPresupuestoFactura {
-  // 1. Reembolsos de tasas activas
+  // 1. Reembolsos de tasas activas (nunca reciben descuento)
   const subtotalTasasReembolso = tasas
     .filter((t) => t.activo)
     .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
 
-  // 2. Servicios y Honorarios activos
-  let subtotalServiciosExentas = 0;
-  let subtotalServicios5 = 0;
-  let subtotalServicios10 = 0;
+  // 2. Separación estricta entre Honorarios Profesionales y Gastos/Materiales
+  let honorariosExentas = 0;
+  let honorarios5 = 0;
+  let honorarios10 = 0;
+
+  let gastosExentas = 0;
+  let gastos5 = 0;
+  let gastos10 = 0;
 
   servicios.forEach((item) => {
     if (!item.activo) return;
     const subtotalItem = (Number(item.cantidad) || 1) * (Number(item.precioUnitario) || 0);
+    const esHon = esItemHonorarioProfesional(item);
+
     if (item.tipoIva === 'exenta') {
-      subtotalServiciosExentas += subtotalItem;
+      if (esHon) honorariosExentas += subtotalItem;
+      else gastosExentas += subtotalItem;
     } else if (item.tipoIva === '5') {
-      subtotalServicios5 += subtotalItem;
+      if (esHon) honorarios5 += subtotalItem;
+      else gastos5 += subtotalItem;
     } else {
-      subtotalServicios10 += subtotalItem;
+      if (esHon) honorarios10 += subtotalItem;
+      else gastos10 += subtotalItem;
     }
   });
 
-  const totalVentaServicios = subtotalServiciosExentas + subtotalServicios5 + subtotalServicios10;
-  
+  const subtotalHonorariosBruto = honorariosExentas + honorarios5 + honorarios10;
+  const subtotalGastosMaterialesServicios = gastosExentas + gastos5 + gastos10;
+
+  let descuentoAplicado = 0;
+  if (descuentoHonorarios && Number(descuentoHonorarios.valor) > 0 && subtotalHonorariosBruto > 0) {
+    const val = Number(descuentoHonorarios.valor) || 0;
+    if (descuentoHonorarios.tipo === 'porcentaje') {
+      const pct = Math.min(100, Math.max(0, val));
+      descuentoAplicado = Math.round((subtotalHonorariosBruto * pct) / 100);
+    } else {
+      descuentoAplicado = Math.min(subtotalHonorariosBruto, Math.max(0, Math.round(val)));
+    }
+  }
+
+  const honorariosNetos = Math.max(0, subtotalHonorariosBruto - descuentoAplicado);
+
+  let honorariosExentasNeto = honorariosExentas;
+  let honorarios5Neto = honorarios5;
+  let honorarios10Neto = honorarios10;
+
+  if (descuentoAplicado > 0 && subtotalHonorariosBruto > 0) {
+    const factorNeto = honorariosNetos / subtotalHonorariosBruto;
+    honorariosExentasNeto = Math.round(honorariosExentas * factorNeto);
+    honorarios5Neto = Math.round(honorarios5 * factorNeto);
+    honorarios10Neto = Math.max(0, honorariosNetos - honorariosExentasNeto - honorarios5Neto);
+  }
+
+  const subtotalServiciosExentas = gastosExentas + honorariosExentasNeto;
+  const subtotalServicios5 = gastos5 + honorarios5Neto;
+  const subtotalServicios10 = gastos10 + honorarios10Neto;
+
+  const totalVentaServicios = honorariosNetos + subtotalGastosMaterialesServicios;
+  const subtotalGastosMaterialesTasas = subtotalTasasReembolso + subtotalGastosMaterialesServicios;
+
   // Cálculo de liquidación de IVA según régimen paraguayo (precio con IVA incluido)
   const iva5 = Math.round(subtotalServicios5 / 21);
   const iva10 = Math.round(subtotalServicios10 / 11);
@@ -595,6 +866,11 @@ export function calcularLiquidacionPresupuesto(
     subtotalServicios5,
     subtotalServicios10,
     totalVentaServicios,
+    subtotalHonorariosBruto,
+    descuentoAplicado,
+    honorariosNetos,
+    subtotalGastosMaterialesServicios,
+    subtotalGastosMaterialesTasas,
     iva5,
     iva10,
     totalIvaLiquidado,

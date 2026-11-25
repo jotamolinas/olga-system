@@ -664,7 +664,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
 
   const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || 'basico').toLowerCase().trim();
   const esAbogado = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').toLowerCase() === 'abogado';
-  const canUseExpedientes = esAbogado || isActualAdminUser || role === 'admin';
+  const canUseExpedientes = esAbogado;
   // El skin dorado y efecto Glassmorphism es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
   const esPlanPro = planActual.includes('pro');
@@ -841,11 +841,11 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       (activeTab === 'whatsapp' && !canUseWhatsApp) ||
       (activeTab === 'lienzo' && (!canUseLienzo || esAbogado)) ||
       (activeTab === 'facturacion' && !canUsePresupuesto) ||
-      (activeTab === 'expedientes' && !canUseExpedientes)
+      (activeTab === 'expedientes' && !esAbogado)
     ) {
       setActiveTab('tablero');
     }
-  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, canUseExpedientes, isCheckingProfile, currentUser]);
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -971,9 +971,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     if (!tabParam && !expIdParam && !docIdParam) return;
     deepLinkHandledRef.current = true;
 
-    if (expIdParam && canUseExpedientes) {
-      setSelectedExpedienteIdForNav(expIdParam);
-      setActiveTab('expedientes');
+    if (expIdParam) {
+      if (esAbogado) {
+        setSelectedExpedienteIdForNav(expIdParam);
+        setActiveTab('expedientes');
+      } else {
+        setActiveTab('tablero');
+      }
       try {
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch {}
@@ -1016,8 +1020,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       return;
     }
 
-    if (tabParam === 'expedientes' && canUseExpedientes) {
-      setActiveTab('expedientes');
+    if (tabParam === 'expedientes') {
+      setActiveTab(esAbogado ? 'expedientes' : 'tablero');
       try {
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch {}
@@ -1027,7 +1031,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch {}
     }
-  }, [isCheckingProfile, currentUser, userProfile, canUseExpedientes, esAbogado, workspaceId]);
+  }, [isCheckingProfile, currentUser, userProfile, esAbogado, workspaceId]);
 
   // Chat/Olga IA state
   const [chatMessages, setChatMessages] = useState<any[]>([
@@ -1428,7 +1432,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     const wsId = String(workspaceId || uid).trim();
     setExpedientes([]);
 
-    if ((!uid && !wsId) || !canUseExpedientes) {
+    if ((!uid && !wsId) || !esAbogado) {
+      setExpedientes([]);
       return;
     }
 
@@ -1531,7 +1536,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         } catch {}
       });
     };
-  }, [workspaceId, currentUser?.uid, canUseExpedientes]);
+  }, [workspaceId, currentUser?.uid, esAbogado]);
 
   // FASE 2: Sincronización de Personas por Workspace en directorio_personas (Retrocompatible Multi-Usuario)
   useEffect(() => {
@@ -2368,7 +2373,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               workspaceId={currentWorkspaceId || workspaceId || currentUser?.uid || ''}
               esAbogado={esAbogado}
               pagares={pagares}
-              expedientes={canUseExpedientes ? expedientes : []}
+              expedientes={esAbogado ? expedientes : []}
               onSelectPagare={(id) => {
                 const found = pagares.find(p => p.id === id);
                 if (found) {
@@ -2377,6 +2382,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 setActiveTab('pagares');
               }}
               onSelectExpediente={(expedienteId) => {
+                if (!esAbogado) return;
                 if (expedienteId) setSelectedExpedienteIdForNav(expedienteId);
                 setActiveTab('expedientes');
               }}
@@ -2531,6 +2537,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 config={config}
                 onSelectPagareForPreview={handleAbrirPagarePreview}
                 onSelectExpediente={(expedienteId) => {
+                  if (!esAbogado) return;
                   if (expedienteId) setSelectedExpedienteIdForNav(expedienteId);
                   setActiveTab('expedientes');
                 }}
@@ -2549,7 +2556,13 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                 isSoftBlocked={isSoftBlocked}
                 esPlanFull={esPlanFull}
                 canUseWhatsApp={canUseWhatsApp}
-                onNavigateTab={(tab) => setActiveTab(tab)}
+                onNavigateTab={(tab) => {
+                  if (tab === 'expedientes' && !esAbogado) {
+                    setActiveTab('tablero');
+                    return;
+                  }
+                  setActiveTab(tab);
+                }}
               />
             )}
 
@@ -2636,7 +2649,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               />
             )}
 
-            {activeTab === 'expedientes' && canUseExpedientes && (
+            {activeTab === 'expedientes' && esAbogado && (
               <ExpedientesTab
                 expedientes={expedientes}
                 personas={personas}

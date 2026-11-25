@@ -273,7 +273,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems: NavItem[] = [
     { id: 'tablero', label: 'Dashboard', icon: Activity },
-    ...(esAbogado || isSuperAdmin ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
+    ...(esAbogado ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
     { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
     { id: 'personas', label: esAbogado ? 'Clientes / Partes' : 'Fichero Personas', icon: Users },
     { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
