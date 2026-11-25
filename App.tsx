@@ -2894,67 +2894,42 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
 
               return (
                 /* Conversational assistance with O.L.G.A. IA */
-                <div className="p-4 md:p-8 md:rounded-[2.5rem] flex-grow md:h-[78vh] flex flex-col space-y-4 md:space-y-6 animate-message bg-slate-900 border border-slate-800 shadow-xl text-white" id="chat-assistant-container">
-                  <div className="pb-4 shrink-0 border-b border-slate-800">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
-                          {tieneOraculoChat ? <Sparkles className="w-6 h-6 text-amber-400" /> : <MessageSquare className="w-6 h-6 text-slate-300" />}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h2 className="text-white font-serif font-bold text-2xl tracking-tight">
-                              {tieneOraculoChat ? 'El Oráculo de O.L.G.A.' : 'Asistente IA - O.L.G.A.'}
-                            </h2>
-                            <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow-xs ${
-                              esPlanFullSkin 
-                                ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950' 
-                                : tieneOraculoChat
-                                  ? 'bg-slate-800 text-amber-400 border border-slate-700'
-                                  : 'bg-red-600 text-white'
-                            }`}>
-                              {tieneOraculoChat ? 'EL ORÁCULO' : 'ASISTENTE IA'}
-                            </span>
-                          </div>
-                          <p className="text-xs mt-1 text-slate-400">
-                            {tieneOraculoChat 
-                              ? 'Supervisión, auditoría y análisis documental avanzado con El Oráculo.' 
-                              : 'Consultas sobre legislación, pagarés, personas, redacción de escritos y cálculos notariales.'}
-                          </p>
-                        </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-4 md:p-5 flex-grow md:h-[78vh] flex flex-col space-y-4 animate-message" id="chat-assistant-container">
+                  <div className="border-b border-slate-200 pb-4 shrink-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+                        {tieneOraculoChat ? <Sparkles className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
                       </div>
+                      <div className="min-w-0">
+                        <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+                          {tieneOraculoChat ? 'El Oráculo' : 'Asistente IA'}
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {tieneOraculoChat
+                            ? 'Supervisión, auditoría y análisis documental avanzado.'
+                            : 'Consultas sobre legislación, pagarés, personas, redacción de escritos y cálculos.'}
+                        </p>
+                      </div>
+                    </div>
 
-                      {/* Estado de acceso / Plan badge */}
-                      <div className="shrink-0 flex items-center gap-2">
-                        {isSoftBlocked ? (
-                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm bg-red-500/10 text-red-400 border-red-500/30">
-                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                            {tieneOraculoChat ? 'El Oráculo Bloqueado' : 'Asistente IA Bloqueado'}
-                          </div>
-                        ) : tienePlanPago ? (
-                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
-                            esPlanFullSkin 
-                              ? 'bg-amber-50 text-amber-800 border-amber-200' 
-                              : 'bg-slate-800 text-slate-300 border-slate-700'
-                          }`}>
-                            <div className={`w-2 h-2 rounded-full ${esPlanFullSkin ? 'bg-amber-500' : tieneOraculoChat ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
-                            {tieneOraculoChat ? 'El Oráculo Habilitado' : 'Asistente IA Habilitado'}
-                          </div>
-                        ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
-                          <div className={`mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
-                            esPlanFull 
-                              ? 'bg-amber-50 text-amber-700 border-amber-200' 
-                              : 'bg-slate-800 text-slate-300 border-slate-700'
-                          }`}>
-                            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                            Prueba Gratuita: {userData?.usoIA || 0}/{userData?.limiteIA || 20} consultas usadas - Vence en {
-                              userData?.fechaVencimientoDemo ? 
-                              Math.max(0, Math.ceil(((userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
-                              : Math.max(0, diasRestantes)
-                            } días
-                          </div>
-                        ) : null}
-                      </div>
+                    <div className="shrink-0 flex items-center gap-2">
+                      {isSoftBlocked ? (
+                        <span className="text-xs font-medium text-red-600 whitespace-nowrap">
+                          {tieneOraculoChat ? 'El Oráculo bloqueado' : 'Asistente IA bloqueado'}
+                        </span>
+                      ) : tienePlanPago ? (
+                        <span className="text-xs font-medium text-slate-500 whitespace-nowrap">
+                          {tieneOraculoChat ? 'El Oráculo habilitado' : 'Asistente IA habilitado'}
+                        </span>
+                      ) : (userData?.plan === 'Demo' || (!userData?.plan && pruebaActiva)) ? (
+                        <span className="text-xs font-medium text-slate-500 tabular-nums whitespace-nowrap">
+                          Prueba Gratuita: {userData?.usoIA || 0}/{userData?.limiteIA || 20} consultas · Vence en {
+                            userData?.fechaVencimientoDemo ?
+                            Math.max(0, Math.ceil(((userData.fechaVencimientoDemo.toDate ? userData.fechaVencimientoDemo.toDate() : new Date(userData.fechaVencimientoDemo)).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+                            : Math.max(0, diasRestantes)
+                          } días
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 

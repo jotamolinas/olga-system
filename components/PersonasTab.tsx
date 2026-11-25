@@ -832,29 +832,24 @@ export const PersonasTab: React.FC<PersonasTabProps> = ({
 
   return (
     <div className="space-y-5 md:space-y-6 w-full max-w-7xl mx-auto p-0 md:p-6 bg-transparent overflow-x-hidden">
-      {/* Encabezado del Módulo: Bloque Oscuro Azul Noche */}
-      <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 md:mb-6 transition-all bg-slate-900 text-white shadow-xl border border-slate-800 w-full min-w-0">
-        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 min-w-0">
-          <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
-            <Users className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
+      {/* Encabezado del Módulo */}
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 w-full min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <Users className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-serif font-bold text-xl md:text-2xl tracking-tight text-white break-words">
-                Directorio de Personas & Expedientes 360°
-              </h2>
-              <span className="font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-red-600 text-white shrink-0">
-                O.L.G.A.
-              </span>
-            </div>
-            <p className="text-xs md:text-sm mt-1 font-medium text-slate-400 break-words">
-              Fichero unificado con consulta de historial crediticio, resumen de obligaciones y notas notariales.
+            <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+              Directorio de Personas y Expedientes
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              Fichero unificado con historial crediticio, resumen de obligaciones y notas.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
-          <span className="px-3.5 py-1.5 rounded-full text-xs font-bold border bg-slate-800 text-slate-300 border-slate-700">
-            {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente Registrado' : 'Clientes Registrados'}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium text-slate-500 tabular-nums whitespace-nowrap shrink-0">
+            {listaPersonas.length} {listaPersonas.length === 1 ? 'Cliente registrado' : 'Clientes registrados'}
           </span>
         </div>
       </div>

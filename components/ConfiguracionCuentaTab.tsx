@@ -163,16 +163,19 @@ export const ConfiguracionCuentaTab: React.FC<ConfiguracionCuentaTabProps> = ({ 
 
 return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="bg-slate-900 p-6 md:p-8 flex items-center gap-4 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-        <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/10 shrink-0 relative z-10">
-          <ShieldCheck className="w-6 h-6 text-blue-400" />
-        </div>
-        <div className="relative z-10">
-          <h2 className="text-xl md:text-2xl font-black font-serif tracking-tight">Configuración de Cuenta</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Administra los datos de tu membrete, logo y facturación.
-          </p>
+      <div className="bg-white border-b border-slate-200 px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+              Configuración de Cuenta
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              Administra los datos de tu membrete, logo y facturación.
+            </p>
+          </div>
         </div>
       </div>
 

@@ -3159,31 +3159,25 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
       />
 
       {/* Cabecera principal */}
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-5 md:p-7 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative overflow-hidden">
-        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-800 text-amber-400 flex items-center justify-center border border-slate-700 shadow-xs shrink-0">
-            <Briefcase className="w-6 h-6" />
+      <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+            <Briefcase className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-white text-xl md:text-2xl font-black font-serif leading-tight">
-                Gestión de Expedientes y Plazos Procesales
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                CPC Paraguay + IA
-              </span>
-            </div>
-            <p className="text-slate-400 text-xs md:text-sm mt-1.5 max-w-2xl">
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
+              Gestión de Expedientes y Plazos Procesales
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {esAbogado
-                ? 'Control de causas judiciales, análisis con IA de documentos, PDFs o fotos (demandas, cédulas, providencias, autos, oficios y escritos), vencimientos e impulsos procesales para '
+                ? 'Control de causas judiciales, análisis con IA de documentos, PDFs o fotos, vencimientos e impulsos procesales para '
                 : 'Control de causas judiciales, análisis de demandas/cédulas PDF, vencimientos e impulsos procesales para '}
-              <span className="text-slate-200 font-semibold">{estudioNombre}</span>.
+              <span className="text-slate-700 dark:text-slate-200 font-medium">{estudioNombre}</span>.
             </p>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
             disabled={isSoftBlocked}
@@ -3191,9 +3185,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
               openCreateModal();
               window.setTimeout(() => modalPdfInputRef.current?.click(), 120);
             }}
-            className="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className="h-9 px-3.5 text-xs font-medium rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
           >
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-3.5 h-3.5 text-slate-600" />
             <span>{esAbogado ? 'Analizar Documento / PDF / Foto' : 'Analizar Demanda PDF'}</span>
           </button>
 
@@ -3201,9 +3195,9 @@ export const ExpedientesTab: React.FC<ExpedientesTabProps> = ({
             type="button"
             disabled={isSoftBlocked}
             onClick={openCreateModal}
-            className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className="h-9 px-3.5 text-xs font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Nuevo Expediente</span>
           </button>
         </div>

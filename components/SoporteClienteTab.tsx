@@ -64,28 +64,27 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
   };
 
   return (
-    <div className="rounded-3xl p-6 md:p-8 animate-fade-in w-full box-border max-w-3xl mx-auto mt-8 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
-      <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-800">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
-          <LifeBuoy className="w-7 h-7 text-slate-300" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold font-serif text-white">
+    <div className="w-full box-border max-w-3xl mx-auto mt-6 space-y-5 animate-fade-in">
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <LifeBuoy className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
               Buzón de Consultas
             </h2>
-            <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
-              O.L.G.A.
-            </span>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Comunícate directamente con el administrador para resolver dudas, reportar problemas o solicitar asistencia técnica.
+            </p>
           </div>
-          <p className="text-sm mt-1 text-slate-400">
-            Comunícate directamente con el administrador para resolver dudas, reportar problemas o solicitar asistencia técnica.
-          </p>
         </div>
       </div>
 
+      <div className="bg-white border border-slate-200 rounded-xl p-6 w-full box-border">
+
       {isSuccess ? (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-8 text-center animate-fade-in">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 text-center animate-fade-in">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-emerald-800 mb-2">¡Consulta enviada!</h3>
           <p className="text-emerald-600 text-sm">
@@ -93,7 +92,7 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
           </p>
           <button 
             onClick={() => setIsSuccess(false)}
-            className="mt-6 px-6 py-2.5 bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-emerald-200 transition-colors cursor-pointer"
+            className="mt-6 h-9 px-4 bg-emerald-100 text-emerald-800 text-xs font-medium rounded-lg hover:bg-emerald-200 transition-colors cursor-pointer"
           >
             Enviar otra consulta
           </button>
@@ -101,14 +100,14 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-bold">
+            <div className="p-3.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-xs font-medium">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-300">
-              Asunto / Motivo de la Consulta
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-2 text-slate-600">
+              Asunto / Motivo de la consulta
             </label>
             <input 
               type="text"
@@ -116,13 +115,13 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
               onChange={(e) => setAsunto(e.target.value)}
               placeholder="Ej: Consulta sobre timbrado, duda legal sobre pagaré, etc."
               required
-              className="w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors focus:outline-none bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500"
+              className="w-full box-border px-3.5 py-2.5 rounded-lg text-sm text-slate-800 bg-white border border-slate-200 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-300">
-              Mensaje Detallado
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-2 text-slate-600">
+              Mensaje detallado
             </label>
             <textarea
               rows={5}
@@ -130,7 +129,7 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
               onChange={(e) => setMensaje(e.target.value)}
               placeholder="Describe detalladamente tu situación o requerimiento..."
               required
-              className="w-full box-border px-4 py-3 rounded-xl text-sm font-semibold transition-colors resize-none focus:outline-none bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:border-slate-500"
+              className="w-full box-border px-3.5 py-2.5 rounded-lg text-sm text-slate-800 bg-white border border-slate-200 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none transition-colors resize-none"
             />
           </div>
 
@@ -138,27 +137,24 @@ export const SoporteClienteTab: React.FC<SoporteClienteTabProps> = ({ currentUse
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full sm:w-auto px-8 py-3.5 font-semibold text-sm uppercase tracking-wider rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
-                esPlanFull
-                  ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)] border border-amber-400/30'
-                  : 'bg-red-600 hover:bg-red-700 text-white shadow-md'
-              }`}
+              className="w-full sm:w-auto bg-slate-900 text-white hover:bg-slate-800 h-10 px-5 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                   Enviando...
                 </>
               ) : (
                 <>
-                  <Send className="w-5 h-5 text-white" />
-                  Enviar Consulta
+                  <Send className="w-4 h-4 text-white" />
+                  Enviar consulta
                 </>
               )}
             </button>
           </div>
         </form>
       )}
+      </div>
     </div>
   );
 };

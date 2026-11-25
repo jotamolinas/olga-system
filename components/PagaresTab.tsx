@@ -1788,32 +1788,25 @@ export const PagaresTab: React.FC<PagaresTabProps> = ({
   return (
     <div className="space-y-4 md:space-y-8 animate-message dark:bg-[#0B0F17]" id="pagares-tab-panel">
       {/* Cabecera Principal Unificada */}
-      <div className="bg-slate-900 text-white shadow-xl border border-slate-800 rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden transition-all">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border bg-white/10 text-[#FF3131] border-white/10">
-              <Banknote className="w-5 h-5 text-[#FF3131]" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight flex items-center gap-2 font-serif text-white">
-                <span>Gestión de Pagarés</span>
-                <span className="px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-lg bg-[#FF3131] text-white">
-                  O.L.G.A.
-                </span>
-              </h2>
-              <p className="text-xs mt-0.5 font-medium text-slate-400">
-                Panel principal para la gestión, redacción y control de pagarés oficiales para la {config.escribania.nombre}.
-              </p>
-            </div>
+      <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+            <Banknote className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
+              Gestión de Pagarés
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              Panel principal para la gestión, redacción y control de pagarés oficiales para la {config.escribania.nombre}.
+            </p>
           </div>
         </div>
 
-        {/* Resumen de Estado y Acceso Directo */}
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto relative z-10">
-          <div className="px-3 py-2 rounded-2xl text-[11px] font-bold flex items-center gap-2 border bg-slate-800/80 border-slate-700/60 text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-[#FF3131]"></span>
-            <span>{pagares.length} Pagarés Registrados</span>
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap shrink-0">
+            {pagares.length} Pagarés Registrados
+          </span>
         </div>
       </div>
 

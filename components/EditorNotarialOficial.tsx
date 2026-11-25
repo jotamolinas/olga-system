@@ -1,23 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  RotateCcw,Printer, 
-  Eye, 
-  EyeOff, 
-  ShieldCheck, 
+  RotateCcw,
+  Printer,
+  Eye,
+  EyeOff,
   Stamp,
   Sliders,
-  Sparkles,
   Type,
   MoveVertical,
   MoveHorizontal,
   Save,
-  Check
+  Check,
+  Bold,
+  Italic,
+  Underline,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify
 } from 'lucide-react';
 export type TipoDocumentoNotarial = 
   | 'Concuerda' 
   | 'Certificación de Firmas' 
   | 'Legalización' 
   | 'Sellado Notarial - Protocolo';
+
+export type NotarialTextAlign = 'left' | 'center' | 'right' | 'justify';
 
 export interface ConfiguracionHojaNotarial {
   offsetX: number;
@@ -26,7 +34,44 @@ export interface ConfiguracionHojaNotarial {
   fontFamilyGlobal: string;
   interlineadoGlobal: number;
   margenHorizontal: number;
+  textBold?: boolean;
+  textItalic?: boolean;
+  textUnderline?: boolean;
+  textAlign?: NotarialTextAlign;
 }
+
+export const NOTARIAL_FONT_OPTIONS = [
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Calibri', value: 'Calibri, "Segoe UI", Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+] as const;
+
+export const NOTARIAL_FONT_SIZES = ['10pt', '11pt', '12pt', '13pt', '14pt', '16pt', '18pt'] as const;
+
+const normalizarFontFamily = (raw?: string): string => {
+  if (!raw) return 'Arial, Helvetica, sans-serif';
+  if (raw === 'Georgia, serif') return 'Georgia, "Times New Roman", serif';
+  const match = NOTARIAL_FONT_OPTIONS.find((opt) => opt.value === raw || opt.label === raw);
+  return match ? match.value : 'Arial, Helvetica, sans-serif';
+};
+
+const normalizarFontSize = (raw?: string): string => {
+  if (!raw) return '12pt';
+  if ((NOTARIAL_FONT_SIZES as readonly string[]).includes(raw)) return raw;
+  const legacyPxMap: Record<string, string> = {
+    '12px': '10pt',
+    '13px': '10pt',
+    '14px': '11pt',
+    '15px': '11pt',
+    '16px': '12pt',
+    '18px': '14pt',
+    '20px': '16pt',
+  };
+  return legacyPxMap[raw] || '12pt';
+};
 
 export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
   offsetX: 0,
@@ -35,6 +80,10 @@ export const CONFIG_POR_DEFECTO: ConfiguracionHojaNotarial = {
   fontFamilyGlobal: 'Arial, Helvetica, sans-serif',
   interlineadoGlobal: 8.47,
   margenHorizontal: 0,
+  textBold: false,
+  textItalic: false,
+  textUnderline: false,
+  textAlign: 'justify',
 };
 
 export const getConfigKey = (tipo: TipoDocumentoNotarial): string => {
@@ -57,13 +106,24 @@ export const cargarConfiguracionHoja = (tipo: TipoDocumentoNotarial): Configurac
     const raw = localStorage.getItem(getConfigKey(tipo));
     if (raw) {
       const parsed = JSON.parse(raw);
+      const parsedAlign: NotarialTextAlign =
+        parsed.textAlign === 'left' ||
+        parsed.textAlign === 'center' ||
+        parsed.textAlign === 'right' ||
+        parsed.textAlign === 'justify'
+          ? parsed.textAlign
+          : 'justify';
       return {
         offsetX: typeof parsed.offsetX === 'number' ? parsed.offsetX : 0,
         offsetY: typeof parsed.offsetY === 'number' ? parsed.offsetY : 0,
-        fontSizeGlobal: parsed.fontSizeGlobal || '12pt',
-        fontFamilyGlobal: parsed.fontFamilyGlobal || 'Arial, Helvetica, sans-serif',
+        fontSizeGlobal: normalizarFontSize(parsed.fontSizeGlobal),
+        fontFamilyGlobal: normalizarFontFamily(parsed.fontFamilyGlobal),
         interlineadoGlobal: typeof parsed.interlineadoGlobal === 'number' ? parsed.interlineadoGlobal : 8.47,
         margenHorizontal: typeof parsed.margenHorizontal === 'number' ? parsed.margenHorizontal : 0,
+        textBold: typeof parsed.textBold === 'boolean' ? parsed.textBold : false,
+        textItalic: typeof parsed.textItalic === 'boolean' ? parsed.textItalic : false,
+        textUnderline: typeof parsed.textUnderline === 'boolean' ? parsed.textUnderline : false,
+        textAlign: parsedAlign,
       };
     }
     // Retrocompatibilidad con offsets previos si existen
@@ -109,6 +169,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
   const [fontFamilyGlobal, setFontFamilyGlobal] = useState<string>(initialConfig.fontFamilyGlobal);
   const [interlineadoGlobal, setInterlineadoGlobal] = useState<number>(initialConfig.interlineadoGlobal);
   const [margenHorizontal, setMargenHorizontal] = useState<number>(initialConfig.margenHorizontal);
+  const [textBold, setTextBold] = useState<boolean>(Boolean(initialConfig.textBold));
+  const [textItalic, setTextItalic] = useState<boolean>(Boolean(initialConfig.textItalic));
+  const [textUnderline, setTextUnderline] = useState<boolean>(Boolean(initialConfig.textUnderline));
+  const [textAlign, setTextAlign] = useState<NotarialTextAlign>(initialConfig.textAlign || 'justify');
   const [guardadoFeedback, setGuardadoFeedback] = useState<boolean>(false);
 
   // Función para guardar en localStorage de forma aislada e independiente según el tipo de hoja
@@ -123,6 +187,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       fontFamilyGlobal: valoresSobrescritos?.fontFamilyGlobal !== undefined ? valoresSobrescritos.fontFamilyGlobal : fontFamilyGlobal,
       interlineadoGlobal: valoresSobrescritos?.interlineadoGlobal !== undefined ? valoresSobrescritos.interlineadoGlobal : interlineadoGlobal,
       margenHorizontal: valoresSobrescritos?.margenHorizontal !== undefined ? valoresSobrescritos.margenHorizontal : margenHorizontal,
+      textBold: valoresSobrescritos?.textBold !== undefined ? valoresSobrescritos.textBold : textBold,
+      textItalic: valoresSobrescritos?.textItalic !== undefined ? valoresSobrescritos.textItalic : textItalic,
+      textUnderline: valoresSobrescritos?.textUnderline !== undefined ? valoresSobrescritos.textUnderline : textUnderline,
+      textAlign: valoresSobrescritos?.textAlign !== undefined ? valoresSobrescritos.textAlign : textAlign,
     };
     try {
       localStorage.setItem(getConfigKey(tipoDestino), JSON.stringify(configToSave));
@@ -149,6 +217,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
     setFontFamilyGlobal(configEntrante.fontFamilyGlobal);
     setInterlineadoGlobal(configEntrante.interlineadoGlobal);
     setMargenHorizontal(configEntrante.margenHorizontal);
+    setTextBold(Boolean(configEntrante.textBold));
+    setTextItalic(Boolean(configEntrante.textItalic));
+    setTextUnderline(Boolean(configEntrante.textUnderline));
+    setTextAlign(configEntrante.textAlign || 'justify');
 
     // 3. Cambiar el tipo de documento activo
     setTipoDocumento(nuevoTipo);
@@ -650,6 +722,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       line-height: ${interlineadoGlobal}mm !important;
       font-size: ${fontSizeGlobal} !important;
       font-family: ${fontFamilyGlobal} !important;
+      font-weight: ${textBold ? 'bold' : 'normal'} !important;
+      font-style: ${textItalic ? 'italic' : 'normal'} !important;
+      text-decoration: ${textUnderline ? 'underline' : 'none'} !important;
+      text-align: ${textAlign} !important;
       margin: 0mm !important;
       padding: 0mm !important;
       display: block !important;
@@ -668,6 +744,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       line-height: ${interlineadoGlobal}mm !important;
       font-size: ${fontSizeGlobal} !important;
       font-family: ${fontFamilyGlobal} !important;
+      font-weight: ${textBold ? 'bold' : 'normal'} !important;
+      font-style: ${textItalic ? 'italic' : 'normal'} !important;
+      text-decoration: ${textUnderline ? 'underline' : 'none'} !important;
+      text-align: ${textAlign} !important;
       margin: 0mm !important;
       padding: 0mm !important;
       display: block !important;
@@ -827,13 +907,16 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       font-family: "Times New Roman", Times, serif !important;
     }
 
-    /* TIPOGRAFÍA NOTARIAL DE ALTA PRECISIÓN (8.47mm de interlineado) */
+    /* TIPOGRAFÍA NOTARIAL DE ALTA PRECISIÓN */
     .print\\:block, [class*="print:block"] {
-      font-family: "Times New Roman", Times, serif !important;
-      font-size: 12pt !important;
-      line-height: 8.47mm !important;
-      text-align: justify !important;
-      text-justify: inter-word !important;
+      font-family: ${fontFamilyGlobal} !important;
+      font-size: ${fontSizeGlobal} !important;
+      line-height: ${interlineadoGlobal}mm !important;
+      font-weight: ${textBold ? 'bold' : 'normal'} !important;
+      font-style: ${textItalic ? 'italic' : 'normal'} !important;
+      text-decoration: ${textUnderline ? 'underline' : 'none'} !important;
+      text-align: ${textAlign} !important;
+      text-justify: ${textAlign === 'justify' ? 'inter-word' : 'auto'} !important;
       white-space: pre-wrap !important;
       color: #000000 !important;
       display: block !important;
@@ -1323,55 +1406,45 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
       `}</style>
 
       {/* Cabecera Principal */}
-      <header className="bg-slate-900 border border-slate-800 shadow-2xl rounded-3xl p-6 m-4 md:m-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5 relative overflow-hidden print:hidden">
-        <div className="relative z-10 flex items-center gap-3">
+      <header className="bg-white border border-slate-200 rounded-xl px-5 py-4 m-4 md:m-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 print:hidden">
+        <div className="flex items-center gap-3 min-w-0">
           {onVolver && (
             <button
               onClick={onVolver}
               type="button"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border shadow-xs cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+              className="h-9 px-3.5 text-xs font-medium rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               ← Volver
             </button>
           )}
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 text-slate-300 border border-slate-700/80">
-            <Stamp className="w-6 h-6" />
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <Stamp className="w-5 h-5" />
           </div>
-          <div>
-            <h1 className="text-white font-serif font-bold text-2xl tracking-tight flex items-center gap-2">
-              <span>Sección Notarial</span>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full shadow-xs bg-red-600 text-white font-bold">
-                O.L.G.A.
-              </span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+              Sección Notarial
             </h1>
-            <p className="text-slate-400 text-sm mt-1 font-medium">
-              Plantillas oficiales de la Corte Suprema de Justicia generadas puramente en HTML/CSS milimétrico.
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              Plantillas oficiales de la Corte Suprema de Justicia generadas en formato milimétrico.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto relative z-10">
-          {/* Selector de Tipo de Documento */}
-          <div className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border ${
-            esPlanFull 
-              ? 'bg-amber-50/80 border-amber-300/60 text-amber-900' 
-              : 'bg-slate-800 border-slate-700 text-slate-200'
-          }`}>
-            <label htmlFor="tipo-doc-select" className={`text-xs font-bold ${esPlanFull ? 'text-amber-900' : 'text-slate-300'}`}>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 h-9 px-3 rounded-lg bg-white border border-slate-200">
+            <label htmlFor="tipo-doc-select" className="text-xs font-medium text-slate-500 whitespace-nowrap">
               Plantilla:
             </label>
             <select
               id="tipo-doc-select"
               value={tipoDocumento}
               onChange={(e) => handleCambiarTipoDocumento(e.target.value as TipoDocumentoNotarial)}
-              className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${
-                esPlanFull ? 'text-slate-900' : 'text-white'
-              }`}
+              className="bg-transparent text-xs font-medium text-slate-900 focus:outline-none cursor-pointer"
             >
-              <option value="Sellado Notarial - Protocolo">0. Sellado Notarial - Protocolo</option>
-              <option value="Certificación de Firmas">1. Certificación de Firmas</option>
-              <option value="Concuerda">2. Concuerda (Hoja de Seguridad)</option>
-              <option value="Legalización">3. Legalización Notarial</option>
+              <option value="Sellado Notarial - Protocolo">Sellado Notarial - Protocolo</option>
+              <option value="Certificación de Firmas">Certificación de Firmas</option>
+              <option value="Concuerda">Hoja de Seguridad</option>
+              <option value="Legalización">Legalización Notarial</option>
             </select>
           </div>
         </div>
@@ -1379,277 +1452,366 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
 
       {/* Contenedor del Lienzo Digital (Oficio / Legal: 215.9mm x 355.6mm) */}
       <div id="envoltorio-lienzo-notarial" className="flex-1 flex flex-col items-center justify-start p-4 md:p-8 overflow-auto bg-slate-100 print:p-0 print:m-0 print:block print:bg-white">
-        {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Espaciado, Guía, Guardar e Imprimir) */}
-        <div className="barra-controles-notarial mb-4 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 md:px-5 md:py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200 shadow-xl print:hidden w-full max-w-7xl">
-          {/* Bloque Izquierdo: Calibración, Tipografía y Espaciados */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Calibrador de Impresora (Offset X / Y) */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/70">
-              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1" title="Calibrador milimétrico de impresora">
-                <Sliders className="w-3.5 h-3.5" />
-                Offset:
-              </span>
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400">X:</span>
-                <button 
-                  type="button"
-                  onClick={() => setOffsetX(offsetX - 1)} 
-                  title="Restar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
-                >
-                  -
-                </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetX}mm</span>
-                <button 
-                  type="button"
-                  onClick={() => setOffsetX(offsetX + 1)} 
-                  title="Sumar 1mm horizontal"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
-                >
-                  +
-                </button>
+        {/* Barra Unificada de Control Notarial (Calibración, Tipografía, Formato, Espaciado, Guía, Guardar e Imprimir) */}
+        <div className="barra-controles-notarial mb-4 bg-white border border-slate-200 rounded-xl p-4 space-y-3 print:hidden w-full max-w-7xl">
+          {/* Fila 1: Calibración milimétrica + Acciones */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Calibrador de Impresora (Offset X / Y) */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 text-slate-800">
+                <span className="text-xs font-medium text-slate-600 flex items-center gap-1" title="Calibrador milimétrico de impresora">
+                  <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                  Offset:
+                </span>
+                <div className="flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                  <span className="text-[11px] text-slate-500">X:</span>
+                  <button
+                    type="button"
+                    onClick={() => setOffsetX(offsetX - 1)}
+                    title="Restar 1mm horizontal"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span className="w-8 text-center font-mono text-[11px] font-semibold text-slate-800 tabular-nums">{offsetX}mm</span>
+                  <button
+                    type="button"
+                    onClick={() => setOffsetX(offsetX + 1)}
+                    title="Sumar 1mm horizontal"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                  <span className="text-[11px] text-slate-500">Y:</span>
+                  <button
+                    type="button"
+                    onClick={() => setOffsetY(offsetY - 1)}
+                    title="Restar 1mm vertical"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span className="w-8 text-center font-mono text-[11px] font-semibold text-slate-800 tabular-nums">{offsetY}mm</span>
+                  <button
+                    type="button"
+                    onClick={() => setOffsetY(offsetY + 1)}
+                    title="Sumar 1mm vertical"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700">
-                <span className="text-[10px] text-slate-400">Y:</span>
-                <button 
-                  type="button"
-                  onClick={() => setOffsetY(offsetY - 1)} 
-                  title="Restar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
-                >
-                  -
-                </button>
-                <span className="w-7 text-center font-mono text-[11px] text-amber-300 font-bold">{offsetY}mm</span>
-                <button 
-                  type="button"
-                  onClick={() => setOffsetY(offsetY + 1)} 
-                  title="Sumar 1mm vertical"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white"
-                >
-                  +
-                </button>
+
+              {/* Espaciado vertical (Interlineado) */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 text-slate-800">
+                <span className="text-xs font-medium text-slate-600 flex items-center gap-1" title="Espaciado vertical / Interlineado">
+                  <MoveVertical className="w-3.5 h-3.5 text-slate-500" />
+                  Líneas:
+                </span>
+                <div className="flex items-center gap-0.5 bg-white px-1 py-0.5 rounded border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setInterlineadoGlobal((prev) => Math.max(8.0, Number((prev - 0.2).toFixed(1))))}
+                    title="Reducir interlineado (-0.2mm)"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span className="w-12 text-center font-mono text-[11px] font-semibold text-slate-800 tabular-nums">
+                    {interlineadoGlobal.toFixed(1)}mm
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setInterlineadoGlobal((prev) => Math.min(16.0, Number((prev + 0.2).toFixed(1))))}
+                    title="Aumentar interlineado (+0.2mm)"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Margen horizontal (Indentación In/Out) */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 text-slate-800">
+                <span className="text-xs font-medium text-slate-600 flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
+                  <MoveHorizontal className="w-3.5 h-3.5 text-slate-500" />
+                  Margen H:
+                </span>
+                <div className="flex items-center gap-0.5 bg-white px-1 py-0.5 rounded border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setMargenHorizontal((prev) => Math.max(-25, prev - 1))}
+                    title="Desplazar a la izquierda (-1mm)"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    ◄
+                  </button>
+                  <span className="w-11 text-center font-mono text-[11px] font-semibold text-slate-800 tabular-nums">
+                    {margenHorizontal > 0 ? `+${margenHorizontal}` : margenHorizontal}mm
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setMargenHorizontal((prev) => Math.min(25, prev + 1))}
+                    title="Desplazar a la derecha (+1mm)"
+                    className="px-1.5 py-0.5 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+                  >
+                    ►
+                  </button>
+                </div>
+                {margenHorizontal !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMargenHorizontal(0)}
+                    title="Restablecer margen a 0mm"
+                    className="text-[11px] font-medium text-slate-500 hover:text-slate-900 underline ml-0.5 cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Separador */}
-            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
-
-            {/* Tipografía (Fuente, Tamaño, A-/A+) */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                <Type className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Fuente</span>
-              </span>
-              <select
-                value={fontFamilyGlobal}
-                onChange={(e) => setFontFamilyGlobal(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-400 cursor-pointer"
+            {/* Bloque Derecho: Acciones (Guía, Limpiar, Guardar e Imprimir) */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setMostrarGuia(!mostrarGuia)}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-medium rounded-lg transition-colors cursor-pointer"
               >
-                <option value="Arial, Helvetica, sans-serif">Arial</option>
-                <option value='"Times New Roman", Times, serif'>Times New Roman</option>
-                <option value='"Courier New", Courier, monospace'>Courier New</option>
-                <option value="Georgia, serif">Georgia</option>
-              </select>
+                {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-slate-600" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
+              </button>
 
+              <button
+                type="button"
+                onClick={handleLimpiarCampos}
+                title={`Limpiar todos los campos de "${tipoDocumento}"`}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+                <span>Limpiar Campos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGuardarConfiguracion}
+                title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
+                className={`flex items-center gap-1.5 h-9 px-3 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                  guardadoFeedback
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {guardadoFeedback ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>¡Guardado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Guardar Config.</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                id="btn-imprimir-hoja"
+                type="button"
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 bg-slate-900 text-white hover:bg-slate-800 h-9 px-4 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Imprimir Hoja</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Fila 2: Herramientas de Formato, Fuente y Tamaño (idénticas a Gestión de Escritos) */}
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+            <span className="text-xs font-medium text-slate-500 flex items-center gap-1 mr-1">
+              <Type className="w-3.5 h-3.5" />
+              <span>Formato:</span>
+            </span>
+
+            {/* Negrita, Cursiva, Subrayado */}
+            <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setTextBold((prev) => !prev)}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textBold
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Negrita"
+                aria-label="Negrita"
+              >
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextItalic((prev) => !prev)}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textItalic
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Cursiva"
+                aria-label="Cursiva"
+              >
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextUnderline((prev) => !prev)}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textUnderline
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Subrayado"
+                aria-label="Subrayado"
+              >
+                <Underline className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Selector de Fuente Completo */}
+            <select
+              value={fontFamilyGlobal}
+              onChange={(e) => setFontFamilyGlobal(e.target.value)}
+              className="h-9 bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+              title="Tipo de letra"
+              aria-label="Tipo de letra"
+            >
+              {NOTARIAL_FONT_OPTIONS.map((font) => (
+                <option key={font.label} value={font.value}>
+                  {font.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Control de Tamaño (A-, Select, A+) */}
+            <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden h-9">
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = NOTARIAL_FONT_SIZES.indexOf(fontSizeGlobal as (typeof NOTARIAL_FONT_SIZES)[number]);
+                  const nextIdx = idx > 0 ? idx - 1 : 0;
+                  setFontSizeGlobal(NOTARIAL_FONT_SIZES[nextIdx]);
+                }}
+                disabled={NOTARIAL_FONT_SIZES.indexOf(fontSizeGlobal as (typeof NOTARIAL_FONT_SIZES)[number]) <= 0}
+                title="Reducir tamaño (A-)"
+                className="h-full px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer border-r border-slate-200"
+              >
+                A-
+              </button>
               <select
                 value={fontSizeGlobal}
                 onChange={(e) => setFontSizeGlobal(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+                className="h-full bg-white px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer tabular-nums"
+                title="Tamaño de letra en puntos"
+                aria-label="Tamaño de letra"
               >
-                <option value="12px">12 px</option>
-                <option value="13px">13 px</option>
-                <option value="14px">14 px</option>
-                <option value="15px">15 px</option>
-                <option value="16px">16 px</option>
-                <option value="18px">18 px</option>
-                <option value="20px">20 px</option>
+                {NOTARIAL_FONT_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
               </select>
-
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
-                    const idx = sizes.indexOf(fontSizeGlobal);
-                    if (idx > 0) setFontSizeGlobal(sizes[idx - 1]);
-                  }}
-                  title="Reducir tamaño (A-)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  A-
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const sizes = ['12px', '13px', '14px', '15px', '16px', '18px', '20px'];
-                    const idx = sizes.indexOf(fontSizeGlobal);
-                    if (idx !== -1 && idx < sizes.length - 1) setFontSizeGlobal(sizes[idx + 1]);
-                  }}
-                  title="Aumentar tamaño (A+)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  A+
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = NOTARIAL_FONT_SIZES.indexOf(fontSizeGlobal as (typeof NOTARIAL_FONT_SIZES)[number]);
+                  const maxIdx = NOTARIAL_FONT_SIZES.length - 1;
+                  const nextIdx = idx >= 0 && idx < maxIdx ? idx + 1 : maxIdx;
+                  setFontSizeGlobal(NOTARIAL_FONT_SIZES[nextIdx]);
+                }}
+                disabled={NOTARIAL_FONT_SIZES.indexOf(fontSizeGlobal as (typeof NOTARIAL_FONT_SIZES)[number]) >= NOTARIAL_FONT_SIZES.length - 1}
+                title="Aumentar tamaño (A+)"
+                className="h-full px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer border-l border-slate-200"
+              >
+                A+
+              </button>
             </div>
 
-            {/* Separador */}
-            <div className="h-4 w-px bg-slate-700 hidden lg:block"></div>
-
-            {/* Espaciado vertical (Interlineado) */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Espaciado vertical / Interlineado">
-                <MoveVertical className="w-3.5 h-3.5 text-sky-400" />
-                Líneas:
-              </span>
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setInterlineadoGlobal((prev) => Math.max(8.0, Number((prev - 0.2).toFixed(1))))}
-                  title="Reducir interlineado (-0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  -
-                </button>
-                <span className="w-12 text-center font-mono text-[11px] text-sky-300 font-bold">
-                  {interlineadoGlobal.toFixed(1)}mm
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setInterlineadoGlobal((prev) => Math.min(16.0, Number((prev + 0.2).toFixed(1))))}
-                  title="Aumentar interlineado (+0.2mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            {/* Margen horizontal (Indentación In/Out) */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 font-bold text-[11px] flex items-center gap-1" title="Margen horizontal / Sangría In-Out">
-                <MoveHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                Margen H:
-              </span>
-              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setMargenHorizontal((prev) => Math.max(-25, prev - 1))}
-                  title="Desplazar a la izquierda (-1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  ◄
-                </button>
-                <span className="w-11 text-center font-mono text-[11px] text-emerald-300 font-bold">
-                  {margenHorizontal > 0 ? `+${margenHorizontal}` : margenHorizontal}mm
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setMargenHorizontal((prev) => Math.min(25, prev + 1))}
-                  title="Desplazar a la derecha (+1mm)"
-                  className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-300 font-bold hover:text-white transition-colors"
-                >
-                  ►
-                </button>
-              </div>
-              {margenHorizontal !== 0 && (
-                <button
-                  type="button"
-                  onClick={() => setMargenHorizontal(0)}
-                  title="Restablecer margen a 0mm"
-                  className="text-[10px] text-slate-400 hover:text-amber-400 underline ml-0.5"
-                >
-                  Reset
-                </button>
-              )}
+            {/* Alineaciones: Izquierda, Centro, Derecha, Justificado */}
+            <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setTextAlign('left')}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textAlign === 'left'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Alinear a la izquierda"
+                aria-label="Alinear a la izquierda"
+              >
+                <AlignLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('center')}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textAlign === 'center'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Centrar"
+                aria-label="Centrar"
+              >
+                <AlignCenter className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('right')}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textAlign === 'right'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Alinear a la derecha"
+                aria-label="Alinear a la derecha"
+              >
+                <AlignRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('justify')}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  textAlign === 'justify'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                }`}
+                title="Justificar"
+                aria-label="Justificar"
+              >
+                <AlignJustify className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
-          {/* Bloque Derecho: Acciones (Guía, Guardar e Imprimir) */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Botón Guía Visual */}
-            <button
-              type="button"
-              onClick={() => setMostrarGuia(!mostrarGuia)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                mostrarGuia 
-                  ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' 
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-              }`}
-            >
-              {mostrarGuia ? <Eye className="w-3.5 h-3.5 text-blue-400" /> : <EyeOff className="w-3.5 h-3.5" />}
-              <span>{mostrarGuia ? 'Guía Visible' : 'Guía Oculta'}</span>
-            </button>
-
-                        {/* Botón Limpiar Campos */}
-            <button
-              type="button"
-              onClick={handleLimpiarCampos}
-              title={`Limpiar todos los campos de "${tipoDocumento}"`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border border-slate-700 bg-slate-800 text-slate-300 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 shadow-sm active:scale-95"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Limpiar Campos</span>
-            </button>
-
-            {/* Botón Guardar Configuración */}
-            <button
-              type="button"
-              onClick={handleGuardarConfiguracion}
-              title={`Guardar tipografía, calibración y márgenes para "${tipoDocumento}"`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
-                guardadoFeedback
-                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/60 shadow-emerald-500/20'
-                  : esPlanFull
-                    ? 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-amber-500/40 hover:border-amber-400 hover:text-amber-300'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:text-white'
-              }`}
-            >
-              {guardadoFeedback ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>¡Guardado!</span>
-                </>
-              ) : (
-                <>
-                  <Save className={`w-3.5 h-3.5 ${esPlanFull ? 'text-amber-400' : 'text-slate-300'}`} />
-                  <span>Guardar Config.</span>
-                </>
-              )}
-            </button>
-
-            {/* Botón Imprimir Hoja */}
-            <button
-              id="btn-imprimir-hoja"
-              type="button"
-              onClick={handlePrint}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all duration-200 cursor-pointer active:scale-95 ${
-                esPlanFull
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_4px_15px_rgba(245,158,11,0.35)] hover:shadow-[0_6px_22px_rgba(245,158,11,0.55)]'
-                  : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-md'
-              }`}
-            >
-              <Printer className="w-4 h-4" />
-              <span>IMPRIMIR HOJA</span>
-            </button>
-          </div>
-
-          {/* PARTE INFERIOR DE LA BARRA DE TAREAS: REGISTROS PÚBLICOS Y AUTORRELLENO */}
-          <div className="w-full pt-2.5 mt-1 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-300 hover:text-white transition-colors">
-              <input 
-                type="checkbox" 
-                checked={rellenoGuiones} 
+          {/* Fila 3: Opciones auxiliares (Autorrelleno y Registros Públicos) */}
+          <div className="w-full pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700 hover:text-slate-900 transition-colors">
+              <input
+                type="checkbox"
+                checked={rellenoGuiones}
                 onChange={(e) => setRellenoGuiones(e.target.checked)}
-                className="w-4 h-4 accent-[#FF3131] rounded cursor-pointer"
+                className="w-4 h-4 accent-slate-900 rounded cursor-pointer"
               />
               <span>Autorrellenar líneas vacías con guiones (----)</span>
             </label>
 
             {tipoDocumento === 'Sellado Notarial - Protocolo' && (
               <div className="flex items-center gap-2">
-                <span className="text-amber-400 font-bold text-xs uppercase tracking-wide whitespace-nowrap">
-                  registros publicos :
+                <span className="text-slate-600 font-medium text-xs uppercase tracking-wide whitespace-nowrap">
+                  Registros Públicos:
                 </span>
                 <input
                   type="text"
@@ -1657,8 +1819,8 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                   onFocus={handleFocusRegistros}
                   onClick={handleFocusRegistros}
                   onChange={(e) => handleChangeRegistros(e.target.value)}
-                  placeholder=""
-                  className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-1.5 rounded-xl w-64 sm:w-80 md:w-96 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                  placeholder="Ej: PARA REGISTROS PÚBLICOS..."
+                  className="bg-white border border-slate-200 text-slate-800 placeholder:text-slate-400 text-xs px-3 h-9 rounded-lg w-64 sm:w-80 md:w-96 outline-none focus:border-slate-400 transition-colors"
                 />
               </div>
             )}
@@ -1682,6 +1844,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
             #lienzo-notarial textarea {
               font-family: ${fontFamilyGlobal} !important;
               font-size: ${fontSizeGlobal} !important;
+              font-weight: ${textBold ? 'bold' : 'normal'} !important;
+              font-style: ${textItalic ? 'italic' : 'normal'} !important;
+              text-decoration: ${textUnderline ? 'underline' : 'none'} !important;
+              text-align: ${textAlign} !important;
             }
             .input-impresion:not([class*="pos-"]) {
               font-family: ${fontFamilyGlobal};
@@ -1714,6 +1880,15 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
               .print\\:block {
                 font-family: ${fontFamilyGlobal} !important;
                 font-size: ${fontSizeGlobal} !important;
+              }
+
+              #notarial-cuerpo-texto,
+              .notarial-cuerpo-texto,
+              #lienzo-notarial .print\\:block {
+                font-weight: ${textBold ? 'bold' : 'normal'} !important;
+                font-style: ${textItalic ? 'italic' : 'normal'} !important;
+                text-decoration: ${textUnderline ? 'underline' : 'none'} !important;
+                text-align: ${textAlign} !important;
               }
 
               #lienzo-notarial textarea,
@@ -2775,7 +2950,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                         onChange={(e) => handleTextareaChange(index, e)}
                         onKeyDown={(e) => handleKeyDown(index, e)}
                         placeholder="Ingrese aquí su texto, o comience a escribir aquí..."
-                        className="absolute z-20 bg-transparent text-black font-bold text-justify outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
+                        className="absolute z-20 bg-transparent text-black outline-none border-none resize-none print:hidden selection:bg-red-100 overflow-hidden"
                         style={{
                           position: 'absolute',
                           top: '42.55mm',
@@ -2785,6 +2960,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                           lineHeight: `${interlineadoGlobal}mm`,
                           fontSize: fontSizeGlobal,
                           fontFamily: fontFamilyGlobal,
+                          fontWeight: textBold ? 'bold' : 'normal',
+                          fontStyle: textItalic ? 'italic' : 'normal',
+                          textDecoration: textUnderline ? 'underline' : 'none',
+                          textAlign,
                           margin: '0mm',
                           padding: '0mm',
                         }}
@@ -2793,7 +2972,7 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                       {/* CAPA 3: CUERPO DE TEXTO OFICIAL CALIBRADO PARA IMPRESIÓN (25 RENGLONES A 8.47mm) */}
                       <div 
                         id={index === 0 ? 'notarial-cuerpo-texto' : `notarial-cuerpo-texto-${index}`}
-                        className="notarial-cuerpo-texto hidden print:block text-black font-bold text-justify whitespace-pre-wrap"
+                        className="notarial-cuerpo-texto hidden print:block text-black whitespace-pre-wrap"
                         style={{
                           position: 'absolute',
                           top: '42.55mm',
@@ -2803,6 +2982,10 @@ export const EditorNotarialOficial: React.FC<EditorNotarialOficialProps> = ({ on
                           lineHeight: `${interlineadoGlobal}mm`,
                           fontSize: fontSizeGlobal,
                           fontFamily: fontFamilyGlobal,
+                          fontWeight: textBold ? 'bold' : 'normal',
+                          fontStyle: textItalic ? 'italic' : 'normal',
+                          textDecoration: textUnderline ? 'underline' : 'none',
+                          textAlign,
                           margin: '0mm',
                           padding: '0mm',
                         }}

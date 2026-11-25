@@ -101,21 +101,16 @@ export const BuzonAdminTab: React.FC<BuzonAdminTabProps> = ({ esPlanFull = false
 
   return (
     <div className="w-full box-border max-w-7xl mx-auto mt-8 space-y-6">
-      <div className="p-6 rounded-3xl flex items-center justify-between gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
-            <Mail className="w-6 h-6 text-slate-300" />
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <Mail className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-serif font-bold text-2xl tracking-tight text-white">
-                Buzón de Consultas Notariales
-              </h2>
-              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white">
-                O.L.G.A.
-              </span>
-            </div>
-            <p className="text-sm mt-1 text-slate-400">
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+              Buzón de Consultas
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
               Gestión de mensajes y solicitudes de soporte de los usuarios del sistema.
             </p>
           </div>

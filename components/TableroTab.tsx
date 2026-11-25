@@ -1311,58 +1311,60 @@ export const TableroTab: React.FC<TableroTabProps> = ({
 
   return (
     <div className="w-full box-border flex flex-col gap-6 md:gap-8 animate-fade-in pb-12">
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 md:p-7 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-        <div className="relative z-10 text-center md:text-left w-full box-border">
-          <h2 className="text-white text-xl md:text-2xl font-black font-serif flex items-center justify-center md:justify-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center border border-slate-700 shadow-xs">
-              {esAbogado ? <Briefcase className="w-5 h-5" /> : <Activity className="w-5 h-5" />}
-            </div>
-            Tablero Principal
-          </h2>
-          <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-md mx-auto md:mx-0">
-            {(() => {
-              const rawName = String(
-                (esAbogado ? (userData?.razonSocial || userData?.nombre) : config?.escribania?.nombre) ||
-                workspaceName ||
-                userData?.razonSocial ||
-                userData?.nombreInstitucion ||
-                ''
-              ).trim();
-              const hasRealName =
-                rawName &&
-                rawName !== 'Mi Escribanía' &&
-                rawName !== 'Escribanía Titular' &&
-                rawName !== 'Estudio Jurídico' &&
-                rawName !== '.';
-              if (esAbogado) {
+      <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+            {esAbogado ? <Briefcase className="w-5 h-5" /> : <Activity className="w-5 h-5" />}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
+              Tablero Principal
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              {(() => {
+                const rawName = String(
+                  (esAbogado ? (userData?.razonSocial || userData?.nombre) : config?.escribania?.nombre) ||
+                  workspaceName ||
+                  userData?.razonSocial ||
+                  userData?.nombreInstitucion ||
+                  ''
+                ).trim();
+                const hasRealName =
+                  rawName &&
+                  rawName !== 'Mi Escribanía' &&
+                  rawName !== 'Escribanía Titular' &&
+                  rawName !== 'Estudio Jurídico' &&
+                  rawName !== '.';
+                if (esAbogado) {
+                  return hasRealName
+                    ? `Estudio Jurídico · Panel Legal de ${rawName}`
+                    : 'Estudio Jurídico · Panel Legal';
+                }
                 return hasRealName
-                  ? `Estudio Jurídico • Panel Legal de ${rawName}.`
-                  : 'Estudio Jurídico • Panel Legal';
-              }
-              return hasRealName
-                ? `Resumen de actividad y volumen notarial de ${rawName}.`
-                : 'Resumen de actividad y volumen notarial';
-            })()}
-          </p>
+                  ? `Resumen de actividad y volumen notarial de ${rawName}`
+                  : 'Resumen de actividad y volumen notarial';
+              })()}
+            </p>
+          </div>
         </div>
 
         {esAbogado && (
-          <div className="relative z-10 flex flex-wrap items-center justify-center md:justify-end gap-2.5 shrink-0 w-full md:w-auto">
-            <button
-              type="button"
-              onClick={() => onNavigateTab?.('expedientes')}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <Briefcase className="w-4 h-4" />
-              <span>Ir a Expedientes</span>
-            </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => onNavigateTab?.('escritos')}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+              className="h-9 px-3.5 text-xs font-medium rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="w-3.5 h-3.5 text-slate-600" />
               <span>Redactar Escrito</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('expedientes')}
+              className="h-9 px-3.5 text-xs font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 inline-flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>Ir a Expedientes</span>
             </button>
           </div>
         )}

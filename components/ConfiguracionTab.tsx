@@ -958,29 +958,23 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
   return (
     <div className="space-y-5 md:space-y-6 w-full max-w-6xl mx-auto p-0 md:p-6 bg-transparent min-h-screen transition-colors duration-200 overflow-x-hidden">
-      {/* Cabecera Principal Estilo Enterprise Azul Noche */}
-      <div className="p-4 md:p-6 rounded-2xl md:rounded-3xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden transition-all bg-slate-900 text-white shadow-xl border border-slate-800 w-full min-w-0">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-3 min-w-0">
-          <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 bg-slate-800 border border-slate-700 text-slate-300">
-            <Settings className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
+      {/* Cabecera Principal */}
+      <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 w-full min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+            <Settings className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-serif font-bold text-xl md:text-2xl tracking-tight text-white break-words">
-                Configuración del Sistema
-              </h2>
-              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white shrink-0">
-                O.L.G.A.
-              </span>
-            </div>
-            <p className="text-xs md:text-sm mt-1 font-medium text-slate-400 break-words">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
+              Configuración del Sistema
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               Parámetros institucionales, sincronización en tiempo real y directivas de seguridad.
             </p>
           </div>
         </div>
-        {/* Panel de Acciones Superiores */}
-        <div className="relative z-10 flex items-center gap-3 self-start md:self-auto shrink-0">
-          <span className="rounded-xl px-3.5 py-1.5 text-xs font-semibold border bg-slate-800 text-slate-300 border-slate-700">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap shrink-0">
             {pagaresEfectivos.length} Pagarés Monitoreados
           </span>
         </div>

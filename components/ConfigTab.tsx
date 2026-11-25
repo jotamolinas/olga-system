@@ -81,30 +81,25 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ config, onUpdateConfig, is
 
   return (
     <div className="space-y-6 md:space-y-8 animate-message w-full max-w-full overflow-x-hidden" id="config-tab-panel">
-      {/* Header Info: Bloque Oscuro Azul Noche */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between p-4 md:p-6 rounded-2xl md:rounded-3xl gap-4 transition-all bg-slate-900 text-white shadow-xl border border-slate-800 w-full min-w-0">
-        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 min-w-0">
-          <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs bg-slate-800 border border-slate-700 text-slate-300">
-            <Settings className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
+      {/* Header Info */}
+      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 w-full min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-2 shrink-0">
+            <Settings className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl md:text-2xl font-bold font-serif tracking-tight text-white break-words">
-                Configuración del Sistema
-              </h2>
-              <span className="font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-red-600 text-white shrink-0">
-                O.L.G.A.
-              </span>
-            </div>
-            <p className="text-xs md:text-sm mt-1 text-slate-400 break-words">
+            <h2 className="text-xl font-semibold text-slate-900 tracking-tight truncate">
+              Configuración del Sistema
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
               Parámetros jurídicos, institucionales y financieros para la escribanía y la emisión automatizada de documentos.
             </p>
           </div>
         </div>
         {!isAdmin && (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold leading-none w-fit border bg-slate-800 border-slate-700 text-slate-300 shrink-0">
-            <Info className="w-4 h-4 shrink-0" />
-            <span>SOLO LECTURA (Acceso Restringido a Admin)</span>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 shrink-0 whitespace-nowrap">
+            <Info className="w-3.5 h-3.5 shrink-0" />
+            <span>Solo lectura (Acceso restringido a Admin)</span>
           </div>
         )}
       </div>

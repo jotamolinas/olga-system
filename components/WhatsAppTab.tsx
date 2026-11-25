@@ -1784,31 +1784,29 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
       {/* Cabecera compacta cuando está conectado; cabecera completa en QR / desconectado / carga */}
       {!isInitialLoading && status === 'connected' ? (
         <div className="space-y-3">
-          <div
-            className={`rounded-2xl px-4 py-3 border transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
-              esPlanFull
-                ? 'bg-white dark:bg-[#121824]/90 border-amber-200/70 dark:border-amber-500/30 shadow-sm'
-                : 'bg-white dark:bg-[#121824]/90 border-slate-200 dark:border-slate-800 shadow-sm'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-                <span>Conectado: {formattedConnectedPhone}</span>
-              </span>
-              <span className="hidden md:inline-flex items-center text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums truncate">
-                Workspace {workspaceId || '—'}
-              </span>
+          <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+                <MessageCircle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
+                  WhatsApp Institucional
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate tabular-nums">
+                  Conectado: {formattedConnectedPhone} · Workspace {workspaceId || '—'}
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowConnectionPanel((prev) => !prev)}
-                className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors whitespace-nowrap cursor-pointer ${
+                className={`h-9 px-3.5 text-xs font-medium rounded-lg border inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   showConnectionPanel
-                    ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
@@ -1827,7 +1825,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
                   fetchInbox(false);
                 }}
                 disabled={isRefreshing || isRefreshingInbox || !workspaceId}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 whitespace-nowrap cursor-pointer"
+                className="h-9 px-3.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${isRefreshing || isRefreshingInbox ? 'animate-spin' : ''}`}
@@ -1855,43 +1853,31 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
           )}
         </div>
       ) : (
-        <div
-          className={`rounded-2xl p-6 md:p-7 border transition-colors ${
-            esPlanFull
-              ? 'bg-white dark:bg-[#121824]/90 border-amber-200/70 dark:border-amber-500/30 shadow-sm'
-              : 'bg-white dark:bg-[#121824]/90 border-slate-200 dark:border-slate-800 shadow-sm'
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-4 min-w-0">
-              <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
-                  esPlanFull
-                    ? 'bg-emerald-50 dark:bg-emerald-500/10 border-amber-300/70 dark:border-amber-500/40 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                }`}
-              >
-                <MessageCircle className="w-6 h-6" />
+        <div className="bg-white dark:bg-[#121824]/90 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 transition-colors">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg p-2 shrink-0">
+                <MessageCircle className="w-5 h-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight truncate">
                     Conexión WhatsApp Institucional
                   </h2>
                   {isWaitingScan ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 whitespace-nowrap">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>Esperando vinculación QR</span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
                       <Unplug className="w-3.5 h-3.5" />
                       <span>Desconectado</span>
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  Vincula el número de tu escribanía para notificaciones, recepción en vivo y análisis notarial · Workspace{' '}
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Vincula el número de tu estudio para notificaciones, recepción en vivo y análisis · Workspace{' '}
                   <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
                     {workspaceId || '—'}
                   </span>
@@ -1903,7 +1889,7 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
               type="button"
               onClick={() => fetchStatus(false)}
               disabled={isRefreshing || isInitialLoading || !workspaceId}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
+              className="h-9 px-3.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>Actualizar estado</span>
