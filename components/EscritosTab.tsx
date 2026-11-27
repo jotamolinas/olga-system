@@ -9,16 +9,18 @@ import {
   RotateCcw, Eye, Search, AlertCircle, FileCheck, Sparkles, 
   Paperclip, Send, CheckCheck,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered,
-  HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload, MessageCircle, Download
+  HelpCircle, ArrowRight, ArrowLeft, Clipboard, Upload, MessageCircle, Download, Minus
 } from 'lucide-react';
 import { limpiarLatexJuridico, redactarEscritoConIA } from '../services/gemini';
 import { User } from 'firebase/auth';
 import mammoth from 'mammoth';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { Expediente } from '../types';
 import { ModalAdministrarCarpetas, Carpeta } from './ModalAdministrarCarpetas';
 import { EditorNotarialOficial } from './EditorNotarialOficial';
 import { WhatsAppSendModal } from './WhatsAppSendModal';
-import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage, downloadPdfFromBase64 } from '../services/pdfExport';
+import { generateDocumentPdfBase64, buildWhatsAppDocumentMessage } from '../services/pdfExport';
 import { wrapSignatureBlocksForPrint } from './DocumentoModal';
 
 const EDITOR_FONT_FAMILIES = [
@@ -31,6 +33,67 @@ const EDITOR_FONT_FAMILIES = [
 ] as const;
 
 const EDITOR_FONT_SIZES_PT = [10, 11, 12, 13, 14, 16, 18] as const;
+
+const EDITOR_TEXT_COLORS = [
+  { hex: '#0f172a', label: 'Negro' },
+  { hex: '#475569', label: 'Gris oscuro' },
+  { hex: '#dc2626', label: 'Rojo' },
+  { hex: '#2563eb', label: 'Azul' },
+  { hex: '#1e3a8a', label: 'Azul marino' },
+  { hex: '#16a34a', label: 'Verde' },
+  { hex: '#ea580c', label: 'Naranja' },
+  { hex: '#991b1b', label: 'Bordo' },
+] as const;
+
+const EDITOR_LINE_HEIGHTS = [
+  { value: '1.0', label: '1.0 (Compacto)' },
+  { value: '1.15', label: '1.15 (Estándar)' },
+  { value: '1.5', label: '1.5 (Formal)' },
+  { value: '2.0', label: '2.0 (Doble)' },
+] as const;
+
+type EditorPageMargins = 'normal' | 'estrecho' | 'amplio';
+
+const PAGE_MARGIN_PROFILES: Record<
+  EditorPageMargins,
+  {
+    label: string;
+    shortLabel: string;
+    topCm: number;
+    bottomCm: number;
+    leftCm: number;
+    rightCm: number;
+    cssMargin: string;
+  }
+> = {
+  normal: {
+    label: 'Normal (2.5 cm)',
+    shortLabel: 'Normal',
+    topCm: 2.5,
+    bottomCm: 2.5,
+    leftCm: 2.5,
+    rightCm: 2.5,
+    cssMargin: '2.5cm 2.5cm 2.5cm 2.5cm',
+  },
+  estrecho: {
+    label: 'Estrecho (1.27 cm)',
+    shortLabel: 'Estrecho',
+    topCm: 1.27,
+    bottomCm: 1.27,
+    leftCm: 1.27,
+    rightCm: 1.27,
+    cssMargin: '1.27cm 1.27cm 1.27cm 1.27cm',
+  },
+  amplio: {
+    label: 'Amplio (3.0 / 3.5 cm)',
+    shortLabel: 'Amplio',
+    topCm: 3.0,
+    bottomCm: 3.0,
+    leftCm: 3.5,
+    rightCm: 3.5,
+    cssMargin: '3cm 3.5cm 3cm 3.5cm',
+  },
+};
 
 const resolveEditorFontCss = (family?: string): string => {
   switch (family) {
@@ -72,6 +135,113 @@ const escapeHtmlText = (raw: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
+const limpiarNodosVaciosFinalesHtml = (rawHtml: string): string => {
+  if (!rawHtml || typeof document === 'undefined') return rawHtml || '';
+  try {
+    const container = document.createElement('div');
+    container.innerHTML = rawHtml;
+
+    const hasVisualMedia = (el: Element): boolean =>
+      Boolean(el.querySelector('img, table, hr, svg'));
+
+    const isTrailingEmptyNode = (node: ChildNode | null): boolean => {
+      if (!node) return false;
+      if (node.nodeType === Node.TEXT_NODE) {
+        return !(node.nodeValue || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return true;
+      const el = node as Element;
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'img' || tag === 'table' || tag === 'hr' || tag === 'svg') return false;
+      if (el.classList.contains('salto-de-pagina') || el.classList.contains('salto-de-pagina-print')) {
+        return true;
+      }
+      if (hasVisualMedia(el)) return false;
+      const text = (el.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      return text.length === 0;
+    };
+
+    while (container.lastChild && isTrailingEmptyNode(container.lastChild)) {
+      container.removeChild(container.lastChild);
+    }
+
+    const lastEl = container.lastElementChild;
+    if (lastEl && !hasVisualMedia(lastEl)) {
+      while (lastEl.lastChild) {
+        const lastInner = lastEl.lastChild;
+        if (lastInner.nodeType === Node.ELEMENT_NODE && (lastInner as Element).tagName.toLowerCase() === 'br') {
+          lastEl.removeChild(lastInner);
+        } else if (
+          lastInner.nodeType === Node.TEXT_NODE &&
+          !(lastInner.nodeValue || '').replace(/[\u00A0\u200B]/g, ' ').trim()
+        ) {
+          lastEl.removeChild(lastInner);
+        } else {
+          break;
+        }
+      }
+    }
+
+    return container.innerHTML;
+  } catch {
+    return rawHtml;
+  }
+};
+
+const limpiarEspaciadoresVisualesHtml = (rawHtml: string): string => {
+  if (!rawHtml || typeof document === 'undefined') return rawHtml || '';
+  if (!rawHtml.includes('data-olga-page-spacer') && !rawHtml.includes('--olga-spacer-mt')) {
+    return rawHtml;
+  }
+  try {
+    const container = document.createElement('div');
+    container.innerHTML = rawHtml;
+    container.querySelectorAll('[data-olga-page-spacer], [style*="--olga-spacer-mt"]').forEach((node) => {
+      const el = node as HTMLElement;
+      el.removeAttribute('data-olga-page-spacer');
+      el.style.removeProperty('--olga-spacer-mt');
+      const remainingStyle = (el.getAttribute('style') || '').trim();
+      if (!remainingStyle) {
+        el.removeAttribute('style');
+      }
+    });
+    return container.innerHTML;
+  } catch {
+    return rawHtml;
+  }
+};
+
+const waitForImagesInList = async (imgs: HTMLImageElement[], timeoutMs = 3500): Promise<void> => {
+  if (!imgs || imgs.length === 0) return;
+  await Promise.race([
+    Promise.all(
+      imgs.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) {
+              if (img.naturalWidth > 0 && typeof img.decode === 'function') {
+                img.decode().then(() => resolve()).catch(() => resolve());
+              } else {
+                resolve();
+              }
+              return;
+            }
+            const done = () => {
+              if (typeof img.decode === 'function') {
+                img.decode().then(() => resolve()).catch(() => resolve());
+              } else {
+                resolve();
+              }
+            };
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          })
+      )
+    ),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+};
+
 interface Escrito {
   id: string;
   texto: string;
@@ -82,6 +252,8 @@ interface Escrito {
   includeHeader?: boolean;
   fontFamily?: string;
   fontSizePt?: number;
+  lineHeight?: string;
+  pageMargins?: EditorPageMargins;
   userId: string;
   categoria?: string;
   correlativo?: string | number;
@@ -1314,6 +1486,8 @@ const LOCAL_STORAGE_DRAFT_TIPO_HOJA = 'olga_escritos_redaccion_draft_tipo_hoja';
 const LOCAL_STORAGE_DRAFT_INCLUDE_HEADER = 'olga_escritos_redaccion_draft_include_header';
 const LOCAL_STORAGE_DRAFT_FONT_FAMILY = 'olga_escritos_redaccion_draft_font_family';
 const LOCAL_STORAGE_DRAFT_FONT_SIZE = 'olga_escritos_redaccion_draft_font_size';
+const LOCAL_STORAGE_DRAFT_LINE_HEIGHT = 'olga_escritos_redaccion_draft_line_height';
+const LOCAL_STORAGE_DRAFT_PAGE_MARGINS = 'olga_escritos_redaccion_draft_page_margins';
 
 export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfile, personas, expedientes = [], onOpenDocument, esPlanFull, isSoftBlocked = false, canUseWhatsApp }) => {
   // FASE 2: Identificador maestro del Workspace (Tenant)
@@ -1606,7 +1780,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     overrideFontFamily?: string,
     overrideFontSizePt?: number
   ) => {
-    const content = rawContent || '';
+    const content = limpiarEspaciadoresVisualesHtml(
+      (rawContent || '').replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+    );
     if (!content.trim()) return;
     const cleanTitle = (rawTitle || 'Documento').replace(/\s*\(Guardado Local\)\s*/gi, '').trim();
     const effectiveIncludeHeader =
@@ -1628,33 +1804,374 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     });
   };
 
-  const handleDescargarPDF = (
+  const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
+
+  const buildMembreteHtml = (): string => {
+    const metaItems: string[] = [];
+    if (registroEscHeader && registroEscHeader !== '---') {
+      metaItems.push(
+        esAbogadoEsc
+          ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
+          : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`)
+      );
+    }
+    if (rucEscHeader && rucEscHeader !== '---') {
+      metaItems.push(`RUC: ${rucEscHeader}`);
+    }
+    if (telefonoEscHeader && telefonoEscHeader !== '---') {
+      metaItems.push(`Tel.: ${telefonoEscHeader}`);
+    }
+    if (direccionEscHeader && direccionEscHeader !== '---') {
+      metaItems.push(direccionEscHeader);
+    }
+    const logoMarkup = rawLogoInstitucional
+      ? `<img src="${rawLogoInstitucional.replace(/"/g, '&quot;')}" alt="${escapeHtmlText(nombreEscHeader)}" class="olga-doc-membrete-logo" crossorigin="anonymous" />`
+      : '';
+    const subMarkup = metaItems.length > 0
+      ? `<p class="olga-doc-membrete-sub">${escapeHtmlText(metaItems.join('  •  '))}</p>`
+      : '';
+
+    return `<div class="olga-doc-membrete">${logoMarkup}<div class="olga-doc-membrete-title">${escapeHtmlText(nombreEscHeader.toUpperCase())}</div>${subMarkup}</div>`;
+  };
+
+  const handleDescargarPDF = async (
     rawTitle?: string,
     rawContent?: string,
     overrideIncludeHeader?: boolean,
     overrideFontFamily?: string,
-    overrideFontSizePt?: number
+    overrideFontSizePt?: number,
+    overrideLineHeight?: string,
+    overridePageMargins?: EditorPageMargins
   ) => {
+    if (isExportingPDF) return;
+
     const content = rawContent !== undefined ? rawContent : (editorContentRef.current?.innerHTML || editorText);
-    const cleanedSource = content.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
-    if (!cleanedSource || !cleanedSource.trim()) {
+    const cleanedSource = limpiarEspaciadoresVisualesHtml(
+      desempaquetarContenidoFluido(
+        (content || '').replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+      )
+    );
+
+    const hasMedia = /<(img|table|hr|svg)\b/i.test(cleanedSource);
+    const plainCheck = stripHtmlToPlainText(cleanedSource);
+    if (!cleanedSource || (!plainCheck && !hasMedia)) {
       alert('El documento está vacío. Escriba o seleccione una plantilla antes de exportar.');
       return;
     }
+
     const cleanTitle = (rawTitle || documentTitle || 'Documento')
       .replace(/\s*\(Guardado Local\)\s*/gi, '')
       .trim();
+    const safeFileName =
+      (cleanTitle || 'Documento')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s_-]/g, '')
+        .trim()
+        .replace(/\s+/g, '_') + '.pdf';
+
     const effectiveIncludeHeader =
       overrideIncludeHeader !== undefined ? overrideIncludeHeader : includeHeader;
-    const pdf = generateDocumentPdfBase64({
-      title: cleanTitle,
-      content: cleanedSource,
-      escribania: buildEscribaniaPdfMeta(),
-      includeHeader: effectiveIncludeHeader,
-      fontFamily: overrideFontFamily || editorFontFamily,
-      fontSizePt: overrideFontSizePt || editorFontSizePt,
+    const effectiveFontCss = resolveEditorFontCss(overrideFontFamily || editorFontFamily);
+    const effectiveFontSizePt = overrideFontSizePt || editorFontSizePt;
+    const effectiveLineHeight = overrideLineHeight || editorLineHeight || '1.5';
+    const effectiveMarginKey: EditorPageMargins =
+      overridePageMargins && PAGE_MARGIN_PROFILES[overridePageMargins]
+        ? overridePageMargins
+        : pageMargins;
+    const marginCfg = PAGE_MARGIN_PROFILES[effectiveMarginKey] || PAGE_MARGIN_PROFILES.normal;
+    const padLeftPx = Math.round(marginCfg.leftCm * 37.81);
+    const padRightPx = Math.round(marginCfg.rightCm * 37.81);
+
+    // Limpiar saltos visuales y nodos vacíos finales para evitar página 2 en blanco
+    const tempWrap = document.createElement('div');
+    tempWrap.innerHTML = cleanedSource;
+    tempWrap.querySelectorAll('.salto-de-pagina').forEach((el) => {
+      const marker = document.createElement('div');
+      marker.className = 'salto-de-pagina-print';
+      el.parentNode?.replaceChild(marker, el);
     });
-    downloadPdfFromBase64(pdf.fileBase64, pdf.fileName);
+    const bodyHtmlClean = limpiarNodosVaciosFinalesHtml(
+      wrapSignatureBlocksForPrint(limpiarNodosVaciosFinalesHtml(tempWrap.innerHTML))
+    );
+
+    setIsExportingPDF(true);
+    let offscreenHost: HTMLDivElement | null = null;
+
+    try {
+      offscreenHost = document.createElement('div');
+      offscreenHost.style.position = 'fixed';
+      offscreenHost.style.left = '-10000px';
+      offscreenHost.style.top = '0';
+      offscreenHost.style.width = '794px';
+      offscreenHost.style.backgroundColor = '#ffffff';
+      offscreenHost.style.color = '#000000';
+      offscreenHost.style.zIndex = '-1';
+      offscreenHost.style.pointerEvents = 'none';
+
+      offscreenHost.innerHTML = `
+        <style>
+          .olga-pdf-sheet, .olga-pdf-sheet * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .olga-pdf-sheet {
+            width: 794px;
+            padding: 0 ${padRightPx}px 0 ${padLeftPx}px;
+            background: #ffffff;
+            color: #000000;
+            font-family: ${effectiveFontCss};
+            font-size: ${effectiveFontSizePt}pt;
+            line-height: ${effectiveLineHeight};
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .olga-pdf-sheet p,
+          .olga-pdf-sheet div:not(.olga-doc-membrete):not(.olga-doc-membrete-title):not(.salto-de-pagina-print) {
+            margin: 0 0 8px 0;
+            font-family: ${effectiveFontCss};
+            font-size: ${effectiveFontSizePt}pt;
+            line-height: ${effectiveLineHeight};
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            white-space: pre-wrap;
+          }
+          .olga-pdf-sheet p:last-child {
+            margin-bottom: 0;
+          }
+          .olga-pdf-sheet [data-olga-page-spacer="true"] {
+            margin-top: 0 !important;
+          }
+          @media print {
+            [data-olga-page-spacer="true"] {
+              margin-top: 0 !important;
+            }
+          }
+          .olga-pdf-sheet h1, .olga-pdf-sheet h2, .olga-pdf-sheet h3, .olga-pdf-sheet h4 {
+            margin: 0 0 10px 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .olga-pdf-sheet strong, .olga-pdf-sheet b {
+            font-weight: 700;
+          }
+          .olga-pdf-sheet hr {
+            border: none;
+            border-top: 1px solid #94a3b8;
+            margin: 12px 0;
+          }
+          .olga-pdf-sheet img {
+            max-width: 100% !important;
+            height: auto !important;
+            display: block;
+            margin: 6px 0;
+          }
+          .olga-pdf-sheet table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            table-layout: auto;
+            margin: 8px 0;
+          }
+          .olga-pdf-sheet td, .olga-pdf-sheet th {
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
+            vertical-align: top;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: break-word !important;
+          }
+          .olga-pdf-sheet ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin: 6px 0;
+          }
+          .olga-pdf-sheet ol {
+            list-style-type: decimal;
+            padding-left: 1.5rem;
+            margin: 6px 0;
+          }
+          .olga-pdf-sheet li {
+            margin-bottom: 4px;
+            line-height: ${effectiveLineHeight};
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+          .olga-pdf-sheet .signature-block p {
+            margin: 0 0 2px 0;
+            line-height: ${effectiveLineHeight};
+          }
+          .olga-pdf-sheet .olga-doc-membrete,
+          .olga-pdf-sheet .olga-doc-membrete * {
+            white-space: normal !important;
+          }
+          .olga-pdf-sheet .olga-doc-membrete {
+            text-align: center;
+            border-bottom: 1px solid #94a3b8;
+            padding-bottom: 8px;
+            margin: 0 0 14px 0;
+          }
+          .olga-pdf-sheet .olga-doc-membrete-logo {
+            display: block;
+            margin: 0 auto 4px auto;
+            max-height: 38px;
+            width: auto;
+            object-fit: contain;
+          }
+          .olga-pdf-sheet .olga-doc-membrete-title {
+            font-family: ${effectiveFontCss};
+            font-size: 12pt;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: #0f172a;
+            margin: 0 0 2px 0;
+            line-height: 1.2;
+          }
+          .olga-pdf-sheet .olga-doc-membrete-sub {
+            font-family: Arial, Helvetica, sans-serif !important;
+            font-size: 8.5pt !important;
+            line-height: 1.25 !important;
+            text-align: center !important;
+            white-space: normal !important;
+            color: #475569 !important;
+            margin: 0 !important;
+          }
+        </style>
+        <div class="olga-pdf-sheet">${effectiveIncludeHeader ? buildMembreteHtml() : ''}${bodyHtmlClean}</div>
+      `;
+
+      document.body.appendChild(offscreenHost);
+      const sheetEl = offscreenHost.querySelector('.olga-pdf-sheet') as HTMLElement;
+      const imgs = Array.from(offscreenHost.querySelectorAll('img'));
+      await waitForImagesInList(imgs, 4000);
+      await new Promise((r) => setTimeout(r, 80));
+
+      const canvas = await html2canvas(sheetEl, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        windowWidth: 794,
+      });
+
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const marginTopMm = marginCfg.topCm * 10;
+      const marginBottomMm = marginCfg.bottomCm * 10;
+      const usableHeightMm = Math.max(100, pageHeightMm - marginTopMm - marginBottomMm);
+      const pxPerMm = canvas.width / pageWidthMm;
+      const maxSliceHeightPx = Math.floor(usableHeightMm * pxPerMm);
+
+      const isCanvasRegionBlank = (
+        ctx: CanvasRenderingContext2D,
+        yStart: number,
+        height: number
+      ): boolean => {
+        try {
+          const data = ctx.getImageData(0, yStart, canvas.width, height).data;
+          // Muestreo rápido cada 4 píxeles
+          for (let i = 0; i < data.length; i += 16) {
+            if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) {
+              return false;
+            }
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const findCleanBreakY = (
+        ctx: CanvasRenderingContext2D,
+        idealY: number,
+        minY: number
+      ): number => {
+        try {
+          const searchWindow = Math.min(90, Math.floor((idealY - minY) * 0.25));
+          for (let y = idealY; y > idealY - searchWindow; y -= 2) {
+            const row = ctx.getImageData(0, y, canvas.width, 2).data;
+            let rowWhite = true;
+            for (let i = 0; i < row.length; i += 16) {
+              if (row[i] < 246 || row[i + 1] < 246 || row[i + 2] < 246) {
+                rowWhite = false;
+                break;
+              }
+            }
+            if (rowWhite) return y;
+          }
+        } catch {
+          // Si no se puede leer pixels, usar corte exacto
+        }
+        return idealY;
+      };
+
+      const fullCtx = canvas.getContext('2d');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      let currentY = 0;
+      let pageIndex = 0;
+
+      while (currentY < canvas.height) {
+        const remainingPx = canvas.height - currentY;
+        const targetEnd =
+          remainingPx <= maxSliceHeightPx
+            ? canvas.height
+            : fullCtx
+              ? findCleanBreakY(fullCtx, currentY + maxSliceHeightPx, currentY)
+              : currentY + maxSliceHeightPx;
+        const sliceHeightPx = Math.max(1, targetEnd - currentY);
+
+        if (fullCtx && isCanvasRegionBlank(fullCtx, currentY, sliceHeightPx)) {
+          currentY += sliceHeightPx;
+          continue;
+        }
+
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeightPx;
+        const sliceCtx = sliceCanvas.getContext('2d');
+        if (sliceCtx) {
+          sliceCtx.fillStyle = '#ffffff';
+          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sliceCtx.drawImage(
+            canvas,
+            0,
+            currentY,
+            canvas.width,
+            sliceHeightPx,
+            0,
+            0,
+            canvas.width,
+            sliceHeightPx
+          );
+        }
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        const sliceHeightMm = sliceHeightPx / pxPerMm;
+        const sliceImgData = sliceCanvas.toDataURL('image/png');
+        pdf.addImage(sliceImgData, 'PNG', 0, marginTopMm, pageWidthMm, sliceHeightMm, undefined, 'FAST');
+
+        pageIndex += 1;
+        currentY += sliceHeightPx;
+      }
+
+      if (pageIndex === 0) {
+        alert('No se detectó contenido visible para exportar a PDF.');
+        return;
+      }
+
+      pdf.save(safeFileName);
+    } catch (err) {
+      console.error('Error generando PDF HTML:', err);
+      alert('No se pudo generar el PDF. Intente nuevamente.');
+    } finally {
+      if (offscreenHost && offscreenHost.parentNode) {
+        offscreenHost.parentNode.removeChild(offscreenHost);
+      }
+      setIsExportingPDF(false);
+    }
   };
 
   // Modo de navegación: Redacción activa vs Archivo de Documentos
@@ -1677,6 +2194,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [previewMode, setPreviewMode] = useState<boolean>(false);
   const [editorFontFamily, setEditorFontFamily] = useState<string>('Times New Roman');
   const [editorFontSizePt, setEditorFontSizePt] = useState<number>(12);
+  const [editorLineHeight, setEditorLineHeight] = useState<string>('1.5');
+  const [pageMargins, setPageMargins] = useState<EditorPageMargins>('normal');
+  const [activeTextColor, setActiveTextColor] = useState<string>('#0f172a');
+  const [isColorPaletteOpen, setIsColorPaletteOpen] = useState<boolean>(false);
+  const savedColorRangeRef = useRef<Range | null>(null);
 
   // Estados de formato activo en la barra de herramientas del editor (queryCommandState)
   const [activeFormats, setActiveFormats] = useState({
@@ -1703,12 +2225,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const docImportInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const editorTextareaRef = editorContentRef;
+  const membretePreviewRef = useRef<HTMLDivElement>(null);
 
 
   // =========================================================================
-  // SISTEMA DE PAGINACIÓN VISUAL TIPO WORD / DOCS (OFICIO / LEGAL NOTARIAL)
+  // SISTEMA DE PAGINACIÓN VISUAL A4 (GUÍAS DE PANTALLA NO IMPRIMIBLES)
   // =========================================================================
   const [totalPaginasVisuales, setTotalPaginasVisuales] = useState<number>(1);
+  const [visualPageBreaks, setVisualPageBreaks] = useState<{ page: number; topPx: number }[]>([]);
   const [isHeaderMenuExpanded, setIsHeaderMenuExpanded] = useState<boolean>(false);
   const debounceTimerRef = useRef<any>(null);
 
@@ -1770,9 +2294,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml(
           { arrayBuffer },
-          { styleMap: ['u => u'] }
+          {
+            styleMap: ['u => u'],
+            convertImage: mammoth.images.imgElement(async (image) => {
+              const base64 = await image.readAsBase64String();
+              const contentType = image.contentType || 'image/png';
+              return { src: `data:${contentType};base64,${base64}` };
+            }),
+          }
         );
-        let cleanHtml = (result?.value || '').trim();
+        let cleanHtml = limpiarNodosVaciosFinalesHtml((result?.value || '').trim());
         if (!cleanHtml) {
           const rawRes = await mammoth.extractRawText({ arrayBuffer });
           const rawText = rawRes?.value || '';
@@ -1849,11 +2380,161 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   const recalcularPaginacionVisual = (editorEl: HTMLElement) => {
     if (!editorEl) return 1;
-    // Cálculo pasivo basado en la altura total sin inyectar divs que rompan el contentEditable
-    const ALTURA_HOJA_OFICIO = 1056; 
-    const pageCount = Math.max(1, Math.ceil(editorEl.scrollHeight / ALTURA_HOJA_OFICIO));
-    setTotalPaginasVisuales(pageCount);
-    return pageCount;
+    const PAGE_GAP_PX = 28;
+    const sheetWidthPx = editorEl.offsetWidth || 850;
+    const pxPerCm = sheetWidthPx / 21.0; // Ancho estándar A4 = 21.0 cm
+    const pageTotalHeightPx = Math.round(sheetWidthPx * (29.7 / 21.0)); // Relación A4 = 297 / 210
+    const activeMargin = PAGE_MARGIN_PROFILES[pageMarginsRef.current] || PAGE_MARGIN_PROFILES.normal;
+
+    const marginTopPx = activeMargin.topCm * pxPerCm;
+    const marginBottomPx = activeMargin.bottomCm * pxPerCm;
+    const usableSinglePageHeightPx = Math.max(260, pageTotalHeightPx - marginTopPx - marginBottomPx);
+    const headerHeightPx =
+      includeHeaderRef.current && membretePreviewRef.current
+        ? membretePreviewRef.current.offsetHeight
+        : 0;
+
+    // Limpiar espaciadores previos antes de recalcular
+    editorEl.querySelectorAll('[data-olga-page-spacer], [style*="--olga-spacer-mt"]').forEach((node) => {
+      const h = node as HTMLElement;
+      h.removeAttribute('data-olga-page-spacer');
+      h.style.removeProperty('--olga-spacer-mt');
+      if (!(h.getAttribute('style') || '').trim()) {
+        h.removeAttribute('style');
+      }
+    });
+
+    const firstPageBottom = pageTotalHeightPx - headerHeightPx;
+    const stride = PAGE_GAP_PX + pageTotalHeightPx;
+
+    const getPageBottomEdge = (page: number) =>
+      page === 1
+        ? firstPageBottom
+        : firstPageBottom + (page - 1) * stride;
+
+    const getPageForY = (yPx: number): number => {
+      if (yPx < firstPageBottom) return 1;
+      return 2 + Math.floor((yPx - firstPageBottom) / stride);
+    };
+
+    const editorRect = editorEl.getBoundingClientRect();
+
+    // Evaluar solo bloques hoja en listas anidadas (excluyente entre padre e hijos)
+    const collectListItems = (listEl: HTMLElement): HTMLElement[] => {
+      const items: HTMLElement[] = [];
+      Array.from(listEl.children).forEach((liNode) => {
+        const li = liNode as HTMLElement;
+        const tag = li.tagName.toLowerCase();
+        if (tag === 'ul' || tag === 'ol') {
+          items.push(...collectListItems(li));
+          return;
+        }
+        if (tag !== 'li') {
+          items.push(li);
+          return;
+        }
+        const nestedLists = Array.from(li.children).filter((subChild) => {
+          const subTag = subChild.tagName.toLowerCase();
+          return subTag === 'ul' || subTag === 'ol';
+        }) as HTMLElement[];
+
+        if (nestedLists.length > 0) {
+          nestedLists.forEach((nested) => {
+            items.push(...collectListItems(nested));
+          });
+        } else {
+          items.push(li);
+        }
+      });
+      return items;
+    };
+
+    const collectFlowBlocks = (container: Element): HTMLElement[] => {
+      const blocks: HTMLElement[] = [];
+      Array.from(container.children).forEach((child) => {
+        const htmlChild = child as HTMLElement;
+        const tag = htmlChild.tagName.toLowerCase();
+        if ((tag === 'ul' || tag === 'ol') && htmlChild.children.length > 0) {
+          const listRect = htmlChild.getBoundingClientRect();
+          const hasNestedList = Boolean(htmlChild.querySelector('ul, ol'));
+          if (listRect.height > 40 || hasNestedList) {
+            blocks.push(...collectListItems(htmlChild));
+            return;
+          }
+        }
+        blocks.push(htmlChild);
+      });
+      return blocks;
+    };
+
+    const flowBlocks = collectFlowBlocks(editorEl);
+    for (const el of flowBlocks) {
+      const rect = el.getBoundingClientRect();
+      if (rect.height === 0 && rect.width === 0) continue;
+
+      const blockTop = rect.top - editorRect.top;
+      const blockBottom = rect.bottom - editorRect.top;
+      const page = getPageForY(blockTop);
+
+      if (page > 1) {
+        const prevPageBottom = getPageBottomEdge(page - 1);
+        const prevNextPageStart = prevPageBottom + PAGE_GAP_PX + marginTopPx;
+        if (blockTop >= prevPageBottom && blockTop < prevNextPageStart - 1) {
+          const pushPx = Math.ceil(prevNextPageStart - blockTop);
+          if (pushPx > 0) {
+            el.setAttribute('data-olga-page-spacer', 'true');
+            el.style.setProperty('--olga-spacer-mt', `${pushPx}px`);
+          }
+          continue;
+        }
+      }
+
+      const pageBottom = getPageBottomEdge(page);
+      const pageLimit = pageBottom - marginBottomPx;
+      const nextPageStart = pageBottom + PAGE_GAP_PX + marginTopPx;
+
+      if (
+        (blockTop >= pageBottom && blockTop < nextPageStart - 1) ||
+        (blockBottom > pageLimit && rect.height < usableSinglePageHeightPx)
+      ) {
+        const pushPx = Math.ceil(nextPageStart - blockTop);
+        if (pushPx > 0) {
+          el.setAttribute('data-olga-page-spacer', 'true');
+          el.style.setProperty('--olga-spacer-mt', `${pushPx}px`);
+        }
+      }
+    }
+
+    let contentBottomPx = 0;
+    try {
+      const hasContent =
+        (editorEl.textContent || '').replace(/[\u00A0\u200B]/g, '').trim().length > 0 ||
+        Boolean(editorEl.querySelector('img, table, hr, svg'));
+      if (hasContent && editorEl.childNodes.length > 0) {
+        const updatedEditorRect = editorEl.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(editorEl);
+        const contentRect = range.getBoundingClientRect();
+        contentBottomPx = Math.max(0, contentRect.bottom - updatedEditorRect.top);
+      }
+    } catch {
+      contentBottomPx = editorEl.scrollHeight;
+    }
+
+    let totalPages = 1;
+    while (contentBottomPx > getPageBottomEdge(totalPages) + 2 && totalPages < 100) {
+      totalPages += 1;
+    }
+
+    const breaks: { page: number; topPx: number }[] = [];
+    for (let k = 1; k < totalPages; k += 1) {
+      breaks.push({ page: k, topPx: Math.round(getPageBottomEdge(k)) });
+    }
+
+    editorEl.style.minHeight = `${Math.round(getPageBottomEdge(totalPages))}px`;
+    setVisualPageBreaks(breaks);
+    setTotalPaginasVisuales(totalPages);
+    return totalPages;
   };
 
   const actualizarNumeracionPaginas = recalcularPaginacionVisual;
@@ -1864,7 +2545,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       if (editorContentRef.current) {
         recalcularPaginacionVisual(editorContentRef.current);
       }
-    }, 200);
+    }, 120);
   };
 
   // Inserción limpia de Salto de Página manual tipo Word / Docs
@@ -1963,6 +2644,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const [tipoHoja, setTipoHoja] = useState<'blanca' | 'protocolo'>('blanca');
   const [includeHeader, setIncludeHeader] = useState<boolean>(true);
   const esHojaEnBlanco = tipoHoja === 'blanca';
+  const pageMarginsRef = useRef<EditorPageMargins>(pageMargins);
+  pageMarginsRef.current = pageMargins;
+  const includeHeaderRef = useRef<boolean>(includeHeader);
+  includeHeaderRef.current = includeHeader;
 
   const handleCopiarCodigoSoporte = async (docObj: Escrito) => {
     const effectiveWorkspaceId = workspaceId || docObj.userId || currentUser?.uid || 'no-workspace';
@@ -2031,12 +2716,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const savedIncludeHeader = localStorage.getItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER);
       const savedFontFamily = localStorage.getItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY);
       const savedFontSize = localStorage.getItem(LOCAL_STORAGE_DRAFT_FONT_SIZE);
+      const savedLineHeight = localStorage.getItem(LOCAL_STORAGE_DRAFT_LINE_HEIGHT);
+      const savedPageMargins = localStorage.getItem(LOCAL_STORAGE_DRAFT_PAGE_MARGINS) as EditorPageMargins | null;
 
       if (savedPlantilla) {
         setSelectedPlantillaId(savedPlantilla);
       }
-      if (savedTipoHoja === 'protocolo') {
-        setTipoHoja('protocolo');
+      if (savedTipoHoja) {
+        setTipoHoja('blanca');
       } else {
         setTipoHoja('blanca');
       }
@@ -2054,6 +2741,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           setEditorFontSizePt(parsedSize);
         }
       }
+      if (savedLineHeight && EDITOR_LINE_HEIGHTS.some((lh) => lh.value === savedLineHeight)) {
+        setEditorLineHeight(savedLineHeight);
+      }
+      if (savedPageMargins && PAGE_MARGIN_PROFILES[savedPageMargins]) {
+        setPageMargins(savedPageMargins);
+      }
       if (savedTitle) {
         setDocumentTitle(savedTitle);
       }
@@ -2061,7 +2754,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setSelectedCategoryForSave(savedCat);
       }
       if (savedText !== null) {
-        setEditorText(savedText);
+        setEditorText(limpiarEspaciadoresVisualesHtml(savedText));
       } else {
         // Por defecto, Hoja en Blanco
         setEditorText('');
@@ -2078,7 +2771,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
     autoSaveTimerRef.current = setTimeout(() => {
       try {
-        localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, editorText);
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, limpiarEspaciadoresVisualesHtml(editorText));
         localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, selectedPlantillaId);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, documentTitle);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_CATEGORIA, selectedCategoryForSave);
@@ -2086,6 +2779,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(includeHeader));
         localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY, editorFontFamily);
         localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_SIZE, String(editorFontSizePt));
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_LINE_HEIGHT, editorLineHeight);
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_PAGE_MARGINS, pageMargins);
       } catch (e) {
         console.warn('Error guardando borrador local:', e);
       }
@@ -2096,23 +2791,30 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader, editorFontFamily, editorFontSizePt]);
+  }, [editorText, selectedPlantillaId, documentTitle, selectedCategoryForSave, tipoHoja, includeHeader, editorFontFamily, editorFontSizePt, editorLineHeight, pageMargins]);
 
   // Sincronización del contentEditable con el estado de React editorText
   useEffect(() => {
     if (editorContentRef.current && editorText !== undefined) {
-      const currentHtml = editorContentRef.current.innerHTML;
+      if (document.activeElement === editorContentRef.current) return;
+      const currentHtml = limpiarEspaciadoresVisualesHtml(editorContentRef.current.innerHTML);
       const currentText = editorContentRef.current.innerText;
       const limpio = desempaquetarContenidoFluido(editorText);
       if (currentHtml !== limpio && currentText !== editorText) {
         if (
-          editorText.includes('<p>') || 
-          editorText.includes('<div>') || 
-          editorText.includes('<br>') || 
-          editorText.includes('<b>') || 
-          editorText.includes('<i>') || 
-          editorText.includes('<u>') ||
+          editorText.includes('<p') || 
+          editorText.includes('<div') || 
+          editorText.includes('<br') || 
+          editorText.includes('<b') || 
+          editorText.includes('<i') || 
+          editorText.includes('<u') ||
           editorText.includes('<span') ||
+          editorText.includes('<img') ||
+          editorText.includes('<table') ||
+          editorText.includes('<h') ||
+          editorText.includes('<strong') ||
+          editorText.includes('<ul') ||
+          editorText.includes('<ol') ||
           editorText.includes('id="espacio-activo"')
         ) {
           editorContentRef.current.innerHTML = limpio;
@@ -2155,6 +2857,63 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     };
   }, []);
 
+  // Recalcular guías visuales A4 cuando cambian márgenes, interlineado, fuente, tamaño o membrete
+  useEffect(() => {
+    if (!mostrarEditor) return;
+    const timer = setTimeout(() => {
+      if (editorContentRef.current) {
+        recalcularPaginacionVisual(editorContentRef.current);
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [mostrarEditor, editorLineHeight, pageMargins, editorFontSizePt, editorFontFamily, includeHeader, previewMode]);
+
+  // Recalcular automáticamente la paginación cuando cambia el ancho del editor o la ventana (ej. pantalla completa)
+  useEffect(() => {
+    if (!mostrarEditor) return;
+
+    const handleWindowResize = () => {
+      debouncedVerificarPaginacion();
+    };
+    window.addEventListener('resize', handleWindowResize);
+
+    let observer: ResizeObserver | null = null;
+    let rafId: number | null = null;
+
+    const attachObserver = (el: HTMLElement) => {
+      if (typeof ResizeObserver === 'undefined') return;
+      let lastObservedWidth = el.offsetWidth;
+      observer = new ResizeObserver(() => {
+        const nextWidth = el.offsetWidth;
+        if (Math.abs(nextWidth - lastObservedWidth) > 1) {
+          lastObservedWidth = nextWidth;
+          debouncedVerificarPaginacion();
+        }
+      });
+      observer.observe(el);
+    };
+
+    if (editorContentRef.current) {
+      attachObserver(editorContentRef.current);
+    } else {
+      rafId = requestAnimationFrame(() => {
+        if (editorContentRef.current) {
+          attachObserver(editorContentRef.current);
+        }
+      });
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+      if (observer) {
+        observer.disconnect();
+      }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [mostrarEditor]);
+
   // Ejecutor de comandos de formato de texto enriquecido tipo Word (document.execCommand)
   const executeCommand = (command: string, value: string | undefined = undefined) => {
     try {
@@ -2177,6 +2936,68 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setTimeout(checkFormatStates, 15);
     } catch (e) {
       console.warn('Error ejecutando comando de formato:', command, e);
+    }
+  };
+
+  const handleApplyTextColor = (colorHex: string) => {
+    try {
+      const editor = editorContentRef.current;
+      if (!editor) return;
+      if (previewMode) setPreviewMode(false);
+      editor.focus();
+
+      const selection = window.getSelection();
+      if (savedColorRangeRef.current && editor.contains(savedColorRangeRef.current.commonAncestorContainer)) {
+        selection?.removeAllRanges();
+        selection?.addRange(savedColorRangeRef.current);
+      } else if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+
+      try {
+        document.execCommand('styleWithCSS', false, 'true');
+      } catch {
+        // Ignorar si no es soportado
+      }
+      document.execCommand('foreColor', false, colorHex);
+      setActiveTextColor(colorHex);
+      setIsColorPaletteOpen(false);
+      savedColorRangeRef.current = null;
+      setEditorText(editor.innerHTML);
+      editor.focus();
+      setTimeout(checkFormatStates, 15);
+    } catch (e) {
+      console.warn('Error aplicando color de texto:', e);
+    }
+  };
+
+  const handleInsertHorizontalRule = () => {
+    try {
+      const editor = editorContentRef.current;
+      if (!editor) return;
+      if (previewMode) setPreviewMode(false);
+      editor.focus();
+
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+
+      const hrHtml = '<hr style="border: none; border-top: 1px solid #94a3b8; margin: 12px 0;" /><p><br></p>';
+      document.execCommand('insertHTML', false, hrHtml);
+      setEditorText(editor.innerHTML);
+      debouncedVerificarPaginacion();
+      editor.focus();
+    } catch (e) {
+      console.warn('Error insertando línea horizontal:', e);
     }
   };
 
@@ -3586,9 +4407,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Click outside listener para menú contextual
+  // Click outside listener para menú contextual y paleta de colores
   useEffect(() => {
-    const handleClickOutside = () => setActiveMenuId(null);
+    const handleClickOutside = () => {
+      setActiveMenuId(null);
+      setIsColorPaletteOpen(false);
+    };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -3763,6 +4587,30 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return null;
   };
 
+  const scrollEditorAlInicio = () => {
+    try {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      const editorBloque = document.getElementById('editor-notarial-activo-bloque');
+      let parent: HTMLElement | null = (editorBloque || editorContentRef.current)?.parentElement || null;
+      while (parent) {
+        const overflowY = window.getComputedStyle(parent).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight) {
+          parent.scrollTo({ top: 0, behavior: 'auto' });
+        }
+        parent = parent.parentElement;
+      }
+      const mainEl = document.querySelector('main');
+      if (mainEl) {
+        mainEl.scrollTo({ top: 0, behavior: 'auto' });
+      }
+      if (editorBloque) {
+        editorBloque.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+    } catch {
+      // Silencioso
+    }
+  };
+
   // Manejo del selector de plantillas:
   // Al seleccionar cualquier plantilla (o Hoja en Blanco), se despliega inmediatamente el Editor Activo.
   const handleSelectPlantilla = (plantillaId: string) => {
@@ -3817,7 +4665,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setDocumentTitle('Escrito en Blanco');
         setSelectedCategoryForSave('Contratos Privados');
       } else if (plantillaId === 'constitucion_sa') {
-        setTipoHoja('protocolo');
+        setTipoHoja('blanca');
         // Generador Dinámico de Socios (Prompt Inicial):
         // Pregunta al usuario la cantidad de socios que conformarán la S.A.
         let numSocios = 2;
@@ -3839,7 +4687,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setDocumentTitle('Constitución de S.A.');
         setSelectedCategoryForSave('Contratos Privados');
       } else {
-        setTipoHoja('protocolo');
+        setTipoHoja('blanca');
         // Plantillas limpias con espacios en blanco (_______)
         textoParaEditor = procesarAutofillPlantilla(found.contenido);
         setEditorText(textoParaEditor);
@@ -3850,25 +4698,30 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = textoParaEditor;
+      requestAnimationFrame(() => {
+        if (editorContentRef.current) {
+          recalcularPaginacionVisual(editorContentRef.current);
+        }
+      });
     }
 
     setTimeout(() => {
-      const editorBloque = document.getElementById('editor-notarial-activo-bloque');
-      if (editorBloque) {
-        editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
       if (editorContentRef.current) {
         if (editorContentRef.current.innerHTML !== textoParaEditor) {
           editorContentRef.current.innerHTML = textoParaEditor;
         }
+        requestAnimationFrame(() => {
+          if (editorContentRef.current) {
+            recalcularPaginacionVisual(editorContentRef.current);
+          }
+        });
       }
+      scrollEditorAlInicio();
       if (plantillaId === 'hoja_en_blanco') {
-        if (editorContentRef.current) {
-          editorContentRef.current.focus();
-        }
+        editorContentRef.current?.focus({ preventScroll: true });
       } else {
         // En plantillas con autocompletado, enfocar de inmediato el campo del Asistente Flotante
-        autofillInputRef.current?.focus();
+        autofillInputRef.current?.focus({ preventScroll: true });
       }
     }, 100);
   };
@@ -3896,13 +4749,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       if (editorContentRef.current) {
         editorContentRef.current.innerHTML = '';
       }
-      if (editorTextareaRef.current) {
-        editorTextareaRef.current.focus();
-        editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        const el = document.getElementById('editor-notarial-activo-bloque');
-        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      scrollEditorAlInicio();
+      editorContentRef.current?.focus({ preventScroll: true });
     }, 100);
   };
 
@@ -3929,7 +4777,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Copiar contenido al portapapeles
   const handleCopiarTexto = () => {
     if (!editorText) return;
-    navigator.clipboard.writeText(editorText);
+    navigator.clipboard.writeText(limpiarEspaciadoresVisualesHtml(editorText));
     setCopiedFeedback(true);
     setTimeout(() => setCopiedFeedback(false), 2500);
   };
@@ -3952,8 +4800,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const tipoDoc = documentTitle.trim() || 'Escrito';
       const cat = selectedCategoryForSave || 'Contratos Privados';
 
-      // Limpiar etiquetas temporales de resaltado antes de persistir
-      const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
+      // Limpiar etiquetas temporales de resaltado y espaciadores visuales antes de persistir
+      const textoLimpio = limpiarEspaciadoresVisualesHtml(
+        editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+      );
 
       if (!workspaceId) {
         console.error("Operación abortada: Workspace no identificado.");
@@ -3982,6 +4832,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           includeHeader,
           fontFamily: editorFontFamily,
           fontSizePt: editorFontSizePt,
+          lineHeight: editorLineHeight,
+          pageMargins,
           categoria: cat,
           ultimaModificacion: serverTimestamp(),
           lastModifiedBy: user?.uid,
@@ -4002,6 +4854,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             tempDocs[idx].includeHeader = includeHeader;
             tempDocs[idx].fontFamily = editorFontFamily;
             tempDocs[idx].fontSizePt = editorFontSizePt;
+            tempDocs[idx].lineHeight = editorLineHeight;
+            tempDocs[idx].pageMargins = pageMargins;
             tempDocs[idx].categoria = cat;
             localStorage.setItem('escritos_temporales', JSON.stringify(tempDocs));
           }
@@ -4017,6 +4871,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           includeHeader,
           fontFamily: editorFontFamily,
           fontSizePt: editorFontSizePt,
+          lineHeight: editorLineHeight,
+          pageMargins,
           userId: workspaceId,            // El propietario legal de los datos (Titular)
           creator_id: user?.uid,          // Rastro de auditoría: Quién lo digitó
           createdBy: user?.uid,
@@ -4057,7 +4913,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       try {
         const tipoDoc = documentTitle.trim() || 'Escrito';
         const cat = selectedCategoryForSave || 'Contratos Privados';
-        const textoLimpio = editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
+        const textoLimpio = limpiarEspaciadoresVisualesHtml(
+          editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+        );
         const rawTemp = localStorage.getItem('escritos_temporales');
         const list = rawTemp ? JSON.parse(rawTemp) : [];
         list.push({
@@ -4081,18 +4939,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Motor de Impresión Oficial Notarial (Hoja de Seguridad / Hoja Verde - Flujo Continuo Nativo)
+  // Motor de Impresión Oficial (Hoja en Blanco A4 - Flujo Continuo Nativo)
   const handleImprimirPDF = () => {
     const rawContent = editorContentRef.current?.innerHTML || editorText;
-    const content = rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1');
-    if (!content || !content.trim()) {
+    const content = limpiarEspaciadoresVisualesHtml(
+      rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+    );
+    const hasMediaRaw = /<(img|table|hr|svg)\b/i.test(content || '');
+    if (!content || (!content.trim() && !hasMediaRaw)) {
       alert('El documento está vacío. Escriba o seleccione una plantilla antes de imprimir.');
       return;
     }
 
     const title = documentTitle.trim() || 'Escrito';
 
-    // 1. Limpieza y Normalización Lossless del árbol DOM (preserva nodos de texto sueltos, negritas, saltos y bloques)
+    // 1. Limpieza y Normalización Lossless del árbol DOM (preserva imágenes, tablas, negritas, saltos y bloques)
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = content;
 
@@ -4122,7 +4983,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const tmp = document.createElement('div');
       tmp.innerHTML = joined;
       const plain = (tmp.textContent || '').replace(/\u00A0/g, ' ').trim();
-      if (plain.length > 0) {
+      const hasMedia = Boolean(tmp.querySelector('img, svg, table, hr'));
+      if (plain.length > 0 || hasMedia) {
         cleanParagraphs.push(`<p>${joined}</p>`);
       } else if (forceEmpty) {
         cleanParagraphs.push('<p><br></p>');
@@ -4151,14 +5013,27 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       });
     };
 
-    const processInlineWithNewlines = (el: Element) => {
+    const processInlineWithNewlines = (
+      el: Element,
+      parentOpen = '',
+      parentClose = ''
+    ) => {
       const tag = el.tagName.toLowerCase();
-      const styleAttr = el.getAttribute('style');
-      const alignMatch = styleAttr?.match(/text-align\s*:\s*[^;]+/i)?.[0];
-      const open = tag === 'span'
-        ? (alignMatch ? `<span style="${alignMatch}">` : '<span>')
-        : `<${tag}${alignMatch ? ` style="${alignMatch}"` : ''}>`;
-      const close = `</${tag}>`;
+      if (tag === 'img') {
+        inlineParts.push(el.outerHTML);
+        return;
+      }
+      const htmlEl = el as HTMLElement;
+      const styles: string[] = [];
+      if (htmlEl.style?.textAlign) styles.push(`text-align: ${htmlEl.style.textAlign}`);
+      if (htmlEl.style?.color) styles.push(`color: ${htmlEl.style.color}`);
+      else if (tag === 'font' && el.getAttribute('color')) {
+        styles.push(`color: ${el.getAttribute('color')}`);
+      }
+      const styleStr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
+      const outTag = tag === 'font' ? 'span' : tag;
+      const open = `${parentOpen}<${outTag}${styleStr}>`;
+      const close = `</${outTag}>${parentClose}`;
 
       Array.from(el.childNodes).forEach((child) => {
         if (child.nodeType === Node.TEXT_NODE) {
@@ -4168,8 +5043,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           const childTag = childEl.tagName.toLowerCase();
           if (childTag === 'br') {
             flushInline(true);
+          } else if (childTag === 'img') {
+            inlineParts.push(childEl.outerHTML);
           } else {
-            processInlineWithNewlines(childEl);
+            processInlineWithNewlines(childEl, open, close);
           }
         }
       });
@@ -4202,6 +5079,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           return;
         }
 
+        if (tag === 'img') {
+          flushInline(false);
+          cleanParagraphs.push(el.outerHTML);
+          return;
+        }
+
         if (!BLOCK_TAGS.has(tag)) {
           if (hasBlockDescendant(el)) {
             flushInline(false);
@@ -4216,7 +5099,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         flushInline(false);
 
         if (tag === 'ul' || tag === 'ol' || tag === 'table' || tag === 'blockquote' || tag === 'hr' || /^h[1-6]$/.test(tag)) {
-          if (tag !== 'hr' && !(el.textContent || '').trim()) {
+          const hasInnerMedia = Boolean(el.querySelector('img, svg, hr'));
+          if (tag !== 'hr' && !(el.textContent || '').trim() && !hasInnerMedia) {
             return;
           }
           cleanParagraphs.push(el.outerHTML);
@@ -4230,12 +5114,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           return;
         }
 
-        // Párrafo o DIV hoja: preservar saltos internos \n o <br> si los tuviera (contentEditable pre-wrap)
+        // Párrafo o DIV hoja: preservar saltos internos \n, alineación, color, imágenes o <br> si los tuviera
         const textVal = el.textContent || '';
+        const hasMediaChild = Boolean(el.querySelector('img, svg, hr'));
         const innerHtml = el.innerHTML.replace(/^[\r\n]+|[\r\n]+$/g, '');
-        const alignStyle = (el as HTMLElement).style?.textAlign
-          ? ` style="text-align: ${(el as HTMLElement).style.textAlign}"`
-          : '';
+        const htmlEl = el as HTMLElement;
+        const blockStyles: string[] = [];
+        if (htmlEl.style?.textAlign) blockStyles.push(`text-align: ${htmlEl.style.textAlign}`);
+        if (htmlEl.style?.color) blockStyles.push(`color: ${htmlEl.style.color}`);
+        const alignStyle = blockStyles.length > 0 ? ` style="${blockStyles.join('; ')}"` : '';
 
         if (textVal.includes('\n')) {
           processNodes(el.childNodes);
@@ -4243,7 +5130,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           return;
         }
 
-        if (textVal.replace(/\u00A0/g, ' ').trim().length > 0) {
+        if (textVal.replace(/\u00A0/g, ' ').trim().length > 0 || hasMediaChild) {
           cleanParagraphs.push(`<p${alignStyle}>${innerHtml}</p>`);
         } else if (innerHtml === '<br>' || innerHtml === '<br/>' || innerHtml === '' || el.querySelector('br')) {
           cleanParagraphs.push('<p><br></p>');
@@ -4266,106 +5153,63 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       });
     }
 
+    // Recortar nodos vacíos o saltos de página finales para evitar una Página 2 en blanco
+    while (cleanParagraphs.length > 0) {
+      const tail = cleanParagraphs[cleanParagraphs.length - 1];
+      const probe = document.createElement('div');
+      probe.innerHTML = tail;
+      const hasMediaTail = Boolean(probe.querySelector('img, table, hr, svg'));
+      const isBreakTail = Boolean(probe.querySelector('.salto-de-pagina-print, .salto-de-pagina'));
+      const plainTail = (probe.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      if (!hasMediaTail && (isBreakTail || plainTail.length === 0)) {
+        cleanParagraphs.pop();
+      } else {
+        break;
+      }
+    }
+
     if (cleanParagraphs.length === 0) {
-      alert('El documento no contiene texto válido para imprimir.');
+      alert('El documento no contiene texto ni contenido válido para imprimir.');
       return;
     }
 
-    const bodyHtml = wrapSignatureBlocksForPrint(cleanParagraphs.join(''));
-    const esHojaEnBlancoImpresion = tipoHoja !== 'protocolo';
-    const mostrarCabeceraImpresion = esHojaEnBlancoImpresion && includeHeader;
-
-    let membreteHtml = '';
-    if (mostrarCabeceraImpresion) {
-      const subItems: string[] = [];
-      if (registroEscHeader && registroEscHeader !== '---') {
-        subItems.push(
-          esAbogadoEsc
-            ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
-            : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`)
-        );
-      }
-      if (rucEscHeader && rucEscHeader !== '---') {
-        subItems.push(`RUC: ${rucEscHeader}`);
-      }
-      if (telefonoEscHeader && telefonoEscHeader !== '---') {
-        subItems.push(`Tel.: ${telefonoEscHeader}`);
-      }
-      const logoMarkup = rawLogoInstitucional
-        ? `<img src="${rawLogoInstitucional.replace(/"/g, '&quot;')}" alt="${escapeHtml(nombreEscHeader)}" class="olga-doc-membrete-logo" />`
-        : '';
-      const subMarkup = subItems.length > 0
-        ? `<p class="olga-doc-membrete-sub">${escapeHtml(subItems.join('  •  '))}</p>`
-        : '';
-      const dirMarkup = direccionEscHeader && direccionEscHeader !== '---'
-        ? `<p class="olga-doc-membrete-dir">${escapeHtml(direccionEscHeader)}</p>`
-        : '';
-
-      membreteHtml = `
-        <div class="olga-doc-membrete">
-          ${logoMarkup}
-          <div class="olga-doc-membrete-title">${escapeHtml(nombreEscHeader.toUpperCase())}</div>
-          ${subMarkup}
-          ${dirMarkup}
-        </div>
-      `;
-    }
+    const bodyHtml = limpiarNodosVaciosFinalesHtml(
+      wrapSignatureBlocksForPrint(cleanParagraphs.join(''))
+    );
+    const mostrarCabeceraImpresion = includeHeader;
+    const membreteHtml = mostrarCabeceraImpresion ? buildMembreteHtml() : '';
 
     const printFontCss = resolveEditorFontCss(editorFontFamily);
     const printFontSize = `${editorFontSizePt}pt`;
+    const printLineHeight = editorLineHeight || '1.5';
+    const printMarginCss = (PAGE_MARGIN_PROFILES[pageMargins] || PAGE_MARGIN_PROFILES.normal).cssMargin;
 
-    // 2. Arquitectura CSS Nativa de Impresión:
-    // - Hoja en Blanco (Simple): A4 uniforme con márgenes estándar en TODAS las páginas (sin anverso/reverso ni cabecera sellada)
-    // - Hoja de Protocolo Notarial: Oficio con alternancia @page :left y @page :right para papel preimpreso
     const htmlToPrint = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
   <style>
-    ${esHojaEnBlancoImpresion ? `
     @page {
       size: A4 portrait;
-      margin: 2.5cm 2.5cm 2.5cm 3cm;
+      margin: ${printMarginCss};
     }
-    ` : `
-    @page {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 45mm;
-      margin-right: 15mm;
-    }
-    @page :left {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 15mm;
-      margin-right: 45mm; /* Lomo en páginas pares / reverso */
-    }
-    @page :right {
-      size: 216mm 330mm portrait;
-      margin-top: 55mm;
-      margin-bottom: 25mm;
-      margin-left: 45mm; /* Lomo en páginas impares / anverso */
-      margin-right: 15mm;
-    }
-    `}
 
     *, *::before, *::after {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
       box-sizing: border-box;
     }
 
     html, body {
       margin: 0;
       padding: 0;
-      height: auto;
-      overflow: visible;
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: visible !important;
       background: #ffffff;
       color: #000000;
       font-family: ${printFontCss};
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
     }
 
     .salto-de-pagina-print,
@@ -4382,6 +5226,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     .hoja-notarial-pagina {
       position: relative !important;
       height: auto !important;
+      min-height: 0 !important;
       overflow: visible !important;
       page-break-after: always !important;
       break-after: page !important;
@@ -4396,43 +5241,90 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     .documento-notarial {
       position: relative;
       width: 100%;
-      height: auto;
-      overflow: visible;
+      max-width: 100%;
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: visible !important;
       font-family: ${printFontCss};
       font-size: ${printFontSize};
-      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'};
+      line-height: ${printLineHeight};
       text-align: justify;
       text-justify: inter-word;
       white-space: pre-wrap !important;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
       color: #000000;
     }
 
     p {
-      margin: ${esHojaEnBlancoImpresion ? '0 0 8px 0' : '0'} !important;
+      margin: 0 0 8px 0 !important;
       padding: 0 !important;
-      ${esHojaEnBlancoImpresion ? 'min-height: 1.55em;' : 'min-height: 10.2mm !important;'}
+      min-height: 0 !important;
       font-family: ${printFontCss};
       font-size: ${printFontSize};
-      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
+      line-height: ${printLineHeight} !important;
       text-align: justify;
       text-justify: inter-word;
       white-space: pre-wrap !important;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
-      color: #000000;
       orphans: 3;
       widows: 3;
+    }
+
+    .documento-notarial p:last-child {
+      margin-bottom: 0 !important;
+    }
+
+    p, div, td, th {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #94a3b8;
+      margin: 12px 0;
+    }
+
+    img {
+      max-width: 100% !important;
+      height: auto !important;
+      display: block;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      margin: 6px 0;
+    }
+
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      table-layout: auto;
+      margin: 8px 0;
+    }
+
+    td, th {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      vertical-align: top;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
     }
 
     h1, h2, h3, h4 {
       break-after: avoid;
       page-break-after: avoid;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     ul, ol {
-      margin: 0;
+      margin: 0 0 8px 0;
       padding-left: 1.5rem;
     }
 
@@ -4440,9 +5332,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       margin: 0 !important;
       font-family: ${printFontCss};
       font-size: ${printFontSize};
-      line-height: ${esHojaEnBlancoImpresion ? '1.55' : '10.2mm'} !important;
+      line-height: ${printLineHeight} !important;
       text-align: justify;
       white-space: pre-wrap !important;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
       orphans: 3;
@@ -4458,62 +5352,60 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     .signature-block {
-      margin-top: ${esHojaEnBlancoImpresion ? '40px' : '20px'};
+      margin-top: 32px;
     }
-    ${esHojaEnBlancoImpresion ? `
+
     .signature-block p {
       margin: 0 0 2px 0 !important;
       min-height: 0 !important;
-      line-height: 1.45 !important;
+      line-height: ${printLineHeight} !important;
       white-space: pre-wrap !important;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
     }
-    ` : ''}
 
-    /* Aislamiento Total: Supresión de cualquier membrete, cabecera o guía heredada del editor */
-    header, .header, .membrete, .logo, .renglones-container, .texto-lateral-izq, .guia-linea, .watermark {
+    /* Aislamiento de guías exclusivas de pantalla del editor */
+    .renglones-container, .texto-lateral-izq, .guia-linea, .watermark, .salto-de-pagina-badge, .olga-page-break-guide {
       display: none !important;
       visibility: hidden !important;
     }
 
+    .olga-doc-membrete,
+    .olga-doc-membrete * {
+      white-space: normal !important;
+    }
     .olga-doc-membrete {
       text-align: center;
-      border-bottom: 1.5px solid #1e293b;
-      padding-bottom: 10px;
-      margin-bottom: 20px;
+      border-bottom: 1px solid #94a3b8;
+      padding-bottom: 8px;
+      margin: 0 0 14px 0;
     }
     .olga-doc-membrete-logo {
-      display: block;
-      margin: 0 auto 8px auto;
-      max-height: 54px;
-      max-width: 140px;
+      display: block !important;
+      margin: 0 auto 4px auto !important;
+      max-height: 38px !important;
+      width: auto !important;
       object-fit: contain;
     }
     .olga-doc-membrete-title {
       font-family: ${printFontCss};
-      font-size: 14pt;
+      font-size: 12pt;
       font-weight: 700;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.03em;
       color: #0f172a;
-      margin: 0;
-      line-height: 1.25;
+      margin: 0 0 2px 0;
+      line-height: 1.2;
     }
     .olga-doc-membrete p,
-    .olga-doc-membrete-sub,
-    .olga-doc-membrete-dir {
+    .olga-doc-membrete-sub {
       font-family: Arial, Helvetica, sans-serif !important;
       font-size: 8.5pt !important;
-      line-height: 1.35 !important;
+      line-height: 1.25 !important;
       min-height: 0 !important;
       text-align: center !important;
       white-space: normal !important;
       color: #475569 !important;
-      margin: 3px 0 0 0 !important;
-    }
-    .olga-doc-membrete-dir {
-      font-size: 8pt !important;
-      color: #64748b !important;
+      margin: 0 !important;
     }
 
     @media print {
@@ -4521,12 +5413,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         margin: 0 !important;
         padding: 0 !important;
         height: auto !important;
+        min-height: 0 !important;
         overflow: visible !important;
       }
       .documento-notarial {
         position: relative !important;
         width: 100% !important;
         height: auto !important;
+        min-height: 0 !important;
         overflow: visible !important;
         white-space: pre-wrap !important;
         tab-size: 4 !important;
@@ -4539,16 +5433,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         tab-size: 4 !important;
         -moz-tab-size: 4 !important;
       }
+      .olga-doc-membrete,
+      .olga-doc-membrete * {
+        white-space: normal !important;
+      }
+      [data-olga-page-spacer="true"] {
+        margin-top: 0 !important;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="documento-notarial">
-    ${membreteHtml}
-    ${bodyHtml}
-  </div>
+  <div class="documento-notarial">${membreteHtml}${bodyHtml}</div>
 </body>
 </html>`;
+
+    const triggerPrintWhenImagesReady = async (targetDoc: Document, printFn: () => void, cleanupFn?: () => void) => {
+      try {
+        await waitForImagesInList(Array.from(targetDoc.images || []), 3500);
+      } catch {
+        // Continuar impresión aunque falle decodificación
+      }
+      setTimeout(() => {
+        printFn();
+        if (cleanupFn) {
+          setTimeout(cleanupFn, 1500);
+        }
+      }, 120);
+    };
 
     try {
       const win = window.open('', '_blank');
@@ -4557,9 +5469,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         win.document.write(htmlToPrint);
         win.document.close();
         win.focus();
-        setTimeout(() => {
+        void triggerPrintWhenImagesReady(win.document, () => {
+          win.focus();
           win.print();
-        }, 500);
+        });
         return;
       }
     } catch (e) {
@@ -4579,15 +5492,18 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       doc.open();
       doc.write(htmlToPrint);
       doc.close();
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
+      void triggerPrintWhenImagesReady(
+        doc,
+        () => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        },
+        () => {
           if (iframe.parentNode) {
             iframe.parentNode.removeChild(iframe);
           }
-        }, 1200);
-      }, 500);
+        }
+      );
     }
   };
 
@@ -4734,15 +5650,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       console.warn('Error guardando en localStorage:', err);
     }
 
-    // Scroll suave y enfoque automático en el Editor Notarial Activo
+    // Scroll al inicio y enfoque sin salto en el Editor Notarial Activo
     setTimeout(() => {
-      if (editorTextareaRef.current) {
-        if (editorTextareaRef.current.innerHTML !== nuevoTexto) {
-          editorTextareaRef.current.innerHTML = nuevoTexto;
+      if (editorContentRef.current) {
+        if (editorContentRef.current.innerHTML !== nuevoTexto) {
+          editorContentRef.current.innerHTML = nuevoTexto;
         }
-        editorTextareaRef.current.focus();
-        editorTextareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+      scrollEditorAlInicio();
+      editorContentRef.current?.focus({ preventScroll: true });
     }, 80);
 
     setSaveSuccessBanner('¡Texto redactado por IA insertado con éxito en el Editor de Escritos!');
@@ -4759,10 +5675,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   const handleEditarDocumento = (escrito: Escrito) => {
     const docTexto = escrito.texto || '';
     const cleanTitle = escrito.tipo.replace(' (Guardado Local)', '');
-    const restoredTipoHoja: 'blanca' | 'protocolo' =
-      escrito.tipoHoja === 'protocolo' || (escrito as any).tipoPapel === 'protocolo'
-        ? 'protocolo'
-        : 'blanca';
+    const restoredTipoHoja: 'blanca' | 'protocolo' = 'blanca';
     const restoredIncludeHeader = escrito.includeHeader !== false;
     const restoredFontFamily =
       escrito.fontFamily && (EDITOR_FONT_FAMILIES as readonly string[]).includes(escrito.fontFamily)
@@ -4773,6 +5686,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       (EDITOR_FONT_SIZES_PT as readonly number[]).includes(escrito.fontSizePt)
         ? escrito.fontSizePt
         : 12;
+    const restoredLineHeight =
+      escrito.lineHeight && EDITOR_LINE_HEIGHTS.some((lh) => lh.value === escrito.lineHeight)
+        ? escrito.lineHeight
+        : '1.5';
+    const restoredPageMargins: EditorPageMargins =
+      escrito.pageMargins && PAGE_MARGIN_PROFILES[escrito.pageMargins]
+        ? escrito.pageMargins
+        : 'normal';
 
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
@@ -4781,7 +5702,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setIncludeHeader(restoredIncludeHeader);
     setEditorFontFamily(restoredFontFamily);
     setEditorFontSizePt(restoredFontSizePt);
-    setSelectedPlantillaId(restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
+    setEditorLineHeight(restoredLineHeight);
+    setPageMargins(restoredPageMargins);
+    setSelectedPlantillaId('hoja_en_blanco');
     setEditorText(docTexto);
     setDocumentTitle(cleanTitle);
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
@@ -4800,6 +5723,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       localStorage.setItem(LOCAL_STORAGE_DRAFT_INCLUDE_HEADER, String(restoredIncludeHeader));
       localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_FAMILY, restoredFontFamily);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_FONT_SIZE, String(restoredFontSizePt));
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_LINE_HEIGHT, restoredLineHeight);
+      localStorage.setItem(LOCAL_STORAGE_DRAFT_PAGE_MARGINS, restoredPageMargins);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, restoredTipoHoja === 'blanca' ? 'hoja_en_blanco' : '');
     } catch (e) {
       console.warn('Error sincronizando borrador local:', e);
@@ -4808,27 +5733,36 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // Inyección forzada garantizada en el nodo contentEditable
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = docTexto;
+      requestAnimationFrame(() => {
+        if (editorContentRef.current) {
+          recalcularPaginacionVisual(editorContentRef.current);
+        }
+      });
     }
 
-    // Foco Automático, inyección asegurada y scroll suave al Editor de Escritos
+    // Foco Automático al inicio del documento sin desplazamiento y scroll arriba en barra de tareas
     setTimeout(() => {
-      const editorBloque = document.getElementById('editor-notarial-activo-bloque');
-      if (editorBloque) {
-        editorBloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
       if (editorContentRef.current) {
         editorContentRef.current.innerHTML = docTexto;
-        editorContentRef.current.focus();
+        requestAnimationFrame(() => {
+          if (editorContentRef.current) {
+            recalcularPaginacionVisual(editorContentRef.current);
+          }
+        });
+        scrollEditorAlInicio();
+        editorContentRef.current.focus({ preventScroll: true });
         try {
           const selection = window.getSelection();
           const range = document.createRange();
           range.selectNodeContents(editorContentRef.current);
-          range.collapse(false);
+          range.collapse(true);
           selection?.removeAllRanges();
           selection?.addRange(range);
         } catch {
           // Focus básico garantizado
         }
+      } else {
+        scrollEditorAlInicio();
       }
     }, 50);
 
@@ -5309,13 +6243,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
                 <button
                   type="button"
-                  onClick={() => handleDescargarPDF(documentTitle, undefined, includeHeader, editorFontFamily, editorFontSizePt)}
-                  disabled={!editorText.trim()}
+                  onClick={() => { void handleDescargarPDF(documentTitle, undefined, includeHeader, editorFontFamily, editorFontSizePt); }}
+                  disabled={!editorText.trim() || isExportingPDF}
                   className="h-9 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
                   title="Descargar archivo PDF"
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>PDF</span>
+                  {isExportingPDF ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                  )}
+                  <span>{isExportingPDF ? 'Generando...' : 'PDF'}</span>
                 </button>
 
                 <button
@@ -5393,13 +6331,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   Formato de Hoja
                 </label>
                 <select
-                  value={tipoHoja}
-                  onChange={(e) => setTipoHoja(e.target.value as 'blanca' | 'protocolo')}
+                  value="blanca"
+                  onChange={() => setTipoHoja('blanca')}
                   className="w-full box-border h-9 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 text-xs font-medium text-slate-800 outline-none cursor-pointer"
-                  title="Cambiar modo de papel e impresión"
+                  title="Hoja en Blanco (A4)"
                 >
                   <option value="blanca">Hoja en Blanco (A4)</option>
-                  <option value="protocolo">Protocolo (Oficio)</option>
                 </select>
               </div>
 
@@ -5476,10 +6413,68 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   >
                     <Underline className="w-4 h-4" />
                   </button>
+
+                  {/* Paleta compacta de Color de Texto */}
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0 && editorContentRef.current?.contains(sel.anchorNode)) {
+                          savedColorRangeRef.current = sel.getRangeAt(0).cloneRange();
+                        }
+                      }}
+                      onClick={() => setIsColorPaletteOpen((prev) => !prev)}
+                      className={`px-2 py-1 rounded-md transition-colors cursor-pointer flex flex-col items-center justify-center ${
+                        isColorPaletteOpen
+                          ? 'bg-slate-200 text-slate-900'
+                          : 'text-slate-700 hover:bg-white hover:text-slate-900'
+                      }`}
+                      title="Color de texto"
+                      aria-label="Color de texto"
+                    >
+                      <span className="text-xs font-bold leading-none">A</span>
+                      <span
+                        className="h-[3px] w-3.5 rounded-full mt-0.5 border border-slate-300/60"
+                        style={{ backgroundColor: activeTextColor }}
+                      />
+                    </button>
+
+                    {isColorPaletteOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 z-40 bg-white border border-slate-200 rounded-lg shadow-lg p-2 w-[156px]">
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
+                          Color de texto
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {EDITOR_TEXT_COLORS.map((c) => (
+                            <button
+                              key={c.hex}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleApplyTextColor(c.hex)}
+                              title={c.label}
+                              aria-label={c.label}
+                              className={`w-7 h-7 rounded-md border transition-transform hover:scale-105 cursor-pointer flex items-center justify-center ${
+                                activeTextColor === c.hex
+                                  ? 'border-slate-900 ring-1 ring-slate-900'
+                                  : 'border-slate-200'
+                              }`}
+                              style={{ backgroundColor: c.hex }}
+                            >
+                              {activeTextColor === c.hex && (
+                                <Check className="w-3.5 h-3.5 text-white drop-shadow" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Tipografía y Tamaño en Puntos */}
-                <div className="flex items-center gap-1.5 px-2 border-r border-slate-200">
+                {/* Tipografía, Tamaño, Interlineado y Márgenes */}
+                <div className="flex flex-wrap items-center gap-1.5 px-2 border-r border-slate-200">
                   <select
                     value={editorFontFamily}
                     onChange={(e) => setEditorFontFamily(e.target.value)}
@@ -5538,6 +6533,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       A+
                     </button>
                   </div>
+
+                  <select
+                    value={editorLineHeight}
+                    onChange={(e) => setEditorLineHeight(e.target.value)}
+                    className="h-8 bg-white border border-slate-200 focus:border-slate-400 rounded-md px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+                    title="Interlineado del documento"
+                    aria-label="Interlineado"
+                  >
+                    {EDITOR_LINE_HEIGHTS.map((lh) => (
+                      <option key={lh.value} value={lh.value}>
+                        Interl. {lh.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={pageMargins}
+                    onChange={(e) => setPageMargins(e.target.value as EditorPageMargins)}
+                    className="h-8 bg-white border border-slate-200 focus:border-slate-400 rounded-md px-2 text-xs font-medium text-slate-800 outline-none cursor-pointer"
+                    title="Márgenes de la hoja A4"
+                    aria-label="Márgenes de hoja"
+                  >
+                    {(Object.keys(PAGE_MARGIN_PROFILES) as EditorPageMargins[]).map((key) => (
+                      <option key={key} value={key}>
+                        Márgenes: {PAGE_MARGIN_PROFILES[key].label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Alineación: Izquierda, Centro, Derecha, Justificar */}
@@ -5596,7 +6619,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   </button>
                 </div>
 
-                {/* Listas: Desordenada, Ordenada */}
+                {/* Listas y Línea Separadora */}
                 <div className="flex items-center gap-1 pl-1">
                   <button
                     type="button"
@@ -5624,6 +6647,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   >
                     <ListOrdered className="w-4 h-4" />
                   </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleInsertHorizontalRule}
+                    className="p-1.5 rounded-md text-slate-700 hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Insertar línea horizontal separadora"
+                    aria-label="Insertar línea horizontal"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <div className="ml-auto hidden sm:flex items-center gap-2 text-[11px] text-slate-500 font-medium tabular-nums pr-1">
@@ -5636,24 +6669,28 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           </div>
 
           {/* MESA DE TRABAJO Y HOJA DEL DOCUMENTO */}
-          <div className="bg-slate-100/80 py-8 px-4 sm:px-8 rounded-xl border border-slate-200 overflow-x-auto flex flex-col items-center">
+          <div className="bg-[#e2e8f0] py-8 px-4 sm:px-8 rounded-xl border border-slate-300/70 overflow-x-auto flex flex-col items-center">
             <style>{`
               #editor-notarial-activo,
               .editor-notarial-papel {
                 width: 100% !important;
                 max-width: 850px !important;
-                min-height: 1056px !important;
+                min-height: 1056px;
                 background-color: #ffffff !important;
-                box-shadow: ${esHojaEnBlanco && includeHeader ? 'none' : '0 10px 30px -10px rgba(15, 23, 42, 0.12)'} !important;
+                box-shadow: none !important;
                 border-radius: ${esHojaEnBlanco && includeHeader ? '0 0 4px 4px' : '4px'} !important;
-                color: #000000 !important;
-                padding-top: ${esHojaEnBlanco ? (includeHeader ? '28px' : '60px') : '180px'} !important;
-                padding-bottom: 60px !important;
-                padding-left: ${esHojaEnBlanco ? '60px' : '140px'} !important;
-                padding-right: 60px !important;
+                color: #000000;
+                padding-top: ${
+                  includeHeader
+                    ? '14px'
+                    : `${PAGE_MARGIN_PROFILES[pageMargins].topCm}cm`
+                } !important;
+                padding-bottom: ${PAGE_MARGIN_PROFILES[pageMargins].bottomCm}cm !important;
+                padding-left: ${PAGE_MARGIN_PROFILES[pageMargins].leftCm}cm !important;
+                padding-right: ${PAGE_MARGIN_PROFILES[pageMargins].rightCm}cm !important;
                 font-family: ${resolveEditorFontCss(editorFontFamily)} !important;
                 font-size: ${editorFontSizePt}pt !important;
-                line-height: ${esHojaEnBlanco ? '1.6' : '10.4mm'} !important;
+                line-height: ${editorLineHeight} !important;
                 text-align: justify;
                 text-justify: inter-word !important;
                 white-space: pre-wrap !important;
@@ -5707,33 +6744,64 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
               #editor-notarial-activo *,
               .editor-notarial-papel * {
-                color: #000000 !important;
                 font-family: inherit;
               }
               #editor-notarial-activo p,
               #editor-notarial-activo div:not(.salto-de-pagina):not(.salto-de-pagina-badge),
               .editor-notarial-papel p,
               .editor-notarial-papel div:not(.salto-de-pagina):not(.salto-de-pagina-badge) {
-                color: #000000 !important;
                 margin-top: 0 !important;
-                margin-bottom: ${esHojaEnBlanco ? '4px' : '0'} !important;
-                min-height: ${esHojaEnBlanco ? '1.6em' : '10.4mm'} !important;
+                margin-bottom: 4px !important;
+                min-height: ${editorLineHeight}em !important;
                 text-align: justify;
                 text-justify: inter-word !important;
-                line-height: ${esHojaEnBlanco ? '1.6' : '10.4mm'} !important;
+                line-height: ${editorLineHeight} !important;
                 white-space: pre-wrap !important;
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
                 tab-size: 4 !important;
                 -moz-tab-size: 4 !important;
               }
-              #editor-notarial-activo span,
-              .editor-notarial-papel span {
-                color: #000000 !important;
+              #editor-notarial-activo [data-olga-page-spacer="true"],
+              .editor-notarial-papel [data-olga-page-spacer="true"] {
+                margin-top: var(--olga-spacer-mt) !important;
+              }
+              #editor-notarial-activo hr,
+              .editor-notarial-papel hr {
+                border: none !important;
+                border-top: 1px solid #94a3b8 !important;
+                margin: 12px 0 !important;
+              }
+              #editor-notarial-activo img,
+              .editor-notarial-papel img {
+                max-width: 100% !important;
+                height: auto !important;
+                display: block !important;
+                margin: 6px 0 !important;
+                break-inside: avoid;
+              }
+              #editor-notarial-activo table,
+              .editor-notarial-papel table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                table-layout: auto !important;
+                margin: 8px 0 !important;
+              }
+              #editor-notarial-activo td,
+              #editor-notarial-activo th,
+              .editor-notarial-papel td,
+              .editor-notarial-papel th {
+                border: 1px solid #cbd5e1 !important;
+                padding: 6px 8px !important;
+                vertical-align: top !important;
+                white-space: normal !important;
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
               }
               #editor-notarial-activo strong,
               .editor-notarial-papel strong,
               #editor-notarial-activo b,
               .editor-notarial-papel b {
-                color: #000000 !important;
                 font-weight: 700 !important;
               }
               #editor-notarial-activo ul,
@@ -5752,11 +6820,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               }
               #editor-notarial-activo li,
               .editor-notarial-papel li {
-                color: #000000 !important;
                 display: list-item !important;
                 margin-bottom: 0.25rem !important;
+                line-height: ${editorLineHeight} !important;
                 text-align: justify;
                 white-space: pre-wrap !important;
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
                 tab-size: 4 !important;
                 -moz-tab-size: 4 !important;
               }
@@ -5767,13 +6837,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 .editor-notarial-papel {
                   box-shadow: none !important;
                   border-radius: 0 !important;
-                  min-height: auto !important;
+                  min-height: 0 !important;
                   height: auto !important;
                   padding: 0 !important;
                   margin: 0 !important;
                   background: transparent !important;
                   color: #000000 !important;
                   white-space: pre-wrap !important;
+                  overflow-wrap: anywhere !important;
+                  word-break: break-word !important;
                   tab-size: 4 !important;
                   -moz-tab-size: 4 !important;
                 }
@@ -5794,81 +6866,212 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 .salto-automatico * {
                   display: none !important;
                 }
+
+                [data-olga-page-spacer="true"] {
+                  margin-top: 0 !important;
+                }
               }
             `}</style>
-            <div className={esHojaEnBlanco && includeHeader ? 'w-full max-w-[850px] mx-auto shadow-md rounded-[4px] bg-white border border-slate-200/80' : 'w-full max-w-[850px] mx-auto'}>
+            <div className="relative w-full max-w-[850px] mx-auto shadow-md rounded-[4px] bg-white border border-slate-200/90">
               {esHojaEnBlanco && includeHeader && (
-                <div className="w-full bg-white px-[60px] pt-10 pb-4 border-b border-slate-300 text-center rounded-t-[4px] select-none print:hidden">
-                  {rawLogoInstitucional && (
-                    <img
-                      src={rawLogoInstitucional}
-                      alt={nombreEscHeader}
-                      className="mx-auto mb-2.5 max-h-14 max-w-[140px] object-contain"
-                    />
-                  )}
-                  <div className="font-serif font-bold text-lg uppercase tracking-wider text-slate-900">
-                    {nombreEscHeader}
+                <div
+                  ref={membretePreviewRef}
+                  style={{
+                    paddingLeft: `${PAGE_MARGIN_PROFILES[pageMargins].leftCm}cm`,
+                    paddingRight: `${PAGE_MARGIN_PROFILES[pageMargins].rightCm}cm`,
+                  }}
+                  className="w-full bg-white pt-4 text-center rounded-t-[4px] select-none print:hidden"
+                >
+                  <div className="border-b border-[#94a3b8] pb-2">
+                    {rawLogoInstitucional && (
+                      <img
+                        src={rawLogoInstitucional}
+                        alt={nombreEscHeader}
+                        onLoad={debouncedVerificarPaginacion}
+                        style={{ maxHeight: '38px', width: 'auto', margin: '0 auto 4px auto', display: 'block' }}
+                        className="object-contain"
+                      />
+                    )}
+                    <div
+                      style={{
+                        fontFamily: resolveEditorFontCss(editorFontFamily),
+                        fontSize: '12pt',
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        margin: '0 0 2px 0',
+                      }}
+                      className="uppercase tracking-[0.03em] text-slate-900"
+                    >
+                      {nombreEscHeader}
+                    </div>
+                    {(registroEscHeader && registroEscHeader !== '---') ||
+                    (rucEscHeader && rucEscHeader !== '---') ||
+                    (telefonoEscHeader && telefonoEscHeader !== '---') ||
+                    (direccionEscHeader && direccionEscHeader !== '---') ? (
+                      <p
+                        style={{
+                          fontSize: '8.5pt',
+                          color: '#475569',
+                          lineHeight: 1.25,
+                          margin: 0,
+                        }}
+                        className="font-sans"
+                      >
+                        {[
+                          registroEscHeader && registroEscHeader !== '---'
+                            ? (esAbogadoEsc
+                                ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
+                                : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`))
+                            : null,
+                          rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
+                          telefonoEscHeader && telefonoEscHeader !== '---' ? `Tel.: ${telefonoEscHeader}` : null,
+                          direccionEscHeader && direccionEscHeader !== '---' ? direccionEscHeader : null,
+                        ]
+                          .filter(Boolean)
+                          .join('  •  ')}
+                      </p>
+                    ) : null}
                   </div>
-                  {(registroEscHeader && registroEscHeader !== '---') || (rucEscHeader && rucEscHeader !== '---') || telefonoEscHeader ? (
-                    <div className="text-[11px] font-sans text-slate-600 mt-1">
-                      {[
-                        registroEscHeader && registroEscHeader !== '---'
-                          ? (esAbogadoEsc
-                              ? (/matr[ií]cula/i.test(registroEscHeader) ? registroEscHeader : `Matrícula CSJ N.º ${registroEscHeader}`)
-                              : (/reg/i.test(registroEscHeader) ? registroEscHeader : `Registro N.º ${registroEscHeader}`))
-                          : null,
-                        rucEscHeader && rucEscHeader !== '---' ? `RUC: ${rucEscHeader}` : null,
-                        telefonoEscHeader ? `Tel.: ${telefonoEscHeader}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join('  •  ')}
-                    </div>
-                  ) : null}
-                  {direccionEscHeader && (
-                    <div className="text-[10px] font-sans text-slate-500 mt-0.5">
-                      {direccionEscHeader}
-                    </div>
-                  )}
                 </div>
               )}
-              <div
-                ref={setEditorRef}
-                id="editor-notarial-activo"
-                contentEditable={!previewMode}
-                suppressContentEditableWarning={true}
-                onInput={(e) => {
-                  setEditorText(e.currentTarget.innerHTML);
-                  debouncedVerificarPaginacion();
-                }}
-                onPaste={handlePaste}
-                onKeyDown={(e) => {
-                  if (e.key === 'Tab' && !previewMode) {
-                    e.preventDefault();
-                    document.execCommand('insertText', false, '\t');
-                    if (editorContentRef.current) {
-                      setEditorText(editorContentRef.current.innerHTML);
+              <div className="relative w-full">
+                <div
+                  ref={setEditorRef}
+                  id="editor-notarial-activo"
+                  contentEditable={!previewMode}
+                  suppressContentEditableWarning={true}
+                  onInput={(e) => {
+                    setEditorText(limpiarEspaciadoresVisualesHtml(e.currentTarget.innerHTML));
+                    debouncedVerificarPaginacion();
+                  }}
+                  onPaste={handlePaste}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Tab' && !previewMode) {
+                      e.preventDefault();
+                      document.execCommand('insertText', false, '\t');
+                      if (editorContentRef.current) {
+                        setEditorText(editorContentRef.current.innerHTML);
+                      }
+                      debouncedVerificarPaginacion();
                     }
-                    debouncedVerificarPaginacion();
-                  }
-                }}
-                onKeyUp={(e) => {
-                  checkFormatStates();
-                  if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
-                    debouncedVerificarPaginacion();
-                  }
-                }}
-                onMouseUp={checkFormatStates}
-                onFocus={() => {
-                  checkFormatStates();
-                  try {
-                    document.execCommand('defaultParagraphSeparator', false, 'p');
-                  } catch (err) {}
-                }}
-                className={`w-full max-w-[850px] mx-auto ring-1 ring-slate-200 outline-none overflow-visible text-justify text-black selection:bg-slate-200 selection:text-slate-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
-                  previewMode ? 'select-text cursor-default' : 'cursor-text focus:ring-slate-300'
-                }`}
-              />
+                  }}
+                  onKeyUp={(e) => {
+                    checkFormatStates();
+                    if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
+                      debouncedVerificarPaginacion();
+                    }
+                  }}
+                  onMouseUp={checkFormatStates}
+                  onFocus={() => {
+                    checkFormatStates();
+                    try {
+                      document.execCommand('defaultParagraphSeparator', false, 'p');
+                    } catch (err) {}
+                  }}
+                  className={`w-full max-w-[850px] mx-auto outline-none overflow-visible text-justify text-black selection:bg-slate-200 selection:text-slate-900 transition-all editor-notarial-papel [&_ul]:list-disc [&_ul]:pl-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_li]:list-item ${
+                    previewMode ? 'select-text cursor-default' : 'cursor-text'
+                  }`}
+                />
+
+                {/* Corte físico entre hojas A4 estilo Vista de Impresión (solo pantalla, nunca tapa texto, nunca se imprime ni se guarda) */}
+                {visualPageBreaks.length > 0 && (
+                  <div
+                    aria-hidden="true"
+                    className="olga-page-break-guide pointer-events-none select-none print:hidden absolute inset-0 overflow-visible z-10"
+                  >
+                    {visualPageBreaks.map((breakItem) => (
+                      <div
+                        key={breakItem.page}
+                        style={{
+                          top: `${breakItem.topPx}px`,
+                          left: '-1px',
+                          right: '-1px',
+                          height: '28px',
+                          backgroundColor: '#e2e8f0',
+                          boxShadow:
+                            'inset 0 6px 6px -6px rgba(15,23,42,0.18), inset 0 -5px 5px -5px rgba(15,23,42,0.12)',
+                        }}
+                        className="absolute border-t border-b border-slate-300 flex items-center justify-end pr-3 pointer-events-none select-none"
+                      >
+                        <span className="text-[10px] font-medium text-slate-500 tracking-wide">
+                          Pág. {breakItem.page + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Barra de Acciones al pie de la última hoja */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center justify-end gap-3 print:hidden">
+            <button
+              type="button"
+              onClick={handleGuardarEscrito}
+              disabled={isSavingDraft || !editorText.trim()}
+              className="h-9 px-4 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              {isSavingDraft ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span>{isSavingDraft ? 'Guardando...' : 'Guardar Escrito'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleImprimirPDF}
+              disabled={!editorText.trim()}
+              className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="Imprimir documento respetando espacios y formato"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <span>Imprimir</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                void handleDescargarPDF(documentTitle, undefined, includeHeader, editorFontFamily, editorFontSizePt);
+              }}
+              disabled={!editorText.trim() || isExportingPDF}
+              className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              title="Descargar archivo PDF"
+            >
+              {isExportingPDF ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+              )}
+              <span>{isExportingPDF ? 'Generando...' : 'PDF'}</span>
+            </button>
+
+            <a
+              href={
+                editorText.trim()
+                  ? `https://wa.me/?text=${encodeURIComponent(
+                      `Hola, te comparto el documento: ${
+                        (documentTitle || 'Documento').replace(/\s*\(Guardado Local\)\s*/gi, '').trim() || 'Documento'
+                      }, emitido por ${(nombreEscHeader || '').trim() || 'nuestro estudio'}.`
+                    )}`
+                  : '#'
+              }
+              target={editorText.trim() ? '_blank' : undefined}
+              rel={editorText.trim() ? 'noopener noreferrer' : undefined}
+              aria-disabled={!editorText.trim()}
+              onClick={(e) => {
+                if (!editorText.trim()) e.preventDefault();
+              }}
+              className={`h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                !editorText.trim() ? 'opacity-40 pointer-events-none' : 'cursor-pointer'
+              }`}
+              title="Compartir documento por WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>Enviar por WhatsApp</span>
+            </a>
           </div>
 
           {/* Aviso Profesional */}
@@ -6142,12 +7345,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setActiveMenuId(null);
-                                    handleDescargarPDF(
+                                    void handleDescargarPDF(
                                       escrito.tipo,
                                       escrito.texto,
                                       escrito.includeHeader !== false,
                                       escrito.fontFamily,
-                                      escrito.fontSizePt
+                                      escrito.fontSizePt,
+                                      escrito.lineHeight,
+                                      escrito.pageMargins
                                     );
                                   }}
                                   className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
