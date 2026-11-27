@@ -130,8 +130,8 @@ export const ModuloPresupuestos: React.FC<ModuloPresupuestosProps> = ({
   const planUsuario = String(userProfile?.planActual || userProfile?.plan || '').toLowerCase().trim();
   const esFull = esPlanFull !== undefined ? esPlanFull : planUsuario.includes('full');
   const esAbogado = String(userProfile?.tipoPerfil || '').toLowerCase().trim() === 'abogado';
-  const storageKeyTasas = esAbogado ? 'olga_presupuesto_tasas_abogado' : 'olga_presupuesto_tasas';
-  const storageKeyServicios = esAbogado ? 'olga_presupuesto_servicios_abogado' : 'olga_presupuesto_servicios';
+  const storageKeyTasas = esAbogado ? 'olga_presupuesto_tasas_abogado' : 'olga_presupuesto_tasas_v2';
+  const storageKeyServicios = esAbogado ? 'olga_presupuesto_servicios_abogado' : 'olga_presupuesto_servicios_v2';
   const defaultTasasBase = esAbogado ? ITEMS_TASAS_ABOGADO_BASE : ITEMS_TASAS_REEMBOLSO_BASE;
   const defaultServiciosBase = esAbogado ? ITEMS_SERVICIOS_ABOGADO_BASE : ITEMS_SERVICIOS_HONORARIOS_BASE;
   const isWhatsAppEnabled =
