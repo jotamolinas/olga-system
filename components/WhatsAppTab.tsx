@@ -437,6 +437,37 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [qrRedirectNotice, setQrRedirectNotice] = useState<string | null>(() => {
+    try {
+      const msg = sessionStorage.getItem('olga_wa_qr_notice');
+      if (msg) sessionStorage.removeItem('olga_wa_qr_notice');
+      return msg;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const handleNotice = (event: Event) => {
+      const msg = (event as CustomEvent<string>)?.detail;
+      if (typeof msg === 'string' && msg.trim()) {
+        setQrRedirectNotice(msg.trim());
+        try {
+          sessionStorage.removeItem('olga_wa_qr_notice');
+        } catch {
+          // Ignorar
+        }
+      }
+    };
+    window.addEventListener('olga_wa_qr_notice', handleNotice);
+    return () => window.removeEventListener('olga_wa_qr_notice', handleNotice);
+  }, []);
+
+  useEffect(() => {
+    if (status === 'connected' && qrRedirectNotice) {
+      setQrRedirectNotice(null);
+    }
+  }, [status, qrRedirectNotice]);
 
   // Formulario de prueba rápida de envío
   const [testPhone, setTestPhone] = useState<string>('');
@@ -1895,6 +1926,23 @@ export const WhatsAppTab: React.FC<WhatsAppTabProps> = ({
               <span>Actualizar estado</span>
             </button>
           </div>
+
+          {qrRedirectNotice && status !== 'connected' && (
+            <div className="mt-4 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-start justify-between gap-3 text-xs text-slate-700 dark:text-slate-200">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <QrCode className="w-4 h-4 text-slate-600 dark:text-slate-300 shrink-0 mt-0.5" />
+                <span className="font-semibold leading-snug">{qrRedirectNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrRedirectNotice(null)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-100 shrink-0 cursor-pointer"
+                aria-label="Cerrar aviso"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {errorMsg && (
             <div className="mt-5 p-4 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 flex items-start gap-3 text-sm text-red-800 dark:text-red-200">

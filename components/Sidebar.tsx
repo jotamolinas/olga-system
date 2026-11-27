@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   Banknote,
@@ -134,6 +134,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       // Ignorar restricciones de storage
     }
   };
+
+  useEffect(() => {
+    const handleNavigateTab = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: SidebarTabId }>)?.detail;
+      if (detail?.tab) {
+        setActiveTab(detail.tab);
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('olga_navigate_tab', handleNavigateTab);
+    return () => window.removeEventListener('olga_navigate_tab', handleNavigateTab);
+  }, [setActiveTab, setIsMobileMenuOpen]);
 
   const tipoPerfilNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
   const esAbogado = tipoPerfilNorm === 'abogado';

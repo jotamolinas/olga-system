@@ -211,6 +211,225 @@ const limpiarEspaciadoresVisualesHtml = (rawHtml: string): string => {
   }
 };
 
+const sanitizarEtiquetasLiteralesHtml = (rawHtml: string): string => {
+  if (!rawHtml) return '';
+  return rawHtml
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+    .replace(/&amp;nbsp;|&nbsp;|&#160;/gi, ' ')
+    .replace(/\*\*((?:(?!<\/?(?:p|div|li|h[1-6]|tr|td|th|table)\b)[^\n])*?)\*\*/gi, '<strong>$1</strong>')
+    .replace(/\*\*/g, '');
+};
+
+const inferirTituloDesdeBorradorIA = (rawText: string, fallbackTitle = 'Documento IA'): string => {
+  const cleanFallback = (fallbackTitle || 'Documento IA').trim().slice(0, 75) || 'Documento IA';
+  if (!rawText || !rawText.trim()) return cleanFallback;
+
+  const plainNormalized = rawText
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;|&amp;nbsp;|\u00A0/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\*\*/g, '')
+    .replace(/\[\s*\]/g, '');
+
+  const lines = plainNormalized
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^(?:\*(?!\*)|-|•)\s+/, '')
+        .replace(/_{3,}/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter((line) => line.length >= 3 && /[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ0-9]/.test(line));
+
+  if (lines.length === 0) return cleanFallback;
+
+  const formatCandidate = (rawCandidate: string): string => {
+    const cleaned = rawCandidate
+      .replace(/\*\*/g, '')
+      .replace(/\[\s*\]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/[:;,\-–—\s]+$/, '')
+      .trim();
+    if (!cleaned) return '';
+    if (cleaned.length <= 75) return cleaned;
+    const cut = cleaned.slice(0, 75);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace >= 42 ? cut.slice(0, lastSpace) : cut).replace(/[:;,\-–—\s]+$/, '').trim();
+  };
+
+  const topLines = lines.slice(0, 14);
+
+  // 1. Priorizar líneas explícitas de REF.: / ASUNTO:
+  for (const line of topLines) {
+    const refMatch = line.match(/^(?:ref\.?|referencia|asunto|objeto)\s*[:.-]\s*(.+)$/i);
+    if (refMatch && refMatch[1]) {
+      const candidate = formatCandidate(refMatch[1]);
+      if (candidate.length >= 5) return candidate;
+    }
+  }
+
+  // 2. Priorizar encabezados de tipo documental (ADENDA, MEMORANDO, CONTRATO, ACTA, etc.)
+  const docTypeRegex = /^(?:adenda|convenio\s+modificatorio|memorando|memor[áa]ndum|nota|contrato|acta|intimaci[óo]n|solicitud|resoluci[óo]n|dictamen|informe|escrito|poder|demanda|contestaci[óo]n|pagar[ée]|autorizaci[óo]n|recibo)\b/i;
+  for (const line of topLines) {
+    if (docTypeRegex.test(line)) {
+      const candidate = formatCandidate(line);
+      if (candidate.length >= 5) return candidate;
+    }
+  }
+
+  // 3. Primera línea útil que no sea membrete genérico
+  const boilerplateRegex = /^(?:rep[úu]blica\s+del\s+paraguay|paz\s+y\s+justicia|poder\s+ejecutivo|asunci[óo]n\s*,|fecha\s*:)/i;
+  for (const line of topLines) {
+    if (!boilerplateRegex.test(line)) {
+      const candidate = formatCandidate(line);
+      if (candidate.length >= 4) return candidate;
+    }
+  }
+
+  return formatCandidate(topLines[0]) || cleanFallback;
+};
+
+const limpiarYConvertirBorradorIAaHtml = (rawDraft: string): string => {
+  const normalized = (rawDraft || '').replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return '';
+
+  const hasHtmlBlocks = /<(p|div|h[1-6]|ul|ol|li|table|blockquote|section|article)\b/i.test(normalized);
+  if (hasHtmlBlocks) {
+    let out = sanitizarEtiquetasLiteralesHtml(
+      limpiarEspaciadoresVisualesHtml(normalized)
+        .replace(/<span\b[^>]*\bid=["']?espacio-activo["']?[^>]*>([\s\S]*?)<\/span>/gi, '$1')
+    ).replace(/<p>\s*#{1,6}\s+([^<]+)<\/p>/gi, '<p><strong>$1</strong></p>');
+    return limpiarNodosVaciosFinalesHtml(out);
+  }
+
+  const preCleaned = normalized
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/&lt;br\s*\/?&gt;/gi, '\n')
+    .replace(/&nbsp;|&#160;|&amp;nbsp;/gi, ' ');
+
+  const lines = preCleaned.split('\n');
+  const htmlBlocks: string[] = [];
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (htmlBlocks.length > 0 && htmlBlocks[htmlBlocks.length - 1] !== '<p><br></p>') {
+        htmlBlocks.push('<p><br></p>');
+      }
+      continue;
+    }
+
+    // Omitir separadores markdown (*** o ---) sin tocar guiones bajos (_______)
+    if (/^(\*{3,}|-{3,})$/.test(trimmed)) {
+      continue;
+    }
+
+    let safe = escapeHtmlText(trimmed);
+
+    const headingMatch = safe.match(/^#{1,6}\s+(.+)$/);
+    if (headingMatch) {
+      const headingText = headingMatch[1].replace(/\*\*/g, '').trim();
+      if (headingText) {
+        htmlBlocks.push(`<p><strong>${headingText}</strong></p>`);
+      }
+      continue;
+    }
+
+    const bulletMatch = safe.match(/^(?:\*(?!\*)|-)\s+(.+)$/);
+    if (bulletMatch) {
+      safe = `• ${bulletMatch[1]}`;
+    }
+
+    safe = safe
+      .replace(/\*\*([^*\n]+(?:\*(?!\*)[^*\n]+)*)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*\*/g, '');
+
+    htmlBlocks.push(`<p>${safe}</p>`);
+  }
+
+  return limpiarNodosVaciosFinalesHtml(htmlBlocks.join(''));
+};
+
+const protegerBloquesFirmaYEncabezados = (rawHtml: string): string => {
+  if (!rawHtml || typeof document === 'undefined') return rawHtml || '';
+  try {
+    const wrapped = wrapSignatureBlocksForPrint(rawHtml);
+    const container = document.createElement('div');
+    container.innerHTML = wrapped;
+
+    const keepTogetherSelector = 'h1, h2, h3, h4, table, .signature-block, .signatures-group';
+    container.querySelectorAll(keepTogetherSelector).forEach((el) => {
+      el.classList.add('olga-keep-together');
+    });
+
+    const closingRegex = /^(?:en\s+prueba\s+de\s+conformidad|en\s+fe\s+de\s+ello|para\s+constancia|atentamente|cordialmente|sin\s+otro\s+particular|ser[áa]\s+justicia|es\s+justicia|firmado\s*:|ante\s+m[íi]\s*:)/i;
+    const isShortKeepBlock = (el: Element): boolean => {
+      const tag = el.tagName.toLowerCase();
+      if (tag !== 'p' && tag !== 'div') return false;
+      const txt = (el.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      if (!txt || txt.length > 140) return false;
+      if (/_{3,}/.test(txt)) return true;
+      if (closingRegex.test(txt)) return true;
+      const onlyStrong =
+        el.children.length === 1 &&
+        (el.children[0].tagName.toLowerCase() === 'strong' || el.children[0].tagName.toLowerCase() === 'b') &&
+        txt.length <= 110;
+      return onlyStrong;
+    };
+
+    const children = Array.from(container.children);
+    for (let i = 0; i < children.length; i += 1) {
+      const el = children[i];
+      if (!el.parentElement) continue;
+      if (el.classList.contains('signature-block') || el.classList.contains('signatures-group')) continue;
+
+      const txt = (el.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      if (closingRegex.test(txt) && txt.length <= 280) {
+        el.classList.add('olga-keep-together');
+        const next = children[i + 1];
+        if (
+          next &&
+          (next.classList.contains('signature-block') ||
+            next.classList.contains('signatures-group') ||
+            isShortKeepBlock(next))
+        ) {
+          const group = document.createElement('div');
+          group.className = 'signatures-group olga-keep-together';
+          el.parentElement.insertBefore(group, el);
+          group.appendChild(el);
+          group.appendChild(next);
+          if (!next.classList.contains('signature-block') && !next.classList.contains('signatures-group')) {
+            const afterNext = children[i + 2];
+            if (afterNext && isShortKeepBlock(afterNext)) {
+              group.appendChild(afterNext);
+              i += 1;
+            }
+          }
+          i += 1;
+        }
+        continue;
+      }
+
+      if (isShortKeepBlock(el)) {
+        el.classList.add('olga-keep-together');
+      }
+    }
+
+    return container.innerHTML;
+  } catch {
+    return wrapSignatureBlocksForPrint(rawHtml);
+  }
+};
+
 const waitForImagesInList = async (imgs: HTMLImageElement[], timeoutMs = 3500): Promise<void> => {
   if (!imgs || imgs.length === 0) return;
   await Promise.race([
@@ -777,28 +996,34 @@ export interface SectorPublicoPerfilDatos {
 
 export const PLANTILLAS_SECTOR_PUBLICO_BETA_META: PlantillaAbogadoMeta[] = [
   {
-    id: 'uoc_pedido_licitacion',
-    nombre: 'Pedido de Licitación / Llamado Mínimo Inicial',
-    categoriaSugerida: 'Licitaciones',
-    descripcion: 'Solicitud formal de inicio de proceso de contratación pública o llamado mínimo inicial ante la UOC.',
+    id: 'uoc_contrato_bienes_servicios',
+    nombre: 'Contrato de Bienes y/o Servicios (Ley 7021/22)',
+    categoriaSugerida: 'Contratos',
+    descripcion: 'Contrato administrativo de provisión de bienes o prestación de servicios conforme a la Ley N.º 7021/2022 y Decreto N.º 2264/2024.',
   },
   {
-    id: 'uoc_adenda_tiempo',
-    nombre: 'Solicitud de Adenda de Tiempo (Prórroga de Contrato)',
-    categoriaSugerida: 'Adendas',
-    descripcion: 'Justificación técnica y solicitud de prórroga de plazo contractual (Ley N.º 7021/2022).',
-  },
-  {
-    id: 'uoc_adenda_monto',
-    nombre: 'Solicitud de Adenda de Monto (Ampliación Presupuestaria)',
-    categoriaSugerida: 'Adendas',
-    descripcion: 'Solicitud de ampliación de monto adjudicado con respaldo presupuestario y CDP.',
-  },
-  {
-    id: 'uoc_nota_remision',
-    nombre: 'Nota de Remisión de Legajo / Memo Interno',
+    id: 'uoc_memo_informe_mensual',
+    nombre: 'Memorando de Remisión de Informe Mensual (UOC)',
     categoriaSugerida: 'Notas y Memos',
-    descripcion: 'Memorándum o nota oficial de remisión de legajo, expediente administrativo o antecedentes UOC.',
+    descripcion: 'Memorándum oficial de remisión del informe mensual de seguimiento y ejecución contractual UOC.',
+  },
+  {
+    id: 'uoc_convenio_modificatorio_adenda',
+    nombre: 'Convenio Modificatorio / Adenda de Plazo o Monto (Art. 67 Ley 7021/22)',
+    categoriaSugerida: 'Adendas',
+    descripcion: 'Convenio modificatorio contractual de plazo y/o ampliación de monto hasta el 20% según Art. 67 de la Ley N.º 7021/2022.',
+  },
+  {
+    id: 'uoc_acta_recepcion_definitiva',
+    nombre: 'Acta de Recepción Definitiva e Informe de Conformidad',
+    categoriaSugerida: 'Contratos',
+    descripcion: 'Acta oficial de verificación, recepción definitiva y conformidad suscripta por el Administrador de Contrato.',
+  },
+  {
+    id: 'uoc_nota_solicitud_pago',
+    nombre: 'Nota de Solicitud de Pago de Proveedor (SIFEN / CCT / IPS / REPSE / FIS)',
+    categoriaSugerida: 'Notas y Memos',
+    descripcion: 'Nota de solicitud y gestión de pago con verificación documental SIFEN, CCT, IPS, REPSE y FIS.',
   },
   {
     id: 'hoja_en_blanco',
@@ -1289,6 +1514,126 @@ export const CAMPOS_META: Record<string, CampoJudicialMeta> = {
     placeholder: 'Ej: EXP-ME N.º 2026-08914',
     help: 'Número de expediente administrativo o mesa de entrada institucional',
   },
+  NRO_RESOLUCION_ADJUDICACION: {
+    label: 'N.º de Resolución de Adjudicación',
+    placeholder: 'Ej: Resolución D.G. N.º 415/2026 de fecha 12/03/2026',
+    help: 'Acto administrativo de adjudicación del llamado conforme a la Ley N.º 7021/2022',
+  },
+  REPRESENTANTE_PROVEEDOR: {
+    label: 'Representante Legal del Proveedor',
+    placeholder: 'Ej: Sr. Roberto Carlos Méndez',
+    help: 'Nombre completo del representante legal o apoderado firmante por el proveedor',
+  },
+  CEDULA_REPRESENTANTE_PROVEEDOR: {
+    label: 'C.I. del Representante del Proveedor',
+    placeholder: 'Ej: 3.456.789',
+    help: 'Número de Cédula de Identidad Civil del representante legal firmante',
+  },
+  DOMICILIO_PROVEEDOR: {
+    label: 'Domicilio Especial del Proveedor',
+    placeholder: 'Ej: Avda. Mariscal López N.º 2450, Asunción',
+    help: 'Domicilio constituido por el contratista para notificaciones contractuales',
+  },
+  OBJETO_GASTO: {
+    label: 'Objeto del Gasto (OG)',
+    placeholder: 'Ej: OG 240 — Gastos por Servicios de Aseo, Mantenimiento y Reparaciones',
+    help: 'Clasificador presupuestario del gasto según Presupuesto General de la Nación',
+  },
+  TIPO_MONTO_CONTRATO: {
+    label: 'Tipo de Monto Contractual',
+    placeholder: 'Ej: Cerrado / Abierto (Monto Mínimo y Máximo)',
+    help: 'Indicar si el contrato es de monto cerrado o contrato abierto (Ley N.º 7021/2022)',
+  },
+  MONTO_ADJUDICADO: {
+    label: 'Monto Adjudicado (Gs.)',
+    placeholder: 'Ej: 240.000.000',
+    help: 'Importe total adjudicado en guaraníes (IVA incluido)',
+  },
+  MONTO_ADJUDICADO_LETRAS: {
+    label: 'Monto Adjudicado en Letras',
+    placeholder: 'Ej: Doscientos cuarenta millones',
+    help: 'Importe total adjudicado expresado en letras',
+  },
+  GARANTIA_FIEL_CUMPLIMIENTO: {
+    label: 'Garantía de Fiel Cumplimiento de Contrato',
+    placeholder: 'Ej: Póliza de Seguro de Caución N.º 98765 por el 10% (Gs. 24.000.000)',
+    help: 'Instrumento, número y porcentaje de garantía de fiel cumplimiento',
+  },
+  FECHA_VENCIMIENTO_GARANTIA: {
+    label: 'Vencimiento de Garantía (+30 días mínimo)',
+    placeholder: 'Ej: 30 de julio de 2026',
+    help: 'Fecha de vigencia de la garantía, debiendo exceder al menos 30 días al plazo contractual',
+  },
+  ADMINISTRADOR_CONTRATO: {
+    label: 'Administrador de Contrato Designado',
+    placeholder: 'Ej: Lic. Marcos Villalba — Jefe de Servicios Generales',
+    help: 'Funcionario designado para el seguimiento, control y recepción conforme al Decreto N.º 2264/2024',
+  },
+  MES_ANIO_INFORME: {
+    label: 'Mes y Año del Informe',
+    placeholder: 'Ej: Noviembre de 2026',
+    help: 'Período mensual comprendido en el informe remitido por la UOC',
+  },
+  CANTIDAD_CONTRATOS_ACTIVOS: {
+    label: 'Cantidad de Contratos Reportados',
+    placeholder: 'Ej: 14 contratos vigentes',
+    help: 'Número total de contratos activos incluidos en el informe mensual',
+  },
+  MONTO_TOTAL_INFORME: {
+    label: 'Monto Total Consolidado del Informe (Gs.)',
+    placeholder: 'Ej: 1.850.000.000',
+    help: 'Sumatoria total en guaraníes de los contratos reportados en el período',
+  },
+  NRO_ADENDA: {
+    label: 'N.º de Convenio Modificatorio / Adenda',
+    placeholder: 'Ej: Adenda N.º 01/2026',
+    help: 'Numeración correlativa del convenio modificatorio al contrato principal',
+  },
+  NRO_RESOLUCION_ADENDA: {
+    label: 'N.º de Resolución que Autoriza la Adenda',
+    placeholder: 'Ej: Resolución D.G. N.º 780/2026',
+    help: 'Acto administrativo de la máxima autoridad que aprueba la modificación contractual',
+  },
+  TIPO_MODIFICACION_ADENDA: {
+    label: 'Tipo de Modificación Contractual',
+    placeholder: 'Ej: Ampliación de Plazo y Monto dentro del tope del 20% (Art. 67 Ley 7021/22)',
+    help: 'Indicar si corresponde a prórroga de plazo, ampliación/reducción de monto o ambas',
+  },
+  NRO_ACTA_RECEPCION: {
+    label: 'N.º de Acta de Recepción Definitiva',
+    placeholder: 'Ej: Acta N.º 028/2026',
+    help: 'Número correlativo del acta de recepción definitiva e informe de conformidad',
+  },
+  NRO_ORDEN_COMPRA_SERVICIO: {
+    label: 'N.º de Orden de Compra / Servicio',
+    placeholder: 'Ej: OC/OS N.º 112/2026',
+    help: 'Número de Orden de Compra o Orden de Servicio emitida por la UOC',
+  },
+  NRO_FACTURA_SIFEN: {
+    label: 'N.º de Factura Electrónica (SIFEN / KuDE)',
+    placeholder: 'Ej: 001-002-0004589 (CDC: 01800123456...)',
+    help: 'Número de factura electrónica validada en SIFEN y Código de Control (CDC)',
+  },
+  MONTO_FACTURA: {
+    label: 'Monto de la Factura / Pago Solicitado (Gs.)',
+    placeholder: 'Ej: 45.000.000',
+    help: 'Importe líquido a pagar según factura conformada en guaraníes',
+  },
+  MONTO_FACTURA_LETRAS: {
+    label: 'Monto de la Factura en Letras',
+    placeholder: 'Ej: Cuarenta y cinco millones',
+    help: 'Importe de la factura expresado en letras',
+  },
+  ESTADO_CUMPLIMIENTO_TRIBUTARIO: {
+    label: 'Verificación Documental (CCT / IPS / REPSE / FIS)',
+    placeholder: 'Ej: CCT DNIT vigente; Constancia IPS al día; Registro REPSE y FIS verificados',
+    help: 'Estado de vigencia del Certificado de Cumplimiento Tributario, IPS, REPSE y FIS',
+  },
+  CUENTA_BANCARIA_PROVEEDOR: {
+    label: 'Cuenta Bancaria / Medio de Pago (STR / SPI)',
+    placeholder: 'Ej: Banco Nacional de Fomento — Cta. Cte. N.º 00-123456/7',
+    help: 'Datos bancarios declarados por el proveedor para transferencia de Tesorería',
+  },
 };
 
 export const getCampoMeta = (key: string): CampoJudicialMeta => {
@@ -1673,6 +2018,8 @@ export function construirPlantillaSectorPublicoBeta(
 
   const esc = escapeHtmlText;
   const institucion = esc(perfil.nombreInstitucion);
+  const rucInstitucion = esc(perfil.rucInstitucion || '80000000-0');
+  const direccionInstitucion = esc(perfil.direccionInstitucion || 'Sede Central');
   const ciudad = esc(perfil.ciudadInstitucion || 'Asunción');
 
   const bloqueFirmaUoc =
@@ -1682,105 +2029,141 @@ export function construirPlantillaSectorPublicoBeta(
     `<p style="text-align: center;">[CARGO_REMITENTE]</p>` +
     `<p style="text-align: center;">[DEPENDENCIA_SOLICITANTE] — ${institucion}</p>`;
 
+  const bloqueDobleFirma =
+    `<p><br></p>` +
+    `<p>En prueba de conformidad y para su fiel cumplimiento, las partes suscriben el presente instrumento en dos (2) ejemplares de un mismo tenor y a un solo efecto, en la ciudad de ${ciudad}, a los ${dia} días del mes de ${mes} del año ${anio}.</p>` +
+    `<p><br></p>` +
+    `<p style="text-align: center;">________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ________________________________________</p>` +
+    `<p style="text-align: center;"><strong>[DESTINATARIO]</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>[REPRESENTANTE_PROVEEDOR]</strong></p>` +
+    `<p style="text-align: center;">[CARGO_DESTINATARIO] &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Representante Legal — [PROVEEDOR]</p>` +
+    `<p style="text-align: center;">${institucion} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; RUC: [RUC_PROVEEDOR]</p>`;
+
   switch (plantillaId) {
-    case 'uoc_pedido_licitacion':
+    case 'uoc_contrato_bienes_servicios':
       return (
-        `<p style="text-align: center;"><strong>SOLICITUD DE INICIO DE PROCESO DE CONTRATACIÓN / LLAMADO MÍNIMO INICIAL</strong></p>` +
+        `<p style="text-align: center;"><strong>CONTRATO ADMINISTRATIVO N.º [NRO_CONTRATO]</strong></p>` +
+        `<p style="text-align: center;"><strong>PROVISIÓN DE BIENES Y/O PRESTACIÓN DE SERVICIOS — LEY N.º 7021/2022 Y DECRETO N.º 2264/2024</strong></p>` +
+        `<p style="text-align: center;">ID DNCP N.º <strong>[ID_DNCP]</strong> | Código PAC: <strong>[CODIGO_PAC]</strong> | Modalidad: <strong>[TIPO_LLAMADO]</strong></p>` +
+        `<p><br></p>` +
+        `<p>En la ciudad de ${ciudad}, República del Paraguay, a los ${dia} días del mes de ${mes} de ${anio}, entre <strong>${institucion}</strong>, con RUC N.º <strong>${rucInstitucion}</strong>, domiciliada en ${direccionInstitucion}, representada en este acto por <strong>[DESTINATARIO]</strong>, en su carácter de <strong>[CARGO_DESTINATARIO]</strong>, en adelante denominada la <strong>CONTRATANTE</strong>, por una parte; y por la otra, la firma <strong>[PROVEEDOR]</strong>, con RUC N.º <strong>[RUC_PROVEEDOR]</strong>, domiciliada en <strong>[DOMICILIO_PROVEEDOR]</strong>, representada por <strong>[REPRESENTANTE_PROVEEDOR]</strong>, con C.I. N.º <strong>[CEDULA_REPRESENTANTE_PROVEEDOR]</strong>, en adelante denominada el <strong>PROVEEDOR / CONTRATISTA</strong>, convienen en celebrar el presente Contrato Administrativo sujeto a las disposiciones de la <strong>Ley N.º 7021/2022 "De Suministro y Contrataciones Públicas"</strong>, su Decreto Reglamentario <strong>N.º 2264/2024</strong> y la Resolución de Adjudicación <strong>[NRO_RESOLUCION_ADJUDICACION]</strong>, conforme a las siguientes cláusulas:</p>` +
+        `<p><br></p>` +
+        `<p><strong>CLÁUSULA PRIMERA — OBJETO Y MODALIDAD:</strong> El PROVEEDOR se obliga a ejecutar a entera satisfacción de la CONTRATANTE el objeto denominado <strong>[OBJETO_CONTRATACION]</strong>, bajo la modalidad de <strong>[TIPO_LLAMADO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>, Código PAC <strong>[CODIGO_PAC]</strong>), con estricta sujeción a las Especificaciones Técnicas (EETT), el Pliego de Bases y Condiciones y la oferta adjudicada.</p>` +
+        `<p><strong>CLÁUSULA SEGUNDA — MONTO CONTRACTUAL Y RESPALDO PRESUPUESTARIO:</strong> El contrato se formaliza bajo la modalidad de monto <strong>[TIPO_MONTO_CONTRATO]</strong> por la suma total de GUARANÍES <strong>[MONTO_ADJUDICADO_LETRAS]</strong> (<strong>Gs. [MONTO_ADJUDICADO]</strong>), IVA incluido, con imputación al <strong>[OBJETO_GASTO]</strong> y respaldo en el Certificado de Disponibilidad Presupuestaria <strong>[NRO_CDP]</strong>.</p>` +
+        `<p><strong>CLÁUSULA TERCERA — PLAZO DE EJECUCIÓN Y VIGENCIA:</strong> El plazo de ejecución contractual es de <strong>[PLAZO_EJECUCION]</strong>, operando su vencimiento en fecha <strong>[FECHA_VENCIMIENTO_ACTUAL]</strong>, sin perjuicio de las modificaciones o prórrogas que pudieran acordarse en los términos del Art. 67 de la Ley N.º 7021/2022.</p>` +
+        `<p><strong>CLÁUSULA CUARTA — GARANTÍA DE FIEL CUMPLIMIENTO:</strong> Para asegurar el exacto cumplimiento de las obligaciones asumidas, el PROVEEDOR presenta <strong>[GARANTIA_FIEL_CUMPLIMIENTO]</strong>, con vigencia mínima hasta el <strong>[FECHA_VENCIMIENTO_GARANTIA]</strong> (debiendo exceder en al menos treinta días calendario la vigencia contractual conforme al Decreto N.º 2264/2024).</p>` +
+        `<p><strong>CLÁUSULA QUINTA — ADMINISTRACIÓN, RECEPCIÓN Y FORMA DE PAGO:</strong> La supervisión técnica, seguimiento de entregas y suscripción del Acta de Recepción Definitiva estará a cargo del Administrador de Contrato designado: <strong>[ADMINISTRADOR_CONTRATO]</strong>. Los pagos se tramitarán contra factura electrónica validada en SIFEN, recepción conforme y verificación vigente de CCT, IPS, REPSE y FIS.</p>` +
+        `<p><strong>CLÁUSULA SEXTA — JURISDICCIÓN Y NORMATIVA SUPLETORIA:</strong> En todo lo no previsto expresamente regirán la Ley N.º 7021/2022, el Decreto N.º 2264/2024 y las resoluciones vigentes de la Dirección Nacional de Contrataciones Públicas (DNCP), sometiéndose las partes a los Juzgados y Tribunales de la ciudad de ${ciudad}.</p>` +
+        bloqueDobleFirma
+      );
+
+    case 'uoc_memo_informe_mensual':
+      return (
+        `<p style="text-align: center;"><strong>MEMORÁNDUM DE REMISIÓN DE INFORME MENSUAL — UOC</strong></p>` +
+        `<p style="text-align: center;"><strong>SEGUIMIENTO CONTRACTUAL — LEY N.º 7021/2022 Y DECRETO N.º 2264/2024</strong></p>` +
         `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
         `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
         `<p><br></p>` +
         `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
-        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
-        `<p><strong>OBJETO:</strong> Solicitud de llamado para <strong>[OBJETO_CONTRATACION]</strong></p>` +
-        `<p><br></p>` +
-        `<p>Por medio de la presente, en cumplimiento de las disposiciones de la <strong>Ley N.º 7021/2022 "De Suministro y Contrataciones Públicas"</strong> y su Decreto Reglamentario, solicito la sustanciación del proceso de contratación bajo la modalidad de <strong>[TIPO_LLAMADO]</strong>, conforme al siguiente detalle técnico y presupuestario:</p>` +
-        `<p><br></p>` +
-        `<p>• <strong>Institución / Entidad:</strong> ${institucion}<br>` +
-        `• <strong>Dependencia Requirente:</strong> [DEPENDENCIA_SOLICITANTE]<br>` +
-        `• <strong>Objeto de la Contratación:</strong> [OBJETO_CONTRATACION]<br>` +
-        `• <strong>Código PAC / Referencia:</strong> [CODIGO_PAC]<br>` +
-        `• <strong>Monto Estimado Referencial:</strong> GUARANÍES <strong>[MONTO_LETRAS]</strong> (<strong>Gs. [MONTO_ESTIMADO]</strong>)<br>` +
-        `• <strong>Disponibilidad Presupuestaria:</strong> [NRO_CDP]<br>` +
-        `• <strong>Plazo de Ejecución Estimado:</strong> [PLAZO_EJECUCION]</p>` +
-        `<p><br></p>` +
-        `<p><strong>FUNDAMENTACIÓN DE LA NECESIDAD:</strong></p>` +
-        `<p>[JUSTIFICACION_TECNICA]</p>` +
-        `<p><br></p>` +
-        `<p>Se adjuntan las Especificaciones Técnicas (EETT), los precios referenciales de mercado y la planilla de requerimiento para la prosecución de los trámites pertinentes ante la Unidad Operativa de Contrataciones (UOC).</p>` +
-        bloqueFirmaUoc
-      );
-
-    case 'uoc_adenda_tiempo':
-      return (
-        `<p style="text-align: center;"><strong>SOLICITUD DE ADENDA DE TIEMPO (PRÓRROGA DE PLAZO CONTRACTUAL)</strong></p>` +
-        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
-        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
-        `<p><br></p>` +
-        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
-        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
-        `<p><strong>REFERENCIA:</strong> [NRO_CONTRATO] — ID DNCP N.º <strong>[ID_DNCP]</strong></p>` +
-        `<p><br></p>` +
-        `<p>Me dirijo a usted con relación al contrato administrativo <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), suscripto con el proveedor <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>) para el objeto <strong>[OBJETO_CONTRATACION]</strong>, cuyo vencimiento vigente opera en fecha <strong>[FECHA_VENCIMIENTO_ACTUAL]</strong>.</p>` +
-        `<p><br></p>` +
-        `<p>Al respecto, conforme a lo previsto en la <strong>Ley N.º 7021/2022</strong> y las cláusulas del Pliego de Bases y Condiciones, solicito formalmente la tramitación de una <strong>ADENDA DE AMPLIACIÓN DE PLAZO (TIEMPO)</strong> sin incremento de monto, de acuerdo con los siguientes parámetros:</p>` +
-        `<p><br></p>` +
-        `<p>• <strong>Contrato / ID DNCP:</strong> [NRO_CONTRATO] — ID DNCP [ID_DNCP]<br>` +
-        `• <strong>Proveedor Adjudicado:</strong> [PROVEEDOR] (RUC: [RUC_PROVEEDOR])<br>` +
-        `• <strong>Vencimiento Actual:</strong> [FECHA_VENCIMIENTO_ACTUAL]<br>` +
-        `• <strong>Prórroga Solicitada:</strong> [PLAZO_PRORROGA]<br>` +
-        `• <strong>Nueva Fecha de Vencimiento Propuesta:</strong> [NUEVA_FECHA_VENCIMIENTO]</p>` +
-        `<p><br></p>` +
-        `<p><strong>JUSTIFICACIÓN TÉCNICA Y OPERATIVA:</strong></p>` +
-        `<p>[JUSTIFICACION_TECNICA]</p>` +
-        `<p><br></p>` +
-        `<p>Se deja expresa constancia de que la presente prórroga no irroga erogación presupuestaria adicional a la ya adjudicada y permite salvaguardar la continuidad de los servicios institucionales mientras se culminan los procedimientos administrativos correspondientes.</p>` +
-        bloqueFirmaUoc
-      );
-
-    case 'uoc_adenda_monto':
-      return (
-        `<p style="text-align: center;"><strong>SOLICITUD DE ADENDA DE MONTO (AMPLIACIÓN PRESUPUESTARIA CONTRACTUAL)</strong></p>` +
-        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
-        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
-        `<p><br></p>` +
-        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
-        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
-        `<p><strong>REFERENCIA:</strong> Ampliación de Monto — [NRO_CONTRATO] (ID DNCP N.º <strong>[ID_DNCP]</strong>)</p>` +
-        `<p><br></p>` +
-        `<p>Por la presente, en el marco del contrato <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), adjudicado a la firma <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>) para <strong>[OBJETO_CONTRATACION]</strong>, solicito autorización y dictamen para la formalización de una <strong>ADENDA DE AMPLIACIÓN DE MONTO</strong> dentro de los límites establecidos en la <strong>Ley N.º 7021/2022</strong>:</p>` +
-        `<p><br></p>` +
-        `<p>• <strong>Monto Original Adjudicado:</strong> Gs. [MONTO_CONTRATO_ORIGINAL]<br>` +
-        `• <strong>Monto de Ampliación Solicitado:</strong> GUARANÍES <strong>[MONTO_AMPLIACION_LETRAS]</strong> (<strong>Gs. [MONTO_AMPLIACION]</strong>)<br>` +
-        `• <strong>Porcentaje de Ampliación:</strong> [PORCENTAJE_AMPLIACION] del contrato original<br>` +
-        `• <strong>Monto Total Actualizado:</strong> Gs. [MONTO_TOTAL_ACTUALIZADO]<br>` +
-        `• <strong>Respaldo Presupuestario:</strong> [NRO_CDP]</p>` +
-        `<p><br></p>` +
-        `<p><strong>JUSTIFICACIÓN TÉCNICA Y ECONÓMICA:</strong></p>` +
-        `<p>[JUSTIFICACION_TECNICA]</p>` +
-        `<p><br></p>` +
-        `<p>Los bienes/servicios ampliados mantienen idénticos precios unitarios y condiciones técnicas adjudicadas originalmente en el contrato base. Se solicita remitir a la Dirección de Presupuesto / Asesoría Jurídica y UOC para su formalización ante la DNCP.</p>` +
-        bloqueFirmaUoc
-      );
-
-    case 'uoc_nota_remision':
-      return (
-        `<p style="text-align: center;"><strong>NOTA DE REMISIÓN DE LEGAJO / MEMORÁNDUM INTERNO</strong></p>` +
-        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
-        `<p style="text-align: right;"><strong>[NRO_MEMO_NOTA]</strong></p>` +
-        `<p><br></p>` +
-        `<p><strong>PARA:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
         `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
         `<p><strong>EXPEDIENTE / MESA DE ENTRADA:</strong> [NRO_EXPEDIENTE_INTERNO]</p>` +
-        `<p><strong>ASUNTO:</strong> Remisión de legajo — [NRO_CONTRATO] (ID DNCP N.º [ID_DNCP]) — [PROVEEDOR]</p>` +
+        `<p><strong>ASUNTO:</strong> Remisión de Informe Mensual de Contratos Vigentes — Período <strong>[MES_ANIO_INFORME]</strong></p>` +
         `<p><br></p>` +
-        `<p>Tengo el agrado de dirigirme a usted a fin de remitir el legajo administrativo correspondiente al contrato <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), suscripto con <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>), referente a <strong>[OBJETO_CONTRATACION]</strong>, con la siguiente documentación respaldatoria:</p>` +
+        `<p>Me dirijo a usted con el objeto de elevar para conocimiento, control de gestión y toma de decisiones el <strong>Informe Mensual de Seguimiento de Contratos Administrativos</strong> correspondiente al período <strong>[MES_ANIO_INFORME]</strong> de <strong>${institucion}</strong>, en observancia de los deberes de control y seguimiento establecidos en la <strong>Ley N.º 7021/2022</strong> y el <strong>Decreto Reglamentario N.º 2264/2024</strong>.</p>` +
         `<p><br></p>` +
+        `<p><strong>RESUMEN CONSOLIDADO DEL PERÍODO:</strong></p>` +
+        `<p>• <strong>Institución / UOC:</strong> ${institucion}<br>` +
+        `• <strong>Período Informado:</strong> [MES_ANIO_INFORME]<br>` +
+        `• <strong>Total de Contratos Reportados:</strong> [CANTIDAD_CONTRATOS_ACTIVOS]<br>` +
+        `• <strong>Monto Total Consolidado en Cartera:</strong> Gs. [MONTO_TOTAL_INFORME]</p>` +
+        `<p><br></p>` +
+        `<p><strong>DETALLE Y ANEXOS REMITIDOS:</strong></p>` +
         `<p>[DETALLE_LEGAJO]</p>` +
         `<p><br></p>` +
-        `<p><strong>OBSERVACIONES / TRÁMITE SUGERIDO:</strong></p>` +
+        `<p><strong>OBSERVACIONES, ALERTAS DE VENCIMIENTO Y ACCIONES SUGERIDAS:</strong></p>` +
         `<p>[JUSTIFICACION_TECNICA]</p>` +
         `<p><br></p>` +
-        `<p>Sin otro particular, hago propicia la ocasión para saludarle atentamente.</p>` +
+        `<p>Se adjunta el cuadro analítico impreso con el detalle por ID PAC, Objeto del Gasto, Modalidad, Proveedor, Monto y fecha de vencimiento de cada contrato y sus garantías, para las acciones administrativas pertinentes.</p>` +
+        bloqueFirmaUoc
+      );
+
+    case 'uoc_convenio_modificatorio_adenda':
+      return (
+        `<p style="text-align: center;"><strong>CONVENIO MODIFICATORIO / ADENDA N.º [NRO_ADENDA]</strong></p>` +
+        `<p style="text-align: center;"><strong>CONTRATO N.º [NRO_CONTRATO] — ID DNCP N.º [ID_DNCP] (ART. 67 LEY N.º 7021/2022)</strong></p>` +
+        `<p><br></p>` +
+        `<p>En la ciudad de ${ciudad}, a los ${dia} días del mes de ${mes} de ${anio}, entre <strong>${institucion}</strong> (RUC N.º ${rucInstitucion}), representada por <strong>[DESTINATARIO]</strong> en su carácter de <strong>[CARGO_DESTINATARIO]</strong>, por una parte; y por la otra, la firma <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>), representada por <strong>[REPRESENTANTE_PROVEEDOR]</strong>, convienen en suscribir el presente <strong>CONVENIO MODIFICATORIO ([TIPO_MODIFICACION_ADENDA])</strong> al Contrato Administrativo <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>, Código PAC <strong>[CODIGO_PAC]</strong>) referente a <strong>[OBJETO_CONTRATACION]</strong>, autorizado mediante <strong>[NRO_RESOLUCION_ADENDA]</strong> y amparado en el <strong>Artículo 67 de la Ley N.º 7021/2022</strong> y el <strong>Decreto N.º 2264/2024</strong>:</p>` +
+        `<p><br></p>` +
+        `<p><strong>CLÁUSULA PRIMERA — ALCANCE DE LA MODIFICACIÓN:</strong> Las partes acuerdan formalizar la modificación bajo la modalidad <strong>[TIPO_MODIFICACION_ADENDA]</strong> conforme a los siguientes parámetros consolidados:</p>` +
+        `<p>• <strong>Vencimiento Contractual Anterior:</strong> [FECHA_VENCIMIENTO_ACTUAL]<br>` +
+        `• <strong>Prórroga de Plazo Acordada:</strong> [PLAZO_PRORROGA]<br>` +
+        `• <strong>Nueva Fecha de Vencimiento Contractual:</strong> [NUEVA_FECHA_VENCIMIENTO]<br>` +
+        `• <strong>Monto Original del Contrato:</strong> Gs. [MONTO_CONTRATO_ORIGINAL]<br>` +
+        `• <strong>Monto de Modificación / Ampliación:</strong> GUARANÍES <strong>[MONTO_AMPLIACION_LETRAS]</strong> (<strong>Gs. [MONTO_AMPLIACION]</strong>)<br>` +
+        `• <strong>Porcentaje Acumulado (Tope Legal 20% Art. 67 Ley 7021/22):</strong> [PORCENTAJE_AMPLIACION]<br>` +
+        `• <strong>Monto Total Contractual Actualizado:</strong> Gs. [MONTO_TOTAL_ACTUALIZADO]<br>` +
+        `• <strong>Respaldo Presupuestario (CDP):</strong> [NRO_CDP]</p>` +
+        `<p><br></p>` +
+        `<p><strong>CLÁUSULA SEGUNDA — JUSTIFICACIÓN TÉCNICA Y PRECIOS UNITARIOS:</strong> La presente modificación responde a la siguiente fundamentación: [JUSTIFICACION_TECNICA]. Los bienes o servicios mantienen idénticos precios unitarios, especificaciones técnicas y condiciones pactadas en el contrato original.</p>` +
+        `<p><strong>CLÁUSULA TERCERA — EXTENSIÓN DE GARANTÍA DE FIEL CUMPLIMIENTO:</strong> El PROVEEDOR se obliga a presentar el endoso de ampliación de vigencia y/o monto de la garantía de fiel cumplimiento hasta el <strong>[FECHA_VENCIMIENTO_GARANTIA]</strong> (mínimo 30 días adicionales al nuevo vencimiento contractual).</p>` +
+        `<p><strong>CLÁUSULA CUARTA — RATIFICACIÓN:</strong> Quedan vigentes e inalteradas todas las demás cláusulas del contrato principal que no se opongan al presente instrumento, debiendo la UOC proceder a su registro en el portal de la DNCP.</p>` +
+        bloqueDobleFirma
+      );
+
+    case 'uoc_acta_recepcion_definitiva':
+      return (
+        `<p style="text-align: center;"><strong>ACTA DE RECEPCIÓN DEFINITIVA E INFORME DE CONFORMIDAD</strong></p>` +
+        `<p style="text-align: center;"><strong>[NRO_ACTA_RECEPCION] — LEY N.º 7021/2022 Y DECRETO N.º 2264/2024</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p><br></p>` +
+        `<p>En la ciudad de ${ciudad}, siendo las ___ horas del día ${dia} de ${mes} de ${anio}, en las dependencias de <strong>[DEPENDENCIA_SOLICITANTE]</strong> de <strong>${institucion}</strong>, se constituye el Administrador de Contrato designado, <strong>[ADMINISTRADOR_CONTRATO]</strong>, conjuntamente con el representante de la firma proveedora <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>), <strong>[REPRESENTANTE_PROVEEDOR]</strong>, a los efectos de verificar y dejar constancia de la <strong>RECEPCIÓN DEFINITIVA Y CONFORMIDAD TÉCNICA</strong> correspondiente al siguiente detalle:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Contrato / ID DNCP:</strong> [NRO_CONTRATO] — ID DNCP N.º <strong>[ID_DNCP]</strong> (Código PAC: [CODIGO_PAC])<br>` +
+        `• <strong>Orden de Compra / Servicio:</strong> [NRO_ORDEN_COMPRA_SERVICIO]<br>` +
+        `• <strong>Objeto Contractual:</strong> [OBJETO_CONTRATACION]<br>` +
+        `• <strong>Objeto del Gasto:</strong> [OBJETO_GASTO]<br>` +
+        `• <strong>Comprobante / Factura SIFEN:</strong> [NRO_FACTURA_SIFEN]<br>` +
+        `• <strong>Importe Recepcionado de Conformidad:</strong> GUARANÍES <strong>[MONTO_FACTURA_LETRAS]</strong> (<strong>Gs. [MONTO_FACTURA]</strong>)</p>` +
+        `<p><br></p>` +
+        `<p><strong>VERIFICACIÓN DE BIENES ENTREGADOS / SERVICIOS PRESTADOS:</strong></p>` +
+        `<p>[DETALLE_LEGAJO]</p>` +
+        `<p><br></p>` +
+        `<p><strong>INFORME DE CONFORMIDAD Y OBSERVACIONES TÉCNICAS:</strong></p>` +
+        `<p>[JUSTIFICACION_TECNICA]</p>` +
+        `<p><br></p>` +
+        `<p>Verificadas las cantidades, calidad, plazos y especificaciones técnicas adjudicadas sin observaciones pendientes, se otorga la <strong>RECEPCIÓN DEFINITIVA DE CONFORMIDAD</strong> conforme al Decreto N.º 2264/2024, habilitando la prosecución del trámite de pago ante la Unidad Operativa de Contrataciones y Dirección Financiera.</p>` +
+        `<p><br></p>` +
+        `<p style="text-align: center;">________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ________________________________________</p>` +
+        `<p style="text-align: center;"><strong>[ADMINISTRADOR_CONTRATO]</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <strong>[REPRESENTANTE_PROVEEDOR]</strong></p>` +
+        `<p style="text-align: center;">Administrador de Contrato — [DEPENDENCIA_SOLICITANTE] &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Por [PROVEEDOR] (RUC: [RUC_PROVEEDOR])</p>`
+      );
+
+    case 'uoc_nota_solicitud_pago':
+      return (
+        `<p style="text-align: center;"><strong>NOTA DE SOLICITUD Y TRAMITACIÓN DE PAGO A PROVEEDOR</strong></p>` +
+        `<p style="text-align: center;"><strong>VERIFICACIÓN DOCUMENTAL SIFEN / CCT / IPS / REPSE / FIS — LEY N.º 7021/2022</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
+        `<p><br></p>` +
+        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
+        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
+        `<p><strong>EXPEDIENTE / MESA DE ENTRADA:</strong> [NRO_EXPEDIENTE_INTERNO]</p>` +
+        `<p><strong>ASUNTO:</strong> Solicitud de Pago — [PROVEEDOR] — [NRO_CONTRATO] (ID DNCP [ID_DNCP])</p>` +
+        `<p><br></p>` +
+        `<p>Me dirijo a usted a fin de remitir los antecedentes y solicitar la tramitación de la Obligación y Orden de Pago a favor de la firma contratista <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>), en el marco del contrato <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), cuyo objeto es <strong>[OBJETO_CONTRATACION]</strong>:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Orden de Compra / Servicio:</strong> [NRO_ORDEN_COMPRA_SERVICIO]<br>` +
+        `• <strong>Imputación Presupuestaria:</strong> [OBJETO_GASTO] — [NRO_CDP]<br>` +
+        `• <strong>Factura Electrónica (SIFEN / KuDE):</strong> [NRO_FACTURA_SIFEN]<br>` +
+        `• <strong>Monto Solicitado a Pagar:</strong> GUARANÍES <strong>[MONTO_FACTURA_LETRAS]</strong> (<strong>Gs. [MONTO_FACTURA]</strong>)<br>` +
+        `• <strong>Cuenta Bancaria Declarada:</strong> [CUENTA_BANCARIA_PROVEEDOR]</p>` +
+        `<p><br></p>` +
+        `<p><strong>CONTROL DE DOCUMENTACIÓN OBLIGATORIA (SIFEN / CCT / IPS / REPSE / FIS):</strong></p>` +
+        `<p>[ESTADO_CUMPLIMIENTO_TRIBUTARIO]</p>` +
+        `<p><br></p>` +
+        `<p><strong>DOCUMENTOS ADJUNTOS EN EL LEGAJO DE PAGO:</strong></p>` +
+        `<p>[DETALLE_LEGAJO]</p>` +
+        `<p><br></p>` +
+        `<p>Habiéndose verificado la recepción definitiva conforme, la validez del comprobante electrónico SIFEN y la vigencia de las constancias tributarias, previsionales y laborales exigidas por la normativa vigente, se solicita dar curso al proceso de pago correspondiente.</p>` +
         bloqueFirmaUoc
       );
 
@@ -2201,9 +2584,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     if (isExportingPDF) return;
 
     const content = rawContent !== undefined ? rawContent : (editorContentRef.current?.innerHTML || editorText);
-    const cleanedSource = limpiarEspaciadoresVisualesHtml(
-      desempaquetarContenidoFluido(
-        (content || '').replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+    const cleanedSource = sanitizarEtiquetasLiteralesHtml(
+      limpiarEspaciadoresVisualesHtml(
+        desempaquetarContenidoFluido(
+          (content || '').replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+        )
       )
     );
 
@@ -2247,7 +2632,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       el.parentNode?.replaceChild(marker, el);
     });
     const bodyHtmlClean = limpiarNodosVaciosFinalesHtml(
-      wrapSignatureBlocksForPrint(limpiarNodosVaciosFinalesHtml(tempWrap.innerHTML))
+      protegerBloquesFirmaYEncabezados(limpiarNodosVaciosFinalesHtml(tempWrap.innerHTML))
     );
 
     setIsExportingPDF(true);
@@ -2279,8 +2664,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             font-family: ${effectiveFontCss};
             font-size: ${effectiveFontSizePt}pt;
             line-height: ${effectiveLineHeight};
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            overflow-wrap: break-word;
+            word-break: normal;
           }
           .olga-pdf-sheet p,
           .olga-pdf-sheet div:not(.olga-doc-membrete):not(.olga-doc-membrete-title):not(.salto-de-pagina-print) {
@@ -2288,8 +2673,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             font-family: ${effectiveFontCss};
             font-size: ${effectiveFontSizePt}pt;
             line-height: ${effectiveLineHeight};
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            overflow-wrap: break-word;
+            word-break: normal;
             white-space: pre-wrap;
           }
           .olga-pdf-sheet p:last-child {
@@ -2305,8 +2690,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           }
           .olga-pdf-sheet h1, .olga-pdf-sheet h2, .olga-pdf-sheet h3, .olga-pdf-sheet h4 {
             margin: 0 0 10px 0;
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            overflow-wrap: break-word;
+            word-break: normal;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            break-after: avoid;
+            page-break-after: avoid;
           }
           .olga-pdf-sheet strong, .olga-pdf-sheet b {
             font-weight: 700;
@@ -2321,20 +2710,28 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
             height: auto !important;
             display: block;
             margin: 6px 0;
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
           .olga-pdf-sheet table {
             width: 100% !important;
             border-collapse: collapse !important;
             table-layout: auto;
             margin: 8px 0;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .olga-pdf-sheet tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
           .olga-pdf-sheet td, .olga-pdf-sheet th {
             border: 1px solid #cbd5e1;
             padding: 6px 8px;
             vertical-align: top;
             white-space: normal !important;
-            overflow-wrap: anywhere !important;
-            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
           }
           .olga-pdf-sheet ul {
             list-style-type: disc;
@@ -2349,8 +2746,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
           .olga-pdf-sheet li {
             margin-bottom: 4px;
             line-height: ${effectiveLineHeight};
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            overflow-wrap: break-word;
+            word-break: normal;
+          }
+          .olga-pdf-sheet .signature-block,
+          .olga-pdf-sheet .signatures-group,
+          .olga-pdf-sheet .olga-keep-together {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
           .olga-pdf-sheet .signature-block p {
             margin: 0 0 2px 0;
@@ -2401,6 +2804,20 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       await waitForImagesInList(imgs, 4000);
       await new Promise((r) => setTimeout(r, 80));
 
+      const sheetRect = sheetEl.getBoundingClientRect();
+      const domKeepBlocks = Array.from(
+        sheetEl.querySelectorAll('.signature-block, .signatures-group, table, h1, h2, h3, h4, .olga-keep-together, .salto-de-pagina-print')
+      )
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            top: Math.max(0, r.top - sheetRect.top),
+            bottom: Math.max(0, r.bottom - sheetRect.top),
+            isManualBreak: el.classList.contains('salto-de-pagina-print'),
+          };
+        })
+        .filter((b) => b.isManualBreak || b.bottom > b.top);
+
       const canvas = await html2canvas(sheetEl, {
         scale: 2,
         useCORS: true,
@@ -2409,6 +2826,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         logging: false,
         windowWidth: 794,
       });
+
+      const domToCanvasScale = sheetEl.offsetWidth > 0 ? canvas.width / sheetEl.offsetWidth : 2;
+      const keepBlocksCanvas = domKeepBlocks.map((b) => ({
+        top: Math.round(b.top * domToCanvasScale),
+        bottom: Math.round(b.bottom * domToCanvasScale),
+        isManualBreak: b.isManualBreak,
+      }));
 
       const pageWidthMm = 210;
       const pageHeightMm = 297;
@@ -2468,12 +2892,35 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
       while (currentY < canvas.height) {
         const remainingPx = canvas.height - currentY;
-        const targetEnd =
-          remainingPx <= maxSliceHeightPx
-            ? canvas.height
-            : fullCtx
-              ? findCleanBreakY(fullCtx, currentY + maxSliceHeightPx, currentY)
-              : currentY + maxSliceHeightPx;
+        let targetEnd: number;
+
+        if (remainingPx <= maxSliceHeightPx) {
+          targetEnd = canvas.height;
+        } else {
+          const maxEnd = currentY + maxSliceHeightPx;
+          const manualBreak = keepBlocksCanvas.find(
+            (b) => b.isManualBreak && b.top > currentY + 20 && b.top <= maxEnd
+          );
+          if (manualBreak) {
+            targetEnd = manualBreak.top;
+          } else {
+            let candidateEnd = fullCtx ? findCleanBreakY(fullCtx, maxEnd, currentY) : maxEnd;
+            for (const blk of keepBlocksCanvas) {
+              if (blk.isManualBreak) continue;
+              const blkHeight = blk.bottom - blk.top;
+              if (
+                blk.top < candidateEnd &&
+                blk.bottom > candidateEnd &&
+                blk.top > currentY + Math.round(maxSliceHeightPx * 0.25) &&
+                blkHeight <= Math.round(maxSliceHeightPx * 0.72)
+              ) {
+                const safeBeforeBlock = Math.max(currentY + 20, blk.top - 4);
+                candidateEnd = fullCtx ? findCleanBreakY(fullCtx, safeBeforeBlock, currentY) : safeBeforeBlock;
+              }
+            }
+            targetEnd = Math.max(currentY + 1, candidateEnd);
+          }
+        }
         const sliceHeightPx = Math.max(1, targetEnd - currentY);
 
         if (fullCtx && isCanvasRegionBlank(fullCtx, currentY, sliceHeightPx)) {
@@ -2823,6 +3270,30 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     };
 
     const flowBlocks = collectFlowBlocks(editorEl);
+    const plainNormalized = (editorEl.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+    const hasVisualMedia = Boolean(editorEl.querySelector('img, table, hr, svg'));
+    const computedLineHeightPx = parseFloat(window.getComputedStyle(editorEl).lineHeight || '24') || 24;
+    const nonEmptyBlocks = flowBlocks.filter((el) => {
+      const txt = (el.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      return txt.length > 0 || Boolean(el.querySelector('img, table, hr, svg'));
+    });
+
+    // Solo recalcular espaciadores si el contenido supera 1 línea
+    if (
+      !hasVisualMedia &&
+      (!plainNormalized ||
+        (nonEmptyBlocks.length <= 1 &&
+          (nonEmptyBlocks[0]?.getBoundingClientRect().height || 0) <= computedLineHeightPx * 1.75))
+    ) {
+      editorEl.style.minHeight = `${Math.round(firstPageBottom)}px`;
+      setVisualPageBreaks([]);
+      setTotalPaginasVisuales(1);
+      return 1;
+    }
+
+    const closingOrKeepRegex = /^(?:en\s+prueba\s+de\s+conformidad|en\s+fe\s+de\s+ello|para\s+constancia|atentamente|cordialmente|sin\s+otro\s+particular|ser[áa]\s+justicia|es\s+justicia|firmado\s*:|ante\s+m[íi]\s*:)/i;
+    const maxAllowedPushPx = Math.round(usableSinglePageHeightPx * 0.35);
+
     for (const el of flowBlocks) {
       const rect = el.getBoundingClientRect();
       if (rect.height === 0 && rect.width === 0) continue;
@@ -2830,6 +3301,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const blockTop = rect.top - editorRect.top;
       const blockBottom = rect.bottom - editorRect.top;
       const page = getPageForY(blockTop);
+
+      const tag = el.tagName.toLowerCase();
+      const txt = (el.textContent || '').replace(/[\u00A0\u200B]/g, ' ').trim();
+      const isIndivisibleOrSmall =
+        tag === 'h1' ||
+        tag === 'h2' ||
+        tag === 'h3' ||
+        tag === 'h4' ||
+        tag === 'table' ||
+        tag === 'img' ||
+        el.classList.contains('signature-block') ||
+        el.classList.contains('signatures-group') ||
+        /_{3,}/.test(txt) ||
+        closingOrKeepRegex.test(txt) ||
+        rect.height <= Math.min(140, usableSinglePageHeightPx * 0.22);
 
       if (page > 1) {
         const prevPageBottom = getPageBottomEdge(page - 1);
@@ -2848,12 +3334,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       const pageLimit = pageBottom - marginBottomPx;
       const nextPageStart = pageBottom + PAGE_GAP_PX + marginTopPx;
 
-      if (
-        (blockTop >= pageBottom && blockTop < nextPageStart - 1) ||
-        (blockBottom > pageLimit && rect.height < usableSinglePageHeightPx)
-      ) {
+      if (blockTop >= pageBottom && blockTop < nextPageStart - 1) {
         const pushPx = Math.ceil(nextPageStart - blockTop);
         if (pushPx > 0) {
+          el.setAttribute('data-olga-page-spacer', 'true');
+          el.style.setProperty('--olga-spacer-mt', `${pushPx}px`);
+        }
+      } else if (blockBottom > pageLimit && isIndivisibleOrSmall) {
+        const pushPx = Math.ceil(nextPageStart - blockTop);
+        // Evitar saltos exagerados que dejen la página casi vacía
+        if (pushPx > 0 && pushPx <= maxAllowedPushPx) {
           el.setAttribute('data-olga-page-spacer', 'true');
           el.style.setProperty('--olga-spacer-mt', `${pushPx}px`);
         }
@@ -2863,8 +3353,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     let contentBottomPx = 0;
     try {
       const hasContent =
-        (editorEl.textContent || '').replace(/[\u00A0\u200B]/g, '').trim().length > 0 ||
-        Boolean(editorEl.querySelector('img, table, hr, svg'));
+        plainNormalized.length > 0 ||
+        hasVisualMedia;
       if (hasContent && editorEl.childNodes.length > 0) {
         const updatedEditorRect = editorEl.getBoundingClientRect();
         const range = document.createRange();
@@ -3031,6 +3521,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Estado del Asistente Flotante de Autocompletado (Autofill Wizard)
   const [autofillInput, setAutofillInput] = useState<string>('');
   const [mostrarTooltipAyuda, setMostrarTooltipAyuda] = useState<boolean>(false);
+  const [isAutofillBarHidden, setIsAutofillBarHidden] = useState<boolean>(false);
+  const [isAutofillBarMinimized, setIsAutofillBarMinimized] = useState<boolean>(false);
   const autofillInputRef = useRef<HTMLInputElement>(null);
 
   // Historial de Estados para Deshacer / Retroceder en el Asistente Flotante
@@ -3057,6 +3549,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Modo de edición: saber si se está editando un documento existente abierto desde la grilla
   const [editandoDocumentoExistente, setEditandoDocumentoExistente] = useState<boolean>(false);
+  const [wasGeneratedByAI, setWasGeneratedByAI] = useState<boolean>(false);
 
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -3995,7 +4488,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Condición de Modo Autocompletado Activo:
   // Se oculta la cabecera completa si mensajeAsistente tiene algún valor (modo llenado paso a paso),
   // y solo se restaura cuando termina (mensajeAsistente === null / sin espacios pendientes) o al seleccionar 'Hoja en Blanco'.
-  const condicionAutocompletado = Boolean(mensajeAsistente) && !isRedaccionEnBlanco;
+  const condicionAutocompletado = Boolean(mensajeAsistente) && !isRedaccionEnBlanco && !isAutofillBarHidden;
 
   // Lógica inteligente de visibilidad de la barra de herramientas de formato de texto (Negrita, Cursiva, Alineación, Listas)
   // Oculta si el asistente flotante está activo con espacios pendientes.
@@ -4003,9 +4496,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // 1. Es 'Hoja en Blanco (Redacción Libre)'
   // 2. Se está editando un documento existente (abierto desde la grilla)
   // 3. Se completó el 100% de los espacios en blanco (mensajeAsistente === null o totalBlanks === 0)
+  // 4. El usuario ocultó/cerró la barra flotante de autocompletado
   const mostrarBarraHerramientas = 
     isRedaccionEnBlanco ||
     editandoDocumentoExistente ||
+    isAutofillBarHidden ||
     totalBlanks === 0 ||
     !mensajeAsistente;
 
@@ -4252,7 +4747,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Resaltado visual del espacio en blanco activo con resolución silenciosa previa:
   useEffect(() => {
-    if (!mostrarEditor || isRedaccionEnBlanco) return;
+    if (!mostrarEditor || isRedaccionEnBlanco || isAutofillBarHidden) return;
 
     if (isJudicialMarkersActive) {
       const firstKey = marcadoresAbogadoPendientes[0];
@@ -4336,11 +4831,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes, esPlayeroEsc, esSectorPublicoBeta, blankMatches.length]);
+  }, [mostrarEditor, isRedaccionEnBlanco, isAutofillBarHidden, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes, esPlayeroEsc, esSectorPublicoBeta, blankMatches.length]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
-    if (!mostrarEditor || totalBlanks === 0) return;
+    if (!mostrarEditor || isRedaccionEnBlanco || isAutofillBarHidden || isAutofillBarMinimized || totalBlanks === 0) return;
 
     const timer = setTimeout(() => {
       const espacioActivo = document.getElementById('espacio-activo');
@@ -4350,21 +4845,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [totalBlanks, currentBlankContext?.instruccion, mostrarEditor]);
+  }, [totalBlanks, currentBlankContext?.instruccion, mostrarEditor, isRedaccionEnBlanco, isAutofillBarHidden, isAutofillBarMinimized]);
 
   // Auto-Focus Directo al Asistente Flotante (Flujo de Teclado Continuo):
-  // Ejecuta un .focus() manual sobre autofillInputRef cada vez que el estado mensajeAsistente
+  // Ejecuta un .focus({ preventScroll: true }) manual sobre autofillInputRef cada vez que el estado mensajeAsistente
   // (o el título/instrucción de la ventanita) cambie, asegurando que el cursor no quede atascado en el contentEditable.
   useEffect(() => {
-    if (mostrarEditor && condicionAutocompletado && mensajeAsistente) {
+    if (mostrarEditor && condicionAutocompletado && !isAutofillBarHidden && !isAutofillBarMinimized && mensajeAsistente) {
       const focusTimer = setTimeout(() => {
         if (autofillInputRef.current) {
-          autofillInputRef.current.focus();
+          autofillInputRef.current.focus({ preventScroll: true });
         }
       }, 50);
       return () => clearTimeout(focusTimer);
     }
-  }, [mensajeAsistente, currentBlankContext?.instruccion, mostrarEditor, condicionAutocompletado]);
+  }, [mensajeAsistente, currentBlankContext?.instruccion, mostrarEditor, condicionAutocompletado, isAutofillBarHidden, isAutofillBarMinimized]);
 
   // =========================================================================
   // HISTORIAL DE ESTADOS Y DESHACER (RETROCEDER) DEL ASISTENTE FLOTANTE
@@ -5006,7 +5501,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     if (!plantillaId || isMenuPlantillasBloqueado) return;
     setMostrarEditor(true);
     setEditandoDocumentoExistente(false);
+    setWasGeneratedByAI(false);
     setSelectedPlantillaId(plantillaId);
+    setIsAutofillBarHidden(false);
+    setIsAutofillBarMinimized(false);
     setMemoria({});
     setSkippedJudicialMarkers([]);
     setHistorialTextos([]);
@@ -5137,6 +5635,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setIncludeHeader(true);
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
+    setWasGeneratedByAI(false);
+    setIsAutofillBarHidden(false);
+    setIsAutofillBarMinimized(false);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
@@ -5165,6 +5666,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setIncludeHeader(true);
     setEditandoDocumentoExistente(false);
     setActiveEditingDoc(null);
+    setWasGeneratedByAI(false);
+    setIsAutofillBarHidden(false);
+    setIsAutofillBarMinimized(false);
     setEditorText('');
     setDocumentTitle('Escrito en Blanco');
     setPreviewMode(false);
@@ -5201,13 +5705,36 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     setIsSavingDraft(true);
     try {
-      const tipoDoc = documentTitle.trim() || 'Escrito';
-      const cat = selectedCategoryForSave || 'Contratos Privados';
+      const baseTemplateTitleSet = new Set<string>([
+        'Escrito en Blanco',
+        'Documento en Blanco',
+        'Escrito',
+        'Adenda',
+        ...PLANTILLAS_NOTARIALES.map((p) => p.nombre),
+        ...PLANTILLAS_ABOGADOS_META.map((p) => p.nombre),
+        ...PLANTILLAS_PLAYERO_META.map((p) => p.nombre),
+        ...PLANTILLAS_SECTOR_PUBLICO_BETA_META.map((p) => p.nombre),
+      ]);
 
-      // Limpiar etiquetas temporales de resaltado y espaciadores visuales antes de persistir
-      const textoLimpio = limpiarEspaciadoresVisualesHtml(
-        editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+      // Limpiar etiquetas temporales de resaltado, literales HTML y espaciadores visuales antes de persistir
+      const textoLimpio = sanitizarEtiquetasLiteralesHtml(
+        limpiarEspaciadoresVisualesHtml(
+          editorText.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+        )
       );
+
+      let tipoDoc = documentTitle.trim() || 'Escrito';
+      const isNewDocument = !activeEditingDoc?.id;
+      if (
+        isNewDocument &&
+        wasGeneratedByAI &&
+        (!documentTitle.trim() || baseTemplateTitleSet.has(tipoDoc))
+      ) {
+        tipoDoc = inferirTituloDesdeBorradorIA(textoLimpio, tipoDoc);
+        setDocumentTitle(tipoDoc);
+      }
+
+      const cat = selectedCategoryForSave || 'Contratos Privados';
 
       if (!workspaceId) {
         console.error("Operación abortada: Workspace no identificado.");
@@ -5294,6 +5821,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       setSelectedPlantillaId('');
       setActiveEditingDoc(null);
       setEditandoDocumentoExistente(false);
+      setWasGeneratedByAI(false);
 
       // 4. Mensaje Verde de Éxito con Toast
       const mensajeFinal = isExistingFirestoreDoc 
@@ -5346,8 +5874,10 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
   // Motor de Impresión Oficial (Hoja en Blanco A4 - Flujo Continuo Nativo)
   const handleImprimirPDF = () => {
     const rawContent = editorContentRef.current?.innerHTML || editorText;
-    const content = limpiarEspaciadoresVisualesHtml(
-      rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+    const content = sanitizarEtiquetasLiteralesHtml(
+      limpiarEspaciadoresVisualesHtml(
+        rawContent.replace(/<span id="espacio-activo"[^>]*>(.*?)<\/span>/g, '$1')
+      )
     );
     const hasMediaRaw = /<(img|table|hr|svg)\b/i.test(content || '');
     if (!content || (!content.trim() && !hasMediaRaw)) {
@@ -5578,7 +6108,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     const bodyHtml = limpiarNodosVaciosFinalesHtml(
-      wrapSignatureBlocksForPrint(cleanParagraphs.join(''))
+      protegerBloquesFirmaYEncabezados(cleanParagraphs.join(''))
     );
     const mostrarCabeceraImpresion = includeHeader;
     const membreteHtml = mostrarCabeceraImpresion ? buildMembreteHtml() : '';
@@ -5655,8 +6185,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       text-align: justify;
       text-justify: inter-word;
       white-space: pre-wrap !important;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-break: normal;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
       color: #000000;
@@ -5672,8 +6202,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       text-align: justify;
       text-justify: inter-word;
       white-space: pre-wrap !important;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-break: normal;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
       orphans: 3;
@@ -5685,8 +6215,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
 
     p, div, td, th {
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-break: normal;
     }
 
     hr {
@@ -5709,6 +6239,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       border-collapse: collapse !important;
       table-layout: auto;
       margin: 8px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     td, th {
@@ -5716,15 +6253,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       padding: 6px 8px;
       vertical-align: top;
       white-space: normal !important;
-      overflow-wrap: anywhere !important;
-      word-break: break-word !important;
+      overflow-wrap: break-word !important;
+      word-break: normal !important;
     }
 
     h1, h2, h3, h4 {
+      break-inside: avoid;
+      page-break-inside: avoid;
       break-after: avoid;
       page-break-after: avoid;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-break: normal;
     }
 
     ul, ol {
@@ -5739,15 +6278,15 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       line-height: ${printLineHeight} !important;
       text-align: justify;
       white-space: pre-wrap !important;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-break: normal;
       tab-size: 4 !important;
       -moz-tab-size: 4 !important;
       orphans: 3;
       widows: 3;
     }
 
-    .signature-block, .signatures-group {
+    .signature-block, .signatures-group, .olga-keep-together {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
       white-space: pre-wrap !important;
@@ -6026,40 +6565,110 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     }
   };
 
-  // Botón explícito de Inserción / Aprobación
-  const handleInsertarEnDocumento = (modo: 'anexar' | 'reemplazar' = 'anexar') => {
+  // Botón explícito de Inserción / Aprobación (por defecto reemplaza para evitar mezclar documentos)
+  const handleInsertarEnDocumento = (modo: 'anexar' | 'reemplazar' = 'reemplazar') => {
     if (!aiDraftProposal) return;
 
+    const cleanProposalHtml = limpiarYConvertirBorradorIAaHtml(aiDraftProposal);
+    if (!cleanProposalHtml) return;
+
+    const currentDomOrStateHtml = editorContentRef.current ? editorContentRef.current.innerHTML : editorText;
+    const existingCleanHtml = limpiarNodosVaciosFinalesHtml(
+      limpiarEspaciadoresVisualesHtml(
+        unwrapEspacioActivo(
+          desempaquetarContenidoFluido(currentDomOrStateHtml)
+        )
+      )
+    ).trim();
+
+    const hasExistingContent =
+      existingCleanHtml.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0 ||
+      /<(img|table|hr|svg)\b/i.test(existingCleanHtml);
+
+    const provieneDePlantillaPrevia = Boolean(selectedPlantillaId && selectedPlantillaId !== 'hoja_en_blanco');
+    const baseTemplateTitleSet = new Set<string>([
+      'Escrito en Blanco',
+      'Documento en Blanco',
+      'Escrito',
+      'Adenda',
+      ...PLANTILLAS_NOTARIALES.map((p) => p.nombre),
+      ...PLANTILLAS_ABOGADOS_META.map((p) => p.nombre),
+      ...PLANTILLAS_PLAYERO_META.map((p) => p.nombre),
+      ...PLANTILLAS_SECTOR_PUBLICO_BETA_META.map((p) => p.nombre),
+    ]);
+    const currentTrimmedTitle = documentTitle.trim();
+    const esTituloBaseOPlantilla =
+      !currentTrimmedTitle ||
+      baseTemplateTitleSet.has(currentTrimmedTitle) ||
+      provieneDePlantillaPrevia;
+
     let nuevoTexto = '';
-    if (modo === 'reemplazar' || !editorText.trim()) {
-      nuevoTexto = aiDraftProposal.trim();
+    const debeReemplazar = modo === 'reemplazar' || !hasExistingContent || (provieneDePlantillaPrevia && modo !== 'anexar');
+    let nextTitle = currentTrimmedTitle;
+
+    if (debeReemplazar) {
+      nuevoTexto = cleanProposalHtml;
+      nextTitle = inferirTituloDesdeBorradorIA(aiDraftProposal, 'Documento IA');
+      setDocumentTitle(nextTitle);
+      setSelectedPlantillaId('hoja_en_blanco');
+      setEditandoDocumentoExistente(false);
+      setActiveEditingDoc(null);
+      setMemoria({});
+      setSkippedJudicialMarkers([]);
+      setHistorialTextos([]);
+      setHistorialSkipped([]);
+      setAutofillInput('');
     } else {
-      nuevoTexto = `${editorText.trim()}\n\n${aiDraftProposal.trim()}`;
+      nuevoTexto = `${existingCleanHtml}<p><br></p>${cleanProposalHtml}`;
+      if (esTituloBaseOPlantilla) {
+        nextTitle = inferirTituloDesdeBorradorIA(aiDraftProposal, currentTrimmedTitle || 'Documento IA');
+        setDocumentTitle(nextTitle);
+      }
     }
 
+    // No abrir automáticamente la cajita flotante de autocompletado sobre borradores IA
+    setWasGeneratedByAI(true);
+    setIsAutofillBarHidden(true);
+    setIsAutofillBarMinimized(false);
     setEditorText(nuevoTexto);
     setTipoHoja('blanca');
-    // Desplegar el editor y desactivar vista previa
     setMostrarEditor(true);
     setPreviewMode(false);
     if (editorContentRef.current) {
       editorContentRef.current.innerHTML = nuevoTexto;
+      requestAnimationFrame(() => {
+        if (editorContentRef.current) {
+          recalcularPaginacionVisual(editorContentRef.current);
+        }
+      });
     }
 
     // Persistencia local inmediata y segura
     try {
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TEXT, nuevoTexto);
       localStorage.setItem(LOCAL_STORAGE_DRAFT_TIPO_HOJA, 'blanca');
+      if (nextTitle) {
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_TITULO, nextTitle);
+      }
+      if (debeReemplazar) {
+        localStorage.setItem(LOCAL_STORAGE_DRAFT_PLANTILLA, 'hoja_en_blanco');
+      }
     } catch (err) {
       console.warn('Error guardando en localStorage:', err);
     }
 
-    // Scroll al inicio y enfoque sin salto en el Editor Notarial Activo
+    // Scroll al inicio y enfoque sin salto en el Editor Activo
     setTimeout(() => {
       if (editorContentRef.current) {
-        if (editorContentRef.current.innerHTML !== nuevoTexto) {
+        const currentCleaned = limpiarEspaciadoresVisualesHtml(editorContentRef.current.innerHTML);
+        if (currentCleaned !== nuevoTexto) {
           editorContentRef.current.innerHTML = nuevoTexto;
         }
+        requestAnimationFrame(() => {
+          if (editorContentRef.current) {
+            recalcularPaginacionVisual(editorContentRef.current);
+          }
+        });
       }
       scrollEditorAlInicio();
       editorContentRef.current?.focus({ preventScroll: true });
@@ -6101,6 +6710,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     setMostrarEditor(true);
     setEditandoDocumentoExistente(true);
+    setWasGeneratedByAI(false);
     setActiveEditingDoc(escrito);
     setTipoHoja(restoredTipoHoja);
     setIncludeHeader(restoredIncludeHeader);
@@ -6109,6 +6719,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     setEditorLineHeight(restoredLineHeight);
     setPageMargins(restoredPageMargins);
     setSelectedPlantillaId('hoja_en_blanco');
+    setIsAutofillBarHidden(false);
+    setIsAutofillBarMinimized(false);
     setEditorText(docTexto);
     setDocumentTitle(cleanTitle);
     setSelectedCategoryForSave(escrito.categoria || 'Contratos Privados');
@@ -6271,6 +6883,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     { label: 'Rescisión Unilateral', prompt: 'Redacta una cláusula de rescisión unilateral con preaviso de 30 días y liquidación de expensas e impuestos.' },
     { label: 'Jurisdicción Asunción', prompt: 'Redacta una cláusula de jurisdicción y prórroga de competencia expresa ante los Juzgados Ordinarios de Asunción.' },
     { label: 'Poder Especial Bancario', prompt: 'Redacta facultades especiales para cobro de cheques, apertura de cuentas y transferencias bancarias en Paraguay.' }
+  ];
+
+  const QUICK_AI_PROMPTS_UOC = [
+    { label: 'Adenda Plazo / Monto (Art. 67)', prompt: 'Redacta un convenio modificatorio / adenda contractual de ampliación de plazo y/o monto hasta el 20% conforme al Art. 67 de la Ley N.º 7021/2022 y Decreto N.º 2264/2024.' },
+    { label: 'Intimación de Garantía', prompt: 'Redacta una nota formal UOC de intimación al proveedor para la presentación o renovación de la póliza de garantía de fiel cumplimiento de contrato bajo Ley N.º 7021/2022.' },
+    { label: 'Acta de Recepción Definitiva', prompt: 'Redacta un Acta de Recepción Definitiva e Informe de Conformidad suscripta por el Administrador de Contrato conforme a la Ley N.º 7021/2022 y Decreto N.º 2264/2024.' },
+    { label: 'Memo Informe Mensual', prompt: 'Redacta un Memorando UOC de remisión del informe mensual de seguimiento, avance físico/financiero y ejecución contractual según Ley N.º 7021/2022.' },
+    { label: 'Solicitud de Pago (SIFEN)', prompt: 'Redacta una nota formal de solicitud y gestión de pago de proveedor adjuntando factura electrónica SIFEN, CCT, IPS, REPSE y FIS bajo Ley N.º 7021/2022.' }
   ];
 
   // Filtrado LOCAL sobre el estado de React (regla crítica: prohibido peticiones al escribir)
@@ -7110,7 +7730,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 white-space: pre-wrap !important;
                 tab-size: 4 !important;
                 -moz-tab-size: 4 !important;
-                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
                 box-sizing: border-box !important;
                 position: relative !important;
                 outline: none !important;
@@ -7171,8 +7792,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 text-justify: inter-word !important;
                 line-height: ${editorLineHeight} !important;
                 white-space: pre-wrap !important;
-                overflow-wrap: anywhere !important;
-                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
                 tab-size: 4 !important;
                 -moz-tab-size: 4 !important;
               }
@@ -7193,6 +7814,22 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 display: block !important;
                 margin: 6px 0 !important;
                 break-inside: avoid;
+                page-break-inside: avoid;
+              }
+              #editor-notarial-activo h1,
+              #editor-notarial-activo h2,
+              #editor-notarial-activo h3,
+              #editor-notarial-activo h4,
+              .editor-notarial-papel h1,
+              .editor-notarial-papel h2,
+              .editor-notarial-papel h3,
+              .editor-notarial-papel h4 {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-after: avoid;
+                page-break-after: avoid;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
               }
               #editor-notarial-activo table,
               .editor-notarial-papel table {
@@ -7200,6 +7837,13 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 border-collapse: collapse !important;
                 table-layout: auto !important;
                 margin: 8px 0 !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+              }
+              #editor-notarial-activo tr,
+              .editor-notarial-papel tr {
+                break-inside: avoid;
+                page-break-inside: avoid;
               }
               #editor-notarial-activo td,
               #editor-notarial-activo th,
@@ -7209,8 +7853,17 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 padding: 6px 8px !important;
                 vertical-align: top !important;
                 white-space: normal !important;
-                overflow-wrap: anywhere !important;
-                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
+              }
+              #editor-notarial-activo .signature-block,
+              #editor-notarial-activo .signatures-group,
+              #editor-notarial-activo .olga-keep-together,
+              .editor-notarial-papel .signature-block,
+              .editor-notarial-papel .signatures-group,
+              .editor-notarial-papel .olga-keep-together {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
               }
               #editor-notarial-activo strong,
               .editor-notarial-papel strong,
@@ -7239,8 +7892,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 line-height: ${editorLineHeight} !important;
                 text-align: justify;
                 white-space: pre-wrap !important;
-                overflow-wrap: anywhere !important;
-                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+                word-break: normal !important;
                 tab-size: 4 !important;
                 -moz-tab-size: 4 !important;
               }
@@ -7258,8 +7911,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   background: transparent !important;
                   color: #000000 !important;
                   white-space: pre-wrap !important;
-                  overflow-wrap: anywhere !important;
-                  word-break: break-word !important;
+                  overflow-wrap: break-word !important;
+                  word-break: normal !important;
                   tab-size: 4 !important;
                   -moz-tab-size: 4 !important;
                 }
@@ -8098,14 +8751,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                      O.L.G.A. IA / ORÁCULO NOTARIAL
+                      {esSectorPublicoBeta ? 'ASISTENTE DE REDACCIÓN UOC' : 'O.L.G.A. IA / ORÁCULO NOTARIAL'}
                     </h3>
                     <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-red-500/20 text-[#FF3131] border border-red-500/30">
-                      Asistente Jurídico
+                      {esSectorPublicoBeta ? 'Ley 7021/2022' : 'Asistente Jurídico'}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                    Redacción asistida con terminología y legislación notarial paraguaya.
+                    {esSectorPublicoBeta
+                      ? 'Redacción asistida bajo Ley N.º 7021/2022 y Decreto N.º 2264/2024'
+                      : 'Redacción asistida con terminología y legislación notarial paraguaya.'}
                   </p>
                 </div>
               </div>
@@ -8123,12 +8778,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
               {/* Caja de Requerimiento Legal */}
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  Requerimiento Legal / Instrucción Notarial
+                  {esSectorPublicoBeta ? 'Requerimiento UOC / Instrucción Contractual' : 'Requerimiento Legal / Instrucción Notarial'}
                 </label>
                 <textarea
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Ejemplo: 'Redactar una cláusula de resolución por incumplimiento con mora automática del 2% mensual para compraventa...', o 'Generar borrador de cesión de derechos sobre inmueble en Asunción...' "
+                  placeholder={
+                    esSectorPublicoBeta
+                      ? "Ejemplo: 'Redactar memorando de remisión de informe mensual del contrato ID DNCP...' o 'Elaborar intimación al proveedor por renovación de póliza de fiel cumplimiento...'"
+                      : "Ejemplo: 'Redactar una cláusula de resolución por incumplimiento con mora automática del 2% mensual para compraventa...', o 'Generar borrador de cesión de derechos sobre inmueble en Asunción...' "
+                  }
                   rows={4}
                   className="w-full box-border p-3.5 bg-slate-50 border border-slate-200 focus:border-[#FF3131] rounded-2xl text-xs font-medium text-slate-900 outline-none transition-colors resize-y leading-relaxed shadow-inner"
                 />
@@ -8136,9 +8795,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
               {/* Sugerencias Rápidas */}
               <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase text-slate-400">Sugerencias notariales:</span>
+                <span className="text-[10px] font-black uppercase text-slate-400">
+                  {esSectorPublicoBeta ? 'Sugerencias UOC:' : 'Sugerencias notariales:'}
+                </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {QUICK_AI_PROMPTS.map((qp, idx) => (
+                  {(esSectorPublicoBeta ? QUICK_AI_PROMPTS_UOC : QUICK_AI_PROMPTS).map((qp, idx) => (
                     <button
                       key={idx}
                       type="button"
@@ -8282,23 +8943,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       {editorText.trim().length > 0 && (
                         <button
                           type="button"
-                          onClick={() => handleInsertarEnDocumento('reemplazar')}
-                          className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
-                          title="Reemplaza todo el contenido del editor con este borrador"
+                          onClick={() => handleInsertarEnDocumento('anexar')}
+                          className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                          title="Agrega este borrador al final del documento actual"
                         >
-                          <RotateCcw className="w-3 h-3 text-[#FF3131]" />
-                          <span>Reemplazar Editor</span>
+                          <Plus className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Agregar a continuación</span>
                         </button>
                       )}
 
                       <button
                         type="button"
-                        onClick={() => handleInsertarEnDocumento('anexar')}
+                        onClick={() => handleInsertarEnDocumento('reemplazar')}
                         className="px-5 py-2 bg-[#FF3131] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                        title="Inserta de manera limpia y automática este texto en el Editor Notarial Activo"
+                        title="Reemplaza el contenido del editor y actualiza el título según el nuevo borrador"
                       >
                         <Send className="w-3.5 h-3.5 text-white" />
-                        <span>Enviar al Documento</span>
+                        <span>Usar como nuevo documento</span>
                       </button>
                     </div>
                   </div>
@@ -8310,175 +8971,207 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       )}
 
       {/* ========================================================================= */}
-      {/* 4. ASISTENTE FLOTANTE DE AUTOCOMPLETADO (AUTOFILL WIZARD)                  */}
+      {/* 4. ASISTENTE FLOTANTE DE AUTOCOMPLETADO (DOCK NO INVASIVO)                 */}
       {/* ========================================================================= */}
       {mostrarEditor && condicionAutocompletado && currentBlankContext && (
-        <aside
-          role="region"
-          aria-label={currentBlankContext.isJudicialMarker ? 'Asistente de Autocompletado Judicial' : 'Asistente de Autocompletado Notarial'}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-white shadow-2xl rounded-3xl border border-slate-200/90 ring-1 ring-slate-100 p-4 sm:p-5 max-w-lg w-[92%] sm:w-[90%] animate-in fade-in slide-in-from-bottom-6 duration-300 transition-all backdrop-blur-sm"
-        >
-          {/* Cabecera del Wizard: Instrucción y Contador */}
-          <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FF3131] animate-pulse shrink-0"></span>
-              <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate">
-                {currentBlankContext.instruccion}
-              </h4>
-
-              {/* Botón de Ayuda (?) con Tooltip */}
-              <div className="relative inline-block shrink-0">
-                <button
-                  type="button"
-                  onMouseEnter={() => setMostrarTooltipAyuda(true)}
-                  onMouseLeave={() => setMostrarTooltipAyuda(false)}
-                  onClick={() => setMostrarTooltipAyuda(!mostrarTooltipAyuda)}
-                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Ver explicación y ejemplos legales"
-                  aria-label="Información de ayuda"
-                >
-                  <HelpCircle className="w-4 h-4 text-slate-400" />
-                </button>
-
-                {mostrarTooltipAyuda && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
-                    <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
-                      {currentBlankContext.isJudicialMarker
-                        ? (esPlayeroEsc
-                            ? 'Guía de Llenado Comercial'
-                            : esSectorPublicoBeta
-                              ? 'Guía de Llenado UOC / Sector Público'
-                              : 'Guía de Llenado Judicial')
-                        : 'Guía Notarial de Llenado'}
-                    </p>
-                    <p className="text-slate-200 leading-relaxed font-normal">
-                      {currentBlankContext.ayuda}
-                    </p>
-                    <div className="w-2 h-2 bg-slate-900 rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2"></div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Contador de Espacios Pendientes */}
-              <div className="px-2.5 py-1 bg-slate-100 rounded-xl text-[10px] font-mono font-black text-slate-600 border border-slate-200">
-                {totalBlanks} {totalBlanks === 1 ? 'campo pendiente' : 'campos pendientes'}
-              </div>
-
-              {/* Botón Salir / Volver (ESC) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setMostrarEditor(false);
-                  setSelectedPlantillaId('');
-                }}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Cerrar editor y volver al dashboard (ESC)"
-                aria-label="Cerrar editor"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Formulario de Inserción Rápida con Enter */}
-          <form onSubmit={handleAplicarAutofill} className="mt-3 flex items-center gap-2">
-            {/* Botón '↩ Retroceder' (Deshacer) */}
+        isAutofillBarMinimized ? (
+          <div className="fixed bottom-4 right-4 z-[70] print:hidden bg-white/95 backdrop-blur-sm border border-slate-200 shadow-lg rounded-full px-3.5 py-2 flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-[#FF3131] animate-pulse shrink-0"></span>
             <button
               type="button"
-              onClick={handleRetroceder}
-              disabled={historialTextos.length === 0}
-              className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
-              title="Retroceder al paso anterior (Deshacer última inserción)"
+              onClick={() => setIsAutofillBarMinimized(false)}
+              className="text-xs font-bold text-slate-800 hover:text-[#FF3131] transition-colors cursor-pointer flex items-center gap-1.5"
+              title="Expandir asistente de autocompletado"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-              <span className="hidden sm:inline">Retroceder</span>
+              <span>Asistente</span>
+              <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px] font-mono font-bold text-slate-600 border border-slate-200">
+                {totalBlanks}
+              </span>
             </button>
-
-            <input
-              ref={autofillInputRef}
-              type="text"
-              autoFocus={true}
-              value={autofillInput}
-              onChange={(e) => {
-                const val = e.target.value;
-                // Formateo de miles con puntos exclusivamente cuando el campo actual es un monto numérico en Gs.
-                const isCampoMontoNumerico =
-                  currentBlankContext.markerKey === 'MONTO_RECLAMADO' ||
-                  (esPlayeroEsc &&
-                    (currentBlankContext.markerKey === 'PRECIO_TOTAL' ||
-                      currentBlankContext.markerKey === 'ENTREGA' ||
-                      currentBlankContext.markerKey === 'MONTO_CUOTA' ||
-                      currentBlankContext.markerKey === 'MONTO_SENA')) ||
-                  (esSectorPublicoBeta &&
-                    (currentBlankContext.markerKey === 'MONTO_ESTIMADO' ||
-                      currentBlankContext.markerKey === 'MONTO_CONTRATO_ORIGINAL' ||
-                      currentBlankContext.markerKey === 'MONTO_AMPLIACION' ||
-                      currentBlankContext.markerKey === 'MONTO_TOTAL_ACTUALIZADO'));
-                if (isCampoMontoNumerico) {
-                  const soloNums = val.replace(/\./g, '');
-                  if (/^\d+$/.test(soloNums)) {
-                    const numParsed = parseInt(soloNums, 10);
-                    if (!isNaN(numParsed)) {
-                      setAutofillInput(numParsed.toLocaleString('es-PY'));
-                      return;
-                    }
-                  }
-                }
-                setAutofillInput(val);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (autofillInput.trim()) {
-                    handleAplicarAutofill();
-                  }
-                }
-              }}
-              placeholder={currentBlankContext.placeholder}
-              className="flex-1 box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] focus:bg-white rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition-all shadow-inner placeholder:text-slate-400 placeholder:font-normal"
-            />
-
-            {currentBlankContext.isJudicialMarker && (
-              <button
-                type="button"
-                onClick={handleOmitirMarcador}
-                className="py-2.5 px-2.5 bg-white hover:bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-semibold transition-all border border-slate-200 shrink-0 cursor-pointer"
-                title="Omitir este campo y pasar al siguiente"
-              >
-                Saltar
-              </button>
-            )}
-
             <button
-              type="submit"
-              disabled={!autofillInput.trim()}
-              className="py-2.5 px-4 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 disabled:hover:bg-[#FF3131] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-red-500/20 active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer"
-              title="Insertar valor y avanzar al siguiente espacio (Enter)"
+              type="button"
+              onClick={() => setIsAutofillBarHidden(true)}
+              className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Ocultar asistente"
+              aria-label="Ocultar asistente"
             >
-              <span>Completar</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <X className="w-3.5 h-3.5" />
             </button>
-          </form>
+          </div>
+        ) : (
+          <aside
+            role="region"
+            aria-label={currentBlankContext.isJudicialMarker ? 'Asistente de Autocompletado Judicial' : 'Asistente de Autocompletado Notarial'}
+            className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-[70] print:hidden bg-white/95 shadow-2xl rounded-2xl border border-slate-200/90 ring-1 ring-slate-100 p-3.5 sm:p-4 max-w-md w-[calc(100%-1.5rem)] animate-in fade-in slide-in-from-bottom-4 duration-200 transition-all backdrop-blur-sm"
+          >
+            {/* Cabecera del Wizard: Instrucción, Contador y Controles No Invasivos */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-[#FF3131] animate-pulse shrink-0"></span>
+                <h4 className="text-xs font-black text-slate-900 tracking-tight truncate">
+                  {currentBlankContext.instruccion}
+                </h4>
 
-          {currentBlankContext.isJudicialMarker ? (
-            <div className="mt-2 space-y-1 px-1">
-              <p className="text-[11px] text-slate-600 leading-snug">
-                {currentBlankContext.ayuda}
-              </p>
-              <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para completar y pasar al siguiente</span>
-                <span>Campo: <span className="font-mono text-slate-600">[{currentBlankContext.markerKey}]</span></span>
+                {/* Botón de Ayuda (?) con Tooltip */}
+                <div className="relative inline-block shrink-0">
+                  <button
+                    type="button"
+                    onMouseEnter={() => setMostrarTooltipAyuda(true)}
+                    onMouseLeave={() => setMostrarTooltipAyuda(false)}
+                    onClick={() => setMostrarTooltipAyuda(!mostrarTooltipAyuda)}
+                    className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="Ver explicación y ejemplos legales"
+                    aria-label="Información de ayuda"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+
+                  {mostrarTooltipAyuda && (
+                    <div className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
+                      <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
+                        {currentBlankContext.isJudicialMarker
+                          ? (esPlayeroEsc
+                              ? 'Guía de Llenado Comercial'
+                              : esSectorPublicoBeta
+                                ? 'Guía de Llenado UOC / Sector Público'
+                                : 'Guía de Llenado Judicial')
+                          : 'Guía Notarial de Llenado'}
+                      </p>
+                      <p className="text-slate-200 leading-relaxed font-normal">
+                        {currentBlankContext.ayuda}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Contador de Espacios Pendientes */}
+                <div className="px-2 py-0.5 bg-slate-100 rounded-lg text-[10px] font-mono font-black text-slate-600 border border-slate-200">
+                  {totalBlanks} {totalBlanks === 1 ? 'pendiente' : 'pendientes'}
+                </div>
+
+                {/* Minimizar asistente */}
+                <button
+                  type="button"
+                  onClick={() => setIsAutofillBarMinimized(true)}
+                  className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Minimizar asistente para ver el documento"
+                  aria-label="Minimizar asistente"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Ocultar asistente (mantiene el editor abierto) */}
+                <button
+                  type="button"
+                  onClick={() => setIsAutofillBarHidden(true)}
+                  className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Ocultar asistente y editar libremente"
+                  aria-label="Ocultar asistente"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
-          ) : (
-            <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-medium px-1">
-              <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para insertar y pasar al siguiente</span>
-              <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
-            </div>
-          )}
-        </aside>
+
+            {/* Formulario de Inserción Rápida con Enter */}
+            <form onSubmit={handleAplicarAutofill} className="mt-2.5 flex items-center gap-1.5">
+              {/* Botón '↩ Retroceder' (Deshacer) */}
+              <button
+                type="button"
+                onClick={handleRetroceder}
+                disabled={historialTextos.length === 0}
+                className="py-2 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+                title="Retroceder al paso anterior (Deshacer última inserción)"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+
+              <input
+                ref={autofillInputRef}
+                type="text"
+                autoFocus={false}
+                value={autofillInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  // Formateo de miles con puntos exclusivamente cuando el campo actual es un monto numérico en Gs.
+                  const isCampoMontoNumerico =
+                    currentBlankContext.markerKey === 'MONTO_RECLAMADO' ||
+                    (esPlayeroEsc &&
+                      (currentBlankContext.markerKey === 'PRECIO_TOTAL' ||
+                        currentBlankContext.markerKey === 'ENTREGA' ||
+                        currentBlankContext.markerKey === 'MONTO_CUOTA' ||
+                        currentBlankContext.markerKey === 'MONTO_SENA')) ||
+                    (esSectorPublicoBeta &&
+                      (currentBlankContext.markerKey === 'MONTO_ESTIMADO' ||
+                        currentBlankContext.markerKey === 'MONTO_CONTRATO_ORIGINAL' ||
+                        currentBlankContext.markerKey === 'MONTO_AMPLIACION' ||
+                        currentBlankContext.markerKey === 'MONTO_TOTAL_ACTUALIZADO'));
+                  if (isCampoMontoNumerico) {
+                    const soloNums = val.replace(/\./g, '');
+                    if (/^\d+$/.test(soloNums)) {
+                      const numParsed = parseInt(soloNums, 10);
+                      if (!isNaN(numParsed)) {
+                        setAutofillInput(numParsed.toLocaleString('es-PY'));
+                        return;
+                      }
+                    }
+                  }
+                  setAutofillInput(val);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (autofillInput.trim()) {
+                      handleAplicarAutofill();
+                    }
+                  }
+                }}
+                placeholder={currentBlankContext.placeholder}
+                className="flex-1 min-w-0 box-border bg-slate-50 border border-slate-200 focus:border-[#FF3131] focus:bg-white rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none transition-all shadow-inner placeholder:text-slate-400 placeholder:font-normal"
+              />
+
+              {currentBlankContext.isJudicialMarker && (
+                <button
+                  type="button"
+                  onClick={handleOmitirMarcador}
+                  className="py-2 px-2 bg-white hover:bg-slate-100 text-slate-600 rounded-xl text-[11px] font-semibold transition-all border border-slate-200 shrink-0 cursor-pointer"
+                  title="Omitir este campo y pasar al siguiente"
+                >
+                  Saltar
+                </button>
+              )}
+
+              <button
+                type="submit"
+                disabled={!autofillInput.trim()}
+                className="py-2 px-3 bg-[#FF3131] hover:bg-red-600 disabled:opacity-40 disabled:hover:bg-[#FF3131] text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 flex items-center gap-1 shrink-0 cursor-pointer"
+                title="Insertar valor y avanzar al siguiente espacio (Enter)"
+              >
+                <span>Completar</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </form>
+
+            {currentBlankContext.isJudicialMarker ? (
+              <div className="mt-2 space-y-0.5 px-0.5">
+                <p className="text-[10.5px] text-slate-600 leading-snug line-clamp-2">
+                  {currentBlankContext.ayuda}
+                </p>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                  <span>Enter para avanzar</span>
+                  <span>Campo: <span className="font-mono text-slate-600">[{currentBlankContext.markerKey}]</span></span>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 font-medium px-0.5">
+                <span>Presiona <kbd className="font-mono bg-slate-100 text-slate-600 px-1 py-0.5 rounded border border-slate-200">Enter</kbd> para avanzar</span>
+                <span>Espacios: <span className="font-mono text-slate-600">_______</span></span>
+              </div>
+            )}
+          </aside>
+        )
       )}
 
       {supportCopiedToast && (
