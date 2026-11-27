@@ -15,7 +15,7 @@ import {
   Search, DollarSign, Mail, Phone, Clock, Sparkles, Crown,
   Building, Zap, CheckCircle2, UserCheck, ShieldQuestion,
   MessageSquare, CreditCard, Check, Trash2, Maximize2, Minimize2, X,
-  Megaphone, Bell, MessageCircle
+  Megaphone, Bell, MessageCircle, ChevronDown, Copy
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -574,16 +574,45 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [userFilter, setUserFilter] = useState<'todos' | 'clientes' | 'cortesia_equipo' | 'prueba' | 'vencidos'>('todos');
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [copiedUid, setCopiedUid] = useState<string | null>(null);
+  const copiedUidTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedUidTimerRef.current !== null) {
+        window.clearTimeout(copiedUidTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopyUid = async (uid: string) => {
+    if (!uid) return;
+    try {
+      await navigator.clipboard.writeText(uid);
+      setCopiedUid(uid);
+      if (copiedUidTimerRef.current !== null) {
+        window.clearTimeout(copiedUidTimerRef.current);
+      }
+      copiedUidTimerRef.current = window.setTimeout(() => {
+        setCopiedUid(null);
+        copiedUidTimerRef.current = null;
+      }, 2000);
+    } catch {
+      // Silencioso si el portapapeles no está disponible
+    }
+  };
 
   const filteredUsers = useMemo(() => {
     return registeredUsers.filter(u => {
       const term = userSearchTerm.trim().toLowerCase();
       if (term) {
+        const matchUid = (u.id || '').toLowerCase().includes(term);
         const matchNombre = (u.nombre || '').toLowerCase().includes(term);
         const matchEmail = (u.email || '').toLowerCase().includes(term);
         const matchTel = (u.telefono || '').toLowerCase().includes(term);
         const matchRazon = (u.razonSocial || '').toLowerCase().includes(term);
-        if (!matchNombre && !matchEmail && !matchTel && !matchRazon) return false;
+        if (!matchUid && !matchNombre && !matchEmail && !matchTel && !matchRazon) return false;
       }
       if (userFilter === 'clientes') return u.categoriaCuenta === 'cliente';
       if (userFilter === 'cortesia_equipo') return u.categoriaCuenta === 'cortesia' || u.categoriaCuenta === 'equipo';
@@ -1292,6 +1321,46 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
         </span>
       );
     }
+    if (tipoRaw === 'playero') {
+      return (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/30 shrink-0"
+          title="Perfil: Playa de Vehículos"
+        >
+          Playero
+        </span>
+      );
+    }
+    if (tipoRaw === 'inmobiliario') {
+      return (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0"
+          title="Perfil: Inmobiliaria / Broker"
+        >
+          Inmobiliaria
+        </span>
+      );
+    }
+    if (tipoRaw === 'contador') {
+      return (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-teal-500/15 text-teal-300 border border-teal-500/30 shrink-0"
+          title="Perfil: Estudio Contable"
+        >
+          Contador
+        </span>
+      );
+    }
+    if (tipoRaw === 'sector_publico_beta') {
+      return (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0"
+          title="Perfil: Sector Público (Beta) / UOC"
+        >
+          Sector Público
+        </span>
+      );
+    }
     return (
       <span
         className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-300/90 border border-amber-500/20 shrink-0"
@@ -1309,183 +1378,221 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
     const isPrueba = user.estadoSuscripcion === 'prueba';
     const isPendiente = user.estadoSuscripcion === 'pendiente';
     const expirationLabel = getUserExpirationLabel(user);
+    const isExpanded = expandedUserId === user.id;
+    const isUidCopied = copiedUid === user.id;
 
     return (
       <div
         key={user.id}
-        className="bg-[#121214] border border-white/10 rounded-2xl p-4 space-y-3.5 shadow-sm"
+        className={`bg-[#121214] border rounded-2xl transition-colors shadow-sm overflow-hidden ${
+          isExpanded ? 'border-blue-500/40' : 'border-white/10'
+        }`}
       >
-        {/* Top row: identity + status + expiration */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-200 shrink-0 mt-0.5">
+        {/* Cabecera compacta tipo acordeón */}
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={() => setExpandedUserId((prev) => (prev === user.id ? null : user.id))}
+          className="w-full p-3.5 flex items-center justify-between gap-2.5 text-left cursor-pointer hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-200 shrink-0">
               {inicial}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-bold text-white leading-snug break-words">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-xs sm:text-sm font-bold text-white leading-snug truncate max-w-full">
                   {nombreDisplay}
                 </p>
                 {renderTipoPerfilBadge(user)}
               </div>
-              {user.email && (
-                <p className="text-xs text-gray-400 truncate mt-0.5">{user.email}</p>
-              )}
-              {user.telefono && (
-                <p className="text-[11px] text-gray-500 font-mono mt-0.5">{user.telefono}</p>
-              )}
+              <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                {user.email || user.telefono || 'Sin contacto'}
+              </p>
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {isActivo ? (
-              <span className="text-[10px] bg-emerald-500/15 text-emerald-300 px-2.5 py-1 rounded-full font-bold border border-emerald-500/30">
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">
                 Activo
               </span>
             ) : isPrueba ? (
-              <span className="text-[10px] bg-cyan-500/15 text-cyan-300 px-2.5 py-1 rounded-full font-bold border border-cyan-500/30">
+              <span className="text-[10px] bg-cyan-500/15 text-cyan-300 px-2 py-0.5 rounded-full font-bold border border-cyan-500/30">
                 Prueba ({user.diasRestantes ?? 5}d)
               </span>
             ) : isPendiente ? (
-              <span className="text-[10px] bg-amber-500/15 text-amber-300 px-2.5 py-1 rounded-full font-bold border border-amber-500/30">
+              <span className="text-[10px] bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
                 Pendiente
               </span>
             ) : (
-              <span className="text-[10px] bg-red-500/15 text-red-300 px-2.5 py-1 rounded-full font-bold border border-red-500/30">
+              <span className="text-[10px] bg-red-500/15 text-red-300 px-2 py-0.5 rounded-full font-bold border border-red-500/30">
                 Vencido
               </span>
             )}
-            <span className="text-[10px] text-gray-400 font-mono">
-              Vence: {expirationLabel}
-            </span>
-          </div>
-        </div>
-
-        {/* Selectores táctiles: Rol y Plan */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-              Rol
-            </label>
-            <select
-              value={user.categoriaCuenta || 'cliente'}
-              onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
-              className={`w-full min-h-[42px] border rounded-xl text-xs font-semibold px-3 py-2 outline-none cursor-pointer ${
-                user.categoriaCuenta === 'cortesia'
-                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
-                  : user.categoriaCuenta === 'equipo'
-                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+            <ChevronDown
+              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                isExpanded ? 'rotate-180 text-blue-400' : ''
               }`}
-            >
-              <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
-              <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
-              <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
-            </select>
+            />
           </div>
+        </button>
 
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-              Plan (Liberar / Cambiar)
-            </label>
-            <select
-              value={user.plan || 'Prueba Gratuita'}
-              onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
-              className="w-full min-h-[42px] bg-[#09090b] border border-white/15 rounded-xl text-xs font-semibold text-white px-3 py-2 outline-none cursor-pointer"
-            >
-              <option value="Prueba Gratuita">Prueba (5d)</option>
-              <option value="Plan Básico">Plan Básico</option>
-              <option value="Plan Pro">Plan Pro</option>
-              <option value="Plan Empresa">Plan Empresa</option>
-              <option value="Plan Full">Plan Full</option>
-            </select>
-          </div>
-        </div>
-
-        {/* 3 switches grandes para WhatsApp, Lienzo y Presupuestos */}
-        <div className="space-y-2 pt-1">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
-            Módulos habilitados
-          </span>
-          <div className="grid grid-cols-1 gap-2">
-            {ADDON_MODULES.map((mod) => {
-              const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
-              const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
-              return (
+        {/* Contenido desplegado */}
+        {isExpanded && (
+          <div className="px-4 pb-4 pt-3 border-t border-white/10 space-y-3.5 bg-[#0e0e11]">
+            {/* UID visible + Copiar + Teléfono y Vencimiento */}
+            <div className="bg-[#09090b] border border-white/10 rounded-xl p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-mono text-gray-400 truncate">
+                  UID: <strong className="text-gray-200 select-all">{user.id}</strong>
+                </span>
                 <button
-                  key={mod.field}
                   type="button"
-                  role="switch"
-                  aria-checked={enabled}
-                  disabled={isBusy}
-                  onClick={() => handleToggleAddon(user, mod.field)}
-                  className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-colors cursor-pointer disabled:opacity-50 ${
-                    enabled
-                      ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-200'
-                      : 'bg-[#09090b] border-white/10 text-gray-300'
+                  onClick={() => void handleCopyUid(user.id)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors flex items-center gap-1 shrink-0 cursor-pointer ${
+                    isUidCopied
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35'
+                      : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
                   }`}
                 >
-                  <div className="min-w-0 pr-2">
-                    <p className="text-xs font-bold">{mod.fullLabel}</p>
-                    <p className="text-[10px] text-gray-400">
-                      {enabled ? 'Activo' : 'Inactivo'} • {isInherited ? 'Heredado del plan' : 'Llave manual'}
-                    </p>
-                  </div>
-                  <span
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-                      enabled
-                        ? 'bg-emerald-500 border-emerald-400/60'
-                        : 'bg-zinc-700 border-white/10'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${
-                        enabled ? 'translate-x-5' : 'translate-x-1'
-                      }`}
-                    />
-                  </span>
+                  {isUidCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {isUidCopied ? 'Copiado' : 'Copiar UID'}
                 </button>
-              );
-            })}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400 font-mono">
+                <span>Tel: {user.telefono || 'No registrado'}</span>
+                <span>Vence: {expirationLabel}</span>
+              </div>
+            </div>
+
+            {/* Selectores táctiles: Rol y Plan */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                  Rol
+                </label>
+                <select
+                  value={user.categoriaCuenta || 'cliente'}
+                  onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+                  className={`w-full min-h-[42px] border rounded-xl text-xs font-semibold px-3 py-2 outline-none cursor-pointer ${
+                    user.categoriaCuenta === 'cortesia'
+                      ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                      : user.categoriaCuenta === 'equipo'
+                        ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                        : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                  }`}
+                >
+                  <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+                  <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+                  <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                  Plan (Liberar / Cambiar)
+                </label>
+                <select
+                  value={user.plan || 'Prueba Gratuita'}
+                  onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+                  className="w-full min-h-[42px] bg-[#09090b] border border-white/15 rounded-xl text-xs font-semibold text-white px-3 py-2 outline-none cursor-pointer"
+                >
+                  <option value="Prueba Gratuita">Prueba (5d)</option>
+                  <option value="Plan Básico">Plan Básico</option>
+                  <option value="Plan Pro">Plan Pro</option>
+                  <option value="Plan Empresa">Plan Empresa</option>
+                  <option value="Plan Full">Plan Full</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 3 switches grandes para WhatsApp, Lienzo y Presupuestos */}
+            <div className="space-y-2 pt-1">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                Módulos habilitados
+              </span>
+              <div className="grid grid-cols-1 gap-2">
+                {ADDON_MODULES.map((mod) => {
+                  const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
+                  const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
+                  return (
+                    <button
+                      key={mod.field}
+                      type="button"
+                      role="switch"
+                      aria-checked={enabled}
+                      disabled={isBusy}
+                      onClick={() => handleToggleAddon(user, mod.field)}
+                      className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-colors cursor-pointer disabled:opacity-50 ${
+                        enabled
+                          ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-200'
+                          : 'bg-[#09090b] border-white/10 text-gray-300'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <p className="text-xs font-bold">{mod.fullLabel}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {enabled ? 'Activo' : 'Inactivo'} • {isInherited ? 'Heredado del plan' : 'Llave manual'}
+                        </p>
+                      </div>
+                      <span
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                          enabled
+                            ? 'bg-emerald-500 border-emerald-400/60'
+                            : 'bg-zinc-700 border-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${
+                            enabled ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Acciones rápidas: WhatsApp, Gmail y Oferta */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              <a
+                href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+                className={`min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors ${
+                  user.telefono
+                    ? 'bg-green-600/20 hover:bg-green-600/35 text-green-300 border-green-500/30'
+                    : 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed'
+                }`}
+              >
+                <Phone className="w-3.5 h-3.5 shrink-0" />
+                <span>WhatsApp</span>
+              </a>
+
+              <a
+                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 transition-colors"
+              >
+                <Mail className="w-3.5 h-3.5 shrink-0" />
+                <span>Gmail</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => openOfertaModal(user)}
+                className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 border border-purple-500/30 transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>Oferta</span>
+              </button>
+            </div>
           </div>
-        </div>
-
-        {/* Acciones rápidas: WhatsApp, Gmail y Oferta */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
-          <a
-            href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
-            className={`min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors ${
-              user.telefono
-                ? 'bg-green-600/20 hover:bg-green-600/35 text-green-300 border-green-500/30'
-                : 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed'
-            }`}
-          >
-            <Phone className="w-3.5 h-3.5 shrink-0" />
-            <span>WhatsApp</span>
-          </a>
-
-          <a
-            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
-            target="_blank"
-            rel="noreferrer"
-            className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 transition-colors"
-          >
-            <Mail className="w-3.5 h-3.5 shrink-0" />
-            <span>Gmail</span>
-          </a>
-
-          <button
-            type="button"
-            onClick={() => openOfertaModal(user)}
-            className="min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 border border-purple-500/30 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5 shrink-0" />
-            <span>Oferta</span>
-          </button>
-        </div>
+        )}
       </div>
     );
   };
@@ -2591,7 +2698,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                     type="text"
                     value={userSearchTerm}
                     onChange={(e) => setUserSearchTerm(e.target.value)}
-                    placeholder="Buscar por nombre, email, teléfono..."
+                    placeholder="Buscar por nombre, email, teléfono o UID..."
                     className="w-full bg-[#09090b] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                   <div className="flex items-center gap-1 overflow-x-auto pb-1">
@@ -2629,148 +2736,214 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                       const isActivo = user.estadoSuscripcion === 'activo';
                       const isPrueba = user.estadoSuscripcion === 'prueba';
                       const isPendiente = user.estadoSuscripcion === 'pendiente';
+                      const isExpanded = expandedUserId === user.id;
+                      const isUidCopied = copiedUid === user.id;
+                      const expirationLabel = getUserExpirationLabel(user);
 
                       return (
-                        <div key={user.id} className="flex flex-col py-2.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 rounded-lg transition-colors gap-2">
-                          <div className="flex items-center justify-between gap-2">
+                        <div
+                          key={user.id}
+                          className={`rounded-xl border transition-colors overflow-hidden ${
+                            isExpanded
+                              ? 'bg-white/[0.03] border-blue-500/40'
+                              : 'bg-transparent border-white/5 hover:border-white/15 hover:bg-white/[0.02]'
+                          }`}
+                        >
+                          {/* Cabecera compacta tipo acordeón (contraída por defecto) */}
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedUserId((prev) => (prev === user.id ? null : user.id))}
+                            className="w-full px-2.5 py-2 flex items-center justify-between gap-2 text-left cursor-pointer"
+                          >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-medium text-gray-300 shrink-0">
+                              <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-semibold text-gray-300 shrink-0">
                                 {inicial}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                  <p className="text-xs text-gray-200 font-medium truncate" title={nombreDisplay}>{nombreDisplay}</p>
+                                  <p className="text-xs text-gray-100 font-semibold truncate" title={nombreDisplay}>
+                                    {nombreDisplay}
+                                  </p>
                                   {renderTipoPerfilBadge(user)}
                                 </div>
-                                <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {/* 1. WhatsApp Commercial Button */}
-                              <a
-                                href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
-                                title={user.telefono ? `Contactar por WhatsApp (${user.telefono})` : 'Sin teléfono registrado'}
-                                onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                              </a>
-
-                              {/* 2. Corporate Gmail Button */}
-                              <a
-                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg transition-colors flex items-center justify-center"
-                                title={`Enviar correo corporativo a ${user.email}`}
-                              >
-                                <Mail className="w-3.5 h-3.5" />
-                              </a>
-
-                              {/* 3. Open Offer / Campaign Modal Button */}
-                              <button
-                                type="button"
-                                onClick={() => openOfertaModal(user)}
-                                className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
-                                title="Oferta / Campaña personalizada"
-                              >
-                                <Sparkles className="w-3.5 h-3.5" />
-                              </button>
-
-                              <select
-                                value={user.categoriaCuenta || 'cliente'}
-                                onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
-                                className={`border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer ${
-                                  user.categoriaCuenta === 'cortesia' 
-                                    ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
-                                    : user.categoriaCuenta === 'equipo'
-                                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                }`}
-                                title="Clasificación de cuenta"
-                              >
-                                <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
-                                <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
-                                <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
-                              </select>
-
-                              <select
-                                value={user.plan || 'Prueba Gratuita'}
-                                onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
-                                className="bg-[#09090b] border border-white/10 rounded-lg text-[10px] text-gray-300 px-2 py-1 outline-none cursor-pointer"
-                                title="Cambiar plan en vivo"
-                              >
-                                <option value="Prueba Gratuita">Prueba (5d)</option>
-                                <option value="Plan Básico">Plan Básico</option>
-                                <option value="Plan Pro">Plan Pro</option>
-                                <option value="Plan Empresa">Plan Empresa</option>
-                                <option value="Plan Full">Plan Full</option>
-                              </select>
-
-                              <div>
-                                {isActivo ? (
-                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-                                    Activo
-                                  </span>
-                                ) : isPrueba ? (
-                                  <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
-                                    Prueba ({user.diasRestantes ?? 5}d)
-                                  </span>
-                                ) : isPendiente ? (
-                                  <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
-                                    Pendiente
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
-                                    Vencido
-                                  </span>
+                                {subInfo && (
+                                  <p className="text-[10px] text-gray-500 truncate">{subInfo}</p>
                                 )}
                               </div>
                             </div>
-                          </div>
 
-                          {/* Fila compacta: 3 switches independientes de Módulos / Add-ons */}
-                          <div className="flex flex-wrap items-center gap-1.5 pl-9">
-                            <span className="text-[9px] uppercase tracking-wider font-semibold text-gray-500 mr-0.5">
-                              Add-ons:
-                            </span>
-                            {ADDON_MODULES.map((mod) => {
-                              const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
-                              const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
-                              return (
-                                <button
-                                  key={mod.field}
-                                  type="button"
-                                  role="switch"
-                                  aria-checked={enabled}
-                                  disabled={isBusy}
-                                  onClick={() => handleToggleAddon(user, mod.field)}
-                                  title={`${mod.fullLabel}: ${enabled ? 'Activo' : 'Inactivo'}${isInherited ? ' (heredado del plan)' : ' (manual)'} — clic para cambiar`}
-                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
-                                    enabled
-                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                                      : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'
-                                  }`}
-                                >
-                                  <span>{mod.shortLabel}</span>
-                                  <span
-                                    className={`relative inline-flex h-3 w-5 items-center rounded-full transition-colors ${
-                                      enabled ? 'bg-emerald-500' : 'bg-zinc-700'
-                                    }`}
-                                  >
-                                    <span
-                                      className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform ${
-                                        enabled ? 'translate-x-2.5' : 'translate-x-0.5'
-                                      }`}
-                                    />
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="hidden xl:inline-block text-[10px] text-gray-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-md font-medium max-w-[110px] truncate">
+                                {user.plan || 'Prueba'}
+                              </span>
+                              {isActivo ? (
+                                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
+                                  Activo
+                                </span>
+                              ) : isPrueba ? (
+                                <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-medium border border-cyan-500/20">
+                                  Prueba ({user.diasRestantes ?? 5}d)
+                                </span>
+                              ) : isPendiente ? (
+                                <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium border border-amber-500/20">
+                                  Pendiente
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium border border-red-500/20">
+                                  Vencido
+                                </span>
+                              )}
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${
+                                  isExpanded ? 'rotate-180 text-blue-400' : ''
+                                }`}
+                              />
+                            </div>
+                          </button>
+
+                          {/* Detalle y controles desplegables */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-2.5 border-t border-white/10 space-y-2.5 bg-[#0b0b0e]">
+                              {/* UID visible + Copiar + Teléfono y Vencimiento */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 bg-[#09090b] border border-white/10 rounded-lg px-2.5 py-1.5">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="text-[10px] font-mono text-gray-400 truncate">
+                                    UID: <strong className="text-gray-200 select-all">{user.id}</strong>
                                   </span>
-                                </button>
-                              );
-                            })}
-                          </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCopyUid(user.id)}
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-colors inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                                      isUidCopied
+                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35'
+                                        : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
+                                    }`}
+                                    title="Copiar UID de Firebase"
+                                  >
+                                    {isUidCopied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                                    {isUidCopied ? 'Copiado' : 'Copiar'}
+                                  </button>
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                                  Vence: {expirationLabel}
+                                </span>
+                              </div>
+
+                              {/* Fila de acciones comerciales, Categoría y Plan */}
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  <a
+                                    href={`https://wa.me/${formatWhatsAppNumber(user.telefono || '')}?text=${encodeURIComponent('¡Hola ' + (user.nombre || 'Escribano') + '! Te saluda el equipo de O.L.G.A. Notarial (soporte@olgatech.com.py / WhatsApp +595 983 440021). Vimos que tu cuenta está en estado ' + user.estadoSuscripcion + '. Queremos ofrecerte un descuento especial en tu primer mes para impulsar tu escribanía con automatización notarial total.')}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${user.telefono ? 'bg-green-600/20 hover:bg-green-600/35 text-green-400' : 'bg-white/5 text-gray-600 cursor-not-allowed'}`}
+                                    title={user.telefono ? `Contactar por WhatsApp (${user.telefono})` : 'Sin teléfono registrado'}
+                                    onClick={(e) => { if (!user.telefono) e.preventDefault(); }}
+                                  >
+                                    <Phone className="w-3.5 h-3.5" />
+                                  </a>
+
+                                  <a
+                                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(user.email || '')}&su=${encodeURIComponent('Promoción Exclusiva O.L.G.A. Notarial - Primer Mes con Descuento Especial')}&body=${encodeURIComponent('Estimado/a ' + (user.nombre || 'Escribano/a') + ',\n\nLe escribimos desde el equipo de Soporte y Ventas de O.L.G.A. Notarial (soporte@olgatech.com.py).\n\nHemos notado que su cuenta se encuentra en estado ' + user.estadoSuscripcion + '. Queremos facilitarle el acceso al sistema completo con una tarifa preferencial y soporte personalizado.\n\nContáctenos directamente a:\n• Correo: soporte@olgatech.com.py\n• WhatsApp: +595 983 440021\n\nAtentamente,\nEquipo de Soporte y Ventas O.L.G.A.')}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-1.5 bg-blue-600/20 hover:bg-blue-600/35 text-blue-400 rounded-lg transition-colors flex items-center justify-center"
+                                    title={`Enviar correo corporativo a ${user.email}`}
+                                  >
+                                    <Mail className="w-3.5 h-3.5" />
+                                  </a>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openOfertaModal(user)}
+                                    className="p-1.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-400 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                                    title="Oferta / Campaña personalizada"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {user.telefono && (
+                                    <span className="text-[10px] text-gray-400 font-mono ml-1">
+                                      {user.telefono}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <select
+                                    value={user.categoriaCuenta || 'cliente'}
+                                    onChange={(e) => handleCambiarCategoriaUsuario(user.id, e.target.value as any)}
+                                    className={`border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer ${
+                                      user.categoriaCuenta === 'cortesia' 
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                        : user.categoriaCuenta === 'equipo'
+                                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                    }`}
+                                    title="Clasificación de cuenta"
+                                  >
+                                    <option value="cliente" className="bg-zinc-900 text-white">Cliente</option>
+                                    <option value="cortesia" className="bg-zinc-900 text-white">Cortesía / Tester</option>
+                                    <option value="equipo" className="bg-zinc-900 text-white">Equipo / Vendedor</option>
+                                  </select>
+
+                                  <select
+                                    value={user.plan || 'Prueba Gratuita'}
+                                    onChange={(e) => handleCambiarPlanUsuario(user.id, e.target.value)}
+                                    className="bg-[#09090b] border border-white/10 rounded-lg text-[10px] text-gray-300 px-2 py-1 outline-none cursor-pointer"
+                                    title="Cambiar plan en vivo"
+                                  >
+                                    <option value="Prueba Gratuita">Prueba (5d)</option>
+                                    <option value="Plan Básico">Plan Básico</option>
+                                    <option value="Plan Pro">Plan Pro</option>
+                                    <option value="Plan Empresa">Plan Empresa</option>
+                                    <option value="Plan Full">Plan Full</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Fila compacta: 3 switches independientes de Módulos / Add-ons */}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[9px] uppercase tracking-wider font-semibold text-gray-500 mr-0.5">
+                                  Add-ons:
+                                </span>
+                                {ADDON_MODULES.map((mod) => {
+                                  const { enabled, isInherited } = getEffectiveAddonState(user, mod.field);
+                                  const isBusy = Boolean(togglingAddonKeys[`${user.id}:${mod.field}`]);
+                                  return (
+                                    <button
+                                      key={mod.field}
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={enabled}
+                                      disabled={isBusy}
+                                      onClick={() => handleToggleAddon(user, mod.field)}
+                                      title={`${mod.fullLabel}: ${enabled ? 'Activo' : 'Inactivo'}${isInherited ? ' (heredado del plan)' : ' (manual)'} — clic para cambiar`}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                                        enabled
+                                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                          : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'
+                                      }`}
+                                    >
+                                      <span>{mod.shortLabel}</span>
+                                      <span
+                                        className={`relative inline-flex h-3 w-5 items-center rounded-full transition-colors ${
+                                          enabled ? 'bg-emerald-500' : 'bg-zinc-700'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform ${
+                                            enabled ? 'translate-x-2.5' : 'translate-x-0.5'
+                                          }`}
+                                        />
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -2818,7 +2991,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                   type="text"
                   value={userSearchTerm}
                   onChange={(e) => setUserSearchTerm(e.target.value)}
-                  placeholder="Buscar por nombre, email, teléfono..."
+                  placeholder="Buscar por nombre, email, teléfono o UID..."
                   className="w-full md:flex-1 bg-[#09090b] border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
                 <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto">
@@ -2878,6 +3051,22 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ mode =
                                   {renderTipoPerfilBadge(user)}
                                 </div>
                                 <p className="text-[10px] text-gray-500">{user.nombre || 'Sin nombre fiscal'}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] font-mono text-gray-400 select-all">UID: {user.id}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCopyUid(user.id)}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border transition-colors inline-flex items-center gap-1 cursor-pointer ${
+                                      copiedUid === user.id
+                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35'
+                                        : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
+                                    }`}
+                                    title="Copiar UID de Firebase"
+                                  >
+                                    {copiedUid === user.id ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                                    {copiedUid === user.id ? 'Copiado' : 'Copiar'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </td>

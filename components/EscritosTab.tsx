@@ -767,6 +767,47 @@ export const PLANTILLAS_PLAYERO_META: PlantillaAbogadoMeta[] = [
   },
 ];
 
+export interface SectorPublicoPerfilDatos {
+  nombreInstitucion: string;
+  rucInstitucion: string;
+  direccionInstitucion: string;
+  telefonoInstitucion: string;
+  ciudadInstitucion: string;
+}
+
+export const PLANTILLAS_SECTOR_PUBLICO_BETA_META: PlantillaAbogadoMeta[] = [
+  {
+    id: 'uoc_pedido_licitacion',
+    nombre: 'Pedido de Licitación / Llamado Mínimo Inicial',
+    categoriaSugerida: 'Licitaciones',
+    descripcion: 'Solicitud formal de inicio de proceso de contratación pública o llamado mínimo inicial ante la UOC.',
+  },
+  {
+    id: 'uoc_adenda_tiempo',
+    nombre: 'Solicitud de Adenda de Tiempo (Prórroga de Contrato)',
+    categoriaSugerida: 'Adendas',
+    descripcion: 'Justificación técnica y solicitud de prórroga de plazo contractual (Ley N.º 7021/2022).',
+  },
+  {
+    id: 'uoc_adenda_monto',
+    nombre: 'Solicitud de Adenda de Monto (Ampliación Presupuestaria)',
+    categoriaSugerida: 'Adendas',
+    descripcion: 'Solicitud de ampliación de monto adjudicado con respaldo presupuestario y CDP.',
+  },
+  {
+    id: 'uoc_nota_remision',
+    nombre: 'Nota de Remisión de Legajo / Memo Interno',
+    categoriaSugerida: 'Notas y Memos',
+    descripcion: 'Memorándum o nota oficial de remisión de legajo, expediente administrativo o antecedentes UOC.',
+  },
+  {
+    id: 'hoja_en_blanco',
+    nombre: 'Hoja en Blanco',
+    categoriaSugerida: 'Notas y Memos',
+    descripcion: 'Modo de redacción libre con membrete institucional oficial.',
+  },
+];
+
 export interface CampoJudicialMeta {
   label: string;
   placeholder: string;
@@ -1111,6 +1152,143 @@ export const CAMPOS_META: Record<string, CampoJudicialMeta> = {
     placeholder: 'Ej: tramitación de transferencia definitiva ante Escribanía Pública',
     help: 'Razón por la cual se emite el permiso provisorio de circulación',
   },
+  DEPENDENCIA_SOLICITANTE: {
+    label: 'Dependencia / Dirección Solicitante',
+    placeholder: 'Ej: Dirección de Transporte y Talleres',
+    help: 'Área o dirección requirente dentro de la institución pública',
+  },
+  NRO_MEMO_NOTA: {
+    label: 'N.º de Memo / Nota',
+    placeholder: 'Ej: MEMO DGAF N.º 142/2026',
+    help: 'Numeración oficial interna de la nota o memorándum',
+  },
+  DESTINATARIO: {
+    label: 'Destinatario',
+    placeholder: 'Ej: Lic. Carlos Giménez',
+    help: 'Autoridad o responsable de la UOC / Dirección General de Administración',
+  },
+  CARGO_DESTINATARIO: {
+    label: 'Cargo del Destinatario',
+    placeholder: 'Ej: Director/a de la Unidad Operativa de Contrataciones (UOC)',
+    help: 'Cargo oficial de la autoridad destinataria',
+  },
+  REMITENTE: {
+    label: 'Responsable Remitente',
+    placeholder: 'Ej: Ing. Laura Benítez',
+    help: 'Nombre del funcionario o jefe que suscribe la solicitud',
+  },
+  CARGO_REMITENTE: {
+    label: 'Cargo del Remitente',
+    placeholder: 'Ej: Jefa de Departamento de Mantenimiento',
+    help: 'Cargo institucional de quien firma la nota',
+  },
+  OBJETO_CONTRATACION: {
+    label: 'Objeto de la Contratación / Rubro',
+    placeholder: 'Ej: Servicio de Taller Mecánico y Provisión de Repuestos para Flota Vehicular',
+    help: 'Descripción del bien o servicio requerido según PAC / DNCP',
+  },
+  TIPO_LLAMADO: {
+    label: 'Modalidad / Tipo de Llamado',
+    placeholder: 'Ej: Llamado Mínimo Inicial / Contratación Directa / Licitación Anual',
+    help: 'Procedimiento de contratación conforme a la Ley N.º 7021/2022',
+  },
+  CODIGO_PAC: {
+    label: 'Código PAC / ID DNCP de Referencia',
+    placeholder: 'Ej: PAC 2026-018 / ID DNCP 451820',
+    help: 'Código del Plan Anual de Contrataciones o ID asignado por la DNCP',
+  },
+  MONTO_ESTIMADO: {
+    label: 'Monto Estimado / Referencial (Gs.)',
+    placeholder: 'Ej: 85.000.000',
+    help: 'Monto referencial total en guaraníes para el llamado',
+  },
+  PLAZO_EJECUCION: {
+    label: 'Plazo de Ejecución Estimado',
+    placeholder: 'Ej: 6 meses o hasta agotar saldo adjudicado',
+    help: 'Duración estimada de vigencia del contrato',
+  },
+  PROVEEDOR: {
+    label: 'Proveedor / Empresa Adjudicada',
+    placeholder: 'Ej: Kilcopar S.A.',
+    help: 'Razón social del proveedor contratado',
+  },
+  RUC_PROVEEDOR: {
+    label: 'RUC del Proveedor',
+    placeholder: 'Ej: 80012345-6',
+    help: 'Registro Único de Contribuyentes del proveedor',
+  },
+  NRO_CONTRATO: {
+    label: 'N.º de Contrato',
+    placeholder: 'Ej: Contrato N.º 12/2026',
+    help: 'Número oficial del contrato administrativo vigente',
+  },
+  ID_DNCP: {
+    label: 'ID DNCP',
+    placeholder: 'Ej: 451820',
+    help: 'Identificador del llamado o contrato en el portal de la DNCP',
+  },
+  FECHA_VENCIMIENTO_ACTUAL: {
+    label: 'Fecha de Vencimiento Actual',
+    placeholder: 'Ej: 30 de junio de 2026',
+    help: 'Fecha en que expira el plazo vigente del contrato',
+  },
+  PLAZO_PRORROGA: {
+    label: 'Plazo de Prórroga Solicitado',
+    placeholder: 'Ej: 90 días corridos (3 meses)',
+    help: 'Extensión temporal requerida para concluir las prestaciones',
+  },
+  NUEVA_FECHA_VENCIMIENTO: {
+    label: 'Nueva Fecha de Vencimiento Propuesta',
+    placeholder: 'Ej: 28 de septiembre de 2026',
+    help: 'Fecha proyectada de finalización tras aprobarse la adenda',
+  },
+  MONTO_CONTRATO_ORIGINAL: {
+    label: 'Monto Original del Contrato (Gs.)',
+    placeholder: 'Ej: 150.000.000',
+    help: 'Importe adjudicado originalmente en guaraníes',
+  },
+  MONTO_AMPLIACION: {
+    label: 'Monto de Ampliación Solicitado (Gs.)',
+    placeholder: 'Ej: 30.000.000',
+    help: 'Monto adicional en guaraníes (respetando el tope legal del 20% según Ley 7021/2022)',
+  },
+  MONTO_AMPLIACION_LETRAS: {
+    label: 'Monto de Ampliación en Letras',
+    placeholder: 'Ej: Treinta millones',
+    help: 'Se sugiere automáticamente al ingresar el monto de ampliación',
+  },
+  PORCENTAJE_AMPLIACION: {
+    label: 'Porcentaje de Ampliación (%)',
+    placeholder: 'Ej: 20%',
+    help: 'Porcentaje que representa la ampliación respecto al monto original',
+  },
+  MONTO_TOTAL_ACTUALIZADO: {
+    label: 'Monto Total Actualizado (Gs.)',
+    placeholder: 'Ej: 180.000.000',
+    help: 'Suma del contrato original más la ampliación solicitada',
+  },
+  NRO_CDP: {
+    label: 'N.º de CDP / Rubro Presupuestario',
+    placeholder: 'Ej: CDP N.º 340/2026 — Objeto del Gasto 240',
+    help: 'Certificado de Disponibilidad Presupuestaria y objeto del gasto',
+  },
+  JUSTIFICACION_TECNICA: {
+    label: 'Justificación Técnica / Necesidad Institucional',
+    placeholder: 'Ej: continuidad operativa de reparación de ambulancias y móviles institucionales mientras se sustancia el nuevo llamado anual',
+    help: 'Fundamento técnico y operativo que motiva la solicitud o adenda',
+    multiline: true,
+  },
+  DETALLE_LEGAJO: {
+    label: 'Detalle de Documentos / Legajo Remitido',
+    placeholder: 'Ej: 1) Copia de Contrato N.º 12/2026; 2) Facturas conformadas N.º 001-001-0004521; 3) Acta de recepción definitiva',
+    help: 'Listado de documentos adjuntos que integran el legajo',
+    multiline: true,
+  },
+  NRO_EXPEDIENTE_INTERNO: {
+    label: 'N.º de Expediente / Mesa de Entrada',
+    placeholder: 'Ej: EXP-ME N.º 2026-08914',
+    help: 'Número de expediente administrativo o mesa de entrada institucional',
+  },
 };
 
 export const getCampoMeta = (key: string): CampoJudicialMeta => {
@@ -1153,6 +1331,8 @@ export function extraerMarcadoresJudiciales(html: string): string[] {
   ordenarParMontoLetras('MONTO_RECLAMADO', 'MONTO_LETRAS');
   ordenarParMontoLetras('PRECIO_TOTAL', 'PRECIO_LETRAS');
   ordenarParMontoLetras('MONTO_SENA', 'MONTO_SENA_LETRAS');
+  ordenarParMontoLetras('MONTO_ESTIMADO', 'MONTO_LETRAS');
+  ordenarParMontoLetras('MONTO_AMPLIACION', 'MONTO_AMPLIACION_LETRAS');
   return result;
 }
 
@@ -1478,6 +1658,137 @@ export function construirPlantillaPlayero(
   }
 }
 
+export function construirPlantillaSectorPublicoBeta(
+  plantillaId: string,
+  perfil: SectorPublicoPerfilDatos
+): string {
+  const now = new Date();
+  const dia = String(now.getDate());
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  const mes = meses[now.getMonth()];
+  const anio = String(now.getFullYear());
+
+  const esc = escapeHtmlText;
+  const institucion = esc(perfil.nombreInstitucion);
+  const ciudad = esc(perfil.ciudadInstitucion || 'Asunción');
+
+  const bloqueFirmaUoc =
+    `<p><br></p>` +
+    `<p style="text-align: center;">____________________________________________</p>` +
+    `<p style="text-align: center;"><strong>[REMITENTE]</strong></p>` +
+    `<p style="text-align: center;">[CARGO_REMITENTE]</p>` +
+    `<p style="text-align: center;">[DEPENDENCIA_SOLICITANTE] — ${institucion}</p>`;
+
+  switch (plantillaId) {
+    case 'uoc_pedido_licitacion':
+      return (
+        `<p style="text-align: center;"><strong>SOLICITUD DE INICIO DE PROCESO DE CONTRATACIÓN / LLAMADO MÍNIMO INICIAL</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
+        `<p><br></p>` +
+        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
+        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
+        `<p><strong>OBJETO:</strong> Solicitud de llamado para <strong>[OBJETO_CONTRATACION]</strong></p>` +
+        `<p><br></p>` +
+        `<p>Por medio de la presente, en cumplimiento de las disposiciones de la <strong>Ley N.º 7021/2022 "De Suministro y Contrataciones Públicas"</strong> y su Decreto Reglamentario, solicito la sustanciación del proceso de contratación bajo la modalidad de <strong>[TIPO_LLAMADO]</strong>, conforme al siguiente detalle técnico y presupuestario:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Institución / Entidad:</strong> ${institucion}<br>` +
+        `• <strong>Dependencia Requirente:</strong> [DEPENDENCIA_SOLICITANTE]<br>` +
+        `• <strong>Objeto de la Contratación:</strong> [OBJETO_CONTRATACION]<br>` +
+        `• <strong>Código PAC / Referencia:</strong> [CODIGO_PAC]<br>` +
+        `• <strong>Monto Estimado Referencial:</strong> GUARANÍES <strong>[MONTO_LETRAS]</strong> (<strong>Gs. [MONTO_ESTIMADO]</strong>)<br>` +
+        `• <strong>Disponibilidad Presupuestaria:</strong> [NRO_CDP]<br>` +
+        `• <strong>Plazo de Ejecución Estimado:</strong> [PLAZO_EJECUCION]</p>` +
+        `<p><br></p>` +
+        `<p><strong>FUNDAMENTACIÓN DE LA NECESIDAD:</strong></p>` +
+        `<p>[JUSTIFICACION_TECNICA]</p>` +
+        `<p><br></p>` +
+        `<p>Se adjuntan las Especificaciones Técnicas (EETT), los precios referenciales de mercado y la planilla de requerimiento para la prosecución de los trámites pertinentes ante la Unidad Operativa de Contrataciones (UOC).</p>` +
+        bloqueFirmaUoc
+      );
+
+    case 'uoc_adenda_tiempo':
+      return (
+        `<p style="text-align: center;"><strong>SOLICITUD DE ADENDA DE TIEMPO (PRÓRROGA DE PLAZO CONTRACTUAL)</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
+        `<p><br></p>` +
+        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
+        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
+        `<p><strong>REFERENCIA:</strong> [NRO_CONTRATO] — ID DNCP N.º <strong>[ID_DNCP]</strong></p>` +
+        `<p><br></p>` +
+        `<p>Me dirijo a usted con relación al contrato administrativo <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), suscripto con el proveedor <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>) para el objeto <strong>[OBJETO_CONTRATACION]</strong>, cuyo vencimiento vigente opera en fecha <strong>[FECHA_VENCIMIENTO_ACTUAL]</strong>.</p>` +
+        `<p><br></p>` +
+        `<p>Al respecto, conforme a lo previsto en la <strong>Ley N.º 7021/2022</strong> y las cláusulas del Pliego de Bases y Condiciones, solicito formalmente la tramitación de una <strong>ADENDA DE AMPLIACIÓN DE PLAZO (TIEMPO)</strong> sin incremento de monto, de acuerdo con los siguientes parámetros:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Contrato / ID DNCP:</strong> [NRO_CONTRATO] — ID DNCP [ID_DNCP]<br>` +
+        `• <strong>Proveedor Adjudicado:</strong> [PROVEEDOR] (RUC: [RUC_PROVEEDOR])<br>` +
+        `• <strong>Vencimiento Actual:</strong> [FECHA_VENCIMIENTO_ACTUAL]<br>` +
+        `• <strong>Prórroga Solicitada:</strong> [PLAZO_PRORROGA]<br>` +
+        `• <strong>Nueva Fecha de Vencimiento Propuesta:</strong> [NUEVA_FECHA_VENCIMIENTO]</p>` +
+        `<p><br></p>` +
+        `<p><strong>JUSTIFICACIÓN TÉCNICA Y OPERATIVA:</strong></p>` +
+        `<p>[JUSTIFICACION_TECNICA]</p>` +
+        `<p><br></p>` +
+        `<p>Se deja expresa constancia de que la presente prórroga no irroga erogación presupuestaria adicional a la ya adjudicada y permite salvaguardar la continuidad de los servicios institucionales mientras se culminan los procedimientos administrativos correspondientes.</p>` +
+        bloqueFirmaUoc
+      );
+
+    case 'uoc_adenda_monto':
+      return (
+        `<p style="text-align: center;"><strong>SOLICITUD DE ADENDA DE MONTO (AMPLIACIÓN PRESUPUESTARIA CONTRACTUAL)</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>REF.: [NRO_MEMO_NOTA]</strong></p>` +
+        `<p><br></p>` +
+        `<p><strong>A:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
+        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
+        `<p><strong>REFERENCIA:</strong> Ampliación de Monto — [NRO_CONTRATO] (ID DNCP N.º <strong>[ID_DNCP]</strong>)</p>` +
+        `<p><br></p>` +
+        `<p>Por la presente, en el marco del contrato <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), adjudicado a la firma <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>) para <strong>[OBJETO_CONTRATACION]</strong>, solicito autorización y dictamen para la formalización de una <strong>ADENDA DE AMPLIACIÓN DE MONTO</strong> dentro de los límites establecidos en la <strong>Ley N.º 7021/2022</strong>:</p>` +
+        `<p><br></p>` +
+        `<p>• <strong>Monto Original Adjudicado:</strong> Gs. [MONTO_CONTRATO_ORIGINAL]<br>` +
+        `• <strong>Monto de Ampliación Solicitado:</strong> GUARANÍES <strong>[MONTO_AMPLIACION_LETRAS]</strong> (<strong>Gs. [MONTO_AMPLIACION]</strong>)<br>` +
+        `• <strong>Porcentaje de Ampliación:</strong> [PORCENTAJE_AMPLIACION] del contrato original<br>` +
+        `• <strong>Monto Total Actualizado:</strong> Gs. [MONTO_TOTAL_ACTUALIZADO]<br>` +
+        `• <strong>Respaldo Presupuestario:</strong> [NRO_CDP]</p>` +
+        `<p><br></p>` +
+        `<p><strong>JUSTIFICACIÓN TÉCNICA Y ECONÓMICA:</strong></p>` +
+        `<p>[JUSTIFICACION_TECNICA]</p>` +
+        `<p><br></p>` +
+        `<p>Los bienes/servicios ampliados mantienen idénticos precios unitarios y condiciones técnicas adjudicadas originalmente en el contrato base. Se solicita remitir a la Dirección de Presupuesto / Asesoría Jurídica y UOC para su formalización ante la DNCP.</p>` +
+        bloqueFirmaUoc
+      );
+
+    case 'uoc_nota_remision':
+      return (
+        `<p style="text-align: center;"><strong>NOTA DE REMISIÓN DE LEGAJO / MEMORÁNDUM INTERNO</strong></p>` +
+        `<p style="text-align: right;"><em>${ciudad}, ${dia} de ${mes} de ${anio}.-</em></p>` +
+        `<p style="text-align: right;"><strong>[NRO_MEMO_NOTA]</strong></p>` +
+        `<p><br></p>` +
+        `<p><strong>PARA:</strong> [DESTINATARIO] — [CARGO_DESTINATARIO]</p>` +
+        `<p><strong>DE:</strong> [REMITENTE] — [CARGO_REMITENTE] ([DEPENDENCIA_SOLICITANTE])</p>` +
+        `<p><strong>EXPEDIENTE / MESA DE ENTRADA:</strong> [NRO_EXPEDIENTE_INTERNO]</p>` +
+        `<p><strong>ASUNTO:</strong> Remisión de legajo — [NRO_CONTRATO] (ID DNCP N.º [ID_DNCP]) — [PROVEEDOR]</p>` +
+        `<p><br></p>` +
+        `<p>Tengo el agrado de dirigirme a usted a fin de remitir el legajo administrativo correspondiente al contrato <strong>[NRO_CONTRATO]</strong> (ID DNCP N.º <strong>[ID_DNCP]</strong>), suscripto con <strong>[PROVEEDOR]</strong> (RUC N.º <strong>[RUC_PROVEEDOR]</strong>), referente a <strong>[OBJETO_CONTRATACION]</strong>, con la siguiente documentación respaldatoria:</p>` +
+        `<p><br></p>` +
+        `<p>[DETALLE_LEGAJO]</p>` +
+        `<p><br></p>` +
+        `<p><strong>OBSERVACIONES / TRÁMITE SUGERIDO:</strong></p>` +
+        `<p>[JUSTIFICACION_TECNICA]</p>` +
+        `<p><br></p>` +
+        `<p>Sin otro particular, hago propicia la ocasión para saludarle atentamente.</p>` +
+        bloqueFirmaUoc
+      );
+
+    default:
+      return '';
+  }
+}
+
 const LOCAL_STORAGE_DRAFT_TEXT = 'olga_escritos_redaccion_draft_texto';
 const LOCAL_STORAGE_DRAFT_PLANTILLA = 'olga_escritos_redaccion_draft_plantilla';
 const LOCAL_STORAGE_DRAFT_TITULO = 'olga_escritos_redaccion_draft_titulo';
@@ -1584,9 +1895,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     .toLowerCase();
   const esAbogadoEsc = tipoPerfilEscNorm === 'abogado';
   const esPlayeroEsc = tipoPerfilEscNorm === 'playero';
+  const esSectorPublicoBeta = tipoPerfilEscNorm === 'sector_publico_beta';
   const esRubroNoNotarialEsc =
     esAbogadoEsc ||
     esPlayeroEsc ||
+    esSectorPublicoBeta ||
     tipoPerfilEscNorm === 'inmobiliario' ||
     tipoPerfilEscNorm === 'contador';
 
@@ -1623,7 +1936,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         activeUserData?.nombre,
         userProfile?.nombre
       )
-    : esPlayeroEsc
+    : esSectorPublicoBeta
+      ? (pickRealEscHeader(
+          workspaceData?.razonSocial,
+          workspaceData?.nombreInstitucion,
+          workspaceData?.nombreComercial,
+          activeUserData?.razonSocial,
+          activeUserData?.nombreInstitucion,
+          activeUserData?.nombreComercial,
+          userProfile?.razonSocial,
+          userProfile?.nombreInstitucion,
+          workspaceData?.nombre,
+          activeUserData?.nombre,
+          userProfile?.nombre
+        ) || 'Unidad Operativa de Contratación (UOC)')
+      : esPlayeroEsc
       ? (pickRealEscHeader(
           workspaceData?.razonSocial,
           workspaceData?.nombreComercial,
@@ -1718,6 +2045,34 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       direccionPlaya: direccionEscHeader || '[DOMICILIO_PLAYA]',
       telefonoPlaya: telefonoEscHeader || '[TELEFONO_PLAYA]',
       ciudadPlaya: rawCiudad || 'Asunción',
+    };
+  }, [workspaceData, activeUserData, userProfile, rucEscHeader, direccionEscHeader, telefonoEscHeader]);
+
+  const sectorPublicoPerfilDatos: SectorPublicoPerfilDatos = React.useMemo(() => {
+    const rawNombre = pickRealEscHeader(
+      workspaceData?.razonSocial,
+      workspaceData?.nombreInstitucion,
+      workspaceData?.nombreComercial,
+      activeUserData?.razonSocial,
+      activeUserData?.nombreInstitucion,
+      activeUserData?.nombreComercial,
+      userProfile?.razonSocial,
+      userProfile?.nombreInstitucion,
+      workspaceData?.nombre,
+      activeUserData?.nombre,
+      userProfile?.nombre
+    );
+    const rawCiudad = pickRealEscHeader(
+      workspaceData?.ciudad,
+      activeUserData?.ciudad,
+      userProfile?.ciudad
+    );
+    return {
+      nombreInstitucion: rawNombre || 'Unidad Operativa de Contratación (UOC)',
+      rucInstitucion: rucEscHeader || '',
+      direccionInstitucion: direccionEscHeader || '',
+      telefonoInstitucion: telefonoEscHeader || '',
+      ciudadInstitucion: rawCiudad || 'Asunción',
     };
   }, [workspaceData, activeUserData, userProfile, rucEscHeader, direccionEscHeader, telefonoEscHeader]);
 
@@ -3088,20 +3443,23 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
   // Contar espacios en blanco totales y pendientes
   const blankMatches = React.useMemo(() => {
-    if (esPlayeroEsc && selectedPlantillaId.startsWith('playero_')) {
+    if (
+      (esPlayeroEsc && selectedPlantillaId.startsWith('playero_')) ||
+      (esSectorPublicoBeta && selectedPlantillaId.startsWith('uoc_'))
+    ) {
       return [];
     }
     const regex = /_{3,}/g;
     const matches: { index: number; length: number }[] = [];
     let match;
     while ((match = regex.exec(currentPlainText)) !== null) {
-      if (esPlayeroEsc && match[0].length >= 15) continue;
+      if ((esPlayeroEsc || esSectorPublicoBeta) && match[0].length >= 15) continue;
       matches.push({ index: match.index, length: match[0].length });
     }
     return matches;
-  }, [currentPlainText, esPlayeroEsc, selectedPlantillaId]);
+  }, [currentPlainText, esPlayeroEsc, esSectorPublicoBeta, selectedPlantillaId]);
 
-  const usaMarcadoresCorchete = esAbogadoEsc || esPlayeroEsc;
+  const usaMarcadoresCorchete = esAbogadoEsc || esPlayeroEsc || esSectorPublicoBeta;
   const marcadoresAbogadoPendientes = React.useMemo(() => {
     if (!usaMarcadoresCorchete) return [];
     return extraerMarcadoresJudiciales(editorText).filter(
@@ -3139,10 +3497,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       };
     }
 
-    if (esPlayeroEsc) {
+    if (esPlayeroEsc || esSectorPublicoBeta) {
       return {
         instruccion: 'Dato complementario',
-        ayuda: 'Complete este espacio con el dato requerido para el documento comercial.',
+        ayuda: esSectorPublicoBeta
+          ? 'Complete este espacio con el dato requerido para el documento o legajo UOC.'
+          : 'Complete este espacio con el dato requerido para el documento comercial.',
         placeholder: 'Ingrese el dato...',
       };
     }
@@ -3911,7 +4271,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return;
     }
 
-    if (esPlayeroEsc) {
+    if (esPlayeroEsc || esSectorPublicoBeta) {
       if (blankMatches.length > 0 && !editorText.includes('id="espacio-activo"')) {
         const re = /_{3,}/g;
         let matchBlank: RegExpExecArray | null = null;
@@ -3976,7 +4336,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         editorContentRef.current.innerHTML = textoConEspacioActivo;
       }
     }
-  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes, esPlayeroEsc, blankMatches.length]);
+  }, [mostrarEditor, isRedaccionEnBlanco, editorText, memoria, isJudicialMarkersActive, marcadoresAbogadoPendientes, esPlayeroEsc, esSectorPublicoBeta, blankMatches.length]);
 
   // Auto-Scroll Contextual (Acompañamiento Dinámico):
   useEffect(() => {
@@ -4095,7 +4455,16 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       `\\[(?:\\s|<[^>]+>|&nbsp;)*${escapedKey}(?:\\s|<[^>]+>|&nbsp;)*\\]`,
       'g'
     );
-    const shouldUpperBold = esPlayeroEsc && PLAYERO_UPPER_BOLD_KEYS.has(markerKey);
+    const UOC_UPPER_BOLD_KEYS = new Set<string>([
+      'PROVEEDOR',
+      'NRO_CONTRATO',
+      'ID_DNCP',
+      'MONTO_LETRAS',
+      'MONTO_AMPLIACION_LETRAS',
+    ]);
+    const shouldUpperBold =
+      (esPlayeroEsc && PLAYERO_UPPER_BOLD_KEYS.has(markerKey)) ||
+      (esSectorPublicoBeta && UOC_UPPER_BOLD_KEYS.has(markerKey));
     const formattedHtml = shouldUpperBold
       ? `<strong>${escapeHtmlText(value.toUpperCase())}</strong>`
       : escapeHtmlText(value);
@@ -4195,6 +4564,8 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         MONTO_RECLAMADO: 'MONTO_LETRAS',
         PRECIO_TOTAL: 'PRECIO_LETRAS',
         MONTO_SENA: 'MONTO_SENA_LETRAS',
+        MONTO_ESTIMADO: 'MONTO_LETRAS',
+        MONTO_AMPLIACION: 'MONTO_AMPLIACION_LETRAS',
       };
       if (montoALetrasPairs[markerKey] && nextMarkers[0] === montoALetrasPairs[markerKey]) {
         const soloDigitosAbg = valorOriginal.replace(/\./g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
@@ -4345,7 +4716,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     // el valor nominal / montos suscriptos sin volver a solicitar datos redundantes.
     let iterHtml = nuevoHtml;
     let iterMemoria = nuevaMemoria;
-    if (!esPlayeroEsc) {
+    if (!esPlayeroEsc && !esSectorPublicoBeta) {
       let continueResolving = true;
       let maxIterations = 20;
 
@@ -4363,8 +4734,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
 
     // 5. RESALTAR EL SIGUIENTE ESPACIO VACÍO PENDIENTE (SI QUEDAN MÁS)
     let hasMoreBlanks = false;
-    if (esPlayeroEsc) {
-      if (!selectedPlantillaId.startsWith('playero_')) {
+    if (esPlayeroEsc || esSectorPublicoBeta) {
+      if (
+        !(esPlayeroEsc && selectedPlantillaId.startsWith('playero_')) &&
+        !(esSectorPublicoBeta && selectedPlantillaId.startsWith('uoc_'))
+      ) {
         const reNext = /_{3,}/g;
         let matchNext: RegExpExecArray | null = null;
         while ((matchNext = reNext.exec(iterHtml)) !== null) {
@@ -4417,7 +4791,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Carpetas configuradas según perfil (Abogado vs. Escribano)
+  // Carpetas configuradas según perfil (Abogado vs. Sector Público Beta vs. Escribano)
   const defaultCarpetas: Carpeta[] = esAbogadoEsc
     ? [
         { id: '1', nombre: 'Expedientes', orden: 1, predeterminada: true },
@@ -4426,13 +4800,28 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         { id: '4', nombre: 'Pagarés', orden: 4, predeterminada: true },
         { id: '5', nombre: 'Contratos Privados', orden: 5, predeterminada: true }
       ]
-    : [
-        { id: '1', nombre: 'Compraventa', orden: 1, predeterminada: true },
-        { id: '2', nombre: 'Pagarés', orden: 2, predeterminada: true },
-        { id: '3', nombre: 'Alquiler', orden: 3, predeterminada: true },
-        { id: '4', nombre: 'Contratos Privados', orden: 4, predeterminada: true },
-        { id: '5', nombre: 'Traspasos', orden: 5, predeterminada: true }
-      ];
+    : esSectorPublicoBeta
+      ? [
+          { id: '1', nombre: 'Licitaciones', orden: 1, predeterminada: true },
+          { id: '2', nombre: 'Contratos', orden: 2, predeterminada: true },
+          { id: '3', nombre: 'Adendas', orden: 3, predeterminada: true },
+          { id: '4', nombre: 'Notas y Memos', orden: 4, predeterminada: true }
+        ]
+      : [
+          { id: '1', nombre: 'Compraventa', orden: 1, predeterminada: true },
+          { id: '2', nombre: 'Pagarés', orden: 2, predeterminada: true },
+          { id: '3', nombre: 'Alquiler', orden: 3, predeterminada: true },
+          { id: '4', nombre: 'Contratos Privados', orden: 4, predeterminada: true },
+          { id: '5', nombre: 'Traspasos', orden: 5, predeterminada: true }
+        ];
+
+  useEffect(() => {
+    if (esSectorPublicoBeta) {
+      setSelectedCategoryForSave((prev) =>
+        prev === 'Contratos Privados' ? 'Contratos' : prev
+      );
+    }
+  }, [esSectorPublicoBeta]);
 
   const userCarpetas: Carpeta[] = React.useMemo(() => {
     const saved = userProfile?.carpetas || workspaceData?.carpetas;
@@ -4446,7 +4835,7 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
       return saved;
     }
     return defaultCarpetas;
-  }, [userProfile?.carpetas, workspaceData?.carpetas, esAbogadoEsc]);
+  }, [userProfile?.carpetas, workspaceData?.carpetas, esAbogadoEsc, esSectorPublicoBeta]);
   const sortedCarpetas = React.useMemo(() => [...userCarpetas].sort((a, b) => a.orden - b.orden), [userCarpetas]);
 
   const extractedCategories = React.useMemo(() => 
@@ -4654,6 +5043,21 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
         setEditorText(textoParaEditor);
         setDocumentTitle(foundPlayero.nombre);
         setSelectedCategoryForSave(foundPlayero.categoriaSugerida);
+      }
+    } else if (esSectorPublicoBeta) {
+      const foundPublico = PLANTILLAS_SECTOR_PUBLICO_BETA_META.find((p) => p.id === plantillaId);
+      if (!foundPublico || plantillaId === 'hoja_en_blanco') {
+        textoParaEditor = '';
+        setTipoHoja('blanca');
+        setEditorText('');
+        setDocumentTitle('Documento en Blanco');
+        setSelectedCategoryForSave('Notas y Memos');
+      } else {
+        setTipoHoja('blanca');
+        textoParaEditor = construirPlantillaSectorPublicoBeta(plantillaId, sectorPublicoPerfilDatos);
+        setEditorText(textoParaEditor);
+        setDocumentTitle(foundPublico.nombre);
+        setSelectedCategoryForSave(foundPublico.categoriaSugerida);
       }
     } else {
       const found = PLANTILLAS_NOTARIALES.find(p => p.id === plantillaId);
@@ -6048,7 +6452,9 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                             ? PLANTILLAS_ABOGADOS_META
                             : esPlayeroEsc
                               ? PLANTILLAS_PLAYERO_META
-                              : PLANTILLAS_NOTARIALES
+                              : esSectorPublicoBeta
+                                ? PLANTILLAS_SECTOR_PUBLICO_BETA_META
+                                : PLANTILLAS_NOTARIALES
                           ).some((p) => p.id === selectedPlantillaId)
                           ? selectedPlantillaId
                           : ''
@@ -6086,6 +6492,14 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                       ) : esPlayeroEsc ? (
                         <>
                           {PLANTILLAS_PLAYERO_META.map((plantilla) => (
+                            <option key={plantilla.id} value={plantilla.id}>
+                              {plantilla.nombre}
+                            </option>
+                          ))}
+                        </>
+                      ) : esSectorPublicoBeta ? (
+                        <>
+                          {PLANTILLAS_SECTOR_PUBLICO_BETA_META.map((plantilla) => (
                             <option key={plantilla.id} value={plantilla.id}>
                               {plantilla.nombre}
                             </option>
@@ -7930,7 +8344,11 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl z-50 pointer-events-none animate-in fade-in zoom-in-95">
                     <p className="font-extrabold text-[#FF3131] uppercase tracking-wider text-[9px] mb-1">
                       {currentBlankContext.isJudicialMarker
-                        ? (esPlayeroEsc ? 'Guía de Llenado Comercial' : 'Guía de Llenado Judicial')
+                        ? (esPlayeroEsc
+                            ? 'Guía de Llenado Comercial'
+                            : esSectorPublicoBeta
+                              ? 'Guía de Llenado UOC / Sector Público'
+                              : 'Guía de Llenado Judicial')
                         : 'Guía Notarial de Llenado'}
                     </p>
                     <p className="text-slate-200 leading-relaxed font-normal">
@@ -7992,7 +8410,12 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                     (currentBlankContext.markerKey === 'PRECIO_TOTAL' ||
                       currentBlankContext.markerKey === 'ENTREGA' ||
                       currentBlankContext.markerKey === 'MONTO_CUOTA' ||
-                      currentBlankContext.markerKey === 'MONTO_SENA'));
+                      currentBlankContext.markerKey === 'MONTO_SENA')) ||
+                  (esSectorPublicoBeta &&
+                    (currentBlankContext.markerKey === 'MONTO_ESTIMADO' ||
+                      currentBlankContext.markerKey === 'MONTO_CONTRATO_ORIGINAL' ||
+                      currentBlankContext.markerKey === 'MONTO_AMPLIACION' ||
+                      currentBlankContext.markerKey === 'MONTO_TOTAL_ACTUALIZADO'));
                 if (isCampoMontoNumerico) {
                   const soloNums = val.replace(/\./g, '');
                   if (/^\d+$/.test(soloNums)) {

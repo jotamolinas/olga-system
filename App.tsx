@@ -49,6 +49,7 @@ import { Sidebar } from './components/Sidebar';
 import { WhatsAppTab } from './components/WhatsAppTab';
 import { ExpedientesTab } from './components/ExpedientesTab';
 import { CotizadorPlayero } from './components/CotizadorPlayero';
+import { ContratosPublicosBeta } from './components/ContratosPublicosBeta';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { PWAInstallButton, PWAInstallGuideModal } from './components/PWAInstallBanner';
 
@@ -667,6 +668,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   const tipoPerfilNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
   const esAbogado = tipoPerfilNorm === 'abogado';
   const esPlayero = tipoPerfilNorm === 'playero';
+  const esSectorPublicoBeta = tipoPerfilNorm === 'sector_publico_beta';
   const canUseExpedientes = esAbogado;
   // El skin dorado y efecto Glassmorphism es EXCLUSIVO para Plan Full. Plan Empresa usa el mismo skin de Plan Básico y Pro.
   const esPlanFull = role === 'admin' || currentUser?.email === 'jotamolinas@gmail.com' || planActual.includes('full');
@@ -836,11 +838,26 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes' | 'cotizador'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes' | 'cotizador' | 'contratos_uoc'>(forceAdmin ? 'monitor' : 'tablero');
 
   useEffect(() => {
     if (isCheckingProfile || !currentUser) return;
+    if (esSectorPublicoBeta) {
+      const allowedPublicoTabs = new Set<string>([
+        'contratos_uoc',
+        'escritos',
+        'personas',
+        'cuenta',
+        ...(canUseWhatsApp ? ['whatsapp'] : []),
+        ...(role === 'admin' ? ['config', 'monitor', 'pagos', 'onboarding-sifen'] : []),
+      ]);
+      if (!allowedPublicoTabs.has(activeTab)) {
+        setActiveTab('contratos_uoc');
+      }
+      return;
+    }
     if (
+      activeTab === 'contratos_uoc' ||
       (activeTab === 'whatsapp' && !canUseWhatsApp) ||
       (activeTab === 'lienzo' && (!canUseLienzo || esAbogado)) ||
       (activeTab === 'facturacion' && !canUsePresupuesto) ||
@@ -849,7 +866,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     ) {
       setActiveTab('tablero');
     }
-  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, esPlayero, isCheckingProfile, currentUser]);
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, esPlayero, esSectorPublicoBeta, role, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -1213,7 +1230,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
               'Mi Escribanía';
           }
           const tipoDocNorm = String(data.tipoPerfil || '').toLowerCase();
-          const isPerfilNoNotarial = ['abogado', 'playero', 'inmobiliario', 'contador'].includes(tipoDocNorm);
+          const isPerfilNoNotarial = ['abogado', 'playero', 'inmobiliario', 'contador', 'sector_publico_beta'].includes(tipoDocNorm);
           if (!data.escribania && !isPerfilNoNotarial) {
             updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
           }
@@ -2251,14 +2268,16 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                       )
                     : (() => {
                         const tipoNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
-                        const esComercial = tipoNorm === 'playero' || tipoNorm === 'inmobiliario' || tipoNorm === 'contador';
+                        const esComercial = tipoNorm === 'playero' || tipoNorm === 'inmobiliario' || tipoNorm === 'contador' || tipoNorm === 'sector_publico_beta';
                         if (esComercial) {
                           const comercialFallback =
                             tipoNorm === 'playero'
                               ? 'Playa de Vehículos'
                               : tipoNorm === 'inmobiliario'
                                 ? 'Inmobiliaria'
-                                : 'Estudio Contable';
+                                : tipoNorm === 'sector_publico_beta'
+                                  ? 'Unidad Operativa de Contratación (UOC)'
+                                  : 'Estudio Contable';
                           return (
                             userProfile?.razonSocial?.trim() ||
                             userData?.razonSocial?.trim() ||
@@ -2294,6 +2313,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
                         const matText = String(userData?.matricula || config.escribania.nro_registro || '').trim();
                         const rawTipo = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim();
                         const tipoNorm = rawTipo.toLowerCase();
+                        if (tipoNorm === 'sector_publico_beta') return 'Sector Público (Beta) • Gestión UOC';
                         if (tipoNorm === 'playero') return 'Playa de Vehículos • Panel Comercial';
                         if (tipoNorm === 'inmobiliario') return 'Inmobiliaria / Broker • Panel Comercial';
                         if (tipoNorm === 'contador') return 'Estudio Contable • Panel de Gestión';
@@ -2561,7 +2581,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
 
                   {/* Estado 3 (Pago Activo): Si isSoftBlocked es false Y tiene un plan de pago aprobado, no se muestra ningún banner */}
                   
-                  {activeTab === 'tablero' && (
+                  {activeTab === 'tablero' && !esSectorPublicoBeta && (
               <TableroTab 
                 pagares={pagares}
                 personas={personas}
@@ -2636,7 +2656,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               />
             )}
 
-            {activeTab === 'pagares' && (
+            {activeTab === 'pagares' && !esSectorPublicoBeta && (
               <PagaresTab
                 pagares={visiblePagares}
                 onUpdatePagare={handleUpdatePagare}
@@ -2727,7 +2747,17 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               />
             )}
 
-            {activeTab === 'lienzo' && !esAbogado && (
+            {activeTab === 'contratos_uoc' && esSectorPublicoBeta && (
+              <ContratosPublicosBeta
+                currentUser={currentUser}
+                userData={userProfile || userData}
+                workspaceId={workspaceId}
+                personas={personas}
+                onNavigateEscritos={() => setActiveTab('escritos')}
+              />
+            )}
+
+            {activeTab === 'lienzo' && !esAbogado && !esSectorPublicoBeta && (
               isSoftBlocked && getExplicitAddonFlag('lienzoEnabled') !== true ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
                   <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
@@ -2764,7 +2794,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               )
             )}
 
-            {activeTab === 'facturacion' && (
+            {activeTab === 'facturacion' && !esSectorPublicoBeta && (
               isSoftBlocked && getExplicitAddonFlag('presupuestoEnabled') !== true ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-lg mx-auto mt-12 shadow-2xl">
                   <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
@@ -3199,13 +3229,15 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
         <footer className={`${isDarkLayout ? 'bg-[#16171E] border-white/10 text-slate-400' : 'bg-white/90 border-slate-200/80 text-slate-500'} border-t p-4 text-center text-[9px] font-mono tracking-widest uppercase mt-auto shrink-0 md:sticky md:bottom-0 backdrop-blur-sm print:hidden ${activeTab === 'chat' ? 'hidden md:block' : ''}`}>
           SISTEMA O.L.G.A (ORGANIZACIÓN, LEGALIZACIÓN, GESTIÓN Y ADMINISTRACIÓN) — {esAbogado
             ? 'GESTIÓN JURÍDICA Y PROCESAL'
-            : tipoPerfilNorm === 'playero'
-              ? 'PANEL COMERCIAL'
-              : tipoPerfilNorm === 'inmobiliario'
-                ? 'GESTIÓN INMOBILIARIA'
-                : tipoPerfilNorm === 'contador'
-                  ? 'PANEL TRIBUTARIO'
-                  : 'PROTOCOLO NOTARIAL'}
+            : esSectorPublicoBeta
+              ? 'GESTIÓN DE CONTRATOS PÚBLICOS UOC'
+              : tipoPerfilNorm === 'playero'
+                ? 'PANEL COMERCIAL'
+                : tipoPerfilNorm === 'inmobiliario'
+                  ? 'GESTIÓN INMOBILIARIA'
+                  : tipoPerfilNorm === 'contador'
+                    ? 'PANEL TRIBUTARIO'
+                    : 'PROTOCOLO NOTARIAL'}
         </footer>
       )}
       </main>

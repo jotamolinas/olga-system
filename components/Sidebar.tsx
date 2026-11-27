@@ -25,7 +25,8 @@ import {
   Lock as LockIcon,
   MessageCircle,
   Briefcase,
-  Calculator
+  Calculator,
+  ClipboardList
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 import { UsePWAInstallResult } from '../hooks/usePWAInstall';
@@ -48,7 +49,8 @@ export type SidebarTabId =
   | 'onboarding-sifen'
   | 'whatsapp'
   | 'expedientes'
-  | 'cotizador';
+  | 'cotizador'
+  | 'contratos_uoc';
 
 export interface SidebarProps {
   activeTab: SidebarTabId | string;
@@ -138,10 +140,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const esPlayero = tipoPerfilNorm === 'playero';
   const esInmobiliario = tipoPerfilNorm === 'inmobiliario';
   const esContador = tipoPerfilNorm === 'contador';
+  const esSectorPublicoBeta = tipoPerfilNorm === 'sector_publico_beta';
   const esRubroComercial = esPlayero || esInmobiliario || esContador;
 
   const resolvedWorkspaceDisplay =
-    workspaceName && (!(esAbogado || esRubroComercial) || workspaceName !== 'Mi Escribanía')
+    workspaceName && (!(esAbogado || esRubroComercial || esSectorPublicoBeta) || workspaceName !== 'Mi Escribanía')
       ? workspaceName
       : '';
 
@@ -160,13 +163,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         currentUser?.phoneNumber ||
         (esAbogado
           ? 'Estudio Jurídico'
-          : esPlayero
-            ? 'Playa de Vehículos'
-            : esInmobiliario
-              ? 'Inmobiliaria'
-              : esContador
-                ? 'Estudio Contable'
-                : 'Escribanía Titular')
+          : esSectorPublicoBeta
+            ? 'Unidad Operativa de Contratación (UOC)'
+            : esPlayero
+              ? 'Playa de Vehículos'
+              : esInmobiliario
+                ? 'Inmobiliaria'
+                : esContador
+                  ? 'Estudio Contable'
+                  : 'Escribanía Titular')
       );
 
   const rucSidebar = String(
@@ -180,15 +185,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const sublineText = isOperador
     ? (workspaceName ? `${esAbogado ? 'Estudio' : esRubroComercial ? 'Equipo' : 'Escribanía'} ${workspaceName}` : 'Operador Notarial')
-    : esAbogado
-      ? (role === 'admin' ? 'Administrador' : 'Estudio Jurídico • Panel Legal')
-      : esRubroComercial
-        ? (role === 'admin'
-            ? 'Administrador'
-            : rucSidebar
-              ? `RUC: ${rucSidebar}`
-              : rubroSidebarFallback)
-        : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
+    : esSectorPublicoBeta
+      ? (role === 'admin' ? 'Administrador' : 'Sector Público (Beta) • Gestión UOC')
+      : esAbogado
+        ? (role === 'admin' ? 'Administrador' : 'Estudio Jurídico • Panel Legal')
+        : esRubroComercial
+          ? (role === 'admin'
+              ? 'Administrador'
+              : rucSidebar
+                ? `RUC: ${rucSidebar}`
+                : rubroSidebarFallback)
+          : (customBranding?.registroNotarial || (role === 'admin' ? 'Administrador' : `Reg. Nº ${config?.escribania?.nro_registro || 'Titular'}`));
 
   // Insignia dinámica de plan
   const planRaw = userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || (config as any)?.tipoPlan || activePlan || 'basico';
@@ -303,49 +310,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canUseLienzo = resolveAddon(canUseLienzoProp, 'lienzoEnabled', planIncluyeLienzoYPresupuestos);
   const canUsePresupuesto = resolveAddon(canUsePresupuestoProp, 'presupuestoEnabled', planIncluyeLienzoYPresupuestos);
 
-  const navItems: NavItem[] = [
-    { id: 'tablero', label: 'Dashboard', icon: Activity },
-    ...(esAbogado ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
-    ...(esPlayero ? [{ id: 'cotizador', label: 'Cotizador / Financiación', icon: Calculator }] : []),
-    { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
-    { id: 'personas', label: esAbogado ? 'Clientes / Partes' : 'Fichero Personas', icon: Users },
-    { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
-    // Lienzo Notarial (solo Escribanía) y Presupuesto: Controlados por permisos modulares (o herencia del plan)
-    ...(!esAbogado && canUseLienzo ? [{ id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp }] : []),
-    ...(canUsePresupuesto ? [{ id: 'facturacion', label: 'Presupuesto', icon: CreditCard }] : []),
-    // Asistente IA / El Oráculo
-    {
-      id: 'chat',
-      label: nombreAsistente,
-      icon: tieneOraculo ? Sparkles : MessageSquare,
-      customRenderLabel: () => nombreAsistente
-    },
-    // Conexión QR WhatsApp (Feature Flag)
-    ...(canUseWhatsApp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
-    // Soporte
-    {
-      id: 'soporte',
-      label: 'Soporte',
-      icon: LifeBuoy,
-      customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte'
-    },
-    // Configuración de Escribanía / Estudio / Cuenta
-    {
-      id: 'cuenta',
-      label: esAbogado
-        ? 'Configuración Estudio'
-        : esRubroComercial
-          ? 'Configuración'
-          : 'Configuración Escribanía',
-      icon: Sliders
-    },
-    // Opciones administrativas
-    { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
-    { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
-    // Regla Crítica: Envuelto en renderizado condicional estricto de Super Admin
-    ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
-    { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
-  ];
+  const navItems: NavItem[] = esSectorPublicoBeta
+    ? [
+        { id: 'contratos_uoc', label: 'Mis Contratos (UOC)', icon: ClipboardList },
+        { id: 'escritos', label: 'Gestión de Escritos y Legajos', icon: FileText },
+        { id: 'personas', label: 'Proveedores', icon: Users },
+        ...(canUseWhatsApp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
+        { id: 'cuenta', label: 'Configuración', icon: Sliders },
+        { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
+        { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
+        ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
+        { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
+      ]
+    : [
+        { id: 'tablero', label: 'Dashboard', icon: Activity },
+        ...(esAbogado ? [{ id: 'expedientes', label: 'Expedientes', icon: Briefcase }] : []),
+        ...(esPlayero ? [{ id: 'cotizador', label: 'Cotizador / Financiación', icon: Calculator }] : []),
+        { id: 'pagares', label: 'Gestión de Pagarés', icon: Banknote },
+        { id: 'personas', label: esAbogado ? 'Clientes / Partes' : 'Fichero Personas', icon: Users },
+        { id: 'escritos', label: 'Gestión de Escritos', icon: FileText },
+        // Lienzo Notarial (solo Escribanía) y Presupuesto: Controlados por permisos modulares (o herencia del plan)
+        ...(!esAbogado && canUseLienzo ? [{ id: 'lienzo', label: 'Lienzo Notarial', icon: Stamp }] : []),
+        ...(canUsePresupuesto ? [{ id: 'facturacion', label: 'Presupuesto', icon: CreditCard }] : []),
+        // Asistente IA / El Oráculo
+        {
+          id: 'chat',
+          label: nombreAsistente,
+          icon: tieneOraculo ? Sparkles : MessageSquare,
+          customRenderLabel: () => nombreAsistente
+        },
+        // Conexión QR WhatsApp (Feature Flag)
+        ...(canUseWhatsApp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
+        // Soporte
+        {
+          id: 'soporte',
+          label: 'Soporte',
+          icon: LifeBuoy,
+          customRenderLabel: () => role === 'admin' ? 'Buzón de Consultas' : 'Soporte'
+        },
+        // Configuración de Escribanía / Estudio / Cuenta
+        {
+          id: 'cuenta',
+          label: esAbogado
+            ? 'Configuración Estudio'
+            : esRubroComercial
+              ? 'Configuración'
+              : 'Configuración Escribanía',
+          icon: Sliders
+        },
+        // Opciones administrativas
+        { id: 'config', label: 'Configuración Legal', icon: Settings, adminOnly: true },
+        { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
+        // Regla Crítica: Envuelto en renderizado condicional estricto de Super Admin
+        ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
+        { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
+      ];
 
   const visibleNavItems = navItems.filter(item => !item.adminOnly || role === 'admin');
 
@@ -616,7 +635,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => {
                   setRole('usuario');
                   if (activeTab === 'config' || activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') {
-                    setActiveTab('tablero');
+                    setActiveTab(esSectorPublicoBeta ? 'contratos_uoc' : 'tablero');
                   }
                 }}
                 className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${
