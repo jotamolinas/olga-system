@@ -267,7 +267,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
   const esContador = tipoPerfilNorm === 'contador';
   const esRubroComercial = esPlayero || esInmobiliario || esContador;
   // FASE 3: Identificación de Workspace para persistencia en la nube
-  const { workspaceId } = useWorkspace(currentUser || auth?.currentUser, userData);
+  const { workspaceId, workspaceData } = useWorkspace(currentUser || auth?.currentUser, userData);
+  const esSectorPublicoBeta =
+    String(userData?.tipoPerfil || workspaceData?.tipoPerfil || currentUser?.tipoPerfil || '')
+      .trim()
+      .toLowerCase() === 'sector_publico_beta';
   const effectiveWorkspaceId = workspaceId || userData?.tenant_id || userData?.uid || currentUser?.uid;
 
   // El logo se obtiene EXCLUSIVAMENTE de Firestore (userData.logo_institucional)
@@ -1020,7 +1024,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
     // 2. Doble Validación de Seguridad (Límite según plan)
     if ((operadores.length + 1) >= limiteActual) {
-      setErrorOperador(`Límite de ${limiteActual} slots alcanzado para su plan (incluye al Escribano Titular).`);
+      setErrorOperador(
+        `Límite de ${limiteActual} slots alcanzado para su plan (${
+          esSectorPublicoBeta ? 'incluye al Funcionario Responsable' : 'incluye al Escribano Titular'
+        }).`
+      );
       return;
     }
 
@@ -1142,11 +1150,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap shrink-0">
-            {pagaresEfectivos.length} Pagarés Monitoreados
-          </span>
-        </div>
+        {!esSectorPublicoBeta && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap shrink-0">
+              {pagaresEfectivos.length} Pagarés Monitoreados
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Cartel de Advertencia Reglamentaria */}
@@ -1154,9 +1164,17 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
         <AlertCircle className="w-5 h-5 text-[#FF3131] shrink-0 mt-0.5" />
         <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
           <strong className="text-slate-900 dark:text-slate-100 block mb-0.5">
-            {esRubroComercial ? 'Aviso de Resguardo y Validación:' : 'Aviso Notarial de Resguardo y Validación:'}
+            {esSectorPublicoBeta
+              ? 'Aviso de Resguardo y Validación Institucional:'
+              : esRubroComercial
+                ? 'Aviso de Resguardo y Validación:'
+                : 'Aviso Notarial de Resguardo y Validación:'}
           </strong>
-          {esRubroComercial ? (
+          {esSectorPublicoBeta ? (
+            <>
+              Todo documento, legajo o solicitud generado por la plataforma constituye un borrador técnico. Su validez administrativa y legal requiere la revisión, firma y sello de la autoridad o funcionario responsable.
+            </>
+          ) : esRubroComercial ? (
             <>
               Todo documento, pagaré o instrumento generado por la plataforma constituye un borrador técnico editable. Su validez comercial y administrativa requiere la revisión y autorización del <strong className="dark:text-slate-200">Titular o Responsable autorizado</strong>.
             </>
@@ -1213,9 +1231,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <Building className="w-5 h-5 text-[#FF3131]" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Entorno de Operador Notarial</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              {esSectorPublicoBeta ? 'Entorno de Operador Institucional' : 'Entorno de Operador Notarial'}
+            </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed break-words">
-              Estás conectado como operador notarial bajo el membrete oficial del Escribano Titular. Los ajustes de membrete institucional, facturación y administración de equipo están centralizados bajo la supervisión del Titular.
+              {esSectorPublicoBeta
+                ? 'Estás conectado como operador institucional bajo el membrete oficial del Funcionario Responsable / Encargado UOC. Los ajustes de membrete institucional, suscripción y administración de equipo están centralizados bajo la supervisión del Titular.'
+                : 'Estás conectado como operador notarial bajo el membrete oficial del Escribano Titular. Los ajustes de membrete institucional, facturación y administración de equipo están centralizados bajo la supervisión del Titular.'}
             </p>
           </div>
         </div>
@@ -1232,9 +1254,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="min-w-0">
               <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 break-words">Perfil Institucional</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                {esRubroComercial
-                  ? 'Datos públicos, membrete comercial e identidad visual para todo el sistema'
-                  : 'Datos públicos, membrete protocolar e identidad visual para todo el sistema'}
+                {esSectorPublicoBeta
+                  ? 'Datos institucionales, membrete oficial e identidad visual de la dependencia'
+                  : esRubroComercial
+                    ? 'Datos públicos, membrete comercial e identidad visual para todo el sistema'
+                    : 'Datos públicos, membrete protocolar e identidad visual para todo el sistema'}
               </p>
             </div>
           </div>
@@ -1246,7 +1270,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
             <div className="relative group shrink-0">
               <div className="w-28 h-28 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center overflow-hidden shadow-inner">
                 {logoPreview ? (
-                  <img src={logoPreview} alt="Logo Notaría" className="w-full h-full object-cover" />
+                  <img src={logoPreview} alt={esSectorPublicoBeta ? 'Logo Institucional' : 'Logo Notaría'} className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
                     <Building className="w-8 h-8 mb-1 text-slate-400" />
@@ -1303,44 +1327,50 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               <h5 className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-[#FF3131] shrink-0" />
                 <span>
-                  {esAbogado
-                    ? 'Identificación Profesional y Estudio Jurídico'
-                    : esPlayero
-                      ? 'Identificación Comercial de la Playa de Vehículos'
-                      : esInmobiliario
-                        ? 'Identificación Comercial de la Inmobiliaria'
-                        : esContador
-                          ? 'Identificación Profesional del Estudio Contable'
-                          : 'Identificación Notarial e Institucional'}
+                  {esSectorPublicoBeta
+                    ? 'Identificación Institucional y UOC'
+                    : esAbogado
+                      ? 'Identificación Profesional y Estudio Jurídico'
+                      : esPlayero
+                        ? 'Identificación Comercial de la Playa de Vehículos'
+                        : esInmobiliario
+                          ? 'Identificación Comercial de la Inmobiliaria'
+                          : esContador
+                            ? 'Identificación Profesional del Estudio Contable'
+                            : 'Identificación Notarial e Institucional'}
                 </span>
               </h5>
               <div className={`grid grid-cols-1 md:grid-cols-2 ${esPlayero || esInmobiliario ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4 min-w-0`}>
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado
-                      ? 'Abogado Titular *'
-                      : esPlayero
-                        ? 'Titular / Responsable Comercial *'
-                        : esInmobiliario
-                          ? 'Broker / Titular Responsable *'
-                          : esContador
-                            ? 'Contador Público / Titular *'
-                            : 'Notario / Escribano Titular *'}
+                    {esSectorPublicoBeta
+                      ? 'Funcionario Responsable / Encargado UOC *'
+                      : esAbogado
+                        ? 'Abogado Titular *'
+                        : esPlayero
+                          ? 'Titular / Responsable Comercial *'
+                          : esInmobiliario
+                            ? 'Broker / Titular Responsable *'
+                            : esContador
+                              ? 'Contador Público / Titular *'
+                              : 'Notario / Escribano Titular *'}
                   </label>
                   <input
                     type="text"
                     value={nombreNotario}
                     onChange={(e) => setNombreNotario(e.target.value)}
                     placeholder={
-                      esAbogado
-                        ? 'Ej. Abg. Juan Pérez'
-                        : esPlayero
-                          ? 'Ej. Carlos Gómez'
-                          : esInmobiliario
-                            ? 'Ej. María López'
-                            : esContador
-                              ? 'Ej. Lic. Roberto Ramírez'
-                              : 'Ej. Esc. Sandra Molinas'
+                      esSectorPublicoBeta
+                        ? 'Ej. Fernando Ayala'
+                        : esAbogado
+                          ? 'Ej. Abg. Juan Pérez'
+                          : esPlayero
+                            ? 'Ej. Carlos Gómez'
+                            : esInmobiliario
+                              ? 'Ej. María López'
+                              : esContador
+                                ? 'Ej. Lic. Roberto Ramírez'
+                                : 'Ej. Esc. Sandra Molinas'
                     }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
@@ -1349,54 +1379,62 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 {!esPlayero && !esInmobiliario && (
                   <div className="min-w-0">
                     <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                      {esAbogado
-                        ? 'Matrícula CSJ de Abogado *'
-                        : esContador
-                          ? 'Matrícula Profesional (Opcional)'
-                          : 'N° de Registro Notarial *'}
+                      {esSectorPublicoBeta
+                        ? 'Cargo / Dependencia / UOC'
+                        : esAbogado
+                          ? 'Matrícula CSJ de Abogado *'
+                          : esContador
+                            ? 'Matrícula Profesional (Opcional)'
+                            : 'N° de Registro Notarial *'}
                     </label>
                     <input
                       type="text"
                       value={registroNotarial}
                       onChange={(e) => setRegistroNotarial(e.target.value)}
                       placeholder={
-                        esAbogado
-                          ? 'Ej. Mat. CSJ Nº 14.520'
-                          : esContador
-                            ? 'Ej. Mat. CCP Nº 4.520'
-                            : 'Ej. Reg. Nº 1.292'
+                        esSectorPublicoBeta
+                          ? 'Ej. Unidad Operativa de Contrataciones (UOC)'
+                          : esAbogado
+                            ? 'Ej. Mat. CSJ Nº 14.520'
+                            : esContador
+                              ? 'Ej. Mat. CCP Nº 4.520'
+                              : 'Ej. Reg. Nº 1.292'
                       }
-                      className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
+                      className={`w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors${esSectorPublicoBeta ? '' : ' font-mono'}`}
                     />
                   </div>
                 )}
 
                 <div className={`min-w-0 ${esPlayero || esInmobiliario ? '' : 'md:col-span-2 lg:col-span-1'}`}>
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado
-                      ? 'Nombre del Estudio Jurídico *'
-                      : esPlayero
-                        ? 'Nombre de la Playa / Razón Social *'
-                        : esInmobiliario
-                          ? 'Nombre de la Inmobiliaria / Broker *'
-                          : esContador
-                            ? 'Nombre del Estudio Contable *'
-                            : 'Firma / Nombre de Escribanía *'}
+                    {esSectorPublicoBeta
+                      ? 'Institución / Ministerio *'
+                      : esAbogado
+                        ? 'Nombre del Estudio Jurídico *'
+                        : esPlayero
+                          ? 'Nombre de la Playa / Razón Social *'
+                          : esInmobiliario
+                            ? 'Nombre de la Inmobiliaria / Broker *'
+                            : esContador
+                              ? 'Nombre del Estudio Contable *'
+                              : 'Firma / Nombre de Escribanía *'}
                   </label>
                   <input
                     type="text"
                     value={nombreInstitucion}
                     onChange={(e) => setNombreInstitucion(e.target.value)}
                     placeholder={
-                      esAbogado
-                        ? 'Ej. Estudio Jurídico Pérez & Asociados'
-                        : esPlayero
-                          ? 'Ej. Automotores del Este S.A.'
-                          : esInmobiliario
-                            ? 'Ej. Inmobiliaria Horizonte'
-                            : esContador
-                              ? 'Ej. Estudio Contable Ramírez & Asociados'
-                              : 'Ej. Escribanía Molinas & Asociados'
+                      esSectorPublicoBeta
+                        ? 'Ej. Ministerio de la Niñez y la Adolescencia (MINNA)'
+                        : esAbogado
+                          ? 'Ej. Estudio Jurídico Pérez & Asociados'
+                          : esPlayero
+                            ? 'Ej. Automotores del Este S.A.'
+                            : esInmobiliario
+                              ? 'Ej. Inmobiliaria Horizonte'
+                              : esContador
+                                ? 'Ej. Estudio Contable Ramírez & Asociados'
+                                : 'Ej. Escribanía Molinas & Asociados'
                     }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
@@ -1413,13 +1451,13 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 min-w-0">
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    Dirección Comercial / Sede *
+                    {esSectorPublicoBeta ? 'Dirección de la Sede / Institución' : 'Dirección Comercial / Sede *'}
                   </label>
                   <input
                     type="text"
                     value={direccion}
                     onChange={(e) => setDireccion(e.target.value)}
-                    placeholder="Ej. Avda. Carlos A. López 450"
+                    placeholder={esSectorPublicoBeta ? 'Ej. Avda. Mcal. López y ...' : 'Ej. Avda. Carlos A. López 450'}
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -1452,28 +1490,32 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
 
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado
-                      ? 'Correo Electrónico Profesional *'
-                      : esPlayero || esInmobiliario
-                        ? 'Correo Electrónico Comercial *'
-                        : esContador
-                          ? 'Correo Electrónico Profesional *'
-                          : 'Correo Electrónico Notarial *'}
+                    {esSectorPublicoBeta
+                      ? 'Correo Electrónico Institucional'
+                      : esAbogado
+                        ? 'Correo Electrónico Profesional *'
+                        : esPlayero || esInmobiliario
+                          ? 'Correo Electrónico Comercial *'
+                          : esContador
+                            ? 'Correo Electrónico Profesional *'
+                            : 'Correo Electrónico Notarial *'}
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={
-                      esAbogado
-                        ? 'Ej. estudio@abogados.com.py'
-                        : esPlayero
-                          ? 'Ej. ventas@automotores.com.py'
-                          : esInmobiliario
-                            ? 'Ej. contacto@inmobiliaria.com.py'
-                            : esContador
-                              ? 'Ej. estudio@contadores.com.py'
-                              : 'Ej. notaria@olgatech.com.py'
+                      esSectorPublicoBeta
+                        ? 'Ej. uoc@minna.gov.py'
+                        : esAbogado
+                          ? 'Ej. estudio@abogados.com.py'
+                          : esPlayero
+                            ? 'Ej. ventas@automotores.com.py'
+                            : esInmobiliario
+                              ? 'Ej. contacto@inmobiliaria.com.py'
+                              : esContador
+                                ? 'Ej. estudio@contadores.com.py'
+                                : 'Ej. notaria@olgatech.com.py'
                     }
                     className="w-full min-w-0 bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors"
                   />
@@ -1662,68 +1704,76 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
               <h5 className="text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider mb-2.5 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>
-                  {esAbogado
-                    ? 'RUC y Timbrado Fiscal SET/DNIT'
-                    : esRubroComercial
-                      ? 'RUC Comercial y Timbrado Fiscal SET/DNIT'
-                      : 'RUC de la Escribanía y Timbrado Fiscal SET/DNIT'}
+                  {esSectorPublicoBeta
+                    ? 'Identificación Tributaria Institucional (Opcional)'
+                    : esAbogado
+                      ? 'RUC y Timbrado Fiscal SET/DNIT'
+                      : esRubroComercial
+                        ? 'RUC Comercial y Timbrado Fiscal SET/DNIT'
+                        : 'RUC de la Escribanía y Timbrado Fiscal SET/DNIT'}
                 </span>
               </h5>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
+              <div className={`grid grid-cols-1 ${esSectorPublicoBeta ? 'md:grid-cols-2 lg:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'} gap-4 min-w-0`}>
                 <div className="min-w-0">
                   <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    {esAbogado
-                      ? 'RUC del Estudio / Profesional'
-                      : esRubroComercial
-                        ? 'RUC de la Empresa / Profesional'
-                        : 'RUC de la Escribanía *'}
+                    {esSectorPublicoBeta
+                      ? 'RUC de la Institución'
+                      : esAbogado
+                        ? 'RUC del Estudio / Profesional'
+                        : esRubroComercial
+                          ? 'RUC de la Empresa / Profesional'
+                          : 'RUC de la Escribanía *'}
                   </label>
                   <input
                     type="text"
                     value={ruc}
                     onChange={(e) => setRuc(e.target.value)}
-                    placeholder="Ej. 80012345-6"
+                    placeholder={esSectorPublicoBeta ? 'Ej. 80000000-0' : 'Ej. 80012345-6'}
                     className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
                   />
                 </div>
 
-                <div className="min-w-0">
-                  <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                    N° de Timbrado Oficial *
-                  </label>
-                  <input
-                    type="text"
-                    value={timbradoNumero}
-                    onChange={(e) => setTimbradoNumero(e.target.value)}
-                    placeholder="Ej. 16894321"
-                    className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
-                  />
-                </div>
+                {!esSectorPublicoBeta && (
+                  <>
+                    <div className="min-w-0">
+                      <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
+                        N° de Timbrado Oficial *
+                      </label>
+                      <input
+                        type="text"
+                        value={timbradoNumero}
+                        onChange={(e) => setTimbradoNumero(e.target.value)}
+                        placeholder="Ej. 16894321"
+                        className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] focus:placeholder-transparent rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-colors font-mono"
+                      />
+                    </div>
 
-                <div className="md:col-span-2 lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                      Inicio Vigencia
-                    </label>
-                    <input
-                      type="date"
-                      value={timbradoVigenciaInicio}
-                      onChange={(e) => setTimbradoVigenciaInicio(e.target.value)}
-                      className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
-                      Fin Vigencia
-                    </label>
-                    <input
-                      type="date"
-                      value={timbradoVigenciaFin}
-                      onChange={(e) => setTimbradoVigenciaFin(e.target.value)}
-                      className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
-                    />
-                  </div>
-                </div>
+                    <div className="md:col-span-2 lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
+                          Inicio Vigencia
+                        </label>
+                        <input
+                          type="date"
+                          value={timbradoVigenciaInicio}
+                          onChange={(e) => setTimbradoVigenciaInicio(e.target.value)}
+                          className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 tracking-wider mb-1.5 w-full min-w-0">
+                          Fin Vigencia
+                        </label>
+                        <input
+                          type="date"
+                          value={timbradoVigenciaFin}
+                          onChange={(e) => setTimbradoVigenciaFin(e.target.value)}
+                          className="w-full min-w-0 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-700/80 focus:border-[#FF3131] rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1750,9 +1800,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           <div className="min-w-0">
             <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 break-words">Preferencias y Notificaciones</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-              {esRubroComercial
-                ? 'Automatizaciones operativas y alertas del flujo comercial'
-                : 'Automatizaciones operativas y alertas del flujo notarial'}
+              {esSectorPublicoBeta
+                ? 'Automatizaciones operativas y alertas del flujo institucional'
+                : esRubroComercial
+                  ? 'Automatizaciones operativas y alertas del flujo comercial'
+                  : 'Automatizaciones operativas y alertas del flujo notarial'}
             </p>
           </div>
         </div>
@@ -1772,7 +1824,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 </span>
               </span>
               <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                Alterna entre la vista notarial en fondo blanco y el modo oscuro en toda la plataforma.
+                {esSectorPublicoBeta
+                  ? 'Alterna entre la vista institucional en fondo blanco y el modo oscuro en toda la plataforma.'
+                  : 'Alterna entre la vista notarial en fondo blanco y el modo oscuro en toda la plataforma.'}
               </p>
             </div>
             <button
@@ -1802,7 +1856,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 Activar notificaciones de vencimientos
               </span>
               <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                Emite recordatorios preventivos y alertas en la campana 5 días antes de la caducidad de cuotas.
+                {esSectorPublicoBeta
+                  ? 'Emite recordatorios preventivos y alertas antes del vencimiento de pólizas, contratos o plazos administrativos.'
+                  : 'Emite recordatorios preventivos y alertas en la campana 5 días antes de la caducidad de cuotas.'}
               </p>
             </div>
             <button
@@ -1864,7 +1920,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 Numeración correlativa automática
               </span>
               <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
-                Garantiza correlatividad estricta sin omisiones ni duplicaciones en el registro de pagarés creados.
+                {esSectorPublicoBeta
+                  ? 'Garantiza correlatividad estricta sin omisiones ni duplicaciones en el registro de documentos institucionales.'
+                  : 'Garantiza correlatividad estricta sin omisiones ni duplicaciones en el registro de pagarés creados.'}
               </p>
             </div>
             <button
@@ -1898,7 +1956,11 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 break-words">Seguridad y Accesos</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 break-words">Blindaje de credenciales y autorización de operadores notariados</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
+              {esSectorPublicoBeta
+                ? 'Blindaje de credenciales y autorización de operadores institucionales'
+                : 'Blindaje de credenciales y autorización de operadores notariados'}
+            </p>
           </div>
         </div>
 
@@ -1917,7 +1979,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-words">
-                  Exige confirmación por token o código OTP antes de emitir o certificar pagarés con valor cambiario.
+                  {esSectorPublicoBeta
+                    ? 'Exige confirmación por token o código OTP antes de emitir o autorizar documentos institucionales.'
+                    : 'Exige confirmación por token o código OTP antes de emitir o certificar pagarés con valor cambiario.'}
                 </p>
               </div>
             </div>
@@ -1949,12 +2013,20 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <Users className="w-5 h-5 text-slate-700 dark:text-slate-300 shrink-0 mt-0.5 sm:mt-0" />
                 <div className="min-w-0">
                   <span className="text-sm font-bold text-slate-900 dark:text-slate-100 block">
-                    {esRubroComercial ? 'Gestión de Operadores del Equipo' : 'Gestión de Operadores Notariales'}
+                    {esSectorPublicoBeta
+                      ? 'Gestión de Operadores Institucionales'
+                      : esRubroComercial
+                        ? 'Gestión de Operadores del Equipo'
+                        : 'Gestión de Operadores Notariales'}
                   </span>
                   <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
                     Slots utilizados: {operadores.length + 1} de {limiteActual} ({slotsLibres} libres) •{' '}
                     <span className="italic">
-                      {esRubroComercial ? 'Incluye al Titular' : 'Incluye al Escribano Titular'}
+                      {esSectorPublicoBeta
+                        ? 'Incluye al Funcionario Responsable / Titular'
+                        : esRubroComercial
+                          ? 'Incluye al Titular'
+                          : 'Incluye al Escribano Titular'}
                     </span>
                   </p>
                 </div>
@@ -1982,7 +2054,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                 <div className="min-w-0">
                   <h4 className="text-base font-bold text-white dark:text-slate-100 break-words">Gestión de Usuarios y Operadores</h4>
                   <p className="text-xs text-slate-400 break-words">
-                    Slots utilizados: {operadores.length + 1} de {limiteActual} (Incluye al Escribano Titular)
+                    Slots utilizados: {operadores.length + 1} de {limiteActual} ({esSectorPublicoBeta ? 'Incluye al Funcionario Responsable' : 'Incluye al Escribano Titular'})
                   </p>
                 </div>
               </div>
@@ -2018,7 +2090,7 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
-                      Has alcanzado el límite de <strong>{limiteActual} slots</strong> permitido por tu plan (incluye al Escribano Titular).
+                      Has alcanzado el límite de <strong>{limiteActual} slots</strong> permitido por tu plan ({esSectorPublicoBeta ? 'incluye al Funcionario Responsable' : 'incluye al Escribano Titular'}).
                     </span>
                   </div>
                 )}
@@ -2090,7 +2162,9 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     <p className="text-xs font-bold text-slate-600">No hay operadores registrados</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Utilice el formulario superior para incorporar miembros a su equipo notarial.
+                      {esSectorPublicoBeta
+                        ? 'Utilice el formulario superior para incorporar miembros a su equipo institucional / UOC.'
+                        : 'Utilice el formulario superior para incorporar miembros a su equipo notarial.'}
                     </p>
                   </div>
                 ) : (
@@ -2098,9 +2172,10 @@ export const ConfiguracionTab: React.FC<ConfiguracionTabProps> = ({
                     {operadores.map((u) => {
                       const inviteLink = `${window.location.origin}/registro-operador?token=${u.id}`;
                       const numeroLimpiado = formatearTelefonoWhatsApp(u.telefono);
-                      const mensajeWA = encodeURIComponent(`¡Hola! Te he invitado a unirte a mi equipo en el sistema notarial O.L.G.A. Crea tu cuenta de operador en este enlace: ${inviteLink}`);
+                      const nombreSistemaInvitacion = esSectorPublicoBeta ? 'sistema institucional O.L.G.A.' : 'sistema notarial O.L.G.A.';
+                      const mensajeWA = encodeURIComponent(`¡Hola! Te he invitado a unirte a mi equipo en el ${nombreSistemaInvitacion} Crea tu cuenta de operador en este enlace: ${inviteLink}`);
                       const asuntoEmail = encodeURIComponent('Invitación a O.L.G.A.');
-                      const cuerpoEmail = encodeURIComponent(`¡Hola! Te he invitado a unirte a mi equipo en el sistema notarial O.L.G.A.\n\nCrea tu cuenta de operador en este enlace:\n${inviteLink}\n\nSaludos.`);
+                      const cuerpoEmail = encodeURIComponent(`¡Hola! Te he invitado a unirte a mi equipo en el ${nombreSistemaInvitacion}\n\nCrea tu cuenta de operador en este enlace:\n${inviteLink}\n\nSaludos.`);
 
                       return (
                         <div key={u.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 transition-colors">

@@ -1092,6 +1092,8 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     };
   }, []);
 
+  const syncedUidRef = useRef<string | null>(null);
+
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
@@ -1102,6 +1104,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
       }
 
       if (!user) {
+        syncedUidRef.current = null;
         setCurrentUser(null);
         setUserProfile(null);
         setIsCheckingProfile(false);
@@ -1120,11 +1123,13 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         localStorage.setItem('appSessionId', localSessionId);
       }
 
-      let isFirstSnapshotAfterAuth = true;
-      
       try {
         unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
           if (!docSnap.exists()) {
+            if (syncedUidRef.current === user.uid) {
+              return;
+            }
+            syncedUidRef.current = user.uid;
             const userRef = doc(db, 'users', user.uid);
             const userSnap = await getDoc(userRef);
             if (!userSnap.exists()) {
@@ -1178,174 +1183,177 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
             }
           }
 
-          const data = docSnap.data();
-          if (!data) return;
+          const rawData = docSnap.data();
+          if (!rawData) return;
+          const data = { ...rawData };
 
-          // Sincronización automática del plan del operador con el titular (tenant)
-          if ((data.rol === 'operador' || data.role === 'operador') && data.tenant_id) {
-            try {
-              const tenantRef = doc(db, 'users', data.tenant_id);
-              const tenantSnap = await getDoc(tenantRef);
-              if (tenantSnap.exists()) {
-                const tenantData = tenantSnap.data();
-                const planTitular = tenantData.planActual || tenantData.plan || 'Plan Básico';
-                
-                // Si el plan del operador es distinto al del titular, lo actualizamos en Firestore
-                if (data.planActual !== planTitular) {
-                  await updateDoc(doc(db, 'users', user.uid), {
-                    planActual: planTitular,
-                    plan: planTitular
-                  });
-                  // Actualizar el estado local para que la UI se refresque inmediatamente
-                  data.planActual = planTitular;
-                  data.plan = planTitular;
+          // Inicialización y normalización del perfil: como máximo UNA sola vez por sesión/UID
+          if (syncedUidRef.current !== user.uid) {
+            syncedUidRef.current = user.uid;
+
+            // Sincronización automática del plan del operador con el titular (tenant)
+            if ((data.rol === 'operador' || data.role === 'operador') && data.tenant_id) {
+              try {
+                const tenantRef = doc(db, 'users', data.tenant_id);
+                const tenantSnap = await getDoc(tenantRef);
+                if (tenantSnap.exists()) {
+                  const tenantData = tenantSnap.data();
+                  const planTitular = tenantData.planActual || tenantData.plan || 'Plan Básico';
+
+                  // Si el plan del operador es distinto al del titular, lo actualizamos en Firestore
+                  if (data.planActual !== planTitular) {
+                    await updateDoc(doc(db, 'users', user.uid), {
+                      planActual: planTitular,
+                      plan: planTitular
+                    });
+                    // Actualizar el estado local para que la UI se refresque inmediatamente
+                    data.planActual = planTitular;
+                    data.plan = planTitular;
+                  }
                 }
+              } catch (error) {
+                console.error("Error sincronizando el plan del operador con el titular:", error);
               }
-            } catch (error) {
-              console.error("Error sincronizando el plan del operador con el titular:", error);
             }
-          }
 
-          // Autorreparación de cuentas existentes o recién autenticadas incompletas
-          const updates: any = {};
-          const fiveDaysDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-          const fiveDaysTs = Timestamp.fromDate(fiveDaysDate);
-          const fiveDaysIso = fiveDaysDate.toISOString();
+            // Autorreparación de cuentas existentes o recién autenticadas incompletas
+            const updates: any = {};
+            const fiveDaysDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+            const fiveDaysTs = Timestamp.fromDate(fiveDaysDate);
+            const fiveDaysIso = fiveDaysDate.toISOString();
 
-          if (!data.uid) {
-            updates.uid = user.uid;
-          }
-          if (user.email && !data.email) {
-            updates.email = user.email.toLowerCase();
-          }
-          if (user.phoneNumber && !data.telefono) {
-            updates.telefono = user.phoneNumber;
-            updates.phoneNumber = user.phoneNumber;
-          }
-          if (!data.nombre) {
-            updates.nombre =
-              user.displayName ||
-              (user.email ? user.email.split('@')[0] : '') ||
-              user.phoneNumber ||
-              'Mi Escribanía';
-          }
-          const tipoDocNorm = String(data.tipoPerfil || '').toLowerCase();
-          const isPerfilNoNotarial = ['abogado', 'playero', 'inmobiliario', 'contador', 'sector_publico_beta'].includes(tipoDocNorm);
-          if (!data.escribania && !isPerfilNoNotarial) {
-            updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
-          }
-          if (!data.fecha_creacion) {
-            updates.fecha_creacion = user.metadata?.creationTime
-              ? Timestamp.fromDate(new Date(user.metadata.creationTime))
-              : serverTimestamp();
-          }
-          if (!data.creadoEn) {
-            updates.creadoEn = serverTimestamp();
-          }
-          if (!data.fechaRegistro) {
-            updates.fechaRegistro = user.metadata?.creationTime
-              ? new Date(user.metadata.creationTime).toISOString()
-              : new Date().toISOString();
-          }
-          const existingExpAny =
-            data.fecha_expiracion ||
-            data.trialEndsAt ||
-            data.fechaVencimiento ||
-            data.vencimientoPlan ||
-            data.fecha_vencimiento_plan;
-          if (!existingExpAny) {
-            updates.fecha_expiracion = fiveDaysTs;
-            updates.trialEndsAt = fiveDaysTs;
-            updates.fechaVencimiento = fiveDaysIso;
-            updates.vencimientoPlan = fiveDaysIso;
-            if (!data.planActual) updates.planActual = data.plan || 'trial';
-            if (!data.plan) updates.plan = data.planActual || 'trial';
-            if (!data.estadoSuscripcion) updates.estadoSuscripcion = 'trial';
-            if (!data.estado_cuenta) updates.estado_cuenta = 'activa';
-          } else {
-            if (!data.fecha_expiracion) updates.fecha_expiracion = existingExpAny;
-            if (!data.trialEndsAt) updates.trialEndsAt = existingExpAny;
-          }
-          if (Object.keys(updates).length > 0) {
-            setDoc(doc(db, 'users', user.uid), updates, { merge: true }).catch(console.error);
-            Object.assign(data, updates);
-          }
-
-          // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
-          const isGavanah = 
-            (user.email && user.email.toLowerCase().includes('gavanah')) ||
-            (data.email && data.email.toLowerCase().includes('gavanah')) ||
-            (data.nombre && data.nombre.toLowerCase().includes('gavanah'));
-
-          if (isGavanah && (data.role !== 'operador' || data.rol !== 'operador' || data.planActual !== 'Operador Notarial')) {
-            console.log("Restaurando rol y plan de operador para cuenta Gavanah...");
-            await updateDoc(doc(db, 'users', user.uid), {
-              role: 'operador',
-              rol: 'operador',
-              planActual: 'Operador Notarial'
-            }).catch(console.error);
-            data.role = 'operador';
-            data.rol = 'operador';
-            data.planActual = 'Operador Notarial';
-          }
-
-          // Validación Estricta de Expiración para cuentas Trial (5 días)
-          const planStr = String(data.planActual || data.plan || '').toLowerCase().trim();
-          const roleStr = String(data.role || data.rol || '').toLowerCase().trim();
-          const isOperadorData = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin' || isGavanah;
-          const isApprovedAccount = String(data.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(data.estadoPago || '').toUpperCase() === 'APROBADO';
-          const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData || isApprovedAccount;
-
-          if (!isPrivilegedUser && (planStr === 'trial' || planStr === '' || planStr === 'prueba')) {
-            let expDate: Date | null = null;
-            const rawExp =
+            if (!data.uid) {
+              updates.uid = user.uid;
+            }
+            if (user.email && !data.email) {
+              updates.email = user.email.toLowerCase();
+            }
+            if (user.phoneNumber && !data.telefono) {
+              updates.telefono = user.phoneNumber;
+              updates.phoneNumber = user.phoneNumber;
+            }
+            if (!data.nombre) {
+              updates.nombre =
+                user.displayName ||
+                (user.email ? user.email.split('@')[0] : '') ||
+                user.phoneNumber ||
+                'Mi Escribanía';
+            }
+            const tipoDocNorm = String(data.tipoPerfil || '').toLowerCase();
+            const isPerfilNoNotarial = ['abogado', 'playero', 'inmobiliario', 'contador', 'sector_publico_beta'].includes(tipoDocNorm);
+            if (!data.escribania && !isPerfilNoNotarial) {
+              updates.escribania = data.razonSocial || data.nombreInstitucion || 'Mi Escribanía';
+            }
+            if (!data?.fecha_creacion) {
+              updates.fecha_creacion = user.metadata?.creationTime
+                ? Timestamp.fromDate(new Date(user.metadata.creationTime))
+                : serverTimestamp();
+            }
+            if (!data?.creadoEn && !data?.fecha_creacion) {
+              updates.creadoEn = serverTimestamp();
+            }
+            if (!data.fechaRegistro) {
+              updates.fechaRegistro = user.metadata?.creationTime
+                ? new Date(user.metadata.creationTime).toISOString()
+                : new Date().toISOString();
+            }
+            const existingExpAny =
               data.fecha_expiracion ||
               data.trialEndsAt ||
               data.fechaVencimiento ||
-              data.vencimientoPlan;
-            if (rawExp) {
-              if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
-              else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
-              else if (typeof rawExp.seconds === 'number') expDate = new Date(rawExp.seconds * 1000);
-              else expDate = new Date(rawExp);
+              data.vencimientoPlan ||
+              data.fecha_vencimiento_plan;
+            if (!existingExpAny) {
+              updates.fecha_expiracion = fiveDaysTs;
+              updates.trialEndsAt = fiveDaysTs;
+              updates.fechaVencimiento = fiveDaysIso;
+              updates.vencimientoPlan = fiveDaysIso;
+              if (!data.planActual) updates.planActual = data.plan || 'trial';
+              if (!data.plan) updates.plan = data.planActual || 'trial';
+              if (!data.estadoSuscripcion) updates.estadoSuscripcion = 'trial';
+              if (!data.estado_cuenta) updates.estado_cuenta = 'activa';
+            } else {
+              if (!data.fecha_expiracion) updates.fecha_expiracion = existingExpAny;
+              if (!data.trialEndsAt) updates.trialEndsAt = existingExpAny;
+            }
+            if (Object.keys(updates).length > 0) {
+              setDoc(doc(db, 'users', user.uid), updates, { merge: true }).catch(console.error);
+              Object.assign(data, updates);
             }
 
-            // Fallback de Seguridad: Si un usuario antiguo en trial no tiene fecha_expiracion, calcular fecha_creacion + 5 días
-            if (!expDate || isNaN(expDate.getTime())) {
-              const rawCreation =
-                data.fecha_creacion ||
-                data.fechaCreacion ||
-                data.creadoEn ||
-                data.fechaRegistro ||
-                data.created_at ||
-                data.createdAt;
-              if (rawCreation) {
-                let creationDate: Date | null = null;
-                if (typeof rawCreation.toDate === 'function') creationDate = rawCreation.toDate();
-                else if (typeof rawCreation.toMillis === 'function') creationDate = new Date(rawCreation.toMillis());
-                else if (typeof rawCreation.seconds === 'number') creationDate = new Date(rawCreation.seconds * 1000);
-                else creationDate = new Date(rawCreation);
-                if (creationDate && !isNaN(creationDate.getTime())) {
-                  expDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+            // Parche Crítico Fase 9.1: Asegurar que la cuenta de Gavanah mantenga su poder de Operador Notarial
+            const isGavanah =
+              (user.email && user.email.toLowerCase().includes('gavanah')) ||
+              (data.email && data.email.toLowerCase().includes('gavanah')) ||
+              (data.nombre && data.nombre.toLowerCase().includes('gavanah'));
+
+            if (isGavanah && (data.role !== 'operador' || data.rol !== 'operador' || data.planActual !== 'Operador Notarial')) {
+              console.log("Restaurando rol y plan de operador para cuenta Gavanah...");
+              await updateDoc(doc(db, 'users', user.uid), {
+                role: 'operador',
+                rol: 'operador',
+                planActual: 'Operador Notarial'
+              }).catch(console.error);
+              data.role = 'operador';
+              data.rol = 'operador';
+              data.planActual = 'Operador Notarial';
+            }
+
+            // Validación Estricta de Expiración para cuentas Trial (5 días)
+            const planStr = String(data.planActual || data.plan || '').toLowerCase().trim();
+            const roleStr = String(data.role || data.rol || '').toLowerCase().trim();
+            const isOperadorData = roleStr === 'operador' || roleStr === 'admin' || roleStr === 'superadmin' || isGavanah;
+            const isApprovedAccount = String(data.estadoPlataforma || '').toUpperCase() === 'APROBADO' || String(data.estadoPago || '').toUpperCase() === 'APROBADO';
+            const isPrivilegedUser = user.email === 'jotamolinas@gmail.com' || isOperadorData || isApprovedAccount;
+
+            if (!isPrivilegedUser && (planStr === 'trial' || planStr === '' || planStr === 'prueba')) {
+              let expDate: Date | null = null;
+              const rawExp =
+                data.fecha_expiracion ||
+                data.trialEndsAt ||
+                data.fechaVencimiento ||
+                data.vencimientoPlan;
+              if (rawExp) {
+                if (typeof rawExp.toDate === 'function') expDate = rawExp.toDate();
+                else if (typeof rawExp.toMillis === 'function') expDate = new Date(rawExp.toMillis());
+                else if (typeof rawExp.seconds === 'number') expDate = new Date(rawExp.seconds * 1000);
+                else expDate = new Date(rawExp);
+              }
+
+              // Fallback de Seguridad: Si un usuario antiguo en trial no tiene fecha_expiracion, calcular fecha_creacion + 5 días
+              if (!expDate || isNaN(expDate.getTime())) {
+                const rawCreation =
+                  data.fecha_creacion ||
+                  data.fechaCreacion ||
+                  data.creadoEn ||
+                  data.fechaRegistro ||
+                  data.created_at ||
+                  data.createdAt;
+                if (rawCreation) {
+                  let creationDate: Date | null = null;
+                  if (typeof rawCreation.toDate === 'function') creationDate = rawCreation.toDate();
+                  else if (typeof rawCreation.toMillis === 'function') creationDate = new Date(rawCreation.toMillis());
+                  else if (typeof rawCreation.seconds === 'number') creationDate = new Date(rawCreation.seconds * 1000);
+                  else creationDate = new Date(rawCreation);
+                  if (creationDate && !isNaN(creationDate.getTime())) {
+                    expDate = new Date(creationDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+                  }
                 }
+              }
+
+              const yaExpiradoPorFecha = expDate ? Date.now() > expDate.getTime() : false;
+              if (yaExpiradoPorFecha && data.estado_cuenta !== 'expirada') {
+                updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
               }
             }
 
-            const yaExpiradoPorFecha = expDate ? Date.now() > expDate.getTime() : false;
-            if (yaExpiradoPorFecha && data.estado_cuenta !== 'expirada') {
-              updateDoc(doc(db, 'users', user.uid), { estado_cuenta: 'expirada' }).catch(console.error);
+            const firestoreSessionId = data.activeSessionId;
+            const currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
+            if (!localStorage.getItem('appSessionId') && currentLocalSession) {
+              localStorage.setItem('appSessionId', currentLocalSession);
             }
-          }
 
-          const firestoreSessionId = data.activeSessionId;
-          const currentLocalSession = localStorage.getItem('appSessionId') || localSessionId;
-          if (!localStorage.getItem('appSessionId') && currentLocalSession) {
-            localStorage.setItem('appSessionId', currentLocalSession);
-          }
-
-          // Sincronización pasiva de activeSessionId sin expulsión automática ni cierre de sesión
-          if (isFirstSnapshotAfterAuth) {
-            isFirstSnapshotAfterAuth = false;
+            // Sincronización pasiva de activeSessionId sin expulsión automática ni cierre de sesión
             if (!firestoreSessionId && currentLocalSession) {
               setDoc(doc(db, 'users', user.uid), { activeSessionId: currentLocalSession }, { merge: true }).catch(console.error);
             }
@@ -1406,6 +1414,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
         unsubscribeSnapshot();
         unsubscribeSnapshot = null;
       }
+      syncedUidRef.current = null;
       setCurrentUser(null);
       setUserProfile(null);
       setPersonas([]);
