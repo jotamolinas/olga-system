@@ -26,7 +26,8 @@ import {
   MessageCircle,
   Briefcase,
   Calculator,
-  ClipboardList
+  ClipboardList,
+  Landmark
 } from 'lucide-react';
 import { GlobalConfig } from '../types';
 import { UsePWAInstallResult } from '../hooks/usePWAInstall';
@@ -50,7 +51,8 @@ export type SidebarTabId =
   | 'whatsapp'
   | 'expedientes'
   | 'cotizador'
-  | 'contratos_uoc';
+  | 'contratos_uoc'
+  | 'licitaciones-dncp';
 
 export interface SidebarProps {
   activeTab: SidebarTabId | string;
@@ -300,6 +302,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isAdmin
   );
 
+  // Acceso estricto exclusivo para SuperAdmin (jotamolinas@gmail.com o rol SUPERADMIN)
+  const isStrictSuperAdmin = Boolean(
+    currentUser?.email === 'jotamolinas@gmail.com' ||
+    String(userProfile?.role || userProfile?.rol || userData?.role || userData?.rol || currentUser?.role || '').toUpperCase().trim() === 'SUPERADMIN'
+  );
+
   const getExplicitFlag = (field: 'whatsappEnabled' | 'lienzoEnabled' | 'presupuestoEnabled'): boolean | undefined => {
     if (typeof userProfile?.[field] === 'boolean') return userProfile[field];
     if (typeof userData?.[field] === 'boolean') return userData[field];
@@ -375,6 +383,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'monitor', label: 'Monitor Central', icon: ShieldCheck, adminOnly: true },
         // Regla Crítica: Envuelto en renderizado condicional estricto de Super Admin
         ...(isSuperAdmin ? [{ id: 'onboarding-sifen', label: 'Onboarding SIFEN', icon: KeyRound, adminOnly: true }] : []),
+        ...(isStrictSuperAdmin ? [{ id: 'licitaciones-dncp', label: 'Licitaciones DNCP', icon: Landmark, adminOnly: true }] : []),
         { id: 'pagos', label: 'Gestión Cobros', icon: CreditCard, adminOnly: true },
       ];
 
@@ -646,7 +655,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => {
                   setRole('usuario');
-                  if (activeTab === 'config' || activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') {
+                  if (activeTab === 'config' || activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen' || activeTab === 'licitaciones-dncp') {
                     setActiveTab(esSectorPublicoBeta ? 'contratos_uoc' : 'tablero');
                   }
                 }}

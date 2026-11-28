@@ -6893,6 +6893,25 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
     { label: 'Solicitud de Pago (SIFEN)', prompt: 'Redacta una nota formal de solicitud y gestión de pago de proveedor adjuntando factura electrónica SIFEN, CCT, IPS, REPSE y FIS bajo Ley N.º 7021/2022.' }
   ];
 
+  const ATTACHMENT_AI_PROMPTS_UOC = [
+    {
+      label: 'Auditar Contrato / Pliego',
+      prompt: 'Analiza íntegramente el contrato, pliego de bases y condiciones (PBC) o documento adjunto conforme a la Ley N.º 7021/2022 de Suministro y Contrataciones Públicas y su Decreto Reglamentario N.º 2264/2024. Emite un informe técnico UOC estructurado con: 1) Datos identificatorios extraídos del adjunto (ID DNCP, objeto, partes, monto, moneda, vigencia y plazo); 2) Verificación de garantías exigidas (mantenimiento de oferta, fiel cumplimiento, anticipo), multas y penalidades; 3) Obligaciones clave, hitos de entrega, recepción y condiciones de pago/SIFEN; 4) Riesgos legales, inconsistencias o cláusulas críticas detectadas; y 5) Recomendaciones operativas para el Administrador de Contrato. Regla estricta: no inventes datos que no figuren en el documento adjunto; todo dato faltante o ilegible debe indicarse entre [CORCHETES].'
+    },
+    {
+      label: 'Intimación por Incumplimiento',
+      prompt: 'Analiza el documento adjunto (contrato, orden de compra, informe de seguimiento o antecedente) y redacta una Nota Formal UOC de Intimación por Incumplimiento Contractual conforme a la Ley N.º 7021/2022 y el Decreto N.º 2264/2024. Estructura el documento con: encabezado oficial institucional, referencia al ID DNCP/contrato, relación precisa de los hechos e incumplimientos verificados en el adjunto (plazos vencidos, entregas parciales o rechazadas, pólizas o documentaciones pendientes), cita de las cláusulas contractuales y artículos aplicables, emplazamiento perentorio para regularización bajo apercibimiento de aplicación de multas, ejecución de garantías o rescisión administrativa, y bloque de firma institucional. Regla estricta: utiliza únicamente los datos que consten en el adjunto; cualquier dato faltante debe marcarse entre [CORCHETES].'
+    },
+    {
+      label: 'Adenda Plazo / Monto (Art. 67)',
+      prompt: 'Analiza el contrato, solicitud o antecedente adjunto y redacta un proyecto de Convenio Modificatorio / Adenda Contractual de ampliación de plazo y/o monto (hasta el límite legal del 20%) conforme al Art. 67 de la Ley N.º 7021/2022 y el Decreto N.º 2264/2024. Incluye: comparecencia y antecedentes del contrato original extraídos del adjunto, fundamentación técnica y jurídica de la modificación, cláusulas modificatorias precisas (nuevo plazo, monto adicional o reprogramación, y reajuste proporcional de la garantía de fiel cumplimiento si corresponde) y ratificación de las demás cláusulas vigentes. Regla estricta: no inventes montos, fechas, resoluciones ni nombres que no figuren en el documento adjunto; consigna todo dato ausente entre [CORCHETES].'
+    },
+    {
+      label: 'Resumen de Planilla / Órdenes',
+      prompt: 'Analiza la planilla, cuadro comparativo, certificado u órdenes de compra/servicio adjuntas bajo los parámetros de control UOC de la Ley N.º 7021/2022 y el Decreto N.º 2264/2024. Genera un informe ejecutivo estructurado con: 1) Resumen general (cantidad de ítems u órdenes, período cubierto, proveedor/es y monto total); 2) Detalle consolidado de ítems, cantidades, precios unitarios, subtotales y saldos ejecutados o pendientes; 3) Verificación aritmética de sumatorias y detección de eventuales diferencias, omisiones o plazos vencidos; y 4) Conclusión operativa para control de ejecución presupuestaria y pago. Regla estricta: no inventes cifras, fechas ni códigos que no surjan del archivo adjunto; señala cualquier dato faltante entre [CORCHETES].'
+    }
+  ];
+
   // Filtrado LOCAL sobre el estado de React (regla crítica: prohibido peticiones al escribir)
   const filteredEscritos = escritos.filter(escrito => {
     const matchCategory = activeCategory === 'Todos' || escrito.categoria === activeCategory;
@@ -8811,6 +8830,39 @@ export const EscritosTab: React.FC<EscritosTabProps> = ({ currentUser, userProfi
                   ))}
                 </div>
               </div>
+
+              {esSectorPublicoBeta && (
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      Prompts para Documento Adjunto
+                    </span>
+                    <span
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded border ${
+                        aiAttachments.length > 0
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {aiAttachments.length > 0
+                        ? `Listo para analizar ${aiAttachments.length} ${aiAttachments.length === 1 ? 'archivo adjunto' : 'archivos adjuntos'}`
+                        : 'Recomendado al adjuntar PDF, planilla o imagen'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ATTACHMENT_AI_PROMPTS_UOC.map((ap, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setAiPrompt(ap.prompt)}
+                        className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer"
+                      >
+                        {ap.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Adjuntos */}
               <input

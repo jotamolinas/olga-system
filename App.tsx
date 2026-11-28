@@ -38,6 +38,7 @@ import { limpiarLatexJuridico } from './services/gemini';
 import { EscritosTab } from './components/EscritosTab';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { SuperAdminOnboarding } from './components/SuperAdminOnboarding';
+import { SuperAdminLicitacionesTab } from './components/SuperAdminLicitacionesTab';
 import { FichaProfesional } from './components/FichaProfesional';
 import { ConfiguracionCuentaTab } from './components/ConfiguracionCuentaTab';
 import { ConfiguracionTab } from './components/ConfiguracionTab';
@@ -663,6 +664,12 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   );
 
   const isAdmin = forceAdmin && isActualAdminUser;
+  const isStrictSuperAdmin = Boolean(
+    currentUser && (
+      currentUser.email === 'jotamolinas@gmail.com' ||
+      firestoreAdminRole === 'SUPERADMIN'
+    )
+  );
 
   const planActual = String(userProfile?.planActual || userProfile?.plan || userData?.planActual || userData?.plan || activePlan || 'basico').toLowerCase().trim();
   const tipoPerfilNorm = String(userProfile?.tipoPerfil || userData?.tipoPerfil || '').trim().toLowerCase();
@@ -838,7 +845,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
   ]);
 
   // UI Active tabs
-  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes' | 'cotizador' | 'contratos_uoc'>(forceAdmin ? 'monitor' : 'tablero');
+  const [activeTab, setActiveTab] = useState<'tablero' | 'pagares' | 'personas' | 'escritos' | 'config' | 'chat' | 'monitor' | 'planes' | 'pagos' | 'soporte' | 'cuenta' | 'lienzo' | 'facturacion' | 'onboarding-sifen' | 'whatsapp' | 'expedientes' | 'cotizador' | 'contratos_uoc' | 'licitaciones-dncp'>(forceAdmin ? 'monitor' : 'tablero');
 
   useEffect(() => {
     if (isCheckingProfile || !currentUser) return;
@@ -858,6 +865,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     }
     if (
       activeTab === 'contratos_uoc' ||
+      (activeTab === 'licitaciones-dncp' && (!isStrictSuperAdmin || role !== 'admin')) ||
       (activeTab === 'whatsapp' && !canUseWhatsApp) ||
       (activeTab === 'lienzo' && (!canUseLienzo || esAbogado)) ||
       (activeTab === 'facturacion' && !canUsePresupuesto) ||
@@ -866,7 +874,7 @@ const ConsolaApp: React.FC<{ forceAdmin?: boolean }> = ({ forceAdmin = false }) 
     ) {
       setActiveTab('tablero');
     }
-  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, esPlayero, esSectorPublicoBeta, role, isCheckingProfile, currentUser]);
+  }, [activeTab, canUseWhatsApp, canUseLienzo, canUsePresupuesto, esAbogado, esPlayero, esSectorPublicoBeta, isStrictSuperAdmin, role, isCheckingProfile, currentUser]);
 
   // Plan selection and Checkout Modal state
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -2165,7 +2173,7 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
   // En el workspace compartido, los pagarés pertenecen a la notaría
   const visiblePagares = pagares;
 
-  const isAdminConsoleTab = activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos';
+  const isAdminConsoleTab = activeTab === 'monitor' || activeTab === 'onboarding-sifen' || activeTab === 'pagos' || activeTab === 'licitaciones-dncp';
   const isSuperAdminView = (role === 'admin' || forceAdmin) && isAdminConsoleTab;
   const isDarkLayout = isDarkMode || isSuperAdminView;
   const layoutBg = isDarkLayout ? 'bg-[#09090b]' : 'bg-gray-50';
@@ -2881,7 +2889,12 @@ Responde a las consultas del usuario justificando legalmente o redactando las cl
               <SuperAdminOnboarding />
             )}
 
-            {(activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') && role !== 'admin' && (
+            {activeTab === 'licitaciones-dncp' && role === 'admin' && isStrictSuperAdmin && (
+              <SuperAdminLicitacionesTab />
+            )}
+
+            {((activeTab === 'monitor' || activeTab === 'pagos' || activeTab === 'onboarding-sifen') && role !== 'admin' ||
+              (activeTab === 'licitaciones-dncp' && (role !== 'admin' || !isStrictSuperAdmin))) && (
               <div className="flex-1 flex items-center justify-center p-6 min-h-[60vh]">
                 <div className="w-full max-w-md bg-[#121214] border border-white/10 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
                   {isCheckingProfile ? (
